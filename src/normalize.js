@@ -327,3 +327,153 @@ export function normalizeAll(entity, rows) {
   }
   return { records, dropped };
 }
+
+// --- APP_META --------------------------------------------------------------
+//
+// A aba APP_META é escrita pelo Apps Script e descreve o dataset em si: quando mudou,
+// que versão é, se passou na validação. Não é dado de mercado — é a procedência do
+// dado de mercado, e é o que permite a alguém confiar no que está vendo.
+
+/**
+ * Como cada chave é tipada e rotulada na tela. A ordem aqui é a ordem de exibição.
+ *
+ * Os rótulos são curtos de propósito: o painel tem 300 px e o título "Sobre estes
+ * dados" já dá o contexto. "Dados atualizados em" quebrava em três linhas.
+ */
+const APP_META_FIELDS = [
+  { key: 'last_data_change_at', label: 'Atualizado em', type: 'date' },
+  { key: 'dataset_version', label: 'Dataset', type: 'version' },
+  { key: 'validation_status', label: 'Qualidade', type: 'status' },
+  { key: 'last_validation_at', label: 'Validado em', type: 'date' },
+  { key: 'validation_errors', label: 'Erros', type: 'count' },
+  { key: 'validation_warnings', label: 'Avisos', type: 'count' },
+  { key: 'rows_listings', label: 'Anúncios', type: 'count' },
+  { key: 'rows_developments', label: 'Empreendimentos', type: 'count' },
+  { key: 'rows_anchors', label: 'Âncoras', type: 'count' },
+  { key: 'app_version', label: 'App', type: 'version' },
+];
+
+/** Rótulo e tom de cada `validation_status` conhecido. */
+const VALIDATION_STATUS = {
+  ok: { label: 'OK', tone: 'ok' },
+  warning: { label: 'Com avisos', tone: 'warning' },
+  error: { label: 'Com erros', tone: 'error' },
+  dirty: { label: 'Pendente de revalidação', tone: 'dirty' },
+};
+
+/**
+ * Converte a APP_META bruta num objeto tipado, contendo **apenas as chaves presentes**.
+ *
+ * Aceita as duas formas em que ela chega: as linhas `{ key, value, updated_at }` do
+ * GViz e o objeto `{ chave: valor }` do endpoint do Apps Script. Chave ausente é
+ * omitida em vez de virar `null` — quem renderiza precisa distinguir "não publicado"
+ * de "publicado como vazio", e um `null` no meio apagaria essa diferença.
+ *
+ * Chave publicada duas vezes com valores diferentes também é omitida: ver
+ * `appMetaConflicts`.
+ */
+function flattenAppMeta(raw) {
+  const flat = {};
+  const conflicts = new Set();
+  if (!raw) return { flat, conflicts };
+
+  if (Array.isArray(raw)) {
+    for (const row of raw) {
+      if (!row || typeof row !== 'object') continue;
+      const key = toText(row.key);
+      if (!key) continue;
+
+      if (key in flat) {
+        // A PRIMEIRA ocorrência vence, para acompanhar o `setMeta_()` do Apps Script,
+        // que atualiza a primeira linha encontrada. Deixar a última vencer faria uma
+        // linha duplicada antiga sobrepor o valor recém-escrito.
+        if (toText(flat[key]) !== toText(row.value)) conflicts.add(key);
+        continue;
+      }
+      flat[key] = row.value;
+    }
+  } else if (typeof raw === 'object') {
+    Object.assign(flat, raw);
+  }
+
+  return { flat, conflicts };
+}
+
+/**
+ * Chaves de APP_META publicadas mais de uma vez com valores divergentes.
+ *
+ * A planilha é editável à mão, então nada impede duas linhas `validation_status`.
+ * Quem consome usa isto para avisar o operador — a divergência é um problema de dado
+ * que precisa ser corrigido na planilha, não silenciado na tela.
+ */
+export function appMetaConflicts(raw) {
+  return [...flattenAppMeta(raw).conflicts].sort();
+}
+
+export function normalizeAppMeta(raw) {
+  if (!raw || (typeof raw !== 'object')) return {};
+
+  const { flat, conflicts } = flattenAppMeta(raw);
+  const out = {};
+  for (const { key, type } of APP_META_FIELDS) {
+    // Chave duplicada com valores divergentes é omitida em vez de exibida.
+    // Escolher um dos lados apresentaria como certo um dado sobre o qual a própria
+    // planilha se contradiz — e no caso de `validation_status` significaria mostrar
+    // "OK" enquanto a validação registrou erro (R8.16).
+    if (conflicts.has(key)) continue;
+
+    const value = flat[key];
+    if (value === null || value === undefined || toText(value) === '') continue;
+
+    if (type === 'date') {
+      const iso = toDateISO(value);
+      if (iso) out[key] = iso; // data ilegível é omitida, não exibida crua
+    } else if (type === 'count') {
+      const n = toInteger(value);
+      if (n !== null) out[key] = n;
+    } else {
+      out[key] = toText(value);
+    }
+  }
+  return out;
+}
+
+/**
+ * Linhas prontas para a tela, na ordem de `APP_META_FIELDS` e só para o que existe.
+ *
+ * `tone` classifica o estado da validação para o indicador colorido. Status
+ * desconhecido recebe `unknown`, **nunca** o tom de sucesso: um vocabulário novo que
+ * ninguém previu não pode ser apresentado como aprovação (R8.16).
+ */
+export function appMetaRows(meta) {
+  const source = meta || {};
+  const rows = [];
+
+  for (const { key, label, type } of APP_META_FIELDS) {
+    if (!(key in source)) continue;
+    const raw = source[key];
+
+    if (type === 'status') {
+      const known = VALIDATION_STATUS[toText(raw).toLowerCase()];
+      rows.push({
+        key,
+        label,
+        type,
+        value: known ? known.label : toText(raw),
+        tone: known ? known.tone : 'unknown',
+      });
+      continue;
+    }
+
+    // Datas saem em ISO, que é o formato do contrato. Traduzir para pt-BR é
+    // apresentação, e mora em src/format.js — este módulo não depende daquele.
+    rows.push({
+      key,
+      label,
+      type,
+      value: type === 'version' ? `v${toText(raw)}` : String(raw),
+      tone: null,
+    });
+  }
+  return rows;
+}

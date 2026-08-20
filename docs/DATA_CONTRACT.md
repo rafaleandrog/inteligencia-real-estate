@@ -186,6 +186,24 @@ Chaves: `app_version`, `dataset_version`, `last_data_change_at`, `last_validatio
 `validation_status`, `validation_errors`, `validation_warnings`, `last_meta_refresh_at`,
 `rows_listings`, `rows_developments`, `rows_anchors`.
 
+**A interface lê esta aba** e mostra a procedência do dataset no painel esquerdo — atualização,
+versão e estado da validação. É a única aba operacional exibida na tela.
+
+Comportamento quando ela não existe ou está vazia: **o bloco simplesmente não aparece**, e a
+aplicação segue funcionando normalmente. A aba só ganha conteúdo depois que `setupProject()` roda
+no Apps Script; até lá o estado é "não publicado", que é diferente de "publicado como vazio" —
+por isso chave ausente é omitida em vez de virar travessão.
+
+`validation_status` aceita `ok`, `warning`, `error` e `dirty`. **Qualquer outro valor é exibido
+sem o indicador de sucesso**: um vocabulário que o código não reconhece não pode ser apresentado
+como aprovação.
+
+**Chave publicada duas vezes com valores diferentes é omitida da tela** e vira aviso. A planilha
+é editável à mão, e `setMeta_()` atualiza apenas a primeira ocorrência: uma duplicata esquecida
+abaixo faria a interface exibir `ok` enquanto a validação gravou `error`. Em conflito, a fonte se
+contradiz e a interface não afirma nada — a correção é apagar a linha duplicada na planilha.
+
+
 ### DATA_QUALITY
 `severity | sheet | row | record_id | field | code | message | detected_at`
 

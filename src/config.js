@@ -43,6 +43,15 @@ window.APP_CONFIG = {
   },
 
   /**
+   * Aba de metadados do dataset, escrita pelo Apps Script e exibida na interface.
+   *
+   * Só passa a existir depois que `setupProject()` roda na planilha. Enquanto não
+   * existir ou estiver vazia, o bloco de metadados simplesmente não aparece — a
+   * aplicação não depende dela para funcionar.
+   */
+  metaSheet: 'APP_META',
+
+  /**
    * Abas previstas para as próximas fases.
    *
    * A tela da V1 **não lê nenhuma delas**, e por isso não são buscadas no

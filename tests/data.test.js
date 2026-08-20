@@ -223,3 +223,139 @@ test('nenhum registro do demo é declarado com localização exata sem precisão
       `${entity}: ${exatos.length} registro(s) seriam anunciados como localização verificada`);
   }
 });
+
+test('o modo demo não reintroduz metadado que o normalizador rejeitou', async () => {
+  // Regressão: `{ ...payload.meta, ...normalizeAppMeta(payload.meta) }` devolvia as
+  // chaves rejeitadas. `last_validation_at: 'ontem'` sobrevivia ao normalizador,
+  // `appMetaRows` via a chave presente e a tela mostrava "Validado em —" — apagando
+  // justamente a distinção entre "não publicado" e "publicado com valor inválido".
+  const { loadDataset } = await import('../src/data.js');
+  const { appMetaRows } = await import('../src/normalize.js');
+
+  const config = {
+    demoMode: true,
+    demoUrl: 'inline',
+    sheets: { listings: 'LISTINGS', developments: 'DEVELOPMENTS', anchors: 'ANCHORS' },
+  };
+
+  const original = globalThis.fetch;
+  globalThis.fetch = async () => ({
+    ok: true,
+    json: async () => ({
+      listings: [{ listing_id: 'A' }],
+      developments: [{ development_id: 'B' }],
+      anchors: [{ place_id: 'C' }],
+      meta: {
+        note: 'Dataset de DEMONSTRAÇÃO',
+        generated_at: '2026-08-20',
+        last_validation_at: 'ontem',   // inválido: precisa ser descartado
+        dataset_version: '4',          // válido: precisa sobreviver
+      },
+    }),
+  });
+
+  try {
+    const result = await loadDataset(config);
+
+    assert.ok(!('last_validation_at' in result.meta), 'data inválida não pode voltar ao meta');
+    assert.equal(result.meta.dataset_version, '4', 'chave válida sobrevive');
+
+    const chaves = appMetaRows(result.meta).map((r) => r.key);
+    assert.deepEqual(chaves, ['dataset_version'], 'só a chave válida é exibida');
+
+    // Os campos de geração do demo continuam disponíveis, fora do vocabulário APP_META.
+    assert.match(result.meta.demo.note, /DEMONSTRAÇÃO/);
+  } finally {
+    globalThis.fetch = original;
+  }
+});
+
+test('a APP_META do gviz é buscada em paralelo com as abas obrigatórias', async () => {
+  // Regressão: buscá-la depois do lote somava o tempo dela ao das outras e podia
+  // segurar o mapa na tela de carregamento com os dados já disponíveis.
+  const src = readFileSync(new URL('../src/data.js', import.meta.url), 'utf8');
+  const corpo = src.slice(src.indexOf('async function loadFromGviz'), src.indexOf('\n}', src.indexOf('async function loadFromGviz')));
+
+  const posMeta = corpo.indexOf('fetchAppMetaFromGviz(config)');
+  const posLote = corpo.indexOf('Promise.allSettled');
+  assert.ok(posMeta !== -1 && posLote !== -1);
+  assert.ok(posMeta < posLote, 'a busca da APP_META precisa começar antes do await do lote');
+  assert.ok(!/await fetchAppMetaFromGviz/.test(corpo), 'não pode ser aguardada em sequência');
+
+  // E com teto próprio, menor que o das abas obrigatórias.
+  assert.match(src, /META_FETCH_TIMEOUT_MS = (\d+)/);
+  const meta = Number(/META_FETCH_TIMEOUT_MS = (\d+)/.exec(src)[1]);
+  const geral = Number(/FETCH_TIMEOUT_MS = (\d+)/.exec(src)[1]);
+  assert.ok(meta < geral, `timeout da aba opcional (${meta}) precisa ser menor que o geral (${geral})`);
+});
+
+test('a estratégia appsscript detecta conflito de metadado como a do gviz', async () => {
+  // Regressão: `meta_()` achatava as linhas num objeto antes de serializar, deixando a
+  // última vencer. Um JSON não guarda chave duplicada, então o conflito se perdia na
+  // origem: com validation_status=error na primeira linha e ok numa duplicata abaixo,
+  // o cliente recebia ok e exibia aprovação. O endpoint passa a devolver as linhas.
+  const { loadDataset } = await import('../src/data.js');
+
+  const config = {
+    dataSource: 'appsscript',
+    appsScriptUrl: 'https://exemplo/exec',
+    sheets: { listings: 'LISTINGS', developments: 'DEVELOPMENTS', anchors: 'ANCHORS' },
+  };
+
+  const original = globalThis.fetch;
+  globalThis.fetch = async (url) => {
+    if (String(url).includes('resource=meta')) {
+      return {
+        ok: true,
+        json: async () => ({
+          rows: [
+            { key: 'validation_status', value: 'error', updated_at: '2026-08-20' },
+            { key: 'dataset_version', value: '9' },
+            { key: 'validation_status', value: 'ok', updated_at: '2026-01-01' },
+          ],
+        }),
+      };
+    }
+    return { ok: true, json: async () => ({ rows: [{ listing_id: 'A', development_id: 'B', place_id: 'C' }] }) };
+  };
+
+  try {
+    const result = await loadDataset(config);
+    assert.ok(!('validation_status' in result.meta), 'conflito não pode virar afirmação na tela');
+    assert.equal(result.meta.dataset_version, '9', 'as demais chaves seguem válidas');
+    assert.ok(
+      result.warnings.some((w) => /validation_status/.test(w)),
+      'a duplicata precisa virar aviso: ' + JSON.stringify(result.warnings)
+    );
+  } finally {
+    globalThis.fetch = original;
+  }
+});
+
+test('endpoint antigo, que devolve objeto achatado, continua sendo lido', async () => {
+  // Compatibilidade com um Web App implantado antes da mudança de formato. Nesse
+  // caso o conflito já se perdeu na origem — não há o que detectar no cliente.
+  const { loadDataset } = await import('../src/data.js');
+
+  const config = {
+    dataSource: 'appsscript',
+    appsScriptUrl: 'https://exemplo/exec',
+    sheets: { listings: 'LISTINGS', developments: 'DEVELOPMENTS', anchors: 'ANCHORS' },
+  };
+
+  const original = globalThis.fetch;
+  globalThis.fetch = async (url) => {
+    if (String(url).includes('resource=meta')) {
+      return { ok: true, json: async () => ({ dataset_version: '5', validation_status: 'ok' }) };
+    }
+    return { ok: true, json: async () => ({ rows: [{ listing_id: 'A', development_id: 'B', place_id: 'C' }] }) };
+  };
+
+  try {
+    const result = await loadDataset(config);
+    assert.equal(result.meta.dataset_version, '5');
+    assert.equal(result.meta.validation_status, 'ok');
+  } finally {
+    globalThis.fetch = original;
+  }
+});

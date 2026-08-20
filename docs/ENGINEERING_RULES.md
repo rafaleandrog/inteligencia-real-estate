@@ -78,7 +78,7 @@ Regras são numeradas e estáveis. Não renumere ao inserir — acrescente ao fi
 ## 6. Testes e verificação
 
 - **R6.1** Testes com o runner nativo do Node (`node --test`). Sem framework.
-- **R6.2** Prioridade de cobertura: conversão numérica, normalização das 4 entidades, mediana,
+- **R6.2** Prioridade de cobertura: conversão numérica, normalização das 3 entidades, mediana,
   filtros, registro sem coordenada, registro sem preço, dado malformado.
 - **R6.3** Teste é proporcional ao tamanho do projeto. Não construa infraestrutura enorme para uma
   V1 pequena.
@@ -215,3 +215,43 @@ Cada uma nasce de um erro que aconteceu de verdade.
   continua sem `Access-Control-Allow-Origin`; no GitHub Pages, `fetch` termina em `Failed to fetch`.
   Use `tqx=out:json;responseHandler:<callback>`, timeout e limpeza do `<script>` após sucesso ou
   erro.
+
+- **R8.24** *(2026-08-20, exibição da APP_META)* **Aba de arquivo `.xlsx` se localiza por `r:id`,
+  nunca por `sheetId`.** Os dois coincidem só enquanto nenhuma aba for apagada: apagar deixa
+  buraco na numeração dos ids, enquanto os arquivos `sheetN.xml` são renumerados sem buraco, e a
+  partir dali cada aba devolve o conteúdo da anterior — em silêncio. Foi o que aconteceu ao
+  remover `PRIMARY_MARKET`: `APP_META` passou a ler as colunas de `DATA_QUALITY`. Os testes
+  continuaram verdes porque as abas obrigatórias vinham antes da removida.
+- **R8.25** *(2026-08-20, exibição da APP_META)* **Ausência e vazio são estados diferentes e a
+  interface precisa distingui-los.** Chave não publicada é **omitida**, não exibida como
+  travessão: travessão afirma que o campo existe e está vazio. Vale para todo dado de
+  procedência — quem lê precisa saber se a informação não existe ou se ninguém a publicou ainda.
+- **R8.26** *(2026-08-20, exibição da APP_META)* **Número que pode ser confundido com outro na
+  mesma tela recebe legenda.** `Anúncios 141` em "Sobre estes dados" é o total publicado na
+  planilha; `Anúncios secundários 141` em "Camadas" é o que sobrou dos filtros. Coincidem sem
+  filtro e divergem com — mesma família da nota de composição da mediana (R8.15).
+- **R8.27** *(2026-08-20, review do Codex na PR #3)* **Leitor e escritor precisam concordar sobre
+  qual linha vale.** `setMeta_()` do Apps Script atualiza a **primeira** ocorrência de uma chave;
+  a leitura deixava a **última** vencer. Com uma linha duplicada antiga, a validação gravava
+  `error` na linha 1 e a tela exibia `ok` da linha 5. Em conflito de valores, **omita** — escolher
+  um lado apresenta como certo um dado sobre o qual a própria fonte se contradiz.
+- **R8.28** *(2026-08-20, review do Codex na PR #3)* **Não espalhe o objeto bruto por cima do
+  normalizado.** `{ ...bruto, ...normalizado }` devolve exatamente as chaves que o normalizador
+  decidiu rejeitar — `last_validation_at: 'ontem'` reaparecia e virava "Validado em —",
+  destruindo a distinção entre não publicado e inválido que o normalizador existia para criar.
+  Devolva só o normalizado; o que não pertence ao vocabulário vai para um ramo separado.
+- **R8.29** *(2026-08-20, review do Codex na PR #3)* **Recurso opcional não entra no caminho
+  crítico.** Buscar a `APP_META` depois do lote das abas obrigatórias somava o tempo dela ao
+  total e podia segurar o mapa em "carregando" com os dados já disponíveis. Opcional é buscado em
+  paralelo e com teto de tempo próprio, menor que o do obrigatório.
+- **R8.30** *(2026-08-20, review do Codex na PR #3)* **Fallback que adivinha recria o bug que a
+  correção elimina.** Ao trocar o mapeamento de aba por `r:id`, deixei um "último recurso" por
+  `sheetId` — o mesmo caminho errado, agora silencioso e mais difícil de achar. Quando não há
+  como resolver com segurança, **falhe com mensagem**, não com um palpite.
+- **R8.31** *(2026-08-20, review do Codex na PR #3)* **Não achate no servidor o que o cliente
+  precisa para detectar conflito.** O endpoint `?resource=meta` transformava as linhas de
+  `APP_META` num objeto JSON antes de responder — e objeto não guarda chave duplicada. A
+  validação no cliente ficava inerte: por esse caminho o conflito já tinha desaparecido na
+  origem. Transporte a forma que preserva a informação (linhas), e deixe a interpretação para um
+  ponto só. Corolário: ao corrigir um problema em um caminho de dados, verifique **todos** os
+  caminhos que chegam ao mesmo lugar.

@@ -10,13 +10,22 @@
 // Todas devolvem o mesmo formato:
 //   { entities, meta, source, warnings, errors }
 
-import { normalizeAll } from './normalize.js';
+import { normalizeAll, normalizeAppMeta, appMetaConflicts } from './normalize.js';
 
 /** Entidades obrigatórias na V1. Ausência de qualquer uma é erro. */
 export const REQUIRED_ENTITIES = ['listings', 'developments', 'anchors'];
 
 /** Timeout de rede. Sem isso, uma planilha inacessível deixa a página em "carregando" para sempre. */
 const FETCH_TIMEOUT_MS = 20000;
+
+/**
+ * Timeout mais curto para a aba de metadados.
+ *
+ * Ela é opcional: nada do que o mapa precisa depende dela. Um teto menor garante que
+ * uma requisição pendurada de APP_META não segure a renderização pelos 20 s das abas
+ * obrigatórias.
+ */
+const META_FETCH_TIMEOUT_MS = 6000;
 
 /** `fetch` com timeout, para que falha de rede vire erro tratável e não espera infinita. */
 async function fetchWithTimeout(url, options = {}) {
@@ -150,6 +159,13 @@ export function fetchGvizSheet(
  */
 async function loadFromGviz(config) {
   const entries = Object.entries(config.sheets);
+
+  // A APP_META entra no MESMO lote das abas obrigatórias. Buscá-la depois somava o
+  // tempo dela ao das outras e podia segurar o mapa na tela de carregamento mesmo com
+  // os dados já disponíveis. Em paralelo, o custo é o máximo e não a soma — e o
+  // timeout curto dedicado limita o quanto uma aba opcional pendurada pode atrasar.
+  const metaPromise = fetchAppMetaFromGviz(config);
+
   const settled = await Promise.allSettled(
     entries.map(([, sheetName]) => fetchGvizSheet(config.spreadsheetId, sheetName))
   );
@@ -165,7 +181,43 @@ async function loadFromGviz(config) {
     }
   });
 
-  return { raw, errors, meta: { spreadsheetId: config.spreadsheetId } };
+  const { meta, warnings } = await metaPromise;
+  return { raw, errors, warnings, meta: { spreadsheetId: config.spreadsheetId, ...meta } };
+}
+
+/**
+ * Lê a aba APP_META, que descreve o próprio dataset.
+ *
+ * Falha ou ausência vira **aviso, nunca erro**: APP_META é operacional e só existe
+ * depois que `setupProject()` roda no Apps Script. Uma planilha sem ela precisa
+ * continuar abrindo normalmente (R2.5).
+ *
+ * É buscada porque a interface a renderiza — diferente das abas de `optionalSheets`,
+ * que ninguém exibe e por isso não são buscadas. E é uma requisição, não quatro.
+ */
+async function fetchAppMetaFromGviz(config) {
+  const sheetName = config.metaSheet;
+  if (!sheetName) return { meta: {}, warnings: [] };
+
+  try {
+    const rows = await fetchGvizSheet(config.spreadsheetId, sheetName, {
+      timeoutMs: META_FETCH_TIMEOUT_MS,
+    });
+    return { meta: normalizeAppMeta(rows), warnings: metaConflictWarnings(rows) };
+  } catch (error) {
+    return {
+      meta: {},
+      warnings: [`Metadados do dataset indisponíveis (${sheetName}): ${error?.message || error}`],
+    };
+  }
+}
+
+/** Aviso para cada chave de APP_META publicada duas vezes com valores diferentes. */
+function metaConflictWarnings(raw) {
+  return appMetaConflicts(raw).map(
+    (key) => `A aba de metadados tem mais de uma linha "${key}" com valores diferentes; ` +
+      'o valor foi omitido até a duplicata ser resolvida na planilha.'
+  );
 }
 
 /** Estratégia `demo`. Lê o dataset estático do repositório. */
@@ -176,7 +228,21 @@ async function loadFromDemo(config) {
 
   const raw = {};
   for (const entity of Object.keys(config.sheets)) raw[entity] = payload[entity] || [];
-  return { raw, errors: [], meta: payload.meta || {} };
+
+  // Passa pelo mesmo normalizador das outras estratégias: se o demo.json não trouxer
+  // chaves de APP_META — que é o caso hoje —, o resultado é `{}` e a tela não mostra
+  // o bloco, exatamente como numa planilha sem setupProject() executado.
+  //
+  // O meta bruto NÃO é espalhado por cima: fazer isso devolvia as chaves que o
+  // normalizador tinha rejeitado (`last_validation_at: 'ontem'` reaparecia e virava
+  // "Validado em —"), destruindo a distinção entre não publicado e valor inválido.
+  // Os campos de geração do demo ficam num ramo à parte, fora do vocabulário APP_META.
+  return {
+    raw,
+    errors: [],
+    warnings: metaConflictWarnings(payload.meta),
+    meta: { ...normalizeAppMeta(payload.meta), demo: payload.meta || {} },
+  };
 }
 
 /**
@@ -211,7 +277,26 @@ async function loadFromAppsScript(config) {
     }
   });
 
-  return { raw, errors, meta: {} };
+  // O endpoint ?resource=meta já devolve a APP_META pronta como objeto.
+  const warnings = [];
+  let meta = {};
+  try {
+    const response = await fetchWithTimeout(`${config.appsScriptUrl}?resource=meta`);
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    const payload = await response.json();
+    if (payload.error) throw new Error(payload.error);
+    // O endpoint devolve `{ rows: [...] }` para preservar chave duplicada, que um
+    // objeto JSON não guarda. Um Web App implantado antes dessa mudança devolve o
+    // objeto achatado: ainda é lido, mas nesse formato o conflito já se perdeu na
+    // origem e não há o que detectar aqui.
+    const metaRaw = Array.isArray(payload.rows) ? payload.rows : payload;
+    meta = normalizeAppMeta(metaRaw);
+    warnings.push(...metaConflictWarnings(metaRaw));
+  } catch (error) {
+    warnings.push(`Metadados do dataset indisponíveis: ${error?.message || error}`);
+  }
+
+  return { raw, errors, warnings, meta };
 }
 
 const STRATEGIES = {
@@ -262,6 +347,9 @@ export async function loadDataset(config) {
   }
 
   errors.push(...(result.errors || []));
+  // Avisos da própria estratégia — por exemplo, APP_META inacessível, que não impede
+  // a aplicação de abrir mas o operador precisa saber.
+  warnings.push(...(result.warnings || []));
 
   const entities = {};
   for (const entity of REQUIRED_ENTITIES) {

@@ -162,6 +162,63 @@ h1, h2 { margin: 0; font-size: 1rem; }
 }
 .kpi-note:empty { display: none; }
 
+/* Metadados do dataset --------------------------------------------------- */
+
+.dataset-meta { margin-bottom: 20px; }
+.dataset-meta[hidden] { display: none; }
+
+.dataset-meta h2 {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: .06em;
+  color: var(--muted);
+  margin-bottom: 8px;
+}
+
+.dataset-meta dl {
+  display: grid;
+  /* O rótulo é curto e conhecido, então recebe `max-content` e nunca quebra. O valor
+     vem de célula editável e fica com o restante, quebrando dentro da própria coluna —
+     com `auto` na segunda coluna, um único valor longo estreitava todos os rótulos. */
+  grid-template-columns: max-content minmax(0, 1fr);
+  gap: 5px 12px;
+  margin: 0;
+  font-size: 12px;
+}
+
+.meta-caption {
+  margin: -4px 0 8px;
+  font-size: 11px;
+  line-height: 1.35;
+  color: var(--muted);
+}
+
+.dataset-meta dt { color: var(--muted); }
+
+.dataset-meta dd {
+  margin: 0;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  /* Metadado vem de célula editável: um valor absurdamente longo quebra em vez de
+     estourar a largura do painel. */
+  overflow-wrap: anywhere;
+}
+
+/* Indicador de estado da validação. `unknown` é deliberadamente neutro: status que o
+   código não reconhece nunca pode ser pintado como aprovação (R8.16). */
+.meta-status {
+  display: inline-block;
+  padding: 1px 7px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 600;
+}
+.meta-status[data-tone="ok"]      { background: #e6f1ea; color: #2f5a41; }
+.meta-status[data-tone="warning"] { background: #fdf1e3; color: #8a5620; }
+.meta-status[data-tone="error"]   { background: #fbe9e9; color: #8c2f2f; }
+.meta-status[data-tone="dirty"]   { background: #eceaf5; color: #4f3f7a; }
+.meta-status[data-tone="unknown"] { background: var(--bg); color: var(--muted); }
+
 /* Campos ---------------------------------------------------------------- */
 
 .field-group { margin-bottom: 20px; }

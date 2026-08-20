@@ -736,14 +736,29 @@ function health_() {
   };
 }
 
+/**
+ * APP_META como LINHAS, não como objeto achatado.
+ *
+ * Achatar aqui destruía a evidência de chave duplicada antes de a resposta sair do
+ * servidor: um objeto JSON não guarda duas chaves iguais, e a última linha vencia —
+ * justamente a duplicata antiga. Com `validation_status = error` na primeira linha e
+ * `ok` numa duplicata abaixo, o cliente recebia `ok` e não tinha como saber.
+ *
+ * Devolvendo as linhas cruas, as duas estratégias de leitura (GViz e Apps Script)
+ * passam pelo mesmo normalizador no cliente e tratam conflito do mesmo jeito.
+ * `updated_at`, que também se perdia no achatamento, chega junto.
+ */
 function meta_() {
   var sheet = ss_().getSheetByName(META_SHEET);
-  var out = {};
+  var rows = [];
+
   dataRowsOf_(sheet).forEach(function (row) {
     var key = String(row[0]).trim();
-    if (key) out[key] = row[1];
+    if (!key) return;
+    rows.push({ key: key, value: row[1], updated_at: row[2] });
   });
-  return out;
+
+  return { rows: rows, count: rows.length };
 }
 
 /**
