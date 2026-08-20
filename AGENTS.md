@@ -74,3 +74,23 @@ apenas o que for material — não elogie genericamente.
 11. **Performance** — trabalho desnecessário no loop de render ou no filtro.
 
 Se não houver problema relevante, **diga explicitamente que não encontrou regressões materiais**.
+
+### Orçamento de rodadas — no máximo 3
+
+Revisão é para destravar entrega, não para virar processo. Uma PR se resolve em **até três
+rodadas**, com escopo decrescente:
+
+| Rodada | Escopo |
+|---|---|
+| **1ª** | **Exaustiva.** Levante tudo agora — P0 a P3. Um achado que só aparece na 3ª rodada era um achado que faltou na 1ª. |
+| **2ª** | **Só o que mudou.** Confirme as correções e aponte apenas problemas **novos introduzidos por elas**. Não reabra tema já resolvido nem reformule achado anterior. |
+| **3ª** | **Só bloqueio.** Apenas **P0 e P1** remanescentes. P2 e P3 nesta altura não seguram o merge — viram item de backlog. |
+
+Depois da 3ª rodada a PR entra em `main` se não houver P0 nem P1 em aberto.
+
+**Cada achado é independente e resolvível sozinho:** um arquivo, um problema, uma correção.
+Não agrupe três defeitos num comentário só, e não divida um mesmo defeito em três comentários.
+Se dois achados exigem a mesma correção, são um achado.
+
+Quem implementa tem a contrapartida: **corrigir todos os achados de uma rodada em um único push**,
+com evidência de reprodução quando o achado for de comportamento.

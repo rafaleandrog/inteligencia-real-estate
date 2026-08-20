@@ -123,3 +123,55 @@ test('flattenEntities tolera entidade ausente', () => {
   assert.deepEqual(flattenEntities({}), []);
   assert.deepEqual(flattenEntities({ listings: [{ id: 'a' }] }), [{ id: 'a' }]);
 });
+
+test('ok é falso quando falta entidade obrigatória', async () => {
+  // Regressão: `ok` se baseava no total de registros, então uma aba obrigatória
+  // ausente com as outras carregadas ainda devolvia ok=true, e a interface
+  // apresentava dataset parcial como sucesso.
+  const { loadDataset } = await import('../src/data.js');
+
+  const config = {
+    demoMode: true,
+    demoUrl: 'inline',
+    sheets: { listings: 'LISTINGS', developments: 'DEVELOPMENTS', anchors: 'ANCHORS', primaryMarket: 'PRIMARY_MARKET' },
+  };
+
+  const original = globalThis.fetch;
+  const respondWith = (payload) => {
+    globalThis.fetch = async () => ({ ok: true, json: async () => payload });
+  };
+
+  try {
+    // Falta primaryMarket: as outras três carregam, mas o dataset está incompleto.
+    respondWith({
+      listings: [{ listing_id: 'A' }],
+      developments: [{ development_id: 'B' }],
+      anchors: [{ place_id: 'C' }],
+    });
+    const partial = await loadDataset(config);
+    assert.equal(partial.ok, false, 'dataset parcial não pode ser ok');
+    assert.ok(partial.errors.some((e) => /PRIMARY_MARKET/.test(e)), 'a aba faltante precisa aparecer em errors');
+
+    // Com as quatro presentes, ok.
+    respondWith({
+      listings: [{ listing_id: 'A' }],
+      developments: [{ development_id: 'B' }],
+      anchors: [{ place_id: 'C' }],
+      primaryMarket: [{ id: 'D' }],
+    });
+    const complete = await loadDataset(config);
+    assert.equal(complete.ok, true);
+    assert.deepEqual(complete.errors, []);
+  } finally {
+    globalThis.fetch = original;
+  }
+});
+
+test('demo.json entrega expected_delivery como data ISO', () => {
+  const comEntrega = demo.developments.filter((r) => r.expected_delivery);
+  assert.ok(comEntrega.length > 0, 'o dataset tem entrega prevista');
+  for (const row of comEntrega) {
+    assert.match(String(row.expected_delivery), /^\d{4}-\d{2}-\d{2}$/,
+      `expected_delivery cru: ${row.expected_delivery}`);
+  }
+});

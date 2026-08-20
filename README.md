@@ -53,7 +53,14 @@ Abra `http://localhost:8080`.
 ## Testes
 
 ```bash
-npm test    # node --test, sem framework, sem dependências
+npm test           # 53 testes, node --test, sem framework, sem dependências
+```
+
+Smoke test em navegador (roteiro completo, exige `npm install` do playwright):
+
+```bash
+npm run serve &
+npm run smoke
 ```
 
 ## Regra anti-dessincronização

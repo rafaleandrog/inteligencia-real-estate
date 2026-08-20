@@ -36,6 +36,15 @@ Este arquivo cobre o que **não** está lá: como classificar e como reportar.
 
 Os itens de **semântica de qualidade do dado** definidos no `AGENTS.md` são **P0**, não P2.
 
+## Orçamento de rodadas
+
+**No máximo 3 rodadas por PR**, com escopo decrescente — a tabela está em
+`AGENTS.md § Code Review Rules`. Em resumo: 1ª exaustiva, 2ª só o que as correções mudaram,
+3ª só P0 e P1. Achado que só aparece na 3ª rodada era achado que faltou na 1ª.
+
+**Cada achado é independente e resolvível sozinho:** um arquivo, um problema, uma correção.
+Dois achados que exigem a mesma correção são um achado só.
+
 ## Como reportar
 
 Todo achado precisa de:

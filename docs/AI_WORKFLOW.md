@@ -131,6 +131,23 @@ PR inteira. **Este workflow não está ativo** — o projeto usa o app Codex Clo
 
 Após qualquer mudança funcional (R6.4). Não declare a V1 funcional sem passar por aqui.
 
+O roteiro está automatizado em [`tools/smoke-test.mjs`](../tools/smoke-test.mjs), dirigindo um
+Chromium real:
+
+```bash
+npm install        # instala o playwright (devDependency opcional, não usada na CI)
+npm run serve &    # sobe http://localhost:8080
+npm run smoke      # roda os 25 checks
+```
+
+Se o ambiente tiver um Chromium pré-instalado com build diferente da que o Playwright baixaria,
+aponte para ele: `CHROMIUM_PATH=/caminho/para/chrome npm run smoke`.
+
+Ele já pegou dois bugs que nenhum teste unitário pegaria: `leaflet.js` ausente do HTML (R8.13) e
+marcadores SVG estilizados com `background` em vez de `fill` (R8.14).
+
+Para verificar à mão:
+
 ```bash
 python3 -m http.server 8080
 ```

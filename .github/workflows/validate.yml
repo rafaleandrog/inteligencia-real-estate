@@ -93,9 +93,11 @@ jobs:
           # A busca e recursiva, e nao so na raiz: o GitHub Pages publica o repositorio
           # inteiro, entao data/listings.csv vazaria igual a um arquivo na raiz.
           # migration/ (semente) e reference/ (modelo V3) sao as excecoes legitimas.
+          # migration-csv/ NAO e podado: e saida gerada e ignorada pelo .gitignore, mas
+          # um force-add versionaria uma terceira copia dos dados que o Pages publicaria.
           found=$(find . \
-                    \( -path ./.git -o -path ./node_modules -o -path ./migration \
-                       -o -path ./reference -o -path ./migration-csv \) -prune -o \
+                    \( -path ./.git -o -path ./node_modules \
+                       -o -path ./migration -o -path ./reference \) -prune -o \
                     \( -name '*.xlsx' -o -name '*.csv' \) -print)
           if [ -n "$found" ]; then
             echo "::error::snapshot de dados fora de migration/ - o GitHub Pages publicaria este arquivo"

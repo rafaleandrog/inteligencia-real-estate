@@ -5654,7 +5654,7 @@
       "coordinate_status": "",
       "work_progress_pct": "",
       "unit_mix": "",
-      "expected_delivery": "46569"
+      "expected_delivery": "2027-07-01"
     },
     {
       "development_id": "PRIMARY_CASA35",
@@ -5708,7 +5708,7 @@
       "coordinate_status": "",
       "work_progress_pct": "",
       "unit_mix": "",
-      "expected_delivery": "46508"
+      "expected_delivery": "2027-05-01"
     },
     {
       "development_id": "PRIMARY_IDENTIDADE_COMFORT_HOME",
@@ -5735,7 +5735,7 @@
       "coordinate_status": "",
       "work_progress_pct": "",
       "unit_mix": "",
-      "expected_delivery": "46539"
+      "expected_delivery": "2027-06-01"
     },
     {
       "development_id": "PRIMARY_LUX_HOME_BOULEVARD",
@@ -5762,7 +5762,7 @@
       "coordinate_status": "",
       "work_progress_pct": "",
       "unit_mix": "",
-      "expected_delivery": "46266"
+      "expected_delivery": "2026-09-01"
     },
     {
       "development_id": "PRIMARY_REAL_LIVING",
@@ -5816,7 +5816,7 @@
       "coordinate_status": "",
       "work_progress_pct": "",
       "unit_mix": "",
-      "expected_delivery": "46661"
+      "expected_delivery": "2027-10-01"
     }
   ],
   "anchors": [
@@ -6599,7 +6599,7 @@
       "address": "CNB 12 - Taguatinga",
       "lat": "-15.82090016864383",
       "lon": "-48.06148619161306",
-      "expected_delivery": "46569",
+      "expected_delivery": "2027-07-01",
       "company_url": "",
       "area_min_m2": "55",
       "area_max_m2": "55",
@@ -6641,7 +6641,7 @@
       "address": "R. 25 Sul, Águas Claras, Brasília, DF",
       "lat": "-15.84310928557258",
       "lon": "-48.03000839828319",
-      "expected_delivery": "46508",
+      "expected_delivery": "2027-05-01",
       "company_url": "https://www.terralincorporadora.com.br/lancamento/eleva25/71",
       "area_min_m2": "45.36",
       "area_max_m2": "172.81",
@@ -6662,7 +6662,7 @@
       "address": "Rua 24 Norte, Águas Claras - DF",
       "lat": "-15.83844355669635",
       "lon": "-48.02873810459983",
-      "expected_delivery": "46539",
+      "expected_delivery": "2027-06-01",
       "company_url": "",
       "area_min_m2": "67",
       "area_max_m2": "133",
@@ -6683,7 +6683,7 @@
       "address": "Rua 3 Norte, em frente à Avenida Boulevard Norte, Águas Claras - DF",
       "lat": "-15.8347307592353",
       "lon": "-48.0100683663168",
-      "expected_delivery": "46266",
+      "expected_delivery": "2026-09-01",
       "company_url": "",
       "area_min_m2": "65",
       "area_max_m2": "83",
@@ -6725,7 +6725,7 @@
       "address": "R. das Carnaúbas, 12 - Águas Claras, 71904540, Brasília - DF",
       "lat": "-15.82887305689319",
       "lon": "-48.01710888705306",
-      "expected_delivery": "46661",
+      "expected_delivery": "2027-10-01",
       "company_url": "https://www.direcional.com.br/reserva-parque-clube/",
       "area_min_m2": "63.18",
       "area_max_m2": "81.88",

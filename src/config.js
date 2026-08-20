@@ -44,8 +44,17 @@ window.APP_CONFIG = {
   },
 
   /**
-   * Abas previstas para as próximas fases. Ausência gera aviso, nunca erro — a
-   * aplicação não pode cair porque uma aba futura ainda não existe (R2.5).
+   * Abas previstas para as próximas fases.
+   *
+   * A tela da V1 **não lê nenhuma delas**, e por isso não são buscadas no
+   * carregamento: seriam quatro requisições por abertura de página para dado que
+   * ninguém renderiza. Esta lista existe como declaração do que a planilha contém,
+   * e quem verifica a presença delas é o `validateAll()` do Apps Script, que roda
+   * do lado da planilha e registra o resultado em DATA_QUALITY.
+   *
+   * Quando uma delas entrar na interface, ela é buscada aqui e sua ausência vira
+   * aviso — nunca erro, porque a aplicação não pode cair por causa de aba futura
+   * vazia (R2.5).
    */
   optionalSheets: ['PRIMARY_OFFERS', 'IVV_MONTHLY', 'IVV_REGION', 'RA_PROFILES'],
 

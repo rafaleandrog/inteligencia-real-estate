@@ -40,7 +40,10 @@ function serialToISO(value) {
   return new Date(SHEET_EPOCH_MS + Math.floor(n) * MS_PER_DAY).toISOString().slice(0, 10);
 }
 
-const isDateField = (field) => /_at$/.test(field) || field === 'reference_month';
+// Campos de data. `expected_delivery` nao termina em _at mas guarda serial de
+// planilha igual aos outros — deixa-lo de fora fazia o painel exibir "46569".
+const DATE_FIELDS = new Set(['reference_month', 'expected_delivery']);
+const isDateField = (field) => /_at$/.test(field) || DATE_FIELDS.has(field);
 
 function convertDates(row) {
   const out = {};

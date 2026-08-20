@@ -8,9 +8,13 @@
     "test": "node --test \"tests/**/*.test.js\"",
     "serve": "python3 -m http.server 8080",
     "build:demo": "node tools/build-demo.mjs",
-    "migrate:csv": "node tools/reference-to-csv.mjs"
+    "migrate:csv": "node tools/reference-to-csv.mjs",
+    "smoke": "node tools/smoke-test.mjs"
   },
   "engines": {
     "node": ">=18"
+  },
+  "devDependencies": {
+    "playwright": "^1.62.1"
   }
 }

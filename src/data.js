@@ -226,14 +226,17 @@ export async function loadDataset(config) {
     if (dropped > 0) {
       warnings.push(`${dropped} registro(s) de ${entity} ignorado(s) por não terem identificador.`);
     }
-    // Aba que respondeu mas veio vazia não é o mesmo que aba que falhou: a primeira
-    // é aviso, a segunda já está em `errors`.
+    // Entidade obrigatória sem nenhum registro é erro, não aviso: renderizar o mapa
+    // sem os anúncios seria mostrar um dataset parcial como se estivesse completo.
     if (records.length === 0 && !(result.errors || []).some((e) => e.includes(config.sheets[entity]))) {
-      warnings.push(`A aba ${config.sheets[entity]} está vazia.`);
+      errors.push(`A aba obrigatória ${config.sheets[entity]} não trouxe nenhum registro.`);
     }
   }
 
-  const totalRecords = REQUIRED_ENTITIES.reduce((sum, e) => sum + entities[e].length, 0);
+  // `ok` só é verdadeiro com TODAS as entidades obrigatórias carregadas. Bastar
+  // "alguma coisa carregou" faria a interface apresentar dataset incompleto como
+  // sucesso — exatamente o fallback silencioso que R5.7 proíbe.
+  const complete = REQUIRED_ENTITIES.every((e) => entities[e].length > 0);
 
   return {
     entities,
@@ -241,7 +244,7 @@ export async function loadDataset(config) {
     source: strategy,
     warnings,
     errors,
-    ok: totalRecords > 0,
+    ok: errors.length === 0 && complete,
   };
 }
 

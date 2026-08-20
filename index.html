@@ -1,0 +1,131 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Imob Intelligence — Mercado imobiliário do DF</title>
+<meta name="description" content="Inteligência pública do mercado imobiliário do Distrito Federal: o que existe, quanto custa, quanto custa por metro quadrado e qual é a fonte do dado.">
+
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%23153b29'/%3E%3Cpath d='M8 21V13l8-5 8 5v8h-6v-6h-4v6z' fill='%23fff'/%3E%3C/svg%3E">
+<link rel="stylesheet" href="./assets/vendor/leaflet/leaflet.css">
+<link rel="stylesheet" href="./assets/styles.css">
+</head>
+<body>
+
+<a class="skip-link" href="#map">Pular para o mapa</a>
+
+<header class="topbar">
+  <div class="brand">
+    <strong>Imob Intelligence</strong>
+    <span class="brand-sub">Distrito Federal</span>
+  </div>
+
+  <div class="search-wrap">
+    <label class="sr-only" for="search">Buscar por localidade, anúncio ou empreendimento</label>
+    <input id="search" type="search" autocomplete="off"
+           placeholder="Buscar localidade, anúncio ou empreendimento…">
+  </div>
+
+  <div class="source-badge" id="sourceBadge" hidden></div>
+</header>
+
+<main class="layout">
+
+  <aside class="panel" id="filters" aria-label="Filtros">
+
+    <section class="kpis" aria-label="Indicadores">
+      <div class="kpi">
+        <span class="kpi-value" id="kpiVisible">—</span>
+        <span class="kpi-label">itens visíveis</span>
+      </div>
+      <div class="kpi">
+        <span class="kpi-value" id="kpiMedian">—</span>
+        <span class="kpi-label">preço/m² mediano</span>
+      </div>
+      <p class="kpi-note" id="kpiNote"></p>
+    </section>
+
+    <section class="field-group" aria-label="Camadas">
+      <h2>Camadas</h2>
+      <ul class="layers" id="layers">
+        <li><label><input type="checkbox" data-layer="listing" checked>
+          <span class="dot dot-listing"></span> Anúncios secundários
+          <span class="count" id="countListing">0</span></label></li>
+        <li><label><input type="checkbox" data-layer="primary" checked>
+          <span class="dot dot-primary"></span> Mercado primário
+          <span class="count" id="countPrimary">0</span></label></li>
+        <li><label><input type="checkbox" data-layer="development" checked>
+          <span class="dot dot-development"></span> Empreendimentos
+          <span class="count" id="countDevelopment">0</span></label></li>
+        <li><label><input type="checkbox" data-layer="anchor" checked>
+          <span class="dot dot-anchor"></span> Âncoras
+          <span class="count" id="countAnchor">0</span></label></li>
+      </ul>
+    </section>
+
+    <section class="field-group">
+      <h2>Filtros</h2>
+
+      <label class="field" for="locality">Localidade</label>
+      <select id="locality"><option value="">Todas</option></select>
+
+      <label class="field" for="ptype">Tipo de imóvel</label>
+      <select id="ptype"><option value="">Todos</option></select>
+
+      <fieldset class="field-inline">
+        <legend class="field">Preço (R$)</legend>
+        <label class="sr-only" for="priceMin">Preço mínimo</label>
+        <input id="priceMin" type="number" min="0" step="10000" inputmode="numeric" placeholder="mín.">
+        <span aria-hidden="true">–</span>
+        <label class="sr-only" for="priceMax">Preço máximo</label>
+        <input id="priceMax" type="number" min="0" step="10000" inputmode="numeric" placeholder="máx.">
+      </fieldset>
+
+      <label class="field" for="beds">Quartos (mínimo)</label>
+      <select id="beds">
+        <option value="">Qualquer</option>
+        <option value="1">1+</option>
+        <option value="2">2+</option>
+        <option value="3">3+</option>
+        <option value="4">4+</option>
+      </select>
+
+      <button type="button" class="btn-ghost" id="clearFilters">Limpar filtros</button>
+    </section>
+
+    <p class="disclaimer">
+      Preços exibidos são <strong>preços pedidos</strong> em anúncios, não transações realizadas.
+    </p>
+
+  </aside>
+
+  <div class="map-wrap">
+    <div id="map" role="application" aria-label="Mapa do mercado imobiliário do Distrito Federal"></div>
+
+    <div class="state" id="loadingState" role="status">
+      <div class="spinner" aria-hidden="true"></div>
+      <p>Carregando dados do mercado…</p>
+    </div>
+
+    <div class="state state-error" id="errorState" role="alert" hidden>
+      <h2 id="errorTitle">Não foi possível carregar os dados do mercado.</h2>
+      <p id="errorDetail">Verifique a conexão ou tente novamente.</p>
+      <button type="button" class="btn" id="retryBtn">Tentar novamente</button>
+    </div>
+
+    <div class="warnings" id="warnings" hidden></div>
+  </div>
+
+  <aside class="detail" id="detail" hidden aria-label="Detalhe do registro">
+    <button type="button" class="detail-close" id="closeDetail" aria-label="Fechar detalhe">×</button>
+    <h2 id="detailTitle"></h2>
+    <div id="detailBody"></div>
+  </aside>
+
+</main>
+
+<script src="./assets/vendor/leaflet/leaflet.js"></script>
+<script src="./src/config.js"></script>
+<script type="module" src="./src/app.js"></script>
+</body>
+</html>

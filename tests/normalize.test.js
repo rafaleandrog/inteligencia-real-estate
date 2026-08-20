@@ -220,3 +220,15 @@ test('toText normaliza ausência para string vazia', () => {
   assert.equal(toText('  x  '), 'x');
   assert.equal(toText(0), '0');
 });
+
+test('expected_delivery é normalizado como data, não copiado cru', () => {
+  // Regressão: o campo guarda serial de planilha ("46569") e não termina em _at,
+  // então escapava da conversão e chegava cru na tela, que exibia "—".
+  const dev = normalizeDevelopment({ development_id: 'D1', expected_delivery: '46569' });
+  assert.equal(dev.expected_delivery, '2027-07-01');
+
+  const primary = normalizePrimaryMarket({ id: 'P1', expected_delivery: 'Date(2027,6,1)' });
+  assert.equal(primary.expected_delivery, '2027-07-01');
+
+  assert.equal(normalizeDevelopment({ development_id: 'D2', expected_delivery: '' }).expected_delivery, null);
+});

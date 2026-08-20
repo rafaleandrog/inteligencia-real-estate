@@ -96,6 +96,11 @@ Regras são numeradas e estáveis. Não renumere ao inserir — acrescente ao fi
 - **R7.3** Todo achado do Codex que revele uma **classe** de erro vira regra nova na seção 8,
   na mesma PR que corrige o achado.
 - **R7.4** A PR relata: arquivos alterados, resumo do diff, testes executados, problemas restantes.
+- **R7.6** **Revisão tem orçamento de 3 rodadas**, com escopo decrescente: 1ª exaustiva (P0–P3),
+  2ª apenas o que as correções mudaram, 3ª apenas P0/P1 remanescentes. Depois da 3ª, a PR entra
+  em `main` se não houver P0 nem P1 aberto; P2 e P3 remanescentes viram backlog. Quem implementa
+  corrige **todos** os achados de uma rodada em **um único push**, com evidência de reprodução
+  quando o achado for de comportamento. Detalhe em `AGENTS.md § Code Review Rules`.
 - **R7.5** Mudança de schema atualiza código **e** documentação na mesma PR.
 
 ## 8. Regras aprendidas
@@ -153,3 +158,15 @@ Cada uma nasce de um erro que aconteceu de verdade.
   adotada é dois ou mais pontos = milhar; um ponto = decimal. Um ponto só é genuinamente ambíguo
   (`"2.500"` é 2500 em pt-BR e 2.5 em JavaScript) — o contrato resolve exigindo número sem
   formatação na célula, e o teste documenta a escolha.
+- **R8.13** *(2026-08-20, smoke test)* **Linkar o CSS de uma biblioteca não carrega o JS dela.**
+  O `index.html` tinha `leaflet.css` e não tinha `leaflet.js`; a página subia e quebrava com
+  `L is not defined`. Nenhum teste unitário pega isso — só o smoke test em navegador. É a
+  justificativa concreta de R6.4.
+- **R8.14** *(2026-08-20, smoke test)* **Marcador do Leaflet é `<path>` SVG: estiliza-se com
+  `fill` e `stroke`, nunca com `background` e `border`.** As propriedades de HTML são ignoradas
+  em SVG, então os 203 marcadores ficavam brancos e indistinguíveis — sem nenhum erro de console.
+  Bug visual só aparece em verificação visual.
+- **R8.15** *(2026-08-20, KPI de mediana)* **Indicador agregado declara sua composição.** A
+  mediana de preço/m² junta terreno (R$ 1,3 mil/m²) e apartamento (R$ 9,8 mil/m²): o número está
+  certo e a leitura é enganosa. Quando um indicador mistura populações diferentes, a interface
+  diz isso — mesma família da regra de nunca apresentar coordenada aproximada como exata.
