@@ -96,11 +96,12 @@ Regras são numeradas e estáveis. Não renumere ao inserir — acrescente ao fi
 - **R7.3** Todo achado do Codex que revele uma **classe** de erro vira regra nova na seção 8,
   na mesma PR que corrige o achado.
 - **R7.4** A PR relata: arquivos alterados, resumo do diff, testes executados, problemas restantes.
-- **R7.7** **O ciclo de review roda sozinho, do início ao merge.** Abrir a PR, pedir a revisão,
-  corrigir os achados, pedir de novo e fazer o merge quando não houver P0 nem P1 são passos do
-  processo, não decisões a submeter. Não peça permissão nem sugestão a cada rodada. Reporte ao
-  responsável em três situações apenas: o trabalho terminou, apareceu um bloqueio que você não
-  pode resolver, ou existe uma decisão de produto que muda o que deve ser construído.
+- **R7.7** **O ciclo de review roda sozinho.** Abrir a PR, pedir a revisão, corrigir os achados e
+  pedir de novo são passos do processo, não decisões a submeter — não peça permissão nem sugestão
+  a cada rodada. Procure o responsável em três situações apenas: o trabalho terminou, apareceu um
+  bloqueio que você não pode resolver, ou existe uma decisão de produto que muda o que deve ser
+  construído. Esta regra diz **a quem se pergunta**, e não o que se verifica: quando a PR pode
+  entrar em `main` continua definido por R7.2 e R7.6, sem exceção.
 - **R7.6** **Revisão tem orçamento de 3 rodadas**, com escopo decrescente: 1ª exaustiva (P0–P3),
   2ª apenas o que as correções mudaram, 3ª apenas P0/P1 remanescentes. Depois da 3ª, a PR entra
   em `main` se não houver P0 nem P1 aberto; P2 e P3 remanescentes viram backlog. Quem implementa
@@ -265,3 +266,9 @@ Cada uma nasce de um erro que aconteceu de verdade.
   já tinha 74 e 39 — documentação afirmando o que não é verdade, exatamente o problema que a
   auditoria inicial deste repositório encontrou. Contagem viva pertence à saída do comando, não
   ao texto: descreva o que a suíte cobre, deixe o total para quem rodar.
+- **R8.33** *(2026-08-20, review do Codex na PR #4)* **Regra nova declara seu escopo e não invade
+  o de outra.** A R7.7 nasceu para dizer *a quem se pergunta* e acabou repetindo *quando se pode
+  fazer merge* — leitura possível: "sem P0/P1, pode entrar", passando por cima do portão de R7.2
+  e R7.6, que só relaxa depois da 3ª rodada. Duas regras descrevendo o mesmo portão com palavras
+  diferentes é o mesmo problema de política duplicada da R8.7, agora entre regras. Ao escrever
+  uma regra, diga o que ela **não** decide.
