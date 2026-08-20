@@ -137,7 +137,7 @@ Chromium real:
 ```bash
 npm install        # instala o playwright (devDependency opcional, não usada na CI)
 npm run serve &    # sobe http://localhost:8080
-npm run smoke      # roda os 25 checks
+npm run smoke      # roda o roteiro completo em navegador
 ```
 
 Se o ambiente tiver um Chromium pré-instalado com build diferente da que o Playwright baixaria,

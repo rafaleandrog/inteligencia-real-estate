@@ -27,7 +27,7 @@ src/
   format.js                formatação e saneamento
   app.js                   interação e mapa
 data/demo.json             dataset de demonstração
-tests/                     56 testes (node --test)
+tests/                     suíte de testes (node --test)
 tools/                     migração, geração do demo, smoke test
 migration/                 semente .xlsx de importação
 reference/index-v3.html    referência funcional do modelo anterior

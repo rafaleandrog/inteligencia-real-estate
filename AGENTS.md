@@ -88,6 +88,11 @@ rodadas**, com escopo decrescente:
 
 Depois da 3ª rodada a PR entra em `main` se não houver P0 nem P1 em aberto.
 
+**O ciclo roda sozinho.** Abrir a PR, pedir a revisão, corrigir, pedir de novo e fazer o merge
+são passos do processo — não decisões a submeter ao responsável a cada rodada. Fale com ele
+quando o trabalho terminar, quando houver bloqueio que você não pode resolver, ou quando surgir
+uma decisão de produto que mude o que deve ser construído (R7.7).
+
 **Cada achado é independente e resolvível sozinho:** um arquivo, um problema, uma correção.
 Não agrupe três defeitos num comentário só, e não divida um mesmo defeito em três comentários.
 Se dois achados exigem a mesma correção, são um achado.

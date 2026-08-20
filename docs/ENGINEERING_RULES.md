@@ -96,6 +96,11 @@ Regras são numeradas e estáveis. Não renumere ao inserir — acrescente ao fi
 - **R7.3** Todo achado do Codex que revele uma **classe** de erro vira regra nova na seção 8,
   na mesma PR que corrige o achado.
 - **R7.4** A PR relata: arquivos alterados, resumo do diff, testes executados, problemas restantes.
+- **R7.7** **O ciclo de review roda sozinho, do início ao merge.** Abrir a PR, pedir a revisão,
+  corrigir os achados, pedir de novo e fazer o merge quando não houver P0 nem P1 são passos do
+  processo, não decisões a submeter. Não peça permissão nem sugestão a cada rodada. Reporte ao
+  responsável em três situações apenas: o trabalho terminou, apareceu um bloqueio que você não
+  pode resolver, ou existe uma decisão de produto que muda o que deve ser construído.
 - **R7.6** **Revisão tem orçamento de 3 rodadas**, com escopo decrescente: 1ª exaustiva (P0–P3),
   2ª apenas o que as correções mudaram, 3ª apenas P0/P1 remanescentes. Depois da 3ª, a PR entra
   em `main` se não houver P0 nem P1 aberto; P2 e P3 remanescentes viram backlog. Quem implementa
@@ -255,3 +260,8 @@ Cada uma nasce de um erro que aconteceu de verdade.
   origem. Transporte a forma que preserva a informação (linhas), e deixe a interpretação para um
   ponto só. Corolário: ao corrigir um problema em um caminho de dados, verifique **todos** os
   caminhos que chegam ao mesmo lugar.
+- **R8.32** *(2026-08-20, revisão dos docs)* **Não crave em prosa um número que muda a cada PR.**
+  O README anunciava "53 testes", o DEPLOYMENT "56" e o AI_WORKFLOW "25 checks", enquanto a suíte
+  já tinha 74 e 39 — documentação afirmando o que não é verdade, exatamente o problema que a
+  auditoria inicial deste repositório encontrou. Contagem viva pertence à saída do comando, não
+  ao texto: descreva o que a suíte cobre, deixe o total para quem rodar.

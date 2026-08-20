@@ -32,7 +32,7 @@ Uma linguagem por arquivo, uma responsabilidade por módulo.
 | `src/app.js` | Interação, mapa e DOM |
 | Google Sheet | Registros e governança |
 
-A divisão não é estética: as três camadas de funções puras são as que os 56 testes cobrem sem
+A divisão não é estética: as três camadas de funções puras são as que a suíte cobre sem
 navegador e sem rede. `app.js` concentra o que só dá para verificar por smoke test.
 
 ## Estratégias de dados
