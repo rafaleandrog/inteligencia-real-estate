@@ -30,6 +30,18 @@ const consoleErrors = [];
 page.on('console', (m) => { if (m.type() === 'error') consoleErrors.push(m.text()); });
 page.on('pageerror', (e) => consoleErrors.push('pageerror: ' + e.message));
 
+// Força o modo demo sem tocar em src/config.js: o smoke test precisa rodar em
+// qualquer ambiente, inclusive sem acesso à Google Sheet. addInitScript executa
+// antes dos scripts da página, então o app já lê a configuração ajustada.
+await page.addInitScript(() => {
+  const apply = () => { if (window.APP_CONFIG) window.APP_CONFIG.demoMode = true; };
+  Object.defineProperty(window, 'APP_CONFIG', {
+    configurable: true,
+    set(value) { delete window.APP_CONFIG; window.APP_CONFIG = value; apply(); },
+    get() { return undefined; },
+  });
+});
+
 await page.goto('http://localhost:8080/', { waitUntil: 'networkidle' });
 await page.waitForTimeout(1500);
 
