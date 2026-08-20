@@ -6,7 +6,7 @@
 import { isApproximateLocation } from './normalize.js';
 
 /** Camadas exibíveis no mapa, na ordem em que aparecem na interface. */
-export const LAYERS = ['listing', 'primary', 'development', 'anchor'];
+export const LAYERS = ['listing', 'development', 'anchor'];
 
 /** Estado inicial dos filtros: tudo visível, nada restrito. */
 export function createFilterState() {
@@ -109,14 +109,13 @@ export function applyFilters(records, state) {
  * que o mapa não consegue mostrar — 7 dos 22 empreendimentos do dataset atual estão
  * nesse caso, e omitir esse número em silêncio seria esconder um buraco no dado (R5.7).
  *
- * A mediana de preço/m² usa apenas anúncios secundários e mercado primário. Âncoras
- * não têm preço, e misturar oferta primária com secundária já é uma decisão discutível
- * — misturar escola nela seria absurdo.
+ * A mediana de preço/m² usa apenas anúncios secundários. Empreendimentos e âncoras
+ * não têm preço/m² comparável no contrato atual.
  */
 export function computeKpis(records) {
   const list = records || [];
   const priced = list.filter(
-    (r) => (r.kind === 'listing' || r.kind === 'primary') && typeof r.price_m2 === 'number' && Number.isFinite(r.price_m2)
+    (r) => r.kind === 'listing' && typeof r.price_m2 === 'number' && Number.isFinite(r.price_m2)
   );
 
   return {

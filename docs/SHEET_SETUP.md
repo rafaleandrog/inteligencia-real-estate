@@ -6,12 +6,11 @@ Use uma planilha separada para o dataset público. Não misture dados privados, 
 
 ## 2. Crie/importa as abas
 
-As quatro abas exigidas na V1 são:
+As três abas exigidas na V1 são:
 
 - `LISTINGS`
 - `DEVELOPMENTS`
 - `ANCHORS`
-- `PRIMARY_MARKET`
 
 Abas já previstas para evolução:
 
@@ -54,8 +53,7 @@ window.APP_CONFIG = {
   sheets: {
     listings: 'LISTINGS',
     developments: 'DEVELOPMENTS',
-    anchors: 'ANCHORS',
-    primaryMarket: 'PRIMARY_MARKET'
+    anchors: 'ANCHORS'
   },
   defaultCenter: [-15.78, -47.93],
   defaultZoom: 10
@@ -68,7 +66,7 @@ window.APP_CONFIG = {
 ## 3.1 Migração alternativa por .xlsx
 
 Mais direto que os CSVs: importe [`migration/imob-intelligence-backend.xlsx`](../migration/),
-que já traz as 12 abas com os cabeçalhos corretos. Ver [`migration/README.md`](../migration/README.md).
+que já traz as 11 abas com os cabeçalhos corretos. Ver [`migration/README.md`](../migration/README.md).
 
 ## 7. Valide antes de publicar
 

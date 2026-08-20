@@ -47,11 +47,6 @@ Depois disso o menu **Imob Intelligence** aparece ao abrir a planilha.
 - **Segredo em Script Properties, nunca em célula.**
 - **Registro ruim é sinalizado, nunca apagado.** A decisão de remover é humana.
 
-## Divergência que o script precisa respeitar
-
-`PRIMARY_MARKET` usa `lat`/`lon`; as outras três abas usam `latitude`/`longitude`
-(divergência D1 de `docs/DATA_CONTRACT.md`). `COORD_FIELDS` no topo do arquivo cobre isso.
-
 ## Duplicação consciente
 
 `toNumber_()` no `Code.gs` espelha `toNumber()` de `src/normalize.js`. São ambientes diferentes

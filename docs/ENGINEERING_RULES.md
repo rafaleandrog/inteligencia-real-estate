@@ -210,3 +210,8 @@ Cada uma nasce de um erro que aconteceu de verdade.
   propósito.** Antes de aceitar o teste de cobertura, removi `bedrooms_min` da lista e confirmei
   que a suíte falhava; restaurei e confirmei que passava. Mesma família de R8.4 — guard que nunca
   se viu falhar não é guard, é decoração.
+- **R8.24** *(2026-08-20, leitura ao vivo da Google Sheet)* **GViz público no navegador usa
+  JSONP, não `fetch`.** A permissão “qualquer pessoa com o link” elimina o HTTP 401, mas o endpoint
+  continua sem `Access-Control-Allow-Origin`; no GitHub Pages, `fetch` termina em `Failed to fetch`.
+  Use `tqx=out:json;responseHandler:<callback>`, timeout e limpeza do `<script>` após sucesso ou
+  erro.

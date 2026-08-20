@@ -1,10 +1,10 @@
 import { readFileSync } from 'node:fs';
-export const SHEETS = ['LISTINGS', 'DEVELOPMENTS', 'ANCHORS', 'PRIMARY_MARKET'];
+export const SHEETS = ['LISTINGS', 'DEVELOPMENTS', 'ANCHORS'];
 
 /** Campos que cada normalizador lê de fato. spatialQuality lê os dois de qualidade. */
 export function fieldsReadByNormalizers(src) {
   const fns = { LISTINGS: 'normalizeListing', DEVELOPMENTS: 'normalizeDevelopment',
-                ANCHORS: 'normalizeAnchor', PRIMARY_MARKET: 'normalizePrimaryMarket' };
+                ANCHORS: 'normalizeAnchor' };
   const out = {};
   for (const [sheet, fn] of Object.entries(fns)) {
     const start = src.indexOf(`export function ${fn}`);
@@ -45,8 +45,8 @@ export function contractColumns(md) {
  *
  * União do que o contrato marca como obrigatório com o que os normalizadores leem,
  * intersectada com as colunas que o contrato declara para aquela aba — sem a
- * interseção, `coordinate_precision` seria exigido em DEVELOPMENTS e PRIMARY_MARKET,
- * que não têm essa coluna, e a validação acusaria erro numa planilha correta.
+ * interseção, `coordinate_precision` seria exigido em DEVELOPMENTS, que não tem essa
+ * coluna, e a validação acusaria erro numa planilha correta.
  */
 export function expectedRequiredHeaders(normalizeSrc, contractMd) {
   const read = fieldsReadByNormalizers(normalizeSrc);

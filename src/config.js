@@ -40,7 +40,6 @@ window.APP_CONFIG = {
     listings: 'LISTINGS',
     developments: 'DEVELOPMENTS',
     anchors: 'ANCHORS',
-    primaryMarket: 'PRIMARY_MARKET',
   },
 
   /**

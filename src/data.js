@@ -13,7 +13,7 @@
 import { normalizeAll } from './normalize.js';
 
 /** Entidades obrigatórias na V1. Ausência de qualquer uma é erro. */
-export const REQUIRED_ENTITIES = ['listings', 'developments', 'anchors', 'primaryMarket'];
+export const REQUIRED_ENTITIES = ['listings', 'developments', 'anchors'];
 
 /** Timeout de rede. Sem isso, uma planilha inacessível deixa a página em "carregando" para sempre. */
 const FETCH_TIMEOUT_MS = 20000;
@@ -75,38 +75,83 @@ export function gvizTableToRows(table) {
 }
 
 /** URL de consulta de uma aba pela API de visualização. */
-export function gvizUrl(spreadsheetId, sheetName) {
+export function gvizUrl(spreadsheetId, sheetName, responseHandler = '') {
   const base = `https://docs.google.com/spreadsheets/d/${encodeURIComponent(spreadsheetId)}/gviz/tq`;
-  return `${base}?tqx=out:json&sheet=${encodeURIComponent(sheetName)}`;
+  const tqx = responseHandler ? `out:json;responseHandler:${responseHandler}` : 'out:json';
+  return `${base}?tqx=${encodeURIComponent(tqx)}&sheet=${encodeURIComponent(sheetName)}`;
 }
 
-/** Busca uma aba via GViz e devolve as linhas já com chave por cabeçalho. */
-async function fetchSheet(spreadsheetId, sheetName) {
-  const response = await fetchWithTimeout(gvizUrl(spreadsheetId, sheetName));
-  if (!response.ok) {
-    throw new Error(`aba "${sheetName}": HTTP ${response.status}`);
-  }
-  const parsed = parseGvizResponse(await response.text());
+let jsonpSequence = 0;
 
-  // O GViz responde 200 com status "error" no corpo — aba inexistente cai aqui.
-  if (parsed.status === 'error') {
-    const detail = (parsed.errors || []).map((e) => e.detailed_message || e.message).join('; ');
-    throw new Error(`aba "${sheetName}": ${detail || 'erro do GViz'}`);
-  }
-  return gvizTableToRows(parsed.table);
+/**
+ * Busca uma aba via JSONP e devolve as linhas já com chave por cabeçalho.
+ *
+ * O endpoint GViz público não envia `Access-Control-Allow-Origin`, então `fetch()`
+ * é bloqueado pelo navegador no GitHub Pages mesmo quando a planilha está pública.
+ * `responseHandler` é a interface oficial do GViz para leitura cross-origin.
+ */
+export function fetchGvizSheet(
+  spreadsheetId,
+  sheetName,
+  { documentRef = globalThis.document, scope = globalThis, timeoutMs = FETCH_TIMEOUT_MS } = {}
+) {
+  return new Promise((resolve, reject) => {
+    if (!documentRef?.head || typeof documentRef.createElement !== 'function') {
+      reject(new Error(`aba "${sheetName}": JSONP exige um documento HTML`));
+      return;
+    }
+
+    const callbackName = `__imobGviz_${Date.now()}_${jsonpSequence += 1}`;
+    const script = documentRef.createElement('script');
+    let timer;
+
+    const cleanup = () => {
+      if (timer) clearTimeout(timer);
+      script.remove?.();
+      delete scope[callbackName];
+    };
+
+    scope[callbackName] = (parsed) => {
+      cleanup();
+      if (parsed?.status === 'error') {
+        const detail = (parsed.errors || [])
+          .map((error) => error.detailed_message || error.message)
+          .join('; ');
+        reject(new Error(`aba "${sheetName}": ${detail || 'erro do GViz'}`));
+        return;
+      }
+      resolve(gvizTableToRows(parsed?.table));
+    };
+
+    script.async = true;
+    script.src = gvizUrl(spreadsheetId, sheetName, callbackName);
+    script.onerror = () => {
+      cleanup();
+      reject(new Error(
+        `aba "${sheetName}": não foi possível acessar o GViz; confirme que a planilha está pública`
+      ));
+    };
+
+    timer = setTimeout(() => {
+      cleanup();
+      reject(new Error(`aba "${sheetName}": tempo limite ao acessar o GViz`));
+    }, timeoutMs);
+
+    documentRef.head.append(script);
+  });
 }
 
 /**
  * Estratégia `gviz`. Caminho principal da V1.
  *
- * As quatro abas obrigatórias são buscadas em paralelo. `allSettled` em vez de `all`:
- * com `all`, uma aba com problema descartaria as outras três que chegaram bem, e a
+ * As três abas obrigatórias são buscadas em paralelo. `allSettled` em vez de `all`:
+ * com `all`, uma aba com problema descartaria as outras duas que chegaram bem, e a
  * tela ficaria vazia em vez de parcialmente útil.
  */
 async function loadFromGviz(config) {
   const entries = Object.entries(config.sheets);
   const settled = await Promise.allSettled(
-    entries.map(([, sheetName]) => fetchSheet(config.spreadsheetId, sheetName))
+    entries.map(([, sheetName]) => fetchGvizSheet(config.spreadsheetId, sheetName))
   );
 
   const raw = {};
@@ -207,7 +252,7 @@ export async function loadDataset(config) {
     result = await STRATEGIES[strategy](config);
   } catch (error) {
     return {
-      entities: { listings: [], developments: [], anchors: [], primaryMarket: [] },
+      entities: { listings: [], developments: [], anchors: [] },
       meta: {},
       source: strategy,
       warnings,
@@ -252,7 +297,6 @@ export async function loadDataset(config) {
 export function flattenEntities(entities) {
   return [
     ...(entities.listings || []),
-    ...(entities.primaryMarket || []),
     ...(entities.developments || []),
     ...(entities.anchors || []),
   ];

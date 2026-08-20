@@ -237,7 +237,6 @@ select, input[type="number"] {
 
 .dot { width: 10px; height: 10px; border-radius: 50%; flex: none; }
 .dot-listing { background: var(--listing); }
-.dot-primary { background: var(--primary); }
 .dot-development { background: var(--development); }
 .dot-anchor { background: var(--anchor); }
 
@@ -338,7 +337,6 @@ select, input[type="number"] {
   color: #fff;
 }
 .detail-kind[data-kind="listing"] { background: var(--listing); }
-.detail-kind[data-kind="primary"] { background: var(--primary); }
 .detail-kind[data-kind="development"] { background: var(--development); }
 .detail-kind[data-kind="anchor"] { background: var(--anchor); }
 
@@ -390,7 +388,6 @@ select, input[type="number"] {
    A regra CSS vence os atributos de apresentação que o Leaflet escreve inline. */
 .marker { stroke: #fff; stroke-width: 2; fill-opacity: .9; }
 .marker-listing { fill: var(--listing); }
-.marker-primary { fill: var(--primary); }
 .marker-development { fill: var(--development); }
 .marker-anchor { fill: var(--anchor); }
 .marker-selected { stroke: var(--brand); stroke-width: 3; }

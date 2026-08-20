@@ -7,9 +7,8 @@
 // for atualizada e for preciso regerar as abas a partir dela.
 //
 // Os cabeçalhos de saída seguem docs/DATA_CONTRACT.md, não a forma interna do V3.
-// A diferença relevante está em PRIMARY_MARKET: no V3 cada empreendimento carrega um
-// array `offers` aninhado; na planilha isso vira uma linha agregada com faixas
-// mín./máx. em PRIMARY_MARKET e uma linha por oferta em PRIMARY_OFFERS.
+// No V3 cada empreendimento primário carrega um array `offers` aninhado; a aba
+// opcional PRIMARY_OFFERS preserva essas observações unitárias.
 
 import { readFileSync, writeFileSync, mkdirSync } from 'node:fs';
 import { join } from 'node:path';
@@ -64,35 +63,6 @@ export function toCsv(headers, rows) {
   return `${lines.join('\n')}\n`;
 }
 
-const min = (values) => { const v = values.filter((n) => Number.isFinite(n)); return v.length ? Math.min(...v) : null; };
-const max = (values) => { const v = values.filter((n) => Number.isFinite(n)); return v.length ? Math.max(...v) : null; };
-
-/** Agrega as ofertas de um empreendimento na linha de PRIMARY_MARKET. */
-function aggregatePrimary(entry) {
-  const offers = Array.isArray(entry.offers) ? entry.offers : [];
-  return {
-    id: entry.id,
-    name: entry.name,
-    locality: entry.locality,
-    address: entry.address,
-    lat: entry.lat,
-    lon: entry.lon,
-    expected_delivery: entry.expected_delivery,
-    company_url: entry.company_url,
-    area_min_m2: min(offers.map((o) => Number(o.area_m2))),
-    area_max_m2: max(offers.map((o) => Number(o.area_m2))),
-    bedrooms_min: min(offers.map((o) => Number(o.bedrooms))),
-    bedrooms_max: max(offers.map((o) => Number(o.bedrooms))),
-    price_min_brl: min(offers.map((o) => Number(o.asking_price_brl))),
-    price_max_brl: max(offers.map((o) => Number(o.asking_price_brl))),
-    ppm_min_brl_m2: min(offers.map((o) => Number(o.asking_price_brl_m2))),
-    ppm_max_brl_m2: max(offers.map((o) => Number(o.asking_price_brl_m2))),
-    offer_count: entry.offer_count ?? offers.length,
-    observed_at: offers.map((o) => o.observed_at).find(Boolean) ?? '',
-    confidence_flag: offers.map((o) => o.confidence_flag).find(Boolean) ?? '',
-  };
-}
-
 /** Aba de saída -> como obter suas linhas a partir do objeto do V3. */
 const SHEETS = {
   LISTINGS: {
@@ -117,12 +87,6 @@ const SHEETS = {
       'longitude', 'ra_geo_id', 'neighborhood', 'source_url', 'coordinate_source_url',
       'confidence_flag', 'coordinate_precision', 'last_verified_at', 'status', 'scale_capacity'],
     rows: (D) => D.places || [],
-  },
-  PRIMARY_MARKET: {
-    headers: ['id', 'name', 'locality', 'address', 'lat', 'lon', 'expected_delivery', 'company_url',
-      'area_min_m2', 'area_max_m2', 'bedrooms_min', 'bedrooms_max', 'price_min_brl', 'price_max_brl',
-      'ppm_min_brl_m2', 'ppm_max_brl_m2', 'offer_count', 'observed_at', 'confidence_flag'],
-    rows: (D) => (D.primaryMarket || []).map(aggregatePrimary),
   },
   PRIMARY_OFFERS: {
     headers: ['observation_id', 'development_name', 'development_id', 'market_region', 'area_m2',

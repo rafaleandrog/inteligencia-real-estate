@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {
   toText, toNumber, toInteger, toBoolean, toDateISO, toCoord, pricePerM2,
   isApproximateLocation, normalizeListing, normalizeDevelopment, normalizeAnchor,
-  normalizePrimaryMarket, normalizeAll,
+  normalizeAll,
 } from '../src/normalize.js';
 
 test('toNumber: formatos que realmente chegam da planilha', () => {
@@ -167,34 +167,6 @@ test('normalizeAnchor mapeia place_id e neighborhood', () => {
   assert.equal(isApproximateLocation(record), false);
 });
 
-test('normalizePrimaryMarket usa lat/lon e o ponto médio da faixa de preço/m²', () => {
-  const record = normalizePrimaryMarket({
-    id: 'PRIMARY_1', name: 'Valle das Orquídeas', locality: 'Jardim Botânico',
-    lat: '-15.85196046171352', lon: '-47.81083694399375',
-    area_min_m2: '136', area_max_m2: '377', bedrooms_min: '3', bedrooms_max: '4',
-    price_min_brl: '2600000', price_max_brl: '7464600',
-    ppm_min_brl_m2: '19117.64705882353', ppm_max_brl_m2: '19800',
-    offer_count: '2', company_url: 'https://exemplo.com',
-  });
-
-  // Esta aba usa lat/lon, e não latitude/longitude como as outras três.
-  assert.ok(record.coord, 'a aba usa lat/lon; ler latitude/longitude devolveria null');
-  assert.equal(record.coord.lat, -15.85196046171352);
-
-  assert.equal(record.price_m2, (19117.64705882353 + 19800) / 2);
-  assert.equal(record.bedrooms_max, 4);
-  assert.equal(record.offer_count, 2);
-  assert.equal(record.source_url, 'https://exemplo.com', 'company_url é a fonte desta entidade');
-});
-
-test('normalizePrimaryMarket com apenas uma ponta da faixa', () => {
-  const onlyMin = normalizePrimaryMarket({ id: 'P1', ppm_min_brl_m2: '10000', ppm_max_brl_m2: '' });
-  assert.equal(onlyMin.price_m2, 10000);
-
-  const neither = normalizePrimaryMarket({ id: 'P2', ppm_min_brl_m2: '', ppm_max_brl_m2: '' });
-  assert.equal(neither.price_m2, null);
-});
-
 test('normalizeAll descarta registro sem ID e conta o descarte', () => {
   const { records, dropped } = normalizeAll('listings', [
     { listing_id: 'A', title: 'ok' },
@@ -226,9 +198,6 @@ test('expected_delivery é normalizado como data, não copiado cru', () => {
   // então escapava da conversão e chegava cru na tela, que exibia "—".
   const dev = normalizeDevelopment({ development_id: 'D1', expected_delivery: '46569' });
   assert.equal(dev.expected_delivery, '2027-07-01');
-
-  const primary = normalizePrimaryMarket({ id: 'P1', expected_delivery: 'Date(2027,6,1)' });
-  assert.equal(primary.expected_delivery, '2027-07-01');
 
   assert.equal(normalizeDevelopment({ development_id: 'D2', expected_delivery: '' }).expected_delivery, null);
 });

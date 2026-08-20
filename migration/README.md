@@ -15,7 +15,6 @@ inicializar a planilha de uma vez, sem migração manual.
 | `LISTINGS` | obrigatória | 141 |
 | `DEVELOPMENTS` | obrigatória | 22 |
 | `ANCHORS` | obrigatória | 35 |
-| `PRIMARY_MARKET` | obrigatória | 12 |
 | `PRIMARY_OFFERS` | opcional | 29 |
 | `IVV_MONTHLY` | opcional | 1 |
 | `IVV_REGION` | opcional | 95 |

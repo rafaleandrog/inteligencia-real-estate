@@ -30,9 +30,10 @@ function readSharedStrings(files) {
   const xml = files.get('xl/sharedStrings.xml');
   if (!xml) return [];
   const out = [];
-  for (const si of xml.toString('utf8').matchAll(/<si>([\s\S]*?)<\/si>/g)) {
+  for (const si of xml.toString('utf8').matchAll(/<(?:\w+:)?si>([\s\S]*?)<\/(?:\w+:)?si>/g)) {
     // Uma string pode vir partida em vários <t> (rich text); concatena todos.
-    const parts = [...si[1].matchAll(/<t[^>]*>([\s\S]*?)<\/t>/g)].map((m) => decodeXml(m[1]));
+    const parts = [...si[1].matchAll(/<(?:\w+:)?t[^>]*>([\s\S]*?)<\/(?:\w+:)?t>/g)]
+      .map((m) => decodeXml(m[1]));
     out.push(parts.join(''));
   }
   return out;
@@ -54,19 +55,22 @@ function readSheetCells(files, sheetId, shared) {
   const xml = entry.toString('utf8');
   const rows = [];
 
-  for (const rowMatch of xml.matchAll(/<row[^>]*>([\s\S]*?)<\/row>/g)) {
+  for (const rowMatch of xml.matchAll(/<(?:\w+:)?row[^>]*>([\s\S]*?)<\/(?:\w+:)?row>/g)) {
     const cells = new Map();
-    for (const cellMatch of rowMatch[1].matchAll(/<c r="([A-Z]+\d+)"([^>]*)>([\s\S]*?)<\/c>/g)) {
-      const [, ref, attrs, body] = cellMatch;
+    for (const cellMatch of rowMatch[1].matchAll(
+      /<(?:\w+:)?c r="([A-Z]+\d+)"([^>]*?)(?:\/>|>([\s\S]*?)<\/(?:\w+:)?c>)/g
+    )) {
+      const [, ref, attrs, body = ''] = cellMatch;
       const type = /t="([^"]+)"/.exec(attrs)?.[1] || 'n';
       let value = '';
       if (type === 'inlineStr') {
-        value = [...body.matchAll(/<t[^>]*>([\s\S]*?)<\/t>/g)].map((m) => decodeXml(m[1])).join('');
+        value = [...body.matchAll(/<(?:\w+:)?t[^>]*>([\s\S]*?)<\/(?:\w+:)?t>/g)]
+          .map((m) => decodeXml(m[1])).join('');
       } else if (type === 's') {
-        const idx = Number(/<v>([\s\S]*?)<\/v>/.exec(body)?.[1]);
+        const idx = Number(/<(?:\w+:)?v>([\s\S]*?)<\/(?:\w+:)?v>/.exec(body)?.[1]);
         value = shared[idx] ?? '';
       } else {
-        value = decodeXml(/<v>([\s\S]*?)<\/v>/.exec(body)?.[1] ?? '');
+        value = decodeXml(/<(?:\w+:)?v>([\s\S]*?)<\/(?:\w+:)?v>/.exec(body)?.[1] ?? '');
       }
       cells.set(columnIndex(ref), value);
     }
