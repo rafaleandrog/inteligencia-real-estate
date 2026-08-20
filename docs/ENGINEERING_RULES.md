@@ -196,3 +196,17 @@ Cada uma nasce de um erro que aconteceu de verdade.
   nenhum — a validação de coordenada era pulada por falta de índice — enquanto o navegador
   normalizava todas as coordenadas para `null` e o mapa ficava vazio. Guard que pula em silêncio
   quando o dado some é pior que guard nenhum, porque reporta saúde.
+- **R8.21** *(2026-08-20, review do Codex na PR #1)* **Teste de cobertura verifica os dois
+  sentidos.** O primeiro teste de `REQUIRED_HEADERS` só provava que *o declarado existe na
+  planilha* — não que *o exigido foi declarado*. Com isso a lista escrita à mão podia omitir
+  `bedrooms_min`/`bedrooms_max` de `PRIMARY_MARKET` e passar verde. Verificação de cobertura
+  precisa do sentido contrário: falso positivo **e** falso negativo.
+- **R8.22** *(2026-08-20, review do Codex na PR #1)* **Lista que espelha outra fonte é derivada,
+  não digitada.** `REQUIRED_HEADERS` passa a ser calculada da união entre o que
+  `DATA_CONTRACT.md` marca como obrigatório e o que `normalize.js` lê, intersectada com as
+  colunas que o contrato declara para a aba. Lista mantida à mão diverge da fonte no primeiro
+  descuido; derivada, uma mudança no contrato quebra o teste e obriga a atualizar na mesma PR.
+- **R8.23** *(2026-08-20, review do Codex na PR #1)* **Guard novo se testa quebrando de
+  propósito.** Antes de aceitar o teste de cobertura, removi `bedrooms_min` da lista e confirmei
+  que a suíte falhava; restaurei e confirmei que passava. Mesma família de R8.4 — guard que nunca
+  se viu falhar não é guard, é decoração.

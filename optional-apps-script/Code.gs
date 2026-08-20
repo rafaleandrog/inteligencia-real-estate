@@ -69,17 +69,42 @@ var COORD_FIELDS = {
  * coordenada simplesmente e pulada por falta de indice — enquanto o navegador
  * normaliza todas as coordenadas para null e o mapa fica vazio. Cabecalho renomeado
  * em silencio quebra producao sem erro de compilacao.
+ *
+ * NAO EDITE A MAO. A lista e derivada mecanicamente da uniao entre os campos que
+ * docs/DATA_CONTRACT.md marca como obrigatorios e os que src/normalize.js le de fato,
+ * intersectada com as colunas que o contrato declara para cada aba — sem a intersecao,
+ * coordinate_precision seria exigido em DEVELOPMENTS e PRIMARY_MARKET, que nao tem essa
+ * coluna, e a validacao acusaria erro numa planilha correta.
+ *
+ * tests/contract.test.js recalcula a derivacao e falha se esta lista divergir, entao
+ * mudanca no contrato ou no normalizador obriga a atualizar aqui na mesma PR.
  */
 var REQUIRED_HEADERS = {
-  LISTINGS: ['listing_id', 'title', 'source_url', 'property_type', 'locality', 'latitude',
-    'longitude', 'asking_price_brl', 'area_m2', 'asking_price_brl_m2', 'bedrooms',
-    'observed_at', 'confidence_flag', 'coordinate_precision'],
-  DEVELOPMENTS: ['development_id', 'name', 'latitude', 'longitude', 'neighborhood',
-    'confidence_flag', 'spatial_usable', 'last_verified_at'],
-  ANCHORS: ['place_id', 'name', 'category', 'latitude', 'longitude', 'confidence_flag',
-    'coordinate_precision', 'last_verified_at'],
-  PRIMARY_MARKET: ['id', 'name', 'locality', 'lat', 'lon', 'price_min_brl', 'price_max_brl',
-    'ppm_min_brl_m2', 'ppm_max_brl_m2', 'offer_count', 'confidence_flag']
+  LISTINGS: [
+    'address', 'area_basis', 'area_m2', 'asking_price_brl', 'asking_price_brl_m2', 'bedrooms',
+    'condo_fee_brl', 'confidence_flag', 'coordinate_precision', 'iptu_brl', 'last_seen_at',
+    'latitude', 'listing_id', 'locality', 'longitude', 'observed_at', 'parking_spaces',
+    'portal', 'property_type', 'quality_flag', 'ra_geo_id', 'source_page_verified_at',
+    'source_url', 'source_url_type', 'status', 'suites', 'title', 'transaction_type'
+  ],
+  DEVELOPMENTS: [
+    'address', 'area_max_m2', 'area_min_m2', 'confidence_flag', 'coordinate_status',
+    'current_price_brl', 'current_price_brl_m2', 'developer_name', 'development_id',
+    'expected_delivery', 'last_verified_at', 'latitude', 'longitude', 'name', 'neighborhood',
+    'product', 'quality_flag', 'ra_geo_id', 'segment', 'source_url', 'spatial_usable',
+    'status', 'unit_mix', 'units_total', 'work_progress_pct'
+  ],
+  ANCHORS: [
+    'address', 'category', 'confidence_flag', 'coordinate_precision', 'coordinate_source_url',
+    'last_verified_at', 'latitude', 'longitude', 'name', 'neighborhood', 'operator_name',
+    'place_id', 'ra_geo_id', 'scale_capacity', 'source_url', 'status', 'subcategory'
+  ],
+  PRIMARY_MARKET: [
+    'address', 'area_max_m2', 'area_min_m2', 'bedrooms_max', 'bedrooms_min', 'company_url',
+    'confidence_flag', 'expected_delivery', 'id', 'lat', 'locality', 'lon', 'name',
+    'observed_at', 'offer_count', 'ppm_max_brl_m2', 'ppm_min_brl_m2', 'price_max_brl',
+    'price_min_brl'
+  ],
 };
 
 /** Datasets que o endpoint read-only pode servir. Allowlist — nunca aceite nome livre. */
