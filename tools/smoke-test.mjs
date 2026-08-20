@@ -166,6 +166,75 @@ kindSelecionado === 'Empreendimento'
   : fail(`abriu o registro errado: ${kindSelecionado}`);
 await page.click('#closeDetail').catch(() => {});
 
+console.log('\n== 12c. Metadados do dataset (APP_META) ==');
+// Sem APP_META publicada — o estado real da planilha hoje — a seção fica escondida
+// em vez de aparecer vazia ou com travessões.
+(await page.locator('#datasetMeta').isHidden())
+  ? pass('sem APP_META publicada, a seção fica escondida')
+  : fail('seção de metadados apareceu sem dados');
+
+// Agora com APP_META, interceptando o demo.json para exercitar o caminho real de
+// carregamento em vez de mexer no estado interno da aplicação.
+const metaPage = await browser.newPage({ viewport: { width: 1440, height: 900 } });
+await metaPage.addInitScript(() => {
+  Object.defineProperty(window, 'APP_CONFIG', {
+    configurable: true,
+    set(value) { delete window.APP_CONFIG; window.APP_CONFIG = value; if (value) value.demoMode = true; },
+    get() { return undefined; },
+  });
+});
+await metaPage.route('**/data/demo.json', async (route) => {
+  const response = await route.fetch();
+  const payload = await response.json();
+  payload.meta = {
+    ...payload.meta,
+    last_data_change_at: '2026-08-19T18:40:00.000Z',
+    dataset_version: '12',
+    validation_status: 'warning',
+    last_validation_at: '2026-08-19',
+    validation_warnings: '3',
+    rows_listings: '141',
+    // Um valor hostil, para confirmar que metadado não vira markup.
+    app_version: '<img src=x onerror=alert(1)>1.0.0',
+  };
+  await route.fulfill({ response, json: payload });
+});
+await metaPage.goto('http://localhost:8080/', { waitUntil: 'networkidle' });
+await metaPage.waitForTimeout(1200);
+
+(await metaPage.locator('#datasetMeta').isVisible())
+  ? pass('com APP_META publicada, a seção aparece')
+  : fail('seção de metadados não apareceu');
+
+const metaRows = await metaPage.$$eval('#datasetMetaList dt', (nodes) => nodes.map((n) => n.textContent));
+metaRows.includes('Atualizado em') ? pass('mostra a data de atualização') : fail('data ausente: ' + metaRows);
+metaRows.includes('Dataset') ? pass('mostra a versão do dataset') : fail('versão ausente');
+metaRows.includes('Qualidade') ? pass('mostra o estado da validação') : fail('qualidade ausente');
+
+const dataFormatada = await metaPage.$$eval('#datasetMetaList dd', (n) => n.map((x) => x.textContent));
+dataFormatada.includes('19/08/2026') ? pass('data em formato brasileiro') : fail('data não formatada: ' + dataFormatada);
+dataFormatada.includes('v12') ? pass('versão prefixada') : fail('versão sem prefixo');
+
+// A legenda existe para o leitor não confundir o total publicado com o que os
+// filtros deixam visível em "Camadas" — os dois coincidem sem filtro.
+const caption = await metaPage.textContent('.meta-caption');
+/antes dos filtros/i.test(caption || '')
+  ? pass('legenda distingue total publicado de visível')
+  : fail('legenda ausente: ' + caption);
+
+const tone = await metaPage.getAttribute('#datasetMetaList .meta-status', 'data-tone');
+tone === 'warning' ? pass('chip com o tom do status: ' + tone) : fail('tom incorreto: ' + tone);
+
+const metaXss = await metaPage.evaluate(() => ({
+  imgs: document.querySelectorAll('#datasetMeta img, #datasetMeta *[onerror]').length,
+  texto: [...document.querySelectorAll('#datasetMetaList dd')].some((d) => d.textContent.includes('<img')),
+}));
+metaXss.imgs === 0 ? pass('metadado hostil não virou markup') : fail('markup injetado via APP_META!');
+metaXss.texto ? pass('valor hostil permanece como texto') : fail('valor hostil sumiu do DOM');
+
+await metaPage.screenshot({ path: process.env.SHOT_META || 'meta.png' });
+await metaPage.close();
+
 console.log('\n== 13. Mobile 390px ==');
 await page.click('#closeDetail').catch(()=>{});
 await page.setViewportSize({ width: 390, height: 844 });

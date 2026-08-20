@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import {
   toText, toNumber, toInteger, toBoolean, toDateISO, toCoord, pricePerM2,
   isApproximateLocation, normalizeListing, normalizeDevelopment, normalizeAnchor,
+  normalizeAppMeta, appMetaRows,
   normalizeAll,
 } from '../src/normalize.js';
 
@@ -234,5 +235,91 @@ test('isApproximateLocation falha fechado: só precisão explícita é verificad
   for (const record of exatos) {
     assert.equal(isApproximateLocation(record), false,
       `deveria ser exato: ${JSON.stringify(record)}`);
+  }
+});
+
+test('normalizeAppMeta aceita as linhas do GViz e o objeto do Apps Script', () => {
+  // As duas origens precisam produzir o mesmo resultado, senão a tela muda de
+  // comportamento conforme a estratégia de dados escolhida.
+  const doGviz = normalizeAppMeta([
+    { key: 'dataset_version', value: 7, updated_at: '2026-08-20' },
+    { key: 'validation_status', value: 'ok' },
+    { key: 'rows_listings', value: '141' },
+  ]);
+  const doAppsScript = normalizeAppMeta({
+    dataset_version: 7, validation_status: 'ok', rows_listings: '141',
+  });
+
+  assert.deepEqual(doGviz, doAppsScript);
+  assert.equal(doGviz.dataset_version, '7');
+  assert.equal(doGviz.rows_listings, 141, 'contador vira inteiro');
+});
+
+test('normalizeAppMeta omite chave ausente em vez de devolver null', () => {
+  // Quem renderiza precisa distinguir "não publicado" de "publicado vazio"; um null
+  // no meio apagaria essa diferença e viraria travessão na tela.
+  const meta = normalizeAppMeta([{ key: 'dataset_version', value: '3' }]);
+  assert.deepEqual(Object.keys(meta), ['dataset_version']);
+  assert.ok(!('validation_status' in meta));
+
+  for (const vazio of [null, undefined, {}, [], 'texto', 42]) {
+    assert.deepEqual(normalizeAppMeta(vazio), {}, `esperado {} para ${JSON.stringify(vazio)}`);
+  }
+
+  // Valor em branco é o mesmo que ausente.
+  assert.deepEqual(normalizeAppMeta([{ key: 'dataset_version', value: '   ' }]), {});
+  assert.deepEqual(normalizeAppMeta([{ key: '', value: 'x' }]), {});
+});
+
+test('normalizeAppMeta converte data de qualquer origem para ISO', () => {
+  const iso = normalizeAppMeta({ last_data_change_at: '2026-08-20T02:34:41.123Z' });
+  assert.equal(iso.last_data_change_at, '2026-08-20');
+
+  // Como o GViz serializa coluna de data.
+  assert.equal(normalizeAppMeta({ last_validation_at: 'Date(2026,7,18)' }).last_validation_at, '2026-08-18');
+
+  // Serial de planilha.
+  assert.equal(normalizeAppMeta({ last_validation_at: '46252' }).last_validation_at, '2026-08-18');
+
+  // Data ilegível é omitida, não exibida crua.
+  assert.deepEqual(normalizeAppMeta({ last_validation_at: 'ontem' }), {});
+});
+
+test('appMetaRows devolve nada quando não há metadados publicados', () => {
+  assert.deepEqual(appMetaRows({}), []);
+  assert.deepEqual(appMetaRows(null), []);
+  assert.deepEqual(appMetaRows(undefined), []);
+
+  // O demo.json atual traz meta de geração, que não são chaves de APP_META.
+  assert.deepEqual(appMetaRows(normalizeAppMeta({ generated_at: '2026-08-20', note: 'x' })), []);
+});
+
+test('appMetaRows respeita a ordem de exibição e rotula em português', () => {
+  const rows = appMetaRows(normalizeAppMeta({
+    rows_listings: '141',
+    dataset_version: '7',
+    last_data_change_at: '2026-08-20',
+    validation_status: 'ok',
+  }));
+
+  assert.deepEqual(rows.map((r) => r.key),
+    ['last_data_change_at', 'dataset_version', 'validation_status', 'rows_listings']);
+  assert.equal(rows[1].value, 'v7', 'versão recebe o prefixo v');
+  assert.equal(rows[2].value, 'OK');
+  assert.equal(rows[0].type, 'date', 'o tipo volta para a tela poder formatar em pt-BR');
+});
+
+test('status de validação desconhecido nunca recebe o tom de sucesso', () => {
+  const tom = (status) => appMetaRows(normalizeAppMeta({ validation_status: status }))[0].tone;
+
+  assert.equal(tom('ok'), 'ok');
+  assert.equal(tom('warning'), 'warning');
+  assert.equal(tom('error'), 'error');
+  assert.equal(tom('dirty'), 'dirty');
+  assert.equal(tom('OK'), 'ok', 'a comparação ignora caixa');
+
+  // Vocabulário novo que ninguém previu cai no lado conservador (R8.16).
+  for (const desconhecido of ['aprovado', 'green', 'passou', 'ok?']) {
+    assert.equal(tom(desconhecido), 'unknown', `"${desconhecido}" não pode virar sucesso`);
   }
 });

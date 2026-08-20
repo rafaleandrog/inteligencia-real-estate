@@ -14,7 +14,7 @@ Transformar o modelo atual em uma experiência pública simples para responder p
 - Mapa ocupando praticamente toda a tela.
 - Busca por localidade, anúncio e empreendimento.
 - Filtros essenciais: localidade, tipo, preço e quartos.
-- Quatro entidades: anúncios, mercado primário, empreendimentos e âncoras.
+- Três entidades: anúncios, empreendimentos e âncoras.
 - Dois KPIs rápidos: quantidade visível e preço mediano/m².
 - Card de detalhe ao clicar em um ponto, sempre com link da fonte quando disponível.
 - Indicador de qualidade/confiança espacial.

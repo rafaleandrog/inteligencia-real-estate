@@ -8,7 +8,7 @@
 // createElement (docs/ENGINEERING_RULES.md, R4.4).
 
 import { loadDataset, flattenEntities } from './data.js';
-import { isApproximateLocation } from './normalize.js';
+import { isApproximateLocation, appMetaRows } from './normalize.js';
 import {
   applyFilters, computeKpis, createFilterState, distinctLocalities,
   distinctPropertyTypes, LAYERS,
@@ -30,6 +30,7 @@ const dom = {
   loadingState: el('loadingState'), errorState: el('errorState'),
   errorTitle: el('errorTitle'), errorDetail: el('errorDetail'), retryBtn: el('retryBtn'),
   warnings: el('warnings'), sourceBadge: el('sourceBadge'),
+  datasetMeta: el('datasetMeta'), datasetMetaList: el('datasetMetaList'),
   detail: el('detail'), detailTitle: el('detailTitle'), detailBody: el('detailBody'),
   closeDetail: el('closeDetail'),
 };
@@ -382,6 +383,48 @@ function showWarnings(messages) {
   console.warn('[imob] avisos:', messages);
 }
 
+/**
+ * Bloco de procedência do dataset, alimentado pela aba APP_META.
+ *
+ * Renderiza **somente as chaves publicadas** e esconde a seção inteira quando não há
+ * nenhuma — é o estado da planilha antes de `setupProject()` rodar. Preencher lacuna
+ * com travessão sugeriria que o dado existe e está vazio, quando na verdade ele nunca
+ * foi publicado.
+ *
+ * Os valores vêm de uma planilha pública e editável: todos entram por `textContent`,
+ * nunca por `innerHTML` (R4.4).
+ */
+function renderDatasetMeta(meta) {
+  const rows = appMetaRows(meta);
+  if (rows.length === 0) {
+    dom.datasetMeta.hidden = true;
+    dom.datasetMetaList.replaceChildren();
+    return;
+  }
+
+  const frag = document.createDocumentFragment();
+  for (const row of rows) {
+    const dt = document.createElement('dt');
+    dt.textContent = row.label;
+
+    const dd = document.createElement('dd');
+    if (row.tone) {
+      const chip = document.createElement('span');
+      chip.className = 'meta-status';
+      chip.dataset.tone = row.tone;
+      chip.textContent = row.value;
+      dd.append(chip);
+    } else {
+      dd.textContent = row.type === 'date' ? formatDate(row.value) : row.value;
+    }
+
+    frag.append(dt, dd);
+  }
+
+  dom.datasetMetaList.replaceChildren(frag);
+  dom.datasetMeta.hidden = false;
+}
+
 /** Rótulo da origem dos dados. Modo demo precisa ser óbvio na tela (R2.3). */
 function showSourceBadge(source) {
   const label = { demo: 'Modo demonstração', gviz: 'Dados: Google Sheets', appsscript: 'Dados: Apps Script' };
@@ -400,6 +443,10 @@ async function load() {
   const result = await loadDataset(CONFIG);
   showLoading(false);
   showSourceBadge(result.source);
+
+  // Descreve o dataset inteiro, então é renderizado uma vez no carregamento e não a
+  // cada mudança de filtro.
+  renderDatasetMeta(result.meta);
 
   if (!result.ok) {
     showError(result.errors);

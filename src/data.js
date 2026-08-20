@@ -10,7 +10,7 @@
 // Todas devolvem o mesmo formato:
 //   { entities, meta, source, warnings, errors }
 
-import { normalizeAll } from './normalize.js';
+import { normalizeAll, normalizeAppMeta } from './normalize.js';
 
 /** Entidades obrigatórias na V1. Ausência de qualquer uma é erro. */
 export const REQUIRED_ENTITIES = ['listings', 'developments', 'anchors'];
@@ -165,7 +165,33 @@ async function loadFromGviz(config) {
     }
   });
 
-  return { raw, errors, meta: { spreadsheetId: config.spreadsheetId } };
+  const { meta, warnings } = await fetchAppMetaFromGviz(config);
+  return { raw, errors, warnings, meta: { spreadsheetId: config.spreadsheetId, ...meta } };
+}
+
+/**
+ * Lê a aba APP_META, que descreve o próprio dataset.
+ *
+ * Falha ou ausência vira **aviso, nunca erro**: APP_META é operacional e só existe
+ * depois que `setupProject()` roda no Apps Script. Uma planilha sem ela precisa
+ * continuar abrindo normalmente (R2.5).
+ *
+ * É buscada porque a interface a renderiza — diferente das abas de `optionalSheets`,
+ * que ninguém exibe e por isso não são buscadas. E é uma requisição, não quatro.
+ */
+async function fetchAppMetaFromGviz(config) {
+  const sheetName = config.metaSheet;
+  if (!sheetName) return { meta: {}, warnings: [] };
+
+  try {
+    const rows = await fetchGvizSheet(config.spreadsheetId, sheetName);
+    return { meta: normalizeAppMeta(rows), warnings: [] };
+  } catch (error) {
+    return {
+      meta: {},
+      warnings: [`Metadados do dataset indisponíveis (${sheetName}): ${error?.message || error}`],
+    };
+  }
 }
 
 /** Estratégia `demo`. Lê o dataset estático do repositório. */
@@ -176,7 +202,11 @@ async function loadFromDemo(config) {
 
   const raw = {};
   for (const entity of Object.keys(config.sheets)) raw[entity] = payload[entity] || [];
-  return { raw, errors: [], meta: payload.meta || {} };
+
+  // Passa pelo mesmo normalizador das outras estratégias: se o demo.json não trouxer
+  // chaves de APP_META — que é o caso hoje —, o resultado é `{}` e a tela não mostra
+  // o bloco, exatamente como numa planilha sem setupProject() executado.
+  return { raw, errors: [], meta: { ...payload.meta, ...normalizeAppMeta(payload.meta) } };
 }
 
 /**
@@ -211,7 +241,20 @@ async function loadFromAppsScript(config) {
     }
   });
 
-  return { raw, errors, meta: {} };
+  // O endpoint ?resource=meta já devolve a APP_META pronta como objeto.
+  const warnings = [];
+  let meta = {};
+  try {
+    const response = await fetchWithTimeout(`${config.appsScriptUrl}?resource=meta`);
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    const payload = await response.json();
+    if (payload.error) throw new Error(payload.error);
+    meta = normalizeAppMeta(payload);
+  } catch (error) {
+    warnings.push(`Metadados do dataset indisponíveis: ${error?.message || error}`);
+  }
+
+  return { raw, errors, warnings, meta };
 }
 
 const STRATEGIES = {
@@ -262,6 +305,9 @@ export async function loadDataset(config) {
   }
 
   errors.push(...(result.errors || []));
+  // Avisos da própria estratégia — por exemplo, APP_META inacessível, que não impede
+  // a aplicação de abrir mas o operador precisa saber.
+  warnings.push(...(result.warnings || []));
 
   const entities = {};
   for (const entity of REQUIRED_ENTITIES) {

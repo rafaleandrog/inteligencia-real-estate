@@ -78,7 +78,7 @@ Regras são numeradas e estáveis. Não renumere ao inserir — acrescente ao fi
 ## 6. Testes e verificação
 
 - **R6.1** Testes com o runner nativo do Node (`node --test`). Sem framework.
-- **R6.2** Prioridade de cobertura: conversão numérica, normalização das 4 entidades, mediana,
+- **R6.2** Prioridade de cobertura: conversão numérica, normalização das 3 entidades, mediana,
   filtros, registro sem coordenada, registro sem preço, dado malformado.
 - **R6.3** Teste é proporcional ao tamanho do projeto. Não construa infraestrutura enorme para uma
   V1 pequena.
@@ -215,3 +215,18 @@ Cada uma nasce de um erro que aconteceu de verdade.
   continua sem `Access-Control-Allow-Origin`; no GitHub Pages, `fetch` termina em `Failed to fetch`.
   Use `tqx=out:json;responseHandler:<callback>`, timeout e limpeza do `<script>` após sucesso ou
   erro.
+
+- **R8.24** *(2026-08-20, exibição da APP_META)* **Aba de arquivo `.xlsx` se localiza por `r:id`,
+  nunca por `sheetId`.** Os dois coincidem só enquanto nenhuma aba for apagada: apagar deixa
+  buraco na numeração dos ids, enquanto os arquivos `sheetN.xml` são renumerados sem buraco, e a
+  partir dali cada aba devolve o conteúdo da anterior — em silêncio. Foi o que aconteceu ao
+  remover `PRIMARY_MARKET`: `APP_META` passou a ler as colunas de `DATA_QUALITY`. Os testes
+  continuaram verdes porque as abas obrigatórias vinham antes da removida.
+- **R8.25** *(2026-08-20, exibição da APP_META)* **Ausência e vazio são estados diferentes e a
+  interface precisa distingui-los.** Chave não publicada é **omitida**, não exibida como
+  travessão: travessão afirma que o campo existe e está vazio. Vale para todo dado de
+  procedência — quem lê precisa saber se a informação não existe ou se ninguém a publicou ainda.
+- **R8.26** *(2026-08-20, exibição da APP_META)* **Número que pode ser confundido com outro na
+  mesma tela recebe legenda.** `Anúncios 141` em "Sobre estes dados" é o total publicado na
+  planilha; `Anúncios secundários 141` em "Camadas" é o que sobrou dos filtros. Coincidem sem
+  filtro e divergem com — mesma família da nota de composição da mediana (R8.15).

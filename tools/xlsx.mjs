@@ -39,18 +39,48 @@ function readSharedStrings(files) {
   return out;
 }
 
-/** Nome e id de cada aba, na ordem do workbook. */
+/**
+ * Nome e caminho do arquivo de cada aba, na ordem do workbook.
+ *
+ * O caminho vem de `r:id` -> `xl/_rels/workbook.xml.rels` -> `Target`, e NÃO de
+ * `sheetId`. Os dois coincidem enquanto as abas forem criadas em sequência e nenhuma
+ * for apagada — apagar uma deixa um buraco na numeração dos ids, enquanto os arquivos
+ * `sheetN.xml` são renumerados sem buraco, e a partir dali cada aba passa a ler o
+ * conteúdo da anterior. Foi o que aconteceu ao remover PRIMARY_MARKET (id 5): os ids
+ * pularam de 4 para 6 e `APP_META` passou a devolver as linhas de `DATA_QUALITY`.
+ */
 function readSheetIndex(files) {
   const xml = files.get('xl/workbook.xml').toString('utf8');
-  return [...xml.matchAll(/name="([^"]+)"[^>]*sheetId="(\d+)"/g)].map((m) => ({
-    name: decodeXml(m[1]),
-    sheetId: m[2],
-  }));
+  const relsEntry = files.get('xl/_rels/workbook.xml.rels');
+  const rels = new Map();
+
+  if (relsEntry) {
+    // Os atributos aparecem em qualquer ordem conforme o gerador do arquivo.
+    for (const rel of relsEntry.toString('utf8').matchAll(/<Relationship\b[^>]*\/?>/g)) {
+      const id = /Id="([^"]+)"/.exec(rel[0])?.[1];
+      const target = /Target="([^"]+)"/.exec(rel[0])?.[1];
+      if (id && target) rels.set(id, decodeXml(target));
+    }
+  }
+
+  return [...xml.matchAll(/<(?:\w+:)?sheet\b[^>]*\/?>/g)].map((tag) => {
+    const name = /name="([^"]+)"/.exec(tag[0])?.[1];
+    const rid = /r:id="([^"]+)"/.exec(tag[0])?.[1];
+    const sheetId = /sheetId="(\d+)"/.exec(tag[0])?.[1];
+
+    // Target pode vir absoluto ("/xl/worksheets/sheet1.xml") ou relativo ao xl/.
+    const target = rid ? rels.get(rid) : undefined;
+    const path = target
+      ? `xl/${target.replace(/^\/?(xl\/)?/, '')}`
+      : `xl/worksheets/sheet${sheetId}.xml`; // último recurso, para arquivo sem rels
+
+    return { name: decodeXml(name || ''), path };
+  }).filter((sheet) => sheet.name);
 }
 
 /** Células de uma aba, como matriz de strings. */
-function readSheetCells(files, sheetId, shared) {
-  const entry = files.get(`xl/worksheets/sheet${sheetId}.xml`);
+function readSheetCells(files, path, shared) {
+  const entry = files.get(path);
   if (!entry) return [];
   const xml = entry.toString('utf8');
   const rows = [];
@@ -90,8 +120,8 @@ export function readXlsx(buffer) {
   const shared = readSharedStrings(files);
   const out = {};
 
-  for (const { name, sheetId } of readSheetIndex(files)) {
-    const cells = readSheetCells(files, sheetId, shared);
+  for (const { name, path } of readSheetIndex(files)) {
+    const cells = readSheetCells(files, path, shared);
     if (cells.length === 0) { out[name] = { headers: [], rows: [] }; continue; }
 
     const headers = cells[0].map((h) => String(h).trim());
