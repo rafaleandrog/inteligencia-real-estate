@@ -285,8 +285,13 @@ async function loadFromAppsScript(config) {
     if (!response.ok) throw new Error(`HTTP ${response.status}`);
     const payload = await response.json();
     if (payload.error) throw new Error(payload.error);
-    meta = normalizeAppMeta(payload);
-    warnings.push(...metaConflictWarnings(payload));
+    // O endpoint devolve `{ rows: [...] }` para preservar chave duplicada, que um
+    // objeto JSON não guarda. Um Web App implantado antes dessa mudança devolve o
+    // objeto achatado: ainda é lido, mas nesse formato o conflito já se perdeu na
+    // origem e não há o que detectar aqui.
+    const metaRaw = Array.isArray(payload.rows) ? payload.rows : payload;
+    meta = normalizeAppMeta(metaRaw);
+    warnings.push(...metaConflictWarnings(metaRaw));
   } catch (error) {
     warnings.push(`Metadados do dataset indisponíveis: ${error?.message || error}`);
   }

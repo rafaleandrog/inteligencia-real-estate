@@ -36,6 +36,18 @@ Depois disso o menu **Imob Intelligence** aparece ao abrir a planilha.
 | `maintenanceJob()` | Derivados → validação → metadados |
 | `doGet(e)` | Endpoint **read-only**: `health`, `meta`, `dataset` |
 
+### Formato de `?resource=meta`
+
+Devolve as **linhas** de `APP_META`, não um objeto achatado:
+
+```json
+{ "rows": [ { "key": "dataset_version", "value": "7", "updated_at": "2026-08-20" } ], "count": 1 }
+```
+
+Achatar no servidor destruía a evidência de chave duplicada — um objeto JSON não guarda duas
+chaves iguais, e a última linha vencia, que é justamente a duplicata antiga. Com as linhas
+cruas, GViz e Apps Script passam pelo mesmo normalizador no cliente e tratam conflito igual.
+
 ## Decisões de segurança
 
 - **Read-only.** Não existe `doPost` nem endpoint de administração.

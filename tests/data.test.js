@@ -288,3 +288,74 @@ test('a APP_META do gviz é buscada em paralelo com as abas obrigatórias', asyn
   const geral = Number(/FETCH_TIMEOUT_MS = (\d+)/.exec(src)[1]);
   assert.ok(meta < geral, `timeout da aba opcional (${meta}) precisa ser menor que o geral (${geral})`);
 });
+
+test('a estratégia appsscript detecta conflito de metadado como a do gviz', async () => {
+  // Regressão: `meta_()` achatava as linhas num objeto antes de serializar, deixando a
+  // última vencer. Um JSON não guarda chave duplicada, então o conflito se perdia na
+  // origem: com validation_status=error na primeira linha e ok numa duplicata abaixo,
+  // o cliente recebia ok e exibia aprovação. O endpoint passa a devolver as linhas.
+  const { loadDataset } = await import('../src/data.js');
+
+  const config = {
+    dataSource: 'appsscript',
+    appsScriptUrl: 'https://exemplo/exec',
+    sheets: { listings: 'LISTINGS', developments: 'DEVELOPMENTS', anchors: 'ANCHORS' },
+  };
+
+  const original = globalThis.fetch;
+  globalThis.fetch = async (url) => {
+    if (String(url).includes('resource=meta')) {
+      return {
+        ok: true,
+        json: async () => ({
+          rows: [
+            { key: 'validation_status', value: 'error', updated_at: '2026-08-20' },
+            { key: 'dataset_version', value: '9' },
+            { key: 'validation_status', value: 'ok', updated_at: '2026-01-01' },
+          ],
+        }),
+      };
+    }
+    return { ok: true, json: async () => ({ rows: [{ listing_id: 'A', development_id: 'B', place_id: 'C' }] }) };
+  };
+
+  try {
+    const result = await loadDataset(config);
+    assert.ok(!('validation_status' in result.meta), 'conflito não pode virar afirmação na tela');
+    assert.equal(result.meta.dataset_version, '9', 'as demais chaves seguem válidas');
+    assert.ok(
+      result.warnings.some((w) => /validation_status/.test(w)),
+      'a duplicata precisa virar aviso: ' + JSON.stringify(result.warnings)
+    );
+  } finally {
+    globalThis.fetch = original;
+  }
+});
+
+test('endpoint antigo, que devolve objeto achatado, continua sendo lido', async () => {
+  // Compatibilidade com um Web App implantado antes da mudança de formato. Nesse
+  // caso o conflito já se perdeu na origem — não há o que detectar no cliente.
+  const { loadDataset } = await import('../src/data.js');
+
+  const config = {
+    dataSource: 'appsscript',
+    appsScriptUrl: 'https://exemplo/exec',
+    sheets: { listings: 'LISTINGS', developments: 'DEVELOPMENTS', anchors: 'ANCHORS' },
+  };
+
+  const original = globalThis.fetch;
+  globalThis.fetch = async (url) => {
+    if (String(url).includes('resource=meta')) {
+      return { ok: true, json: async () => ({ dataset_version: '5', validation_status: 'ok' }) };
+    }
+    return { ok: true, json: async () => ({ rows: [{ listing_id: 'A', development_id: 'B', place_id: 'C' }] }) };
+  };
+
+  try {
+    const result = await loadDataset(config);
+    assert.equal(result.meta.dataset_version, '5');
+    assert.equal(result.meta.validation_status, 'ok');
+  } finally {
+    globalThis.fetch = original;
+  }
+});

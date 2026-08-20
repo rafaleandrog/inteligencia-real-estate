@@ -248,3 +248,10 @@ Cada uma nasce de um erro que aconteceu de verdade.
   correção elimina.** Ao trocar o mapeamento de aba por `r:id`, deixei um "último recurso" por
   `sheetId` — o mesmo caminho errado, agora silencioso e mais difícil de achar. Quando não há
   como resolver com segurança, **falhe com mensagem**, não com um palpite.
+- **R8.31** *(2026-08-20, review do Codex na PR #3)* **Não achate no servidor o que o cliente
+  precisa para detectar conflito.** O endpoint `?resource=meta` transformava as linhas de
+  `APP_META` num objeto JSON antes de responder — e objeto não guarda chave duplicada. A
+  validação no cliente ficava inerte: por esse caminho o conflito já tinha desaparecido na
+  origem. Transporte a forma que preserva a informação (linhas), e deixe a interpretação para um
+  ponto só. Corolário: ao corrigir um problema em um caminho de dados, verifique **todos** os
+  caminhos que chegam ao mesmo lugar.

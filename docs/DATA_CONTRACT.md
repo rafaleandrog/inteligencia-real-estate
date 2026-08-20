@@ -198,6 +198,11 @@ por isso chave ausente é omitida em vez de virar travessão.
 sem o indicador de sucesso**: um vocabulário que o código não reconhece não pode ser apresentado
 como aprovação.
 
+**Chave publicada duas vezes com valores diferentes é omitida da tela** e vira aviso. A planilha
+é editável à mão, e `setMeta_()` atualiza apenas a primeira ocorrência: uma duplicata esquecida
+abaixo faria a interface exibir `ok` enquanto a validação gravou `error`. Em conflito, a fonte se
+contradiz e a interface não afirma nada — a correção é apagar a linha duplicada na planilha.
+
 
 ### DATA_QUALITY
 `severity | sheet | row | record_id | field | code | message | detected_at`
