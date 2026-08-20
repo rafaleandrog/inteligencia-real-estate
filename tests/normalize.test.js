@@ -232,3 +232,38 @@ test('expected_delivery é normalizado como data, não copiado cru', () => {
 
   assert.equal(normalizeDevelopment({ development_id: 'D2', expected_delivery: '' }).expected_delivery, null);
 });
+
+test('isApproximateLocation falha fechado: só precisão explícita é verificada', () => {
+  // Regressão P0: a versão anterior procurava marcadores de imprecisão e assumia
+  // exatidão na ausência deles, então os 15 empreendimentos mapeáveis — todos com
+  // coordinate_precision vazio — eram anunciados como "Localização verificada".
+
+  // Vocabulário real do dataset que NÃO pode ser declarado verificado:
+  const aproximados = [
+    { confidence_flag: 'medium_spatial_high_attributes', coordinate_status: 'address_geocode_operational' },
+    { confidence_flag: 'user_supplied_reference' },
+    { confidence_flag: 'high_attributes', coordinate_status: 'pending_exact_parcel_or_poi_validation' },
+    { coordinate_precision: 'locality_centroid_deterministic_jitter', confidence_flag: 'low_spatial_high_attribute' },
+    { coordinate_precision: 'park_centroid', confidence_flag: 'high' },
+    { coordinate_precision: 'endereco_cep', confidence_flag: 'high' },
+    // Precisão boa, mas o flag rebaixa a coordenada:
+    { coordinate_precision: 'building_polygon_reference_point', confidence_flag: 'high_attributes_medium_coordinate' },
+    {},
+    { coordinate_precision: 'formato_novo_que_ninguem_previu', confidence_flag: 'high' },
+  ];
+  for (const record of aproximados) {
+    assert.equal(isApproximateLocation(record), true,
+      `deveria ser aproximado: ${JSON.stringify(record)}`);
+  }
+
+  // Só geometria de fato apurada, sem flag que rebaixe:
+  const exatos = [
+    { coordinate_precision: 'school_polygon_reference_point', confidence_flag: 'high' },
+    { coordinate_precision: 'official_wfs_point', confidence_flag: 'high' },
+    { coordinate_precision: 'facility_polygon_reference_point', confidence_flag: 'high' },
+  ];
+  for (const record of exatos) {
+    assert.equal(isApproximateLocation(record), false,
+      `deveria ser exato: ${JSON.stringify(record)}`);
+  }
+});

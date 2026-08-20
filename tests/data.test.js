@@ -5,7 +5,7 @@ import {
   parseGvizResponse, gvizTableToRows, gvizUrl, resolveStrategy, flattenEntities,
   REQUIRED_ENTITIES,
 } from '../src/data.js';
-import { normalizeAll } from '../src/normalize.js';
+import { normalizeAll, isApproximateLocation } from '../src/normalize.js';
 import { computeKpis, applyFilters, createFilterState } from '../src/filters.js';
 
 const demo = JSON.parse(readFileSync(new URL('../data/demo.json', import.meta.url)));
@@ -173,5 +173,36 @@ test('demo.json entrega expected_delivery como data ISO', () => {
   for (const row of comEntrega) {
     assert.match(String(row.expected_delivery), /^\d{4}-\d{2}-\d{2}$/,
       `expected_delivery cru: ${row.expected_delivery}`);
+  }
+});
+
+test('IDs não são únicos entre entidades — a interface precisa de (kind, id)', () => {
+  // Regressão P1: a planilha repete 12 IDs entre PRIMARY_MARKET e DEVELOPMENTS
+  // (divergência D4). Selecionar por id sozinho abria o detalhe errado.
+  const entities = {};
+  for (const entity of REQUIRED_ENTITIES) entities[entity] = normalizeAll(entity, demo[entity]).records;
+  const all = flattenEntities(entities);
+
+  const porId = new Map();
+  for (const record of all) {
+    if (!porId.has(record.id)) porId.set(record.id, []);
+    porId.get(record.id).push(record.kind);
+  }
+  const colisoes = [...porId.values()].filter((kinds) => kinds.length > 1);
+  assert.ok(colisoes.length > 0, 'o dataset tem colisão de ID entre entidades');
+
+  // A chave composta precisa ser única — é o que a interface usa para selecionar.
+  const chaves = new Set(all.map((r) => `${r.kind}:${r.id}`));
+  assert.equal(chaves.size, all.length, 'a chave (kind, id) precisa ser única');
+});
+
+test('nenhum registro do demo é declarado com localização exata sem precisão explícita', () => {
+  const entities = {};
+  for (const entity of REQUIRED_ENTITIES) entities[entity] = normalizeAll(entity, demo[entity]).records;
+
+  for (const entity of ['listings', 'developments', 'primaryMarket']) {
+    const exatos = entities[entity].filter((r) => r.coord && !isApproximateLocation(r));
+    assert.equal(exatos.length, 0,
+      `${entity}: ${exatos.length} registro(s) seriam anunciados como localização verificada`);
   }
 });

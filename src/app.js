@@ -87,13 +87,23 @@ function renderMarkers(records) {
       fillOpacity: 0.9,
     });
 
-    // O rótulo do tooltip é texto puro: o Leaflet o insere no DOM, então uma aspa
-    // ou um sinal de menor vindo da planilha não pode virar markup.
-    marker.bindTooltip(record.title || record.id, { direction: 'top' });
-    marker.on('click', () => selectRecord(record.id));
+    // O tooltip recebe um ELEMENTO, nunca uma string. O Leaflet faz
+    // `contentNode.innerHTML = conteudo` quando o conteúdo é string
+    // (DivOverlay._updateContent), então um title vindo da planilha com
+    // `<img onerror=...>` viraria markup ativo ao passar o mouse. Com um nó, ele
+    // cai no ramo de appendChild e o texto permanece texto (R4.4).
+    const tooltip = document.createElement('span');
+    tooltip.textContent = record.title || record.id;
+    marker.bindTooltip(tooltip, { direction: 'top' });
+
+    // Seleção por (kind, id): os IDs NÃO são únicos entre entidades. No dataset
+    // atual 12 registros PRIMARY_* existem tanto em PRIMARY_MARKET quanto em
+    // DEVELOPMENTS, e buscar só por id devolvia sempre o primeiro da lista —
+    // abrindo o detalhe errado em mais da metade dos empreendimentos.
+    marker.on('click', () => selectRecord(recordKey(record)));
 
     marker.addTo(markerLayer);
-    state.markers.set(record.id, marker);
+    state.markers.set(recordKey(record), marker);
   }
 }
 
@@ -237,11 +247,22 @@ function buildDetailBody(record) {
   return frag;
 }
 
-function selectRecord(id) {
-  const record = state.records.find((r) => r.id === id);
+/**
+ * Chave de identificação de um registro na interface.
+ *
+ * `id` sozinho não serve: o contrato garante unicidade **dentro** de cada aba, não
+ * entre elas — e a planilha de fato repete 12 IDs entre PRIMARY_MARKET e
+ * DEVELOPMENTS (divergência D4 de docs/DATA_CONTRACT.md).
+ */
+function recordKey(record) {
+  return `${record.kind}:${record.id}`;
+}
+
+function selectRecord(key) {
+  const record = state.records.find((r) => recordKey(r) === key);
   if (!record) return;
 
-  state.selectedId = id;
+  state.selectedId = key;
   dom.detailTitle.textContent = record.title || record.id;
   dom.detailBody.replaceChildren(buildDetailBody(record));
   dom.detail.hidden = false;
@@ -317,7 +338,7 @@ function render() {
   renderKpis(computeKpis(visible));
 
   // Detalhe aberto de um registro que saiu do filtro deixa de fazer sentido.
-  if (state.selectedId && !visible.some((r) => r.id === state.selectedId)) closeDetail();
+  if (state.selectedId && !visible.some((r) => recordKey(r) === state.selectedId)) closeDetail();
 }
 
 function populateSelect(select, values, formatter = (v) => v) {

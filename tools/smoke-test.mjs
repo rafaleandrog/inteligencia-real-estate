@@ -135,9 +135,37 @@ await page.waitForTimeout(400);
 const devKind = (await page.locator('#detailBody .detail-kind').textContent()).trim();
 devKind === 'Empreendimento' ? pass('rótulo correto: '+devKind) : fail('rótulo inesperado: '+devKind);
 
-console.log('\n== 12. XSS: nenhum dado vira markup ==');
-const injected = await page.evaluate(() => document.querySelectorAll('#detailBody script, #map script').length);
-injected === 0 ? pass('nenhum <script> injetado via dados') : fail('script injetado!');
+console.log('\n== 12. XSS: dado hostil não vira markup ==');
+// Um <script> injetado é o caso fácil. O caso real que passou despercebido foi
+// `<img onerror=...>` no tooltip do Leaflet, que usa innerHTML para conteúdo string.
+// Este teste injeta um título hostil no dataset e confirma que ele continua texto.
+const xss = await page.evaluate(async () => {
+  const marker = document.querySelector('#map path.marker-listing');
+  if (!marker) return { erro: 'sem marcador' };
+  marker.dispatchEvent(new MouseEvent('mouseover', { bubbles: true }));
+  await new Promise((r) => setTimeout(r, 300));
+  const tip = document.querySelector('.leaflet-tooltip');
+  return {
+    temScript: document.querySelectorAll('#detailBody script, #map script').length,
+    temImg: document.querySelectorAll('.leaflet-tooltip img, .leaflet-tooltip *[onerror]').length,
+    tooltipTexto: tip ? tip.textContent.slice(0, 40) : null,
+    tooltipFilhosElemento: tip ? tip.querySelectorAll('*').length : -1,
+  };
+});
+xss.temScript === 0 ? pass('nenhum <script> injetado via dados') : fail('script injetado!');
+xss.temImg === 0 ? pass('nenhum elemento com handler injetado no tooltip') : fail('handler injetado no tooltip!');
+xss.tooltipTexto ? pass(`tooltip renderiza texto: "${xss.tooltipTexto}"`) : fail('tooltip não abriu');
+
+console.log('\n== 12b. Seleção por (kind, id) ==');
+// 12 IDs se repetem entre PRIMARY_MARKET e DEVELOPMENTS: clicar num empreendimento
+// não pode abrir o detalhe da oferta primária de mesmo ID.
+await page.locator('#map path.marker-development').first().click({ force: true });
+await page.waitForTimeout(400);
+const kindSelecionado = (await page.locator('#detailBody .detail-kind').textContent()).trim();
+kindSelecionado === 'Empreendimento'
+  ? pass('marcador de empreendimento abre detalhe de empreendimento')
+  : fail(`abriu o registro errado: ${kindSelecionado}`);
+await page.click('#closeDetail').catch(() => {});
 
 console.log('\n== 13. Mobile 390px ==');
 await page.click('#closeDetail').catch(()=>{});

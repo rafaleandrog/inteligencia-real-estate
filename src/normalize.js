@@ -171,21 +171,48 @@ function spatialQuality(row) {
 }
 
 /**
+ * Precisões que descrevem geometria de fato apurada — polígono do imóvel, ponto
+ * oficial de serviço geográfico, referência de edificação.
+ *
+ * Note o que NÃO está aqui: `park_centroid` é centroide, e `endereco_cep` resolve a
+ * faixa de um CEP, não um lote. Ambos são aproximações.
+ */
+const EXACT_PRECISION = /(polygon_reference_point|building_reference_point|official_wfs_point)/;
+
+/**
+ * Marcadores que rebaixam a confiança espacial mesmo quando a precisão parece boa.
+ * `high_attributes_medium_coordinate` é o caso exemplar: atributo confiável,
+ * coordenada não.
+ */
+const DOWNGRADING_FLAG =
+  /(low_spatial|medium_spatial|medium_coordinate|medium_high|user_supplied|approx|pending|centroid|jitter)/;
+
+/**
  * `true` quando a coordenada é aproximada e não pode ser apresentada como endereço
- * exato (R3.6). No dataset atual os 141 anúncios usam centroide de localidade com
- * jitter, então isto vale para todos eles — não é caso raro.
+ * exato (R3.6).
+ *
+ * A lógica **falha fechado**: só devolve `false` — ou seja, só autoriza a interface a
+ * dizer "localização verificada" — quando a precisão declara explicitamente uma
+ * geometria apurada E nenhum flag a rebaixa. Qualquer outra coisa, inclusive campo
+ * vazio ou vocabulário novo que ninguém previu, é tratada como aproximada.
+ *
+ * A versão anterior fazia o contrário: procurava marcadores de imprecisão e assumia
+ * exatidão na ausência deles. Com isso, os 15 empreendimentos mapeáveis do dataset
+ * — que têm `coordinate_precision` vazio e flags como
+ * `medium_spatial_high_attributes` ou `user_supplied_reference` — eram todos
+ * anunciados como "Localização verificada". Afirmar precisão que o dado não tem é
+ * pior do que não afirmar nada.
  */
 export function isApproximateLocation(record) {
   const precision = toText(record.coordinate_precision).toLowerCase();
   const flag = toText(record.confidence_flag).toLowerCase();
-  if (precision === '' && flag === '') return true; // sem declaração, assuma o pior
-  return (
-    precision.includes('centroid') ||
-    precision.includes('jitter') ||
-    precision.includes('approx') ||
-    precision.includes('pending') ||
-    flag.includes('low_spatial')
-  );
+  const status = toText(record.coordinate_status).toLowerCase();
+
+  const exact = EXACT_PRECISION.test(precision);
+  const downgraded = DOWNGRADING_FLAG.test(flag) || DOWNGRADING_FLAG.test(status) ||
+    /geocode/.test(status); // geocodificação de endereço não é o lote
+
+  return !(exact && !downgraded);
 }
 
 /** Anúncio secundário. Chave: `listing_id`. */

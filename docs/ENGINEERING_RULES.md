@@ -170,3 +170,18 @@ Cada uma nasce de um erro que aconteceu de verdade.
   mediana de preço/m² junta terreno (R$ 1,3 mil/m²) e apartamento (R$ 9,8 mil/m²): o número está
   certo e a leitura é enganosa. Quando um indicador mistura populações diferentes, a interface
   diz isso — mesma família da regra de nunca apresentar coordenada aproximada como exata.
+- **R8.16** *(2026-08-20, review do Codex na PR #1)* **Afirmação de qualidade do dado falha
+  fechado.** Só declare "localização verificada" quando a precisão nomear explicitamente uma
+  geometria apurada e nenhum flag a rebaixar. A versão anterior procurava marcadores de
+  imprecisão e assumia exatidão na ausência deles — resultado: **15 de 15** empreendimentos
+  mapeáveis, todos com `coordinate_precision` vazio, eram anunciados como verificados. Regra
+  geral: vocabulário novo que ninguém previu tem que cair no lado conservador, não no otimista.
+- **R8.17** *(2026-08-20, review do Codex na PR #1)* **`bindTooltip` e `bindPopup` do Leaflet
+  recebem elemento, nunca string.** `DivOverlay._updateContent` faz
+  `contentNode.innerHTML = conteudo` para string, então um `title` de planilha com
+  `<img onerror=...>` vira markup ativo. Passar um nó cai no ramo de `appendChild`. Construir
+  DOM com `textContent` no resto do arquivo não protege o que é entregue à biblioteca.
+- **R8.18** *(2026-08-20, review do Codex na PR #1)* **ID é único dentro da aba, não entre
+  abas.** A planilha repete 12 IDs entre `PRIMARY_MARKET` e `DEVELOPMENTS`, então buscar registro
+  só por `id` numa lista achatada devolve o primeiro que aparecer. Qualquer seleção, deduplicação
+  ou índice sobre entidades misturadas usa a chave composta `(kind, id)`.
