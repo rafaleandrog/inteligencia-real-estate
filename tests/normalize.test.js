@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {
   toText, toNumber, toInteger, toBoolean, toDateISO, toCoord, pricePerM2,
   isApproximateLocation, normalizeListing, normalizeDevelopment, normalizeAnchor,
-  normalizeAppMeta, appMetaRows,
+  normalizeAppMeta, appMetaRows, appMetaConflicts,
   normalizeAll,
 } from '../src/normalize.js';
 
@@ -321,5 +321,45 @@ test('status de validação desconhecido nunca recebe o tom de sucesso', () => {
   // Vocabulário novo que ninguém previu cai no lado conservador (R8.16).
   for (const desconhecido of ['aprovado', 'green', 'passou', 'ok?']) {
     assert.equal(tom(desconhecido), 'unknown', `"${desconhecido}" não pode virar sucesso`);
+  }
+});
+
+test('chave de APP_META duplicada com valores diferentes é omitida', () => {
+  // Regressão: a última linha vencia, mas `setMeta_()` do Apps Script atualiza a
+  // PRIMEIRA. Com uma duplicata antiga logo abaixo, a validação gravava `error` na
+  // linha 1 e a tela continuava mostrando `ok` da linha 5 — afirmando aprovação
+  // enquanto o dataset tinha erro.
+  const raw = [
+    { key: 'validation_status', value: 'error' },
+    { key: 'dataset_version', value: '7' },
+    { key: 'validation_status', value: 'ok' },
+  ];
+
+  const meta = normalizeAppMeta(raw);
+  assert.ok(!('validation_status' in meta), 'em conflito, não afirma nada');
+  assert.equal(meta.dataset_version, '7', 'as demais chaves continuam válidas');
+  assert.deepEqual(appMetaConflicts(raw), ['validation_status']);
+
+  // Nada é exibido para a chave em conflito.
+  assert.deepEqual(appMetaRows(meta).map((r) => r.key), ['dataset_version']);
+});
+
+test('duplicata com o mesmo valor não é conflito', () => {
+  const raw = [{ key: 'dataset_version', value: '7' }, { key: 'dataset_version', value: '7' }];
+  assert.deepEqual(appMetaConflicts(raw), []);
+  assert.equal(normalizeAppMeta(raw).dataset_version, '7');
+});
+
+test('a primeira ocorrência vence, acompanhando o setMeta_ do Apps Script', () => {
+  // Valores iguais depois de normalizar o texto não são conflito; o que importa é que
+  // a leitura siga a mesma linha que o escritor atualiza.
+  const raw = [{ key: 'dataset_version', value: '9' }, { key: 'dataset_version', value: ' 9 ' }];
+  assert.deepEqual(appMetaConflicts(raw), []);
+  assert.equal(normalizeAppMeta(raw).dataset_version, '9');
+});
+
+test('appMetaConflicts tolera entrada que não é lista', () => {
+  for (const entrada of [null, undefined, {}, { dataset_version: '7' }, 'texto', 42]) {
+    assert.deepEqual(appMetaConflicts(entrada), [], `esperado [] para ${JSON.stringify(entrada)}`);
   }
 });

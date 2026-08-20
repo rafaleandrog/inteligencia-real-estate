@@ -230,3 +230,21 @@ Cada uma nasce de um erro que aconteceu de verdade.
   mesma tela recebe legenda.** `Anúncios 141` em "Sobre estes dados" é o total publicado na
   planilha; `Anúncios secundários 141` em "Camadas" é o que sobrou dos filtros. Coincidem sem
   filtro e divergem com — mesma família da nota de composição da mediana (R8.15).
+- **R8.27** *(2026-08-20, review do Codex na PR #3)* **Leitor e escritor precisam concordar sobre
+  qual linha vale.** `setMeta_()` do Apps Script atualiza a **primeira** ocorrência de uma chave;
+  a leitura deixava a **última** vencer. Com uma linha duplicada antiga, a validação gravava
+  `error` na linha 1 e a tela exibia `ok` da linha 5. Em conflito de valores, **omita** — escolher
+  um lado apresenta como certo um dado sobre o qual a própria fonte se contradiz.
+- **R8.28** *(2026-08-20, review do Codex na PR #3)* **Não espalhe o objeto bruto por cima do
+  normalizado.** `{ ...bruto, ...normalizado }` devolve exatamente as chaves que o normalizador
+  decidiu rejeitar — `last_validation_at: 'ontem'` reaparecia e virava "Validado em —",
+  destruindo a distinção entre não publicado e inválido que o normalizador existia para criar.
+  Devolva só o normalizado; o que não pertence ao vocabulário vai para um ramo separado.
+- **R8.29** *(2026-08-20, review do Codex na PR #3)* **Recurso opcional não entra no caminho
+  crítico.** Buscar a `APP_META` depois do lote das abas obrigatórias somava o tempo dela ao
+  total e podia segurar o mapa em "carregando" com os dados já disponíveis. Opcional é buscado em
+  paralelo e com teto de tempo próprio, menor que o do obrigatório.
+- **R8.30** *(2026-08-20, review do Codex na PR #3)* **Fallback que adivinha recria o bug que a
+  correção elimina.** Ao trocar o mapeamento de aba por `r:id`, deixei um "último recurso" por
+  `sheetId` — o mesmo caminho errado, agora silencioso e mais difícil de achar. Quando não há
+  como resolver com segurança, **falhe com mensagem**, não com um palpite.

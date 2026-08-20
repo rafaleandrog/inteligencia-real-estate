@@ -368,26 +368,60 @@ const VALIDATION_STATUS = {
  * GViz e o objeto `{ chave: valor }` do endpoint do Apps Script. Chave ausente é
  * omitida em vez de virar `null` — quem renderiza precisa distinguir "não publicado"
  * de "publicado como vazio", e um `null` no meio apagaria essa diferença.
+ *
+ * Chave publicada duas vezes com valores diferentes também é omitida: ver
+ * `appMetaConflicts`.
  */
-export function normalizeAppMeta(raw) {
-  if (!raw) return {};
-
-  // Achata para { chave: valor } antes de tipar.
+function flattenAppMeta(raw) {
   const flat = {};
+  const conflicts = new Set();
+  if (!raw) return { flat, conflicts };
+
   if (Array.isArray(raw)) {
     for (const row of raw) {
       if (!row || typeof row !== 'object') continue;
       const key = toText(row.key);
-      if (key) flat[key] = row.value;
+      if (!key) continue;
+
+      if (key in flat) {
+        // A PRIMEIRA ocorrência vence, para acompanhar o `setMeta_()` do Apps Script,
+        // que atualiza a primeira linha encontrada. Deixar a última vencer faria uma
+        // linha duplicada antiga sobrepor o valor recém-escrito.
+        if (toText(flat[key]) !== toText(row.value)) conflicts.add(key);
+        continue;
+      }
+      flat[key] = row.value;
     }
   } else if (typeof raw === 'object') {
     Object.assign(flat, raw);
-  } else {
-    return {};
   }
 
+  return { flat, conflicts };
+}
+
+/**
+ * Chaves de APP_META publicadas mais de uma vez com valores divergentes.
+ *
+ * A planilha é editável à mão, então nada impede duas linhas `validation_status`.
+ * Quem consome usa isto para avisar o operador — a divergência é um problema de dado
+ * que precisa ser corrigido na planilha, não silenciado na tela.
+ */
+export function appMetaConflicts(raw) {
+  return [...flattenAppMeta(raw).conflicts].sort();
+}
+
+export function normalizeAppMeta(raw) {
+  if (!raw || (typeof raw !== 'object')) return {};
+
+  const { flat, conflicts } = flattenAppMeta(raw);
   const out = {};
   for (const { key, type } of APP_META_FIELDS) {
+    // Chave duplicada com valores divergentes é omitida em vez de exibida.
+    // Escolher um dos lados apresentaria como certo um dado sobre o qual a própria
+    // planilha se contradiz — e no caso de `validation_status` significaria mostrar
+    // "OK" enquanto a validação registrou erro (R8.16).
+    if (conflicts.has(key)) continue;
+
     const value = flat[key];
     if (value === null || value === undefined || toText(value) === '') continue;
 

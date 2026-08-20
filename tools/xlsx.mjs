@@ -68,12 +68,19 @@ function readSheetIndex(files) {
     const rid = /r:id="([^"]+)"/.exec(tag[0])?.[1];
     const sheetId = /sheetId="(\d+)"/.exec(tag[0])?.[1];
 
-    // Target pode vir absoluto ("/xl/worksheets/sheet1.xml") ou relativo ao xl/.
+    // Sem `r:id` resolvido não existe mapeamento confiável. Cair para
+    // `sheet${sheetId}.xml` recriaria exatamente o deslocamento que esta função
+    // corrige, e em silêncio — melhor recusar o arquivo do que devolver a aba errada.
     const target = rid ? rels.get(rid) : undefined;
-    const path = target
-      ? `xl/${target.replace(/^\/?(xl\/)?/, '')}`
-      : `xl/worksheets/sheet${sheetId}.xml`; // último recurso, para arquivo sem rels
+    if (!target) {
+      throw new Error(
+        `aba "${decodeXml(name || `sheetId=${sheetId}`)}": relacionamento r:id ausente em ` +
+        'xl/_rels/workbook.xml.rels; sem ele não há como localizar a planilha com segurança'
+      );
+    }
 
+    // Target pode vir absoluto ("/xl/worksheets/sheet1.xml") ou relativo ao xl/.
+    const path = `xl/${target.replace(/^\/?(xl\/)?/, '')}`;
     return { name: decodeXml(name || ''), path };
   }).filter((sheet) => sheet.name);
 }
