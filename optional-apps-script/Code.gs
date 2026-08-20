@@ -61,6 +61,27 @@ var COORD_FIELDS = {
   PRIMARY_OFFERS: ['latitude', 'longitude']
 };
 
+/**
+ * Cabecalhos criticos por aba, conforme docs/DATA_CONTRACT.md.
+ *
+ * Existe porque validar so a coluna de ID deixa passar o pior caso do projeto: apagar
+ * ou renomear `latitude` em LISTINGS nao gera nenhum achado — a validacao de
+ * coordenada simplesmente e pulada por falta de indice — enquanto o navegador
+ * normaliza todas as coordenadas para null e o mapa fica vazio. Cabecalho renomeado
+ * em silencio quebra producao sem erro de compilacao.
+ */
+var REQUIRED_HEADERS = {
+  LISTINGS: ['listing_id', 'title', 'source_url', 'property_type', 'locality', 'latitude',
+    'longitude', 'asking_price_brl', 'area_m2', 'asking_price_brl_m2', 'bedrooms',
+    'observed_at', 'confidence_flag', 'coordinate_precision'],
+  DEVELOPMENTS: ['development_id', 'name', 'latitude', 'longitude', 'neighborhood',
+    'confidence_flag', 'spatial_usable', 'last_verified_at'],
+  ANCHORS: ['place_id', 'name', 'category', 'latitude', 'longitude', 'confidence_flag',
+    'coordinate_precision', 'last_verified_at'],
+  PRIMARY_MARKET: ['id', 'name', 'locality', 'lat', 'lon', 'price_min_brl', 'price_max_brl',
+    'ppm_min_brl_m2', 'ppm_max_brl_m2', 'offer_count', 'confidence_flag']
+};
+
 /** Datasets que o endpoint read-only pode servir. Allowlist — nunca aceite nome livre. */
 var ALLOWED_DATASETS = REQUIRED_SHEETS.concat(OPTIONAL_SHEETS);
 
@@ -386,9 +407,13 @@ function recalculateDerivedFields() {
 
     for (var i = 0; i < rows.length; i++) {
       var current = rows[i][index.asking_price_brl_m2];
-      var currentNumber = toNumber_(current);
 
-      if (currentNumber !== null && currentNumber > 0) {
+      // Preserva QUALQUER celula nao vazia, inclusive 0, negativo ou texto.
+      // Checar "e um numero positivo" faria a manutencao de 6 horas sobrescrever
+      // justamente os valores invalidos, apagando a evidencia do dado ruim antes que
+      // validateAll() pudesse registra-la em DATA_QUALITY. O contrato e "so quando
+      // vazio", e vazio quer dizer vazio.
+      if (String(current === null || current === undefined ? '' : current).trim() !== '') {
         column.push([current]);
         continue;
       }
@@ -472,10 +497,20 @@ function validateSheet_(sheet, name, report) {
   var headers = headersOf_(sheet);
   var index = headerIndex_(headers);
 
+  // Todos os cabeçalhos críticos, não só o do ID.
+  var required = REQUIRED_HEADERS[name] || [];
+  var missing = [];
+  for (var h = 0; h < required.length; h++) {
+    if (index[required[h]] === undefined) missing.push(required[h]);
+  }
+  if (missing.length > 0) {
+    report('error', name, 1, '', missing.join(', '), 'MISSING_HEADER',
+      'Cabeçalho(s) obrigatório(s) ausente(s): ' + missing.join(', ') +
+      '. Renomear ou apagar coluna quebra a aplicação sem erro visível.');
+  }
+
   var idField = ID_FIELD[name];
   if (idField && index[idField] === undefined) {
-    report('error', name, 1, '', idField, 'MISSING_HEADER',
-      'Cabeçalho obrigatório ausente: ' + idField);
     return; // sem coluna de ID não dá para validar linha a linha
   }
 

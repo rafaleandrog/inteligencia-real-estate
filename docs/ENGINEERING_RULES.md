@@ -185,3 +185,14 @@ Cada uma nasce de um erro que aconteceu de verdade.
   abas.** A planilha repete 12 IDs entre `PRIMARY_MARKET` e `DEVELOPMENTS`, então buscar registro
   só por `id` numa lista achatada devolve o primeiro que aparecer. Qualquer seleção, deduplicação
   ou índice sobre entidades misturadas usa a chave composta `(kind, id)`.
+- **R8.19** *(2026-08-20, review do Codex na PR #1)* **"Só quando vazio" quer dizer vazio, não
+  "quando inválido".** O recálculo de campo derivado testava se a célula tinha um número
+  positivo; com isso o job de manutenção sobrescrevia justamente os valores ruins — `0`,
+  negativo, texto — apagando a evidência do dado inválido antes que a validação pudesse
+  registrá-la. Rotina automática preserva toda célula não vazia; sinalizar é trabalho da
+  validação, e apagar é decisão humana.
+- **R8.20** *(2026-08-20, review do Codex na PR #1)* **Validação de schema cobre todos os
+  cabeçalhos críticos, não só o do ID.** Apagar `latitude` de `LISTINGS` não gerava achado
+  nenhum — a validação de coordenada era pulada por falta de índice — enquanto o navegador
+  normalizava todas as coordenadas para `null` e o mapa ficava vazio. Guard que pula em silêncio
+  quando o dado some é pior que guard nenhum, porque reporta saúde.
