@@ -58,21 +58,6 @@ test('filtro de preço exclui registro sem preço quando ativo', () => {
   assert.equal(matchesFilters(semPreco, { ...createFilterState(), priceMin: 100000 }), false);
 });
 
-test('filtro de preço usa a faixa do mercado primário', () => {
-  const primary = rec({
-    kind: 'primary', price: 2600000, price_min_brl: 2600000, price_max_brl: 7464600,
-  });
-
-  // A faixa 2,6 mi – 7,46 mi intersecta um teto de 3 mi.
-  assert.equal(matchesFilters(primary, { ...createFilterState(), priceMax: 3000000 }), true);
-  // E também um piso de 7 mi.
-  assert.equal(matchesFilters(primary, { ...createFilterState(), priceMin: 7000000 }), true);
-  // Mas não um teto abaixo do mínimo da faixa.
-  assert.equal(matchesFilters(primary, { ...createFilterState(), priceMax: 1000000 }), false);
-  // Nem um piso acima do máximo da faixa.
-  assert.equal(matchesFilters(primary, { ...createFilterState(), priceMin: 8000000 }), false);
-});
-
 test('filtro de quartos é "pelo menos"', () => {
   assert.equal(matchesFilters(rec({ bedrooms: 3 }), { ...createFilterState(), bedrooms: 3 }), true);
   assert.equal(matchesFilters(rec({ bedrooms: 4 }), { ...createFilterState(), bedrooms: 3 }), true);

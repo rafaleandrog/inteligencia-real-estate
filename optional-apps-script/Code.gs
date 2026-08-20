@@ -23,7 +23,7 @@
 var APP_VERSION = '1.0.0';
 
 /** Abas obrigatórias da V1. Ausência é erro crítico. */
-var REQUIRED_SHEETS = ['LISTINGS', 'DEVELOPMENTS', 'ANCHORS', 'PRIMARY_MARKET'];
+var REQUIRED_SHEETS = ['LISTINGS', 'DEVELOPMENTS', 'ANCHORS'];
 
 /** Abas previstas para as próximas fases. Ausência é aviso, nunca erro. */
 var OPTIONAL_SHEETS = ['PRIMARY_OFFERS', 'IVV_MONTHLY', 'IVV_REGION', 'RA_PROFILES'];
@@ -44,20 +44,14 @@ var ID_FIELD = {
   LISTINGS: 'listing_id',
   DEVELOPMENTS: 'development_id',
   ANCHORS: 'place_id',
-  PRIMARY_MARKET: 'id',
   PRIMARY_OFFERS: 'observation_id'
 };
 
-/**
- * Colunas de coordenada por aba.
- * PRIMARY_MARKET usa lat/lon, e não latitude/longitude como as outras — divergência
- * D1 de docs/DATA_CONTRACT.md.
- */
+/** Colunas de coordenada por aba. */
 var COORD_FIELDS = {
   LISTINGS: ['latitude', 'longitude'],
   DEVELOPMENTS: ['latitude', 'longitude'],
   ANCHORS: ['latitude', 'longitude'],
-  PRIMARY_MARKET: ['lat', 'lon'],
   PRIMARY_OFFERS: ['latitude', 'longitude']
 };
 
@@ -73,8 +67,8 @@ var COORD_FIELDS = {
  * NAO EDITE A MAO. A lista e derivada mecanicamente da uniao entre os campos que
  * docs/DATA_CONTRACT.md marca como obrigatorios e os que src/normalize.js le de fato,
  * intersectada com as colunas que o contrato declara para cada aba — sem a intersecao,
- * coordinate_precision seria exigido em DEVELOPMENTS e PRIMARY_MARKET, que nao tem essa
- * coluna, e a validacao acusaria erro numa planilha correta.
+ * coordinate_precision seria exigido em DEVELOPMENTS, que nao tem essa coluna, e a
+ * validacao acusaria erro numa planilha correta.
  *
  * tests/contract.test.js recalcula a derivacao e falha se esta lista divergir, entao
  * mudanca no contrato ou no normalizador obriga a atualizar aqui na mesma PR.
@@ -98,12 +92,6 @@ var REQUIRED_HEADERS = {
     'address', 'category', 'confidence_flag', 'coordinate_precision', 'coordinate_source_url',
     'last_verified_at', 'latitude', 'longitude', 'name', 'neighborhood', 'operator_name',
     'place_id', 'ra_geo_id', 'scale_capacity', 'source_url', 'status', 'subcategory'
-  ],
-  PRIMARY_MARKET: [
-    'address', 'area_max_m2', 'area_min_m2', 'bedrooms_max', 'bedrooms_min', 'company_url',
-    'confidence_flag', 'expected_delivery', 'id', 'lat', 'locality', 'lon', 'name',
-    'observed_at', 'offer_count', 'ppm_max_brl_m2', 'ppm_min_brl_m2', 'price_max_brl',
-    'price_min_brl'
   ],
 };
 
@@ -689,8 +677,7 @@ function refreshMeta() {
   var countKey = {
     LISTINGS: 'rows_listings',
     DEVELOPMENTS: 'rows_developments',
-    ANCHORS: 'rows_anchors',
-    PRIMARY_MARKET: 'rows_primary_market'
+    ANCHORS: 'rows_anchors'
   };
 
   REQUIRED_SHEETS.forEach(function (name) {

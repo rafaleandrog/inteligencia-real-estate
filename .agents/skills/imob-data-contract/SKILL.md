@@ -34,7 +34,7 @@ site em produção sem erro de compilação, sem teste vermelho, sem aviso — s
 
 ## Entidades
 
-**Obrigatórias na V1** — `LISTINGS`, `DEVELOPMENTS`, `ANCHORS`, `PRIMARY_MARKET`.
+**Obrigatórias na V1** — `LISTINGS`, `DEVELOPMENTS`, `ANCHORS`.
 Ausência de qualquer uma → estado de erro legível.
 
 **Opcionais** — `PRIMARY_OFFERS`, `IVV_MONTHLY`, `IVV_REGION`, `RA_PROFILES`.

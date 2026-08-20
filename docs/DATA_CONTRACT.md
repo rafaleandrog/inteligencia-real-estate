@@ -12,7 +12,7 @@ atualizar validação → atualizar migração → adicionar teste.
 - Uma linha = um registro observável.
 - Cabeçalhos em `snake_case` e **nunca renomeados** sem versionar o contrato.
 - IDs estáveis e únicos.
-- Coordenadas em WGS84: `latitude`, `longitude` (exceto `PRIMARY_MARKET` — ver divergência D1).
+- Coordenadas em WGS84: `latitude`, `longitude`.
 - Valores monetários são **números**, sem `R$` nem separador de milhar dentro da célula.
 - Datas em `YYYY-MM-DD`.
 - Toda informação de mercado guarda fonte e data de observação/verificação.
@@ -154,33 +154,6 @@ Chave: `place_id`. 35 linhas.
 Diferente dos anúncios, âncoras têm coordenada **precisa** (`school_polygon_reference_point` e
 similares, `confidence_flag: high`).
 
-### PRIMARY_MARKET — oferta primária agregada
-Chave: `id`. 12 linhas. Uma linha por empreendimento, agregando as ofertas de `PRIMARY_OFFERS`.
-
-| Campo | Tipo | Obrig. | Preenchimento |
-|---|---|---|---|
-| `id` | texto | **sim** | 12/12 |
-| `name` | texto | **sim** | 12/12 |
-| `locality` | texto | sim | 12/12 |
-| `address` | texto | sim | 12/12 |
-| **`lat`** / **`lon`** | número | **sim** | 12/12 |
-| `expected_delivery` | data | não | 5/12 |
-| `company_url` | url | não | 9/12 |
-| `area_min_m2` / `area_max_m2` | número | sim | 12/12 |
-| `bedrooms_min` / `bedrooms_max` | inteiro | sim | 12/12 |
-| `price_min_brl` / `price_max_brl` | número | sim | 12/12 |
-| `ppm_min_brl_m2` / `ppm_max_brl_m2` | número | sim | 12/12 |
-| `offer_count` | inteiro | sim | 12/12 |
-| `observed_at` | data | sim | 12/12 |
-| `confidence_flag` | enum | sim | 12/12 |
-
-> **Divergência D1 — esta aba usa `lat`/`lon`, não `latitude`/`longitude`.** É a única das quatro
-> obrigatórias que faz isso. Ler `latitude` aqui devolve `null` e o empreendimento some do mapa
-> sem erro. Coberto por teste em `tests/normalize.test.js`.
-
-Sendo faixas e não valores únicos, o preço/m² usado na mediana é o **ponto médio** de
-`ppm_min_brl_m2` e `ppm_max_brl_m2`. Com só uma ponta preenchida, usa-se a que existe.
-
 ---
 
 ## Abas opcionais
@@ -190,7 +163,7 @@ vazia (R2.5). Nenhuma delas é lida pela tela da V1.
 
 | Aba | Chave | Linhas | Papel |
 |---|---|---|---|
-| `PRIMARY_OFFERS` | `observation_id` | 29 | Observações unitárias do mercado primário; preserva a granularidade que `PRIMARY_MARKET` agrega |
+| `PRIMARY_OFFERS` | `observation_id` | 29 | Observações unitárias do mercado primário, previstas para uma fase futura |
 | `IVV_MONTHLY` | `reference_month` | 1 | Índice de Velocidade de Vendas mensal do DF |
 | `IVV_REGION` | `reference_month` + `market_region` + `bedroom_bucket` | 95 | IVV por região e faixa de quartos |
 | `RA_PROFILES` | `ra_geo_id` | 35 | Indicadores territoriais por Região Administrativa (censo + PDAD) |
@@ -211,7 +184,7 @@ as preenche. `setupProject()` deve completá-las **sem sobrescrever** o que já 
 
 Chaves: `app_version`, `dataset_version`, `last_data_change_at`, `last_validation_at`,
 `validation_status`, `validation_errors`, `validation_warnings`, `last_meta_refresh_at`,
-`rows_listings`, `rows_developments`, `rows_anchors`, `rows_primary_market`.
+`rows_listings`, `rows_developments`, `rows_anchors`.
 
 ### DATA_QUALITY
 `severity | sheet | row | record_id | field | code | message | detected_at`
@@ -234,9 +207,8 @@ Diagnóstico operacional, não auditoria corporativa. Histórico limitado a **5.
 
 | # | Onde | O quê |
 |---|---|---|
-| **D1** | `PRIMARY_MARKET` | Usa `lat`/`lon`; as outras três obrigatórias usam `latitude`/`longitude` |
 | **D2** | `IVV_REGION` | `ivv_pct` é alias de compatibilidade de `ivv_pct_published` |
-| **D3** | `reference/index-v3.html` × planilha | No V3, `primaryMarket` traz faixas como string (`area_range`) e um array `offers` aninhado. Na planilha isso vira colunas `*_min`/`*_max` e a aba `PRIMARY_OFFERS`. **A planilha vence** — `tools/reference-to-csv.mjs` faz a conversão e reproduz o `.xlsx` exatamente |
-| **D4** | `DEVELOPMENTS` | 22 linhas na planilha × 10 no V3: 12 registros de `PRIMARY_MARKET` foram copiados usando apenas campos semanticamente equivalentes |
+| **D3** | `reference/index-v3.html` × planilha | No V3, `primaryMarket` traz ofertas aninhadas. Na migração futura, elas podem ser preservadas na aba opcional `PRIMARY_OFFERS`; não formam uma aba obrigatória do runtime |
+| **D4** | `DEVELOPMENTS` | 22 linhas na planilha × 10 no V3: 12 registros do mercado primário foram incorporados usando apenas campos semanticamente equivalentes |
 
 Divergência se registra. Não se resolve em silêncio (R8.3).

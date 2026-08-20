@@ -19,7 +19,7 @@ Acione **antes de publicar**. O objetivo é pegar o que passou pelos testes mas 
 - [ ] Dataset validado (`validateAll()` no Apps Script sem erro crítico)
 - [ ] `demoMode: true` funciona
 - [ ] Google Sheets funciona
-- [ ] As 4 abas obrigatórias carregam
+- [ ] As 3 abas obrigatórias carregam
 - [ ] Aba opcional ausente gera warning, não erro
 - [ ] Dado inválido não derruba a aplicação
 - [ ] Qualidade espacial visível na interface

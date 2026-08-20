@@ -46,8 +46,12 @@ seja mudança de configuração e não reescrita:
 | `demo` | `data/demo.json` — demonstração e desenvolvimento offline |
 | `appsscript` | Web App do Apps Script — alternativa |
 
-As quatro abas obrigatórias são buscadas em paralelo com `Promise.allSettled`: uma aba com
-problema não descarta as outras três que chegaram bem.
+O GViz é carregado por **JSONP** (`tqx=responseHandler`), não por `fetch`: o endpoint
+público não envia `Access-Control-Allow-Origin` e o navegador bloquearia a resposta no
+GitHub Pages mesmo com a planilha compartilhada para leitura.
+
+As três abas obrigatórias são buscadas em paralelo com `Promise.allSettled`: uma aba com
+problema não descarta as outras duas que chegaram bem.
 
 O Apps Script **não** substitui o GViz enquanto a leitura direta for simples e confiável.
 

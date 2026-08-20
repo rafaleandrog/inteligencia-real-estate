@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import {
-  parseGvizResponse, gvizTableToRows, gvizUrl, resolveStrategy, flattenEntities,
+  parseGvizResponse, gvizTableToRows, gvizUrl, fetchGvizSheet, resolveStrategy, flattenEntities,
   REQUIRED_ENTITIES,
 } from '../src/data.js';
 import { normalizeAll, isApproximateLocation } from '../src/normalize.js';
@@ -47,9 +47,39 @@ test('gvizTableToRows devolve lista vazia para tabela ausente', () => {
 });
 
 test('gvizUrl escapa nome de aba', () => {
-  const url = gvizUrl('ABC123', 'PRIMARY MARKET');
+  const url = gvizUrl('ABC123', 'LISTINGS', 'imobCallback');
   assert.match(url, /\/d\/ABC123\/gviz\/tq/);
-  assert.match(url, /sheet=PRIMARY%20MARKET/);
+  assert.match(url, /sheet=LISTINGS/);
+  assert.equal(new URL(url).searchParams.get('tqx'), 'out:json;responseHandler:imobCallback');
+});
+
+test('fetchGvizSheet usa JSONP porque o GViz público não permite fetch cross-origin', async () => {
+  const scope = {};
+  let appended;
+  const documentRef = {
+    createElement: () => ({ remove() {} }),
+    head: {
+      append(script) {
+        appended = script;
+        const tqx = new URL(script.src).searchParams.get('tqx');
+        const callback = tqx.split('responseHandler:')[1];
+        queueMicrotask(() => scope[callback]({
+          status: 'ok',
+          table: {
+            cols: [{ id: 'A', label: 'listing_id' }],
+            rows: [{ c: [{ v: 'LIST_1' }] }],
+          },
+        }));
+      },
+    },
+  };
+
+  const rows = await fetchGvizSheet('ABC123', 'LISTINGS', {
+    documentRef, scope, timeoutMs: 100,
+  });
+  assert.equal(appended.async, true);
+  assert.deepEqual(rows, [{ listing_id: 'LIST_1' }]);
+  assert.equal(Object.keys(scope).length, 0, 'callback temporário precisa ser removido');
 });
 
 test('resolveStrategy: demoMode vence e valor inválido cai em gviz', () => {
@@ -62,7 +92,7 @@ test('resolveStrategy: demoMode vence e valor inválido cai em gviz', () => {
   assert.equal(resolveStrategy({}), 'gviz');
 });
 
-test('demo.json tem as quatro entidades obrigatórias preenchidas', () => {
+test('demo.json tem as três entidades obrigatórias preenchidas', () => {
   for (const entity of REQUIRED_ENTITIES) {
     assert.ok(Array.isArray(demo[entity]), `${entity} deve ser array`);
     assert.ok(demo[entity].length > 0, `${entity} não pode estar vazia`);
@@ -133,7 +163,7 @@ test('ok é falso quando falta entidade obrigatória', async () => {
   const config = {
     demoMode: true,
     demoUrl: 'inline',
-    sheets: { listings: 'LISTINGS', developments: 'DEVELOPMENTS', anchors: 'ANCHORS', primaryMarket: 'PRIMARY_MARKET' },
+    sheets: { listings: 'LISTINGS', developments: 'DEVELOPMENTS', anchors: 'ANCHORS' },
   };
 
   const original = globalThis.fetch;
@@ -142,22 +172,20 @@ test('ok é falso quando falta entidade obrigatória', async () => {
   };
 
   try {
-    // Falta primaryMarket: as outras três carregam, mas o dataset está incompleto.
+    // Falta anchors: as outras duas carregam, mas o dataset está incompleto.
     respondWith({
       listings: [{ listing_id: 'A' }],
       developments: [{ development_id: 'B' }],
-      anchors: [{ place_id: 'C' }],
     });
     const partial = await loadDataset(config);
     assert.equal(partial.ok, false, 'dataset parcial não pode ser ok');
-    assert.ok(partial.errors.some((e) => /PRIMARY_MARKET/.test(e)), 'a aba faltante precisa aparecer em errors');
+    assert.ok(partial.errors.some((e) => /ANCHORS/.test(e)), 'a aba faltante precisa aparecer em errors');
 
-    // Com as quatro presentes, ok.
+    // Com as três presentes, ok.
     respondWith({
       listings: [{ listing_id: 'A' }],
       developments: [{ development_id: 'B' }],
       anchors: [{ place_id: 'C' }],
-      primaryMarket: [{ id: 'D' }],
     });
     const complete = await loadDataset(config);
     assert.equal(complete.ok, true);
@@ -176,22 +204,11 @@ test('demo.json entrega expected_delivery como data ISO', () => {
   }
 });
 
-test('IDs não são únicos entre entidades — a interface precisa de (kind, id)', () => {
-  // Regressão P1: a planilha repete 12 IDs entre PRIMARY_MARKET e DEVELOPMENTS
-  // (divergência D4). Selecionar por id sozinho abria o detalhe errado.
+test('a chave composta (kind, id) é única no demo', () => {
   const entities = {};
   for (const entity of REQUIRED_ENTITIES) entities[entity] = normalizeAll(entity, demo[entity]).records;
   const all = flattenEntities(entities);
 
-  const porId = new Map();
-  for (const record of all) {
-    if (!porId.has(record.id)) porId.set(record.id, []);
-    porId.get(record.id).push(record.kind);
-  }
-  const colisoes = [...porId.values()].filter((kinds) => kinds.length > 1);
-  assert.ok(colisoes.length > 0, 'o dataset tem colisão de ID entre entidades');
-
-  // A chave composta precisa ser única — é o que a interface usa para selecionar.
   const chaves = new Set(all.map((r) => `${r.kind}:${r.id}`));
   assert.equal(chaves.size, all.length, 'a chave (kind, id) precisa ser única');
 });
@@ -200,7 +217,7 @@ test('nenhum registro do demo é declarado com localização exata sem precisão
   const entities = {};
   for (const entity of REQUIRED_ENTITIES) entities[entity] = normalizeAll(entity, demo[entity]).records;
 
-  for (const entity of ['listings', 'developments', 'primaryMarket']) {
+  for (const entity of ['listings', 'developments']) {
     const exatos = entities[entity].filter((r) => r.coord && !isApproximateLocation(r));
     assert.equal(exatos.length, 0,
       `${entity}: ${exatos.length} registro(s) seriam anunciados como localização verificada`);

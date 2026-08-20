@@ -71,10 +71,10 @@ visible0 !== '—' && visible0 !== '0' ? pass('KPI de itens visíveis preenchido
 /sem coordenada/.test(note) ? pass('registros sem coordenada são declarados na tela') : fail('nota de coordenada ausente');
 
 const counts = {};
-for (const k of ['Listing','Primary','Development','Anchor'])
+for (const k of ['Listing','Development','Anchor'])
   counts[k] = (await page.locator('#count'+k).textContent()).trim();
 console.log('  camadas:', JSON.stringify(counts));
-Object.values(counts).every((v) => v !== '0') ? pass('as 4 camadas têm registros') : fail('camada vazia: '+JSON.stringify(counts));
+Object.values(counts).every((v) => v !== '0') ? pass('as 3 camadas têm registros') : fail('camada vazia: '+JSON.stringify(counts));
 
 console.log('\n== 6. Busca ==');
 const n = (s) => Number(s.replace(/\./g, '')) || 0;
@@ -157,8 +157,7 @@ xss.temImg === 0 ? pass('nenhum elemento com handler injetado no tooltip') : fai
 xss.tooltipTexto ? pass(`tooltip renderiza texto: "${xss.tooltipTexto}"`) : fail('tooltip não abriu');
 
 console.log('\n== 12b. Seleção por (kind, id) ==');
-// 12 IDs se repetem entre PRIMARY_MARKET e DEVELOPMENTS: clicar num empreendimento
-// não pode abrir o detalhe da oferta primária de mesmo ID.
+// IDs só são únicos dentro da própria entidade; a seleção preserva o tipo.
 await page.locator('#map path.marker-development').first().click({ force: true });
 await page.waitForTimeout(400);
 const kindSelecionado = (await page.locator('#detailBody .detail-kind').textContent()).trim();

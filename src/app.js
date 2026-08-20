@@ -45,11 +45,10 @@ let map = null;
 let markerLayer = null;
 
 /** Raio do marcador por camada: anúncio é o dado principal, âncora é contexto. */
-const MARKER_RADIUS = { listing: 6, primary: 7, development: 7, anchor: 4 };
+const MARKER_RADIUS = { listing: 6, development: 7, anchor: 4 };
 
 const LAYER_LABEL = {
   listing: 'Anúncio secundário',
-  primary: 'Mercado primário',
   development: 'Empreendimento',
   anchor: 'Âncora',
 };
@@ -96,10 +95,8 @@ function renderMarkers(records) {
     tooltip.textContent = record.title || record.id;
     marker.bindTooltip(tooltip, { direction: 'top' });
 
-    // Seleção por (kind, id): os IDs NÃO são únicos entre entidades. No dataset
-    // atual 12 registros PRIMARY_* existem tanto em PRIMARY_MARKET quanto em
-    // DEVELOPMENTS, e buscar só por id devolvia sempre o primeiro da lista —
-    // abrindo o detalhe errado em mais da metade dos empreendimentos.
+    // Seleção por (kind, id): o contrato garante unicidade dentro de cada entidade,
+    // não entre entidades diferentes.
     marker.on('click', () => selectRecord(recordKey(record)));
 
     marker.addTo(markerLayer);
@@ -198,19 +195,6 @@ function buildDetailBody(record) {
     addRow(dl, 'IPTU', formatBRL(record.iptu_brl));
     addRow(dl, 'Portal', record.source);
     addRow(dl, 'Observado em', formatDate(record.observed_at));
-  } else if (record.kind === 'primary') {
-    addRow(dl, 'Localidade', record.locality);
-    addRow(dl, 'Preço', record.price_min_brl === null ? ''
-      : `${formatBRL(record.price_min_brl)} – ${formatBRL(record.price_max_brl)}`);
-    addRow(dl, 'Área', record.area_min_m2 === null ? ''
-      : `${formatM2(record.area_min_m2)} – ${formatM2(record.area_max_m2)}`);
-    addRow(dl, 'Preço/m²', record.ppm_min_brl_m2 === null ? ''
-      : `${formatPriceM2(record.ppm_min_brl_m2)} – ${formatPriceM2(record.ppm_max_brl_m2)}`);
-    addRow(dl, 'Quartos', record.bedrooms_min === null ? ''
-      : `${record.bedrooms_min} a ${record.bedrooms_max}`);
-    addRow(dl, 'Ofertas', record.offer_count === null ? '' : formatNumber(record.offer_count));
-    addRow(dl, 'Entrega prevista', record.expected_delivery);
-    addRow(dl, 'Observado em', formatDate(record.observed_at));
   } else if (record.kind === 'development') {
     addRow(dl, 'Incorporadora', record.developer_name);
     addRow(dl, 'Bairro', record.locality);
@@ -251,8 +235,7 @@ function buildDetailBody(record) {
  * Chave de identificação de um registro na interface.
  *
  * `id` sozinho não serve: o contrato garante unicidade **dentro** de cada aba, não
- * entre elas — e a planilha de fato repete 12 IDs entre PRIMARY_MARKET e
- * DEVELOPMENTS (divergência D4 de docs/DATA_CONTRACT.md).
+ * entre entidades diferentes.
  */
 function recordKey(record) {
   return `${record.kind}:${record.id}`;

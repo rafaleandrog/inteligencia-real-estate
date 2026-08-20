@@ -300,57 +300,11 @@ export function normalizeAnchor(row) {
   };
 }
 
-/**
- * Oferta agregada do mercado primário. Chave: `id`.
- *
- * Atenção ao schema: esta aba usa `lat`/`lon`, e não `latitude`/`longitude` como as
- * outras três. A divergência está registrada em docs/DATA_CONTRACT.md.
- */
-export function normalizePrimaryMarket(row) {
-  const coord = toCoord(row.lat, row.lon);
-  const priceMin = toNumber(row.price_min_brl);
-  const ppmMin = toNumber(row.ppm_min_brl_m2);
-  const ppmMax = toNumber(row.ppm_max_brl_m2);
-
-  // Faixa de preço/m²: sem um valor único na planilha, o ponto médio da faixa é a
-  // representação honesta para a mediana. Com só uma das pontas, usa a que existe.
-  let priceM2 = null;
-  if (ppmMin !== null && ppmMax !== null) priceM2 = (ppmMin + ppmMax) / 2;
-  else if (ppmMin !== null) priceM2 = ppmMin;
-  else if (ppmMax !== null) priceM2 = ppmMax;
-
-  return {
-    kind: 'primary',
-    id: toText(row.id),
-    title: toText(row.name),
-    locality: toText(row.locality),
-    address: toText(row.address),
-    coord,
-    price: priceMin,
-    price_min_brl: priceMin,
-    price_max_brl: toNumber(row.price_max_brl),
-    price_m2: priceM2,
-    ppm_min_brl_m2: ppmMin,
-    ppm_max_brl_m2: ppmMax,
-    area_min_m2: toNumber(row.area_min_m2),
-    area_max_m2: toNumber(row.area_max_m2),
-    bedrooms: toInteger(row.bedrooms_min),
-    bedrooms_min: toInteger(row.bedrooms_min),
-    bedrooms_max: toInteger(row.bedrooms_max),
-    offer_count: toInteger(row.offer_count),
-    expected_delivery: toDateISO(row.expected_delivery),
-    source_url: toText(row.company_url),
-    observed_at: toDateISO(row.observed_at),
-    ...spatialQuality(row),
-  };
-}
-
 /** Normalizador por nome de entidade, usado pelo loader. */
 export const NORMALIZERS = {
   listings: normalizeListing,
   developments: normalizeDevelopment,
   anchors: normalizeAnchor,
-  primaryMarket: normalizePrimaryMarket,
 };
 
 /**

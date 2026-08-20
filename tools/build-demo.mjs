@@ -6,8 +6,7 @@
 // O demo precisa ter exatamente o mesmo formato que a Google Sheet devolve, para que
 // "funciona em demo" signifique alguma coisa sobre produção. Por isso a origem é o
 // .xlsx de migração — que é o conteúdo canônico da planilha — e não o HTML de
-// referência, cujo PRIMARY_MARKET usa um formato antigo de faixa em string
-// (docs/DATA_CONTRACT.md, divergência registrada).
+// referência, cuja estrutura interna não é o contrato da planilha em produção.
 //
 // As linhas saem cruas, sem normalizar: normalizar é trabalho de src/normalize.js, e
 // o demo tem que exercitar esse caminho igual à planilha real.
@@ -24,7 +23,6 @@ const ENTITY_BY_SHEET = {
   LISTINGS: 'listings',
   DEVELOPMENTS: 'developments',
   ANCHORS: 'anchors',
-  PRIMARY_MARKET: 'primaryMarket',
 };
 
 /**
