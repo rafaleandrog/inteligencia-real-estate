@@ -40,10 +40,15 @@ jobs:
       - name: Referência V3 preservada
         run: |
           # reference/index-v3.html é a referência funcional do modelo anterior e a origem
-          # do dataset. Esvaziá-la ou removê-la quebra a migração (AGENTS.md).
-          size=$(wc -c < reference/index-v3.html)
-          if [ "$size" -lt 100000 ]; then
-            echo "::error::reference/index-v3.html tem $size bytes - parece truncada"
+          # do dataset (AGENTS.md). Deve permanecer byte a byte idêntica: um limite de
+          # tamanho aceitaria qualquer reescrita maior que o mínimo.
+          # Alterá-la deliberadamente exige atualizar este hash na mesma PR.
+          expected=07c6cacca8ce089d4f0d4cab203a6f8a1d279e0db6a0ad57bb8dd1623ca4c891
+          actual=$(sha256sum reference/index-v3.html | cut -d' ' -f1)
+          if [ "$actual" != "$expected" ]; then
+            echo "::error::reference/index-v3.html foi modificada"
+            echo "  esperado: $expected"
+            echo "  atual:    $actual"
             exit 1
           fi
 
@@ -68,8 +73,10 @@ jobs:
         run: |
           # Padrões de credencial real. O ID da planilha e a URL do /exec são públicos
           # por design (docs/ENGINEERING_RULES.md R4.2) e não entram aqui.
-          if grep -rInE '(sk-[A-Za-z0-9_-]{20,}|gh[pousr]_[A-Za-z0-9]{30,}|AIza[A-Za-z0-9_-]{35}|-----BEGIN [A-Z ]*PRIVATE KEY-----)' \
-               --exclude-dir=.git --exclude-dir=node_modules --exclude-dir=assets \
+          # assets/ NÃO é excluído: o GitHub Pages serve esse diretório, então um
+          # segredo colocado ali seria publicado como qualquer outro.
+          if grep -rInE '(sk-[A-Za-z0-9_-]{20,}|github_pat_[A-Za-z0-9_]{22,}|gh[pousr]_[A-Za-z0-9]{30,}|AIza[A-Za-z0-9_-]{35}|-----BEGIN [A-Z ]*PRIVATE KEY-----)' \
+               --exclude-dir=.git --exclude-dir=node_modules \
                --exclude=validate.yml . ; then
             echo "::error::possível secret versionado"
             exit 1
@@ -80,8 +87,12 @@ jobs:
         run: |
           # Regra anti-dessincronização (docs/ARCHITECTURE.md, R2.2/R2.4):
           # semente de importação mora em migration/, nunca na raiz nem em data/.
-          if ls ./*.xlsx ./*.csv >/dev/null 2>&1; then
+          # find com predicados agrupados em vez de "ls ./*.xlsx ./*.csv": com um glob
+          # sem correspondencia o shell passa o padrao literal para ls, que sai com
+          # status != 0 e faz o if falhar mesmo havendo snapshot do outro tipo.
+          if find . -maxdepth 1 \( -name '*.xlsx' -o -name '*.csv' \) | grep -q .; then
             echo "::error::planilha na raiz - mova para migration/"
+            find . -maxdepth 1 \( -name '*.xlsx' -o -name '*.csv' \)
             exit 1
           fi
           echo "ok"

@@ -112,3 +112,23 @@ Cada uma nasce de um erro que aconteceu de verdade.
   divergem, a fonte que alimenta a Google Sheet vence — foi o caso de `PRIMARY_MARKET`, em que o
   `.xlsx` normalizado prevalece sobre o formato de range em string da referência V3. Registre a
   divergência no contrato em vez de escolher em silêncio.
+- **R8.4** *(2026-08-20, review do Codex na PR #1)* **Verificação de CI precisa falhar no cenário
+  real, não só no cenário completo.** `ls ./*.xlsx ./*.csv` só detecta quando os **dois** padrões
+  existem: com apenas um, o shell passa o outro glob literalmente para `ls`, que sai com status
+  != 0 e faz o `if` inteiro falhar. Use `find . \( -name A -o -name B \) | grep -q .`. Ao escrever
+  um guard, reproduza o cenário de falha que ele deve pegar — um guard que nunca dispara é pior
+  que nenhum, porque dá confiança falsa.
+- **R8.5** *(2026-08-20, review do Codex na PR #1)* **Integridade se verifica por checksum, não
+  por tamanho.** Um piso de bytes aceita qualquer reescrita maior que o mínimo. Arquivo que deve
+  permanecer imutável — `reference/index-v3.html` — é fixado por hash SHA-256 no CI. Alterá-lo
+  deliberadamente exige atualizar o hash na mesma PR, o que torna a mudança visível no diff.
+- **R8.6** *(2026-08-20, review do Codex na PR #1)* **Varredura de secret não exclui diretório
+  publicado.** `assets/` é servido pelo GitHub Pages: um segredo ali vaza igual a um em `src/`.
+  Exclua arquivo específico conhecido, nunca um diretório inteiro que vai para produção. Mantenha
+  também os formatos de token atuais — `github_pat_` (fine-grained) não casa com o padrão
+  `ghp_`/`gho_`/`ghs_` clássico.
+- **R8.7** *(2026-08-20, review do Codex na PR #1)* **Política mora em um arquivo só.** As
+  prioridades de review vivem na seção `## Code Review Rules` do `AGENTS.md`; qualquer outro
+  arquivo — inclusive `.github/codex/prompts/review.md` — **aponta** para lá em vez de copiar.
+  Duas cópias divergem na primeira vez que só uma é atualizada, e a partir daí revisão automática
+  e revisão manual cobram coisas diferentes.
