@@ -2,36 +2,52 @@
 
 ## 1. Configure a planilha
 
-Siga `SHEET_SETUP.md` e confirme que `src/config.js` contém o ID correto da Google Sheet e `demoMode: false`.
+Siga [`SHEET_SETUP.md`](SHEET_SETUP.md) e confirme que `src/config.js` tem o ID correto e
+`dataSource: 'gviz'`.
 
-## 2. Crie o repositório
+A planilha **precisa estar compartilhada para leitura pública** — o navegador do visitante a
+consulta diretamente. Se não estiver, a aplicação mostra o estado de erro com "Tentar novamente"
+em vez de tela branca, mas não carrega dado nenhum.
 
-Crie um repositório no GitHub e coloque esta pasta na raiz.
+Para publicar sem a planilha ligada, use `demoMode: true`: a interface passa a exibir o selo
+laranja **Modo demonstração**, para que ninguém confunda o dataset de exemplo com produção.
 
-Estrutura mínima:
+## 2. Estrutura do repositório
 
 ```text
-index.html
+index.html                 página única da aplicação
 assets/
+  styles.css               visual
+  vendor/leaflet/          Leaflet 1.9.4 versionado (sem CDN)
 src/
-data/
-docs/
-tools/
-reference/
+  config.js                ID da planilha e origem dos dados
+  data.js                  estratégias de carregamento
+  normalize.js             conversão e normalização
+  filters.js               filtros, mediana, KPIs
+  format.js                formatação e saneamento
+  app.js                   interação e mapa
+data/demo.json             dataset de demonstração
+tests/                     56 testes (node --test)
+tools/                     migração, geração do demo, smoke test
+migration/                 semente .xlsx de importação
+reference/index-v3.html    referência funcional do modelo anterior
+optional-apps-script/      camada de governança na planilha
+docs/                      documentação
+.nojekyll                  impede o processamento Jekyll no Pages
 ```
 
-## 3. Primeiro push
+## 3. Trabalho no repositório
 
-No terminal, dentro da pasta:
+O repositório já existe. Trabalhe em branch e abra PR — **toda PR passa por review do
+Codex antes do merge** (`docs/AI_WORKFLOW.md`).
 
 ```bash
-git init
-git add index.html assets src data docs tools reference optional-apps-script .github .gitignore .nojekyll README.md CONTRIBUTING.md
-git commit -m "feat: initial real estate intelligence MVP"
-git branch -M main
-git remote add origin URL_DO_REPOSITORIO
-git push -u origin main
+git checkout -b minha-mudanca
+npm test                     # antes de commitar
+git push -u origin minha-mudanca
 ```
+
+Não há etapa de build: o que está no repositório é o que o GitHub Pages serve.
 
 ## 4. Ative GitHub Pages
 
