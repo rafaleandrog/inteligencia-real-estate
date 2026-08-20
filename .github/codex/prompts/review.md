@@ -34,11 +34,7 @@ Este arquivo cobre o que **não** está lá: como classificar e como reportar.
 | **P2** | Caso extremo não tratado, erro silenciado, dívida que vai doer |
 | **P3** | Legibilidade, consistência, melhoria opcional |
 
-A semântica de qualidade do dado é **P0**, não P2: `confidence_flag` e `coordinate_precision`
-precisam sobreviver da planilha até a tela; coordenada aproximada **nunca** pode ser apresentada
-como endereço ou lote exato; preço anunciado é **preço pedido**, não transação realizada.
-No dataset atual os 141 anúncios usam centroide de localidade com jitter — não é caso raro,
-é a regra.
+Os itens de **semântica de qualidade do dado** definidos no `AGENTS.md` são **P0**, não P2.
 
 ## Como reportar
 

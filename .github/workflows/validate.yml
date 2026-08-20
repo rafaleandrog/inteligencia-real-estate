@@ -63,11 +63,10 @@ jobs:
 
       - name: Testes
         run: |
-          if [ -d tests ] && ls tests/*.test.js >/dev/null 2>&1; then
-            node --test tests/
-          else
-            echo "sem testes ainda - nada a executar"
-          fi
+          # Glob do proprio Node em vez de "node --test tests/": passar o diretorio faz
+          # o Node tentar resolver "tests" como modulo e falhar com MODULE_NOT_FOUND.
+          # Aspas para o Node expandir o padrao, nao o shell.
+          npm test
 
       - name: Varredura de secrets
         run: |
@@ -90,9 +89,17 @@ jobs:
           # find com predicados agrupados em vez de "ls ./*.xlsx ./*.csv": com um glob
           # sem correspondencia o shell passa o padrao literal para ls, que sai com
           # status != 0 e faz o if falhar mesmo havendo snapshot do outro tipo.
-          if find . -maxdepth 1 \( -name '*.xlsx' -o -name '*.csv' \) | grep -q .; then
-            echo "::error::planilha na raiz - mova para migration/"
-            find . -maxdepth 1 \( -name '*.xlsx' -o -name '*.csv' \)
+          #
+          # A busca e recursiva, e nao so na raiz: o GitHub Pages publica o repositorio
+          # inteiro, entao data/listings.csv vazaria igual a um arquivo na raiz.
+          # migration/ (semente) e reference/ (modelo V3) sao as excecoes legitimas.
+          found=$(find . \
+                    \( -path ./.git -o -path ./node_modules -o -path ./migration \
+                       -o -path ./reference -o -path ./migration-csv \) -prune -o \
+                    \( -name '*.xlsx' -o -name '*.csv' \) -print)
+          if [ -n "$found" ]; then
+            echo "::error::snapshot de dados fora de migration/ - o GitHub Pages publicaria este arquivo"
+            echo "$found"
             exit 1
           fi
           echo "ok"

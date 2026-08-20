@@ -132,3 +132,24 @@ Cada uma nasce de um erro que aconteceu de verdade.
   arquivo — inclusive `.github/codex/prompts/review.md` — **aponta** para lá em vez de copiar.
   Duas cópias divergem na primeira vez que só uma é atualizada, e a partir daí revisão automática
   e revisão manual cobram coisas diferentes.
+- **R8.8** *(2026-08-20, review do Codex na PR #1)* **Documentação não promete arquivo que não
+  está no commit.** README descrevendo `npm test` sem `package.json` versionado, ou
+  `tools/reference-to-csv.mjs` que não existe, produz exatamente o problema que a auditoria
+  inicial encontrou neste repositório. Ou o arquivo entra na mesma PR, ou a documentação
+  descreve o que existe hoje.
+- **R8.9** *(2026-08-20, review do Codex na PR #1)* **Guard de publicação cobre tudo que é
+  publicado.** O GitHub Pages serve o repositório inteiro, então `-maxdepth 1` deixa passar
+  `data/listings.csv`. Guard de conteúdo publicado varre recursivamente e exclui apenas os
+  diretórios legítimos (`migration/`, `reference/`).
+- **R8.10** *(2026-08-20, execução dos testes)* **`node --test <diretório>` não funciona:** o Node
+  tenta resolver o caminho como módulo e falha com `MODULE_NOT_FOUND`. Use o glob do próprio
+  Node, entre aspas para o shell não expandir: `node --test "tests/**/*.test.js"`.
+- **R8.11** *(2026-08-20, execução dos testes)* **`Intl.NumberFormat` com `style: 'currency'`
+  separa o símbolo com espaço inseparável (U+00A0), não espaço comum.** Comparar a saída com um
+  literal `'R$ 0'` falha de forma invisível no diff. Compare com regex `/^R\$\s0$/` ou normalize
+  o espaço antes.
+- **R8.12** *(2026-08-20, teste de `toNumber`)* **Separador decimal exige regra explícita e
+  documentada.** `"R$ 2.500.000"` devolvia `null`: o caminho de "só pontos" não existia. A regra
+  adotada é dois ou mais pontos = milhar; um ponto = decimal. Um ponto só é genuinamente ambíguo
+  (`"2.500"` é 2500 em pt-BR e 2.5 em JavaScript) — o contrato resolve exigindo número sem
+  formatação na célula, e o teste documenta a escolha.
