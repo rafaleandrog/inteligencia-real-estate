@@ -1,0 +1,107 @@
+name: validate
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Arquivos obrigatórios
+        run: |
+          missing=0
+          for f in README.md AGENTS.md .nojekyll \
+                   docs/ENGINEERING_RULES.md docs/DATA_CONTRACT.md docs/ARCHITECTURE.md \
+                   docs/SHEET_SETUP.md docs/DEPLOYMENT.md docs/AI_WORKFLOW.md \
+                   reference/index-v3.html \
+                   .github/codex/prompts/review.md; do
+            if [ ! -f "$f" ]; then echo "::error::arquivo obrigatório ausente: $f"; missing=1; fi
+          done
+          for s in imob-implementer imob-debugger imob-reviewer \
+                   imob-data-contract imob-appscript imob-release; do
+            if [ ! -f ".agents/skills/$s/SKILL.md" ]; then
+              echo "::error::skill ausente: $s"; missing=1
+            fi
+          done
+          exit $missing
+
+      - name: Referência V3 preservada
+        run: |
+          # reference/index-v3.html é a referência funcional do modelo anterior e a origem
+          # do dataset (AGENTS.md). Deve permanecer byte a byte idêntica: um limite de
+          # tamanho aceitaria qualquer reescrita maior que o mínimo.
+          # Alterá-la deliberadamente exige atualizar este hash na mesma PR.
+          expected=07c6cacca8ce089d4f0d4cab203a6f8a1d279e0db6a0ad57bb8dd1623ca4c891
+          actual=$(sha256sum reference/index-v3.html | cut -d' ' -f1)
+          if [ "$actual" != "$expected" ]; then
+            echo "::error::reference/index-v3.html foi modificada"
+            echo "  esperado: $expected"
+            echo "  atual:    $actual"
+            exit 1
+          fi
+
+      - name: Sintaxe JavaScript
+        run: |
+          fail=0
+          while IFS= read -r f; do
+            node --check "$f" || { echo "::error file=$f::erro de sintaxe"; fail=1; }
+          done < <(find . -name '*.js' -o -name '*.mjs' \
+                   | grep -v -e '/node_modules/' -e '/assets/vendor/' -e '^./reference/')
+          exit $fail
+
+      - name: Testes
+        run: |
+          # Glob do proprio Node em vez de "node --test tests/": passar o diretorio faz
+          # o Node tentar resolver "tests" como modulo e falhar com MODULE_NOT_FOUND.
+          # Aspas para o Node expandir o padrao, nao o shell.
+          npm test
+
+      - name: Varredura de secrets
+        run: |
+          # Padrões de credencial real. O ID da planilha e a URL do /exec são públicos
+          # por design (docs/ENGINEERING_RULES.md R4.2) e não entram aqui.
+          # assets/ NÃO é excluído: o GitHub Pages serve esse diretório, então um
+          # segredo colocado ali seria publicado como qualquer outro.
+          if grep -rInE '(sk-[A-Za-z0-9_-]{20,}|github_pat_[A-Za-z0-9_]{22,}|gh[pousr]_[A-Za-z0-9]{30,}|AIza[A-Za-z0-9_-]{35}|-----BEGIN [A-Z ]*PRIVATE KEY-----)' \
+               --exclude-dir=.git --exclude-dir=node_modules \
+               --exclude=validate.yml . ; then
+            echo "::error::possível secret versionado"
+            exit 1
+          fi
+          echo "nenhum padrão de secret encontrado"
+
+      - name: Sem snapshot de dados servido em runtime
+        run: |
+          # Regra anti-dessincronização (docs/ARCHITECTURE.md, R2.2/R2.4):
+          # semente de importação mora em migration/, nunca na raiz nem em data/.
+          # find com predicados agrupados em vez de "ls ./*.xlsx ./*.csv": com um glob
+          # sem correspondencia o shell passa o padrao literal para ls, que sai com
+          # status != 0 e faz o if falhar mesmo havendo snapshot do outro tipo.
+          #
+          # A busca e recursiva, e nao so na raiz: o GitHub Pages publica o repositorio
+          # inteiro, entao data/listings.csv vazaria igual a um arquivo na raiz.
+          # migration/ (semente) e reference/ (modelo V3) sao as excecoes legitimas.
+          # migration-csv/ NAO e podado: e saida gerada e ignorada pelo .gitignore, mas
+          # um force-add versionaria uma terceira copia dos dados que o Pages publicaria.
+          found=$(find . \
+                    \( -path ./.git -o -path ./node_modules \
+                       -o -path ./migration -o -path ./reference \) -prune -o \
+                    \( -name '*.xlsx' -o -name '*.csv' \) -print)
+          if [ -n "$found" ]; then
+            echo "::error::snapshot de dados fora de migration/ - o GitHub Pages publicaria este arquivo"
+            echo "$found"
+            exit 1
+          fi
+          echo "ok"

@@ -1,0 +1,12 @@
+node_modules/
+.DS_Store
+*.log
+.env
+.env.*
+.idea/
+.vscode/
+
+# Saída do conversor de migração — gerada por `npm run migrate:csv`.
+# Não versionada: seria uma terceira cópia dos mesmos dados que já estão em
+# migration/ (semente) e data/demo.json (fallback). Ver docs/ENGINEERING_RULES.md R2.4.
+migration-csv/

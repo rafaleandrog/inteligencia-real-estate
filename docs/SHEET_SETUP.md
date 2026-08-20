@@ -49,7 +49,8 @@ Em `src/config.js`:
 ```js
 window.APP_CONFIG = {
   spreadsheetId: 'SEU_ID_AQUI',
-  demoMode: false,
+  dataSource: 'gviz',   // 'gviz' | 'demo' | 'appsscript'
+  demoMode: false,      // true força 'demo' e tem precedência
   sheets: {
     listings: 'LISTINGS',
     developments: 'DEVELOPMENTS',
@@ -60,6 +61,14 @@ window.APP_CONFIG = {
   defaultZoom: 10
 };
 ```
+
+`dataSource` existe porque `demoMode` é booleano e a V1 tem **três** origens possíveis
+(`docs/ARCHITECTURE.md`). `demoMode: true` continua funcionando e vence `dataSource`.
+
+## 3.1 Migração alternativa por .xlsx
+
+Mais direto que os CSVs: importe [`migration/imob-intelligence-backend.xlsx`](../migration/),
+que já traz as 12 abas com os cabeçalhos corretos. Ver [`migration/README.md`](../migration/README.md).
 
 ## 7. Valide antes de publicar
 
