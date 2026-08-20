@@ -1,0 +1,87 @@
+name: validate
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Arquivos obrigatórios
+        run: |
+          missing=0
+          for f in README.md AGENTS.md .nojekyll \
+                   docs/ENGINEERING_RULES.md docs/DATA_CONTRACT.md docs/ARCHITECTURE.md \
+                   docs/SHEET_SETUP.md docs/DEPLOYMENT.md docs/AI_WORKFLOW.md \
+                   reference/index-v3.html \
+                   .github/codex/prompts/review.md; do
+            if [ ! -f "$f" ]; then echo "::error::arquivo obrigatório ausente: $f"; missing=1; fi
+          done
+          for s in imob-implementer imob-debugger imob-reviewer \
+                   imob-data-contract imob-appscript imob-release; do
+            if [ ! -f ".agents/skills/$s/SKILL.md" ]; then
+              echo "::error::skill ausente: $s"; missing=1
+            fi
+          done
+          exit $missing
+
+      - name: Referência V3 preservada
+        run: |
+          # reference/index-v3.html é a referência funcional do modelo anterior e a origem
+          # do dataset. Esvaziá-la ou removê-la quebra a migração (AGENTS.md).
+          size=$(wc -c < reference/index-v3.html)
+          if [ "$size" -lt 100000 ]; then
+            echo "::error::reference/index-v3.html tem $size bytes - parece truncada"
+            exit 1
+          fi
+
+      - name: Sintaxe JavaScript
+        run: |
+          fail=0
+          while IFS= read -r f; do
+            node --check "$f" || { echo "::error file=$f::erro de sintaxe"; fail=1; }
+          done < <(find . -name '*.js' -o -name '*.mjs' \
+                   | grep -v -e '/node_modules/' -e '/assets/vendor/' -e '^./reference/')
+          exit $fail
+
+      - name: Testes
+        run: |
+          if [ -d tests ] && ls tests/*.test.js >/dev/null 2>&1; then
+            node --test tests/
+          else
+            echo "sem testes ainda - nada a executar"
+          fi
+
+      - name: Varredura de secrets
+        run: |
+          # Padrões de credencial real. O ID da planilha e a URL do /exec são públicos
+          # por design (docs/ENGINEERING_RULES.md R4.2) e não entram aqui.
+          if grep -rInE '(sk-[A-Za-z0-9_-]{20,}|gh[pousr]_[A-Za-z0-9]{30,}|AIza[A-Za-z0-9_-]{35}|-----BEGIN [A-Z ]*PRIVATE KEY-----)' \
+               --exclude-dir=.git --exclude-dir=node_modules --exclude-dir=assets \
+               --exclude=validate.yml . ; then
+            echo "::error::possível secret versionado"
+            exit 1
+          fi
+          echo "nenhum padrão de secret encontrado"
+
+      - name: Sem snapshot de dados servido em runtime
+        run: |
+          # Regra anti-dessincronização (docs/ARCHITECTURE.md, R2.2/R2.4):
+          # semente de importação mora em migration/, nunca na raiz nem em data/.
+          if ls ./*.xlsx ./*.csv >/dev/null 2>&1; then
+            echo "::error::planilha na raiz - mova para migration/"
+            exit 1
+          fi
+          echo "ok"
