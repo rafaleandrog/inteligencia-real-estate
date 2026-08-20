@@ -91,16 +91,25 @@ Regras são numeradas e estáveis. Não renumere ao inserir — acrescente ao fi
 ## 7. Processo e Git
 
 - **R7.1** Trabalho em branch, nunca direto em `main`.
-- **R7.2** **Toda PR passa por review do Codex antes do merge.** Ver
-  [`AI_WORKFLOW.md`](AI_WORKFLOW.md). Sem rodada limpa do Codex, não há merge.
+- **R7.2** **Toda PR passa por uma review do Codex antes do merge.** Ver
+  [`AI_WORKFLOW.md`](AI_WORKFLOW.md). **Uma rodada é o normal.** O que bloqueia o merge é
+  **P0 ou P1 em aberto** — não a ausência de qualquer achado. Achado P2 ou P3 não segura a PR:
+  corrija se for trivial, senão registre como backlog e siga.
 - **R7.3** Todo achado do Codex que revele uma **classe** de erro vira regra nova na seção 8,
   na mesma PR que corrige o achado.
 - **R7.4** A PR relata: arquivos alterados, resumo do diff, testes executados, problemas restantes.
-- **R7.6** **Revisão tem orçamento de 3 rodadas**, com escopo decrescente: 1ª exaustiva (P0–P3),
-  2ª apenas o que as correções mudaram, 3ª apenas P0/P1 remanescentes. Depois da 3ª, a PR entra
-  em `main` se não houver P0 nem P1 aberto; P2 e P3 remanescentes viram backlog. Quem implementa
-  corrige **todos** os achados de uma rodada em **um único push**, com evidência de reprodução
-  quando o achado for de comportamento. Detalhe em `AGENTS.md § Code Review Rules`.
+- **R7.7** **O ciclo de review roda sozinho.** Abrir a PR, pedir a revisão, corrigir os achados e
+  pedir de novo são passos do processo, não decisões a submeter — não peça permissão nem sugestão
+  a cada rodada. Procure o responsável em três situações apenas: o trabalho terminou, apareceu um
+  bloqueio que você não pode resolver, ou existe uma decisão de produto que muda o que deve ser
+  construído. Esta regra diz **a quem se pergunta**, e não o que se verifica: quando a PR pode
+  entrar em `main` continua definido por R7.2 e R7.6, sem exceção.
+- **R7.6** **Uma rodada de review, não três.** Rodada nova só quando a anterior deixou **P0 ou
+  P1** em aberto, e aí ela cobre apenas esses. Ping-pong sobre P2 e P3 custa mais do que corrige:
+  o objetivo do review é impedir defeito grave em produção, não convergir para consenso
+  estilístico. Depois de uma rodada sem P0/P1, o merge é imediato.
+
+
 - **R7.5** Mudança de schema atualiza código **e** documentação na mesma PR.
 
 ## 8. Regras aprendidas
@@ -255,3 +264,14 @@ Cada uma nasce de um erro que aconteceu de verdade.
   origem. Transporte a forma que preserva a informação (linhas), e deixe a interpretação para um
   ponto só. Corolário: ao corrigir um problema em um caminho de dados, verifique **todos** os
   caminhos que chegam ao mesmo lugar.
+- **R8.32** *(2026-08-20, revisão dos docs)* **Não crave em prosa um número que muda a cada PR.**
+  O README anunciava "53 testes", o DEPLOYMENT "56" e o AI_WORKFLOW "25 checks", enquanto a suíte
+  já tinha 74 e 39 — documentação afirmando o que não é verdade, exatamente o problema que a
+  auditoria inicial deste repositório encontrou. Contagem viva pertence à saída do comando, não
+  ao texto: descreva o que a suíte cobre, deixe o total para quem rodar.
+- **R8.33** *(2026-08-20, review do Codex na PR #4)* **Regra nova declara seu escopo e não invade
+  o de outra.** A R7.7 nasceu para dizer *a quem se pergunta* e acabou repetindo *quando se pode
+  fazer merge* — leitura possível: "sem P0/P1, pode entrar", passando por cima do portão de R7.2
+  e R7.6, que só relaxa depois da 3ª rodada. Duas regras descrevendo o mesmo portão com palavras
+  diferentes é o mesmo problema de política duplicada da R8.7, agora entre regras. Ao escrever
+  uma regra, diga o que ela **não** decide.

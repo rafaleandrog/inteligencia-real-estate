@@ -53,7 +53,7 @@ Abra `http://localhost:8080`.
 ## Testes
 
 ```bash
-npm test           # 53 testes, node --test, sem framework, sem dependências
+npm test           # runner nativo do Node, sem framework, sem dependências
 ```
 
 Smoke test em navegador (roteiro completo, exige `npm install` do playwright):
