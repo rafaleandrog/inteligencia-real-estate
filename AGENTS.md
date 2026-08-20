@@ -75,21 +75,15 @@ apenas o que for material — não elogie genericamente.
 
 Se não houver problema relevante, **diga explicitamente que não encontrou regressões materiais**.
 
-### Orçamento de rodadas — no máximo 3
+### Uma rodada, não três
 
-Revisão é para destravar entrega, não para virar processo. Uma PR se resolve em **até três
-rodadas**, com escopo decrescente:
+Revisão existe para impedir defeito grave em produção, não para convergir estilo.
 
-| Rodada | Escopo |
-|---|---|
-| **1ª** | **Exaustiva.** Levante tudo agora — P0 a P3. Um achado que só aparece na 3ª rodada era um achado que faltou na 1ª. |
-| **2ª** | **Só o que mudou.** Confirme as correções e aponte apenas problemas **novos introduzidos por elas**. Não reabra tema já resolvido nem reformule achado anterior. |
-| **3ª** | **Só bloqueio.** Apenas **P0 e P1** remanescentes. P2 e P3 nesta altura não seguram o merge — viram item de backlog. |
+- **P0 ou P1 em aberto** → corrija e peça nova revisão, que cobre só esses.
+- **Só P2/P3, ou nada** → **merge imediato.** Corrija o que for trivial; o resto vira backlog.
 
-Depois da 3ª rodada a PR entra em `main` se não houver P0 nem P1 em aberto.
+Achado que só aparece na terceira rodada era achado que faltou na primeira.
 
-**O ciclo roda sozinho** — não peça permissão a cada rodada. Quando procurar o responsável está
-em [`docs/ENGINEERING_RULES.md`](docs/ENGINEERING_RULES.md), R7.7.
 
 **Cada achado é independente e resolvível sozinho:** um arquivo, um problema, uma correção.
 Não agrupe três defeitos num comentário só, e não divida um mesmo defeito em três comentários.

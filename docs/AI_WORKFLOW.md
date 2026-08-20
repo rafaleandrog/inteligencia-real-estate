@@ -31,7 +31,9 @@ Escolha uma. Se a tarefa é construir, é `imob-implementer`; se é descobrir po
 
 ## Ciclo obrigatório de review pelo Codex
 
-**Nenhuma PR entra em `main` sem uma rodada limpa do Codex.** Regra R7.2.
+**Nenhuma PR entra em `main` sem passar por uma review do Codex.** O que bloqueia é **P0 ou P1
+em aberto**, não a ausência de qualquer achado — uma rodada é o normal, e P2/P3 viram backlog
+(R7.2 e R7.6). O ciclo roda sozinho: não peça permissão a cada etapa (R7.7).
 
 ```
 implementa em branch

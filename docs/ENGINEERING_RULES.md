@@ -91,8 +91,10 @@ Regras são numeradas e estáveis. Não renumere ao inserir — acrescente ao fi
 ## 7. Processo e Git
 
 - **R7.1** Trabalho em branch, nunca direto em `main`.
-- **R7.2** **Toda PR passa por review do Codex antes do merge.** Ver
-  [`AI_WORKFLOW.md`](AI_WORKFLOW.md). Sem rodada limpa do Codex, não há merge.
+- **R7.2** **Toda PR passa por uma review do Codex antes do merge.** Ver
+  [`AI_WORKFLOW.md`](AI_WORKFLOW.md). **Uma rodada é o normal.** O que bloqueia o merge é
+  **P0 ou P1 em aberto** — não a ausência de qualquer achado. Achado P2 ou P3 não segura a PR:
+  corrija se for trivial, senão registre como backlog e siga.
 - **R7.3** Todo achado do Codex que revele uma **classe** de erro vira regra nova na seção 8,
   na mesma PR que corrige o achado.
 - **R7.4** A PR relata: arquivos alterados, resumo do diff, testes executados, problemas restantes.
@@ -102,11 +104,12 @@ Regras são numeradas e estáveis. Não renumere ao inserir — acrescente ao fi
   bloqueio que você não pode resolver, ou existe uma decisão de produto que muda o que deve ser
   construído. Esta regra diz **a quem se pergunta**, e não o que se verifica: quando a PR pode
   entrar em `main` continua definido por R7.2 e R7.6, sem exceção.
-- **R7.6** **Revisão tem orçamento de 3 rodadas**, com escopo decrescente: 1ª exaustiva (P0–P3),
-  2ª apenas o que as correções mudaram, 3ª apenas P0/P1 remanescentes. Depois da 3ª, a PR entra
-  em `main` se não houver P0 nem P1 aberto; P2 e P3 remanescentes viram backlog. Quem implementa
-  corrige **todos** os achados de uma rodada em **um único push**, com evidência de reprodução
-  quando o achado for de comportamento. Detalhe em `AGENTS.md § Code Review Rules`.
+- **R7.6** **Uma rodada de review, não três.** Rodada nova só quando a anterior deixou **P0 ou
+  P1** em aberto, e aí ela cobre apenas esses. Ping-pong sobre P2 e P3 custa mais do que corrige:
+  o objetivo do review é impedir defeito grave em produção, não convergir para consenso
+  estilístico. Depois de uma rodada sem P0/P1, o merge é imediato.
+
+
 - **R7.5** Mudança de schema atualiza código **e** documentação na mesma PR.
 
 ## 8. Regras aprendidas
