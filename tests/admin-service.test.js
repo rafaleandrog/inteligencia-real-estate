@@ -2,21 +2,23 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
   buildWritePayload, parseWriteResponse, WriteApiError, newCorrelationId,
-  login, createRecord, updateRecord, deleteRecord, listRecords,
-  getSession, clearSession,
+  validateToken, createRecord, updateRecord, deleteRecord, listRecords,
+  getToken, setToken, clearToken,
 } from '../src/admin/admin-service.js';
 
 // admin-service.js é o cliente HTTP da API de escrita — aqui testamos o shaping do
 // request/response (puro) e o comportamento com `fetch` mockado, sem rede real.
 //
-// Login em dois passos (issue #5): `login()` troca token por sessão; createRecord/
-// updateRecord/deleteRecord mandam `session`, nunca `token`.
+// Token direto por requisição (mesmo padrão do tipolis-sandbox): não há troca por
+// sessão — o token é guardado em sessionStorage e reenviado em toda chamada.
+// `validateToken()` faz uma chamada barata (`action: 'validate'`) para conferir o
+// token no portão de login, sem ler nem escrever nada.
 
 // --- buildWritePayload / parseWriteResponse -------------------------------------
 
 test('buildWritePayload omite campos ausentes em vez de enviá-los vazios', () => {
-  const body = buildWritePayload({ session: 's', action: 'create', sheet: 'LISTINGS' });
-  assert.deepEqual(body, { session: 's', action: 'create', sheet: 'LISTINGS' });
+  const body = buildWritePayload({ token: 't', action: 'create', sheet: 'LISTINGS' });
+  assert.deepEqual(body, { token: 't', action: 'create', sheet: 'LISTINGS' });
   assert.equal('id' in body, false);
   assert.equal('expected_version' in body, false);
   assert.equal('editor' in body, false);
@@ -25,7 +27,7 @@ test('buildWritePayload omite campos ausentes em vez de enviá-los vazios', () =
 
 test('buildWritePayload inclui expected_version como string e correlation_id quando presentes', () => {
   const body = buildWritePayload({
-    session: 's', action: 'update', sheet: 'LISTINGS', id: 'X', expectedVersion: 7,
+    token: 't', action: 'update', sheet: 'LISTINGS', id: 'X', expectedVersion: 7,
     correlationId: 'corr-1',
   });
   assert.equal(body.expected_version, '7');
@@ -59,7 +61,7 @@ test('newCorrelationId devolve valores não vazios e diferentes a cada chamada',
   assert.notEqual(a, b);
 });
 
-// --- sessão (sessionStorage) ------------------------------------------------------
+// --- token (sessionStorage) --------------------------------------------------------
 
 // `fn` costuma devolver uma Promise (quando combinado com withFetchMock) — usar
 // try/finally síncrono aqui apagaria o sessionStorage antes do fetch mockado
@@ -74,20 +76,22 @@ function withSessionStorage(fn) {
   return Promise.resolve(fn(store)).finally(() => { delete globalThis.sessionStorage; });
 }
 
-test('getSession/clearSession funcionam sem lançar quando sessionStorage existe', () => {
+test('getToken/setToken/clearToken funcionam sem lançar quando sessionStorage existe', () => {
   withSessionStorage(() => {
-    assert.equal(getSession(), '');
-    clearSession(); // não deve lançar mesmo vazio
-    assert.equal(getSession(), '');
+    assert.equal(getToken(), '');
+    setToken('abc');
+    assert.equal(getToken(), 'abc');
+    clearToken();
+    assert.equal(getToken(), '');
   });
 });
 
-test('getSession não lança quando sessionStorage está indisponível', () => {
+test('getToken não lança quando sessionStorage está indisponível', () => {
   delete globalThis.sessionStorage;
-  assert.doesNotThrow(() => { getSession(); clearSession(); });
+  assert.doesNotThrow(() => { getToken(); setToken('x'); clearToken(); });
 });
 
-// --- login / createRecord / updateRecord / deleteRecord (fetch mockado) ----------
+// --- validateToken / createRecord / updateRecord / deleteRecord (fetch mockado) --
 
 function withFetchMock(handler, fn) {
   const original = globalThis.fetch;
@@ -95,47 +99,40 @@ function withFetchMock(handler, fn) {
   return fn().finally(() => { globalThis.fetch = original; });
 }
 
-test('login troca token por sessão, guarda a sessão (nunca o token) e nunca manda o token de novo', async () => {
-  await withSessionStorage(() => withFetchMock(async (url, opts) => {
+test('validateToken manda action=validate com o token e devolve true em sucesso', async () => {
+  await withFetchMock(async (url, opts) => {
     const body = JSON.parse(opts.body);
-    assert.equal(body.action, 'authenticate');
+    assert.equal(body.action, 'validate');
     assert.equal(body.token, 'meu-token');
-    assert.equal('session' in body, false); // login não manda sessão, só token
-    return { json: async () => ({ ok: true, session: 'sess-abc', expires_in: 1800 }) };
+    return { json: async () => ({ ok: true, record: { valid: true } }) };
   }, async () => {
-    const res = await login('https://script.example/exec', 'meu-token');
-    assert.equal(res.session, 'sess-abc');
-    assert.equal(getSession(), 'sess-abc');
-  }));
+    const ok = await validateToken('https://script.example/exec', 'meu-token');
+    assert.equal(ok, true);
+  });
 });
 
-test('login propaga UNAUTHENTICATED como WriteApiError e não guarda sessão', async () => {
-  await withSessionStorage(() => withFetchMock(async () => ({
+test('validateToken devolve false em UNAUTHENTICATED, sem lançar', async () => {
+  await withFetchMock(async () => ({
     json: async () => ({ ok: false, error: { code: 'UNAUTHENTICATED', message: 'token errado' } }),
   }), async () => {
-    await assert.rejects(
-      () => login('https://script.example/exec', 'errado'),
-      (err) => err instanceof WriteApiError && err.code === 'UNAUTHENTICATED',
-    );
-    assert.equal(getSession(), '');
-  }));
+    const ok = await validateToken('https://script.example/exec', 'errado');
+    assert.equal(ok, false);
+  });
 });
 
-test('login propaga RATE_LIMITED como WriteApiError', async () => {
-  await withFetchMock(async () => ({
-    json: async () => ({ ok: false, error: { code: 'RATE_LIMITED', message: 'aguarde' } }),
-  }), async () => {
+test('validateToken propaga outros erros (ex. NETWORK_ERROR) como WriteApiError', async () => {
+  await withFetchMock(async () => { throw new Error('offline'); }, async () => {
     await assert.rejects(
-      () => login('https://script.example/exec', 'x'),
-      (err) => err instanceof WriteApiError && err.code === 'RATE_LIMITED',
+      () => validateToken('https://script.example/exec', 'x'),
+      (err) => err instanceof WriteApiError && err.code === 'NETWORK_ERROR',
     );
   });
 });
 
-test('createRecord envia POST com session (não token), action=create e devolve o record em sucesso', async () => {
+test('createRecord envia POST com token, action=create e devolve o record em sucesso', async () => {
   let captured = null;
   await withSessionStorage((store) => {
-    store.set('imob_admin_session', 'sess-xyz');
+    store.set('imob_admin_token', 'meu-token');
     return withFetchMock(async (url, opts) => {
       captured = { url, opts };
       return { json: async () => ({ ok: true, record: { listing_id: 'L1' }, dataset_version: '2', correlation_id: 'corr-3' }) };
@@ -155,9 +152,8 @@ test('createRecord envia POST com session (não token), action=create e devolve 
   assert.equal(body.sheet, 'LISTINGS');
   assert.equal(body.id, 'L1');
   assert.equal(body.editor, 'Fulano');
-  assert.equal(body.session, 'sess-xyz');
+  assert.equal(body.token, 'meu-token');
   assert.equal(body.correlation_id, 'corr-3');
-  assert.equal('token' in body, false);
 });
 
 test('updateRecord propaga VERSION_CONFLICT como WriteApiError', async () => {
