@@ -11,13 +11,6 @@ const INPUT_TYPE = {
   text: 'text', number: 'number', int: 'number', date: 'date', url: 'url', bool: 'checkbox',
 };
 
-/** Colunas mostradas na tabela: um resumo, não todos os campos (a edição abre o formulário completo). */
-const TABLE_PREVIEW_FIELDS = {
-  LISTINGS: ['title', 'locality', 'property_type', 'asking_price_brl', 'area_m2', 'status'],
-  DEVELOPMENTS: ['name', 'neighborhood', 'status', 'current_price_brl', 'spatial_usable'],
-  ANCHORS: ['name', 'category', 'neighborhood', 'status'],
-};
-
 function textCell(value) {
   const td = document.createElement('td');
   td.textContent = value === null || value === undefined || value === '' ? '—' : String(value);
@@ -25,32 +18,66 @@ function textCell(value) {
 }
 
 /**
- * Tabela genérica de uma aba. `records` são objetos crus `{header: valor}`, como o
- * endpoint `?resource=dataset` devolve — sem passar por normalize.js, porque a área
- * administrativa precisa dos valores brutos para editar, não dos derivados de exibição.
+ * Todas as colunas de uma aba, na ordem em que aparecem na tabela: ID primeiro,
+ * depois cada campo editável (mesma ordem do formulário), e o campo derivado por
+ * último quando a aba tem um. Issue #5: "exibir os dados completos, sem limitar a
+ * tela aos campos usados no mapa" — a versão anterior desta função mostrava só um
+ * preview de ~5 colunas.
  */
-export function buildTable(sheet, records, { onEdit, onDelete } = {}) {
+export function columnsFor(sheet) {
   const idField = ID_FIELD[sheet];
-  const previewFields = TABLE_PREVIEW_FIELDS[sheet] || [];
+  const columns = [{ key: idField, label: idField }];
+  for (const field of ADMIN_FIELDS[sheet] || []) columns.push({ key: field.key, label: field.label });
+
+  const derivedTarget = DERIVED_PRICE_M2_FIELD[sheet];
+  if (derivedTarget) columns.push({ key: derivedTarget, label: derivedTarget + ' (calculado)' });
+
+  return columns;
+}
+
+/**
+ * Tabela genérica de uma aba, já recebendo os registros prontos para exibir (busca,
+ * ordenação e paginação já aplicadas por quem chama — ver src/admin/admin-table.js).
+ * `records` são objetos crus `{header: valor}`, como o endpoint `?resource=dataset`
+ * devolve — sem passar por normalize.js, porque a área administrativa precisa dos
+ * valores brutos para editar, não dos derivados de exibição.
+ *
+ * Cabeçalho clicável ordena (issue #5: "permitir... ordenação"); `sortField`/
+ * `sortDirection` só decidem a seta exibida, quem de fato ordena é `onSort`.
+ */
+export function buildTable(sheet, records, { onEdit, onDelete, onSort, sortField, sortDirection } = {}) {
+  const columns = columnsFor(sheet);
 
   const table = document.createElement('table');
   table.className = 'admin-table';
 
   const thead = document.createElement('thead');
   const headRow = document.createElement('tr');
-  [idField, ...previewFields, 'ações'].forEach((label) => {
+  columns.forEach((col) => {
     const th = document.createElement('th');
-    th.textContent = label;
+    if (onSort) {
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'admin-sort-btn';
+      const arrow = col.key === sortField ? (sortDirection === 'desc' ? ' ▼' : ' ▲') : '';
+      btn.textContent = col.label + arrow;
+      btn.addEventListener('click', () => onSort(col.key));
+      th.append(btn);
+    } else {
+      th.textContent = col.label;
+    }
     headRow.append(th);
   });
+  const actionsTh = document.createElement('th');
+  actionsTh.textContent = 'ações';
+  headRow.append(actionsTh);
   thead.append(headRow);
   table.append(thead);
 
   const tbody = document.createElement('tbody');
   for (const record of records) {
     const tr = document.createElement('tr');
-    tr.append(textCell(record[idField]));
-    previewFields.forEach((field) => tr.append(textCell(record[field])));
+    columns.forEach((col) => tr.append(textCell(record[col.key])));
 
     const actionsTd = document.createElement('td');
     actionsTd.className = 'admin-table-actions';
@@ -77,13 +104,64 @@ export function buildTable(sheet, records, { onEdit, onDelete } = {}) {
   if (records.length === 0) {
     const empty = document.createElement('p');
     empty.className = 'admin-empty';
-    empty.textContent = 'Nenhum registro nesta aba.';
+    empty.textContent = 'Nenhum registro encontrado.';
     const wrap = document.createDocumentFragment();
     wrap.append(table, empty);
     return wrap;
   }
 
   return table;
+}
+
+/**
+ * Barra de busca + paginação acima da tabela (issue #5: "permitir busca... e
+ * paginação/virtualização para datasets maiores"). Puramente DOM — o estado (termo,
+ * página) mora em admin-app.js, que decide o que filtrar/paginar via
+ * src/admin/admin-table.js.
+ */
+export function buildTableToolbar({ searchTerm, onSearch, page, totalPages, totalRecords, onPageChange }) {
+  const bar = document.createElement('div');
+  bar.className = 'admin-table-toolbar';
+
+  const searchWrap = document.createElement('div');
+  searchWrap.className = 'admin-search';
+  const searchLabel = document.createElement('label');
+  searchLabel.textContent = 'Buscar';
+  searchLabel.htmlFor = 'admin-table-search';
+  const searchInput = document.createElement('input');
+  searchInput.type = 'search';
+  searchInput.id = 'admin-table-search';
+  searchInput.value = searchTerm || '';
+  searchInput.placeholder = 'Buscar em qualquer campo…';
+  searchInput.addEventListener('input', () => onSearch && onSearch(searchInput.value));
+  searchWrap.append(searchLabel, searchInput);
+  bar.append(searchWrap);
+
+  const pager = document.createElement('div');
+  pager.className = 'admin-pager';
+
+  const prevBtn = document.createElement('button');
+  prevBtn.type = 'button';
+  prevBtn.className = 'btn-ghost';
+  prevBtn.textContent = '‹ Anterior';
+  prevBtn.disabled = page <= 1;
+  prevBtn.addEventListener('click', () => onPageChange && onPageChange(page - 1));
+
+  const info = document.createElement('span');
+  info.className = 'admin-pager-info';
+  info.textContent = `Página ${page} de ${totalPages} · ${totalRecords} registro(s)`;
+
+  const nextBtn = document.createElement('button');
+  nextBtn.type = 'button';
+  nextBtn.className = 'btn-ghost';
+  nextBtn.textContent = 'Próxima ›';
+  nextBtn.disabled = page >= totalPages;
+  nextBtn.addEventListener('click', () => onPageChange && onPageChange(page + 1));
+
+  pager.append(prevBtn, info, nextBtn);
+  bar.append(pager);
+
+  return bar;
 }
 
 /** Lê o valor de um input conforme o tipo declarado, para montar o payload de escrita. */

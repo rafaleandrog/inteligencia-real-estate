@@ -1,24 +1,28 @@
-// Orquestração da área administrativa: login por token, carregar/listar registros,
-// abrir formulário de criação/edição, submeter escrita, tratar erro/conflito.
+// Orquestração da área administrativa: login (token → sessão), carregar/listar
+// registros, buscar/ordenar/paginar, abrir formulário de criação/edição, submeter
+// escrita, tratar erro/conflito.
 //
 // Mesmo padrão de src/app.js: `state` único, `el()` para refs DOM, regiões de
 // loading/erro dedicadas alternadas via `hidden` — nunca tela em branco (R5.6/R5.7).
 
 import { ADMIN_SHEETS, SHEET_LABELS, ID_FIELD, ADMIN_FIELDS } from './admin-schema.js';
-import { buildTable, buildForm } from './admin-ui.js';
+import { buildTable, buildForm, buildTableToolbar, columnsFor } from './admin-ui.js';
+import { filterRecords, sortRecords, paginateRecords } from './admin-table.js';
 import {
-  getToken, setToken, clearToken, listRecords, createRecord, updateRecord, deleteRecord,
-  WriteApiError,
+  getSession, clearSession, login, listRecords, createRecord, updateRecord, deleteRecord,
+  newCorrelationId, WriteApiError,
 } from './admin-service.js';
 
 const CONFIG = window.APP_CONFIG || {};
+const PAGE_SIZE = 25;
 
 const el = (id) => document.getElementById(id);
 
 const dom = {
   loginScreen: el('adminLogin'), loginForm: el('adminLoginForm'), loginToken: el('adminLoginToken'),
-  loginError: el('adminLoginError'),
+  loginError: el('adminLoginError'), loginSubmitBtn: el('adminLoginForm') && el('adminLoginForm').querySelector('button[type=submit]'),
   app: el('adminApp'), sheetTabs: el('adminSheetTabs'), tableWrap: el('adminTableWrap'),
+  tableToolbarWrap: el('adminTableToolbar'),
   newRecordBtn: el('adminNewRecord'), editorName: el('adminEditorName'), logoutBtn: el('adminLogout'),
   loadingState: el('adminLoading'), errorState: el('adminError'), errorDetail: el('adminErrorDetail'),
   formDialog: el('adminFormDialog'), formTitle: el('adminFormTitle'), formWrap: el('adminFormWrap'),
@@ -31,6 +35,10 @@ const state = {
   records: [],
   datasetVersion: null,
   editorName: '',
+  search: '',
+  sortField: null,
+  sortDirection: 'asc',
+  page: 1,
 };
 
 function showStatus(message, tone = 'info') {
@@ -42,6 +50,14 @@ function showStatus(message, tone = 'info') {
 
 function editorName() {
   return dom.editorName ? dom.editorName.value.trim() : state.editorName;
+}
+
+/** Reseta busca/ordenação/página — usado ao trocar de aba, onde o estado anterior não faz sentido. */
+function resetTableState() {
+  state.search = '';
+  state.sortField = null;
+  state.sortDirection = 'asc';
+  state.page = 1;
 }
 
 // --- Login -------------------------------------------------------------------
@@ -62,22 +78,39 @@ function showApp() {
 
 function bindLogin() {
   if (!dom.loginForm) return;
-  dom.loginForm.addEventListener('submit', (event) => {
+  dom.loginForm.addEventListener('submit', async (event) => {
     event.preventDefault();
     const token = dom.loginToken.value.trim();
     if (!token) return;
-    setToken(token);
-    showApp();
-    loadSheet(state.sheet);
+
+    if (dom.loginSubmitBtn) dom.loginSubmitBtn.disabled = true;
+    try {
+      await login(CONFIG.appsScriptUrl, token);
+      dom.loginToken.value = ''; // o token não fica em nenhuma variável depois daqui
+      showApp();
+      resetTableState();
+      loadSheet(state.sheet);
+    } catch (err) {
+      showLogin(loginErrorMessage(err));
+    } finally {
+      if (dom.loginSubmitBtn) dom.loginSubmitBtn.disabled = false;
+    }
   });
 
   if (dom.logoutBtn) {
     dom.logoutBtn.addEventListener('click', () => {
-      clearToken();
+      clearSession();
       dom.loginToken.value = '';
       showLogin();
     });
   }
+}
+
+function loginErrorMessage(err) {
+  if (!(err instanceof WriteApiError)) return 'Erro inesperado ao entrar.';
+  if (err.code === 'RATE_LIMITED') return 'Muitas tentativas. Aguarde alguns minutos antes de tentar de novo.';
+  if (err.code === 'UNAUTHENTICATED') return 'Token inválido.';
+  return err.message || 'Erro inesperado ao entrar.';
 }
 
 // --- Abas ----------------------------------------------------------------------
@@ -97,6 +130,7 @@ function bindSheetTabs() {
       state.sheet = sheet;
       [...dom.sheetTabs.children].forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.sheet === sheet)));
       showStatus(''); // status da aba anterior não faz sentido na nova aba
+      resetTableState();
       loadSheet(sheet);
     });
     dom.sheetTabs.append(btn);
@@ -125,11 +159,45 @@ async function loadSheet(sheet) {
   }
 }
 
+/**
+ * Aplica busca → ordenação → paginação (nessa ordem — issue #5: "permitir busca,
+ * filtros, ordenação e paginação... sem perder o registro/ID") e desenha a barra de
+ * ferramentas + a tabela da página atual.
+ */
 function renderTable() {
   if (!dom.tableWrap) return;
-  dom.tableWrap.replaceChildren(buildTable(state.sheet, state.records, {
+
+  const fields = columnsFor(state.sheet).filter((c) => c.key !== ID_FIELD[state.sheet]);
+  const filtered = filterRecords(state.records, [{ key: ID_FIELD[state.sheet] }, ...fields], state.search);
+  const sorted = sortRecords(filtered, state.sortField, state.sortDirection);
+  const { rows, page, totalPages, totalRecords } = paginateRecords(sorted, state.page, PAGE_SIZE);
+  state.page = page; // corrige se a página pedida não existe mais (ex.: filtro reduziu o total)
+
+  if (dom.tableToolbarWrap) {
+    dom.tableToolbarWrap.replaceChildren(buildTableToolbar({
+      searchTerm: state.search,
+      onSearch: (term) => { state.search = term; state.page = 1; renderTable(); },
+      page,
+      totalPages,
+      totalRecords,
+      onPageChange: (nextPage) => { state.page = nextPage; renderTable(); },
+    }));
+  }
+
+  dom.tableWrap.replaceChildren(buildTable(state.sheet, rows, {
     onEdit: (record) => openForm(record),
     onDelete: (record) => confirmDelete(record),
+    onSort: (field) => {
+      if (state.sortField === field) {
+        state.sortDirection = state.sortDirection === 'asc' ? 'desc' : 'asc';
+      } else {
+        state.sortField = field;
+        state.sortDirection = 'asc';
+      }
+      renderTable();
+    },
+    sortField: state.sortField,
+    sortDirection: state.sortDirection,
   }));
 }
 
@@ -231,12 +299,13 @@ async function submitForm(record, values) {
     return;
   }
 
+  const correlationId = newCorrelationId();
   try {
     const result = record
       ? await updateRecord(CONFIG.appsScriptUrl, {
-        sheet, id, fields, editor: editorName(), expectedVersion: state.datasetVersion,
+        sheet, id, fields, editor: editorName(), expectedVersion: state.datasetVersion, correlationId,
       })
-      : await createRecord(CONFIG.appsScriptUrl, { sheet, id, fields, editor: editorName() });
+      : await createRecord(CONFIG.appsScriptUrl, { sheet, id, fields, editor: editorName(), correlationId });
 
     state.datasetVersion = result.dataset_version;
     closeForm();
@@ -257,9 +326,10 @@ function confirmDelete(record) {
 async function runDelete(record) {
   const sheet = state.sheet;
   const id = record[ID_FIELD[sheet]];
+  const correlationId = newCorrelationId();
   try {
     const result = await deleteRecord(CONFIG.appsScriptUrl, {
-      sheet, id, editor: editorName(), expectedVersion: state.datasetVersion,
+      sheet, id, editor: editorName(), expectedVersion: state.datasetVersion, correlationId,
     });
     state.datasetVersion = result.dataset_version;
     showStatus('Registro excluído.', 'ok');
@@ -270,18 +340,25 @@ async function runDelete(record) {
 }
 
 const ERROR_MESSAGES = {
-  UNAUTHENTICATED: 'Sessão expirada ou token inválido. Entre novamente.',
+  UNAUTHENTICATED: 'Sessão expirada ou inválida. Entre novamente.',
+  RATE_LIMITED: 'Muitas tentativas de autenticação. Aguarde alguns minutos.',
   VERSION_CONFLICT: 'Os dados mudaram desde que você carregou este registro. Recarregando a lista — revise antes de tentar de novo.',
   NOT_FOUND: 'Este registro não existe mais — provavelmente foi excluído por outra pessoa.',
   NETWORK_ERROR: 'Falha de rede. Verifique a conexão e tente novamente.',
 };
 
+/** Sufixo com o correlation_id, para quem for reportar o problema conseguir apontar a operação exata. */
+function withCorrelation(message, correlationId) {
+  return correlationId ? `${message} (referência: ${correlationId})` : message;
+}
+
 function handleWriteError(err) {
   const code = err instanceof WriteApiError ? err.code : 'INTERNAL_ERROR';
-  const message = ERROR_MESSAGES[code] || (err && err.message) || 'Erro inesperado.';
+  const correlationId = err instanceof WriteApiError ? err.correlationId : '';
+  const message = withCorrelation(ERROR_MESSAGES[code] || (err && err.message) || 'Erro inesperado.', correlationId);
 
   if (code === 'UNAUTHENTICATED') {
-    clearToken();
+    clearSession();
     showLogin(message);
     return;
   }
@@ -303,7 +380,7 @@ export function main() {
   bindSheetTabs();
   bindNewRecord();
 
-  if (getToken()) {
+  if (getSession()) {
     showApp();
     loadSheet(state.sheet);
   } else {
