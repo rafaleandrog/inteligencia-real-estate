@@ -234,9 +234,27 @@ crítico ausente.
 **Registro ruim é sinalizado, nunca apagado automaticamente.** A decisão de remover é humana.
 
 ### CHANGE_LOG
-`timestamp | sheet | range | record_id | old_value | new_value | editor`
+`timestamp | sheet | range | record_id | old_value | new_value | editor | correlation_id | result | error_reason`
 
 Diagnóstico operacional, não auditoria corporativa. Histórico limitado a **5.000 eventos**.
+
+As três últimas colunas (`correlation_id`, `result`, `error_reason`) foram acrescentadas na
+issue #5, a pedido da própria issue ("expandir o `CHANGE_LOG`... correlation_id; resultado;
+motivo de erro"). Só a API de escrita as preenche de verdade:
+
+- **Edição manual na planilha** (gatilho `onEdit`): `correlation_id` vazio, `result = 'ok'`,
+  `error_reason` vazio — não há como uma edição de célula "falhar" nesse sentido.
+- **API de escrita, sucesso**: `correlation_id` é o que o cliente mandou (opcional; a UI
+  administrativa sempre manda um), `result = 'ok'`.
+- **API de escrita, falha DEPOIS de autenticada** (payload inválido, conflito de versão,
+  registro não encontrado etc.): `result = 'error'`, `error_reason` é o código do erro mais a
+  mensagem. **Falha de autenticação/rate-limit nunca gera linha aqui** — logar toda tentativa de
+  login errada viraria ruído de tentativa de força bruta no log operacional; ver R4.9/R8.36.
+
+Planilha provisionada antes da issue #5 tem só as 7 colunas antigas. `setupProject()` chama
+`upgradeChangeLogHeader_()`, que estende o cabeçalho em vigor (sem tocar linha nenhuma) só
+quando ele for exatamente o antigo — rodar `setupProject()` de novo é seguro e é como uma
+planilha existente ganha as três colunas novas.
 
 ---
 
