@@ -71,7 +71,7 @@ A planilha usada pela V1 precisa ser própria para dados públicos. Não coloque
 
 ## Backend opcional
 
-`optional-apps-script/Code.gs` é uma rota futura para writes, autenticação ou regras privadas. Só adote quando houver uma necessidade concreta, pois introduz uma segunda superfície de deploy.
+`optional-apps-script/Code.gs` é a rota adotada para writes autenticados (issue #5, `doPost` sob token — R4.9) e para regras privadas. Fora da escrita administrativa, é uma rota futura: só adote mais responsabilidade quando houver necessidade concreta, pois introduz uma segunda superfície de deploy.
 
 ## Quando migrar para banco dedicado
 

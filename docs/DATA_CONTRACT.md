@@ -94,6 +94,25 @@ Chave: `listing_id`. 141 linhas no dataset atual.
 `asking_price_brl_m2` é **derivado**: calculado por `asking_price_brl / area_m2` quando vazio.
 Valor já preenchido não é sobrescrito; divergência grande vira alerta em `DATA_QUALITY` (§17).
 
+#### Escrita pela área administrativa (issue #5, R4.9)
+
+A API de escrita do Apps Script (`doPost`) cobre, na primeira PR, só `LISTINGS`. Editável é
+exatamente `REQUIRED_HEADERS.LISTINGS` (as colunas críticas, já mantidas em sincronia com esta
+tabela e cross-checadas por `tests/contract.test.js`) **menos** `listing_id` e
+`asking_price_brl_m2`:
+
+- **Imutável após criação:** `listing_id` — só entra pelo campo `id` da requisição, nunca por
+  `fields`.
+- **Somente leitura, calculado pelo servidor:** `asking_price_brl_m2` — enviá-lo em `fields` é
+  recusado com `UNKNOWN_FIELD`. Ver `pricePerM2_()` em `optional-apps-script/Code.gs`.
+- **Fora do escopo desta PR:** campos de cauda longa que não estão em `REQUIRED_HEADERS`
+  (`external_id`, `portal_listing_code`, `portal_date_text`, `property_id`, `published_days`,
+  `views_count`, `interested_count`) não são editáveis pela API ainda — só pela planilha direta.
+- `property_type` é o único campo validado contra vocabulário fechado no servidor
+  (`apartamento`, `casa`, `casa_condominio`, `kitnet`, `predio`, `terreno`); `coordinate_precision`
+  e `confidence_flag` aceitam qualquer texto, porque o vocabulário completo em uso na planilha
+  não está totalmente documentado aqui.
+
 ### DEVELOPMENTS — empreendimentos
 Chave: `development_id`. 22 linhas.
 
@@ -215,9 +234,27 @@ crítico ausente.
 **Registro ruim é sinalizado, nunca apagado automaticamente.** A decisão de remover é humana.
 
 ### CHANGE_LOG
-`timestamp | sheet | range | record_id | old_value | new_value | editor`
+`timestamp | sheet | range | record_id | old_value | new_value | editor | correlation_id | result | error_reason`
 
 Diagnóstico operacional, não auditoria corporativa. Histórico limitado a **5.000 eventos**.
+
+As três últimas colunas (`correlation_id`, `result`, `error_reason`) foram acrescentadas na
+issue #5, a pedido da própria issue ("expandir o `CHANGE_LOG`... correlation_id; resultado;
+motivo de erro"). Só a API de escrita as preenche de verdade:
+
+- **Edição manual na planilha** (gatilho `onEdit`): `correlation_id` vazio, `result = 'ok'`,
+  `error_reason` vazio — não há como uma edição de célula "falhar" nesse sentido.
+- **API de escrita, sucesso**: `correlation_id` é o que o cliente mandou (opcional; a UI
+  administrativa sempre manda um), `result = 'ok'`.
+- **API de escrita, falha DEPOIS de autenticada** (payload inválido, conflito de versão,
+  registro não encontrado etc.): `result = 'error'`, `error_reason` é o código do erro mais a
+  mensagem. **Falha de autenticação/rate-limit nunca gera linha aqui** — logar toda tentativa de
+  login errada viraria ruído de tentativa de força bruta no log operacional; ver R4.9/R8.36.
+
+Planilha provisionada antes da issue #5 tem só as 7 colunas antigas. `setupProject()` chama
+`upgradeChangeLogHeader_()`, que estende o cabeçalho em vigor (sem tocar linha nenhuma) só
+quando ele for exatamente o antigo — rodar `setupProject()` de novo é seguro e é como uma
+planilha existente ganha as três colunas novas.
 
 ---
 
