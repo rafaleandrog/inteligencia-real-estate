@@ -9,7 +9,8 @@
     "serve": "python3 -m http.server 8080",
     "build:demo": "node tools/build-demo.mjs",
     "migrate:csv": "node tools/reference-to-csv.mjs",
-    "smoke": "node tools/smoke-test.mjs"
+    "smoke": "node tools/smoke-test.mjs",
+    "smoke:admin": "node tools/smoke-test-admin.mjs"
   },
   "engines": {
     "node": ">=18"

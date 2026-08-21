@@ -121,3 +121,8 @@ aberto.
    um jeito de invalidar uma sessão específica por id ainda.
 7. Sem `ADMIN_TOKEN` configurado, `authenticate` sempre responde `UNAUTHENTICATED` — é o estado
    seguro por padrão logo após importar este script numa planilha nova.
+8. A interface administrativa fica em `admin.html` (`https://<seu-pages>/admin.html`), separada
+   do site público (`index.html`). Ela não tem controle de acesso próprio na V1 — a única
+   barreira é o login (token → sessão): qualquer pessoa que abra a URL vê a tela de login, mas só
+   grava dados quem tiver o `ADMIN_TOKEN`. Não é uma página secreta (R4.3) — o link não é
+   divulgado publicamente, mas a segurança real está no login, não em ele não ser linkado.
