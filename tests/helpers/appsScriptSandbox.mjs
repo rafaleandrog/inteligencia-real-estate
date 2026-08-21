@@ -14,6 +14,7 @@
 
 import vm from 'node:vm';
 import { readFileSync } from 'node:fs';
+import { randomUUID } from 'node:crypto';
 
 /** Uma planilha em memória: linhas como array de arrays, primeira linha é cabeçalho. */
 export function createFakeSheet(name, rows) {
@@ -76,7 +77,7 @@ function createRange(data, row, col, numRows, numCols) {
  * Cria o sandbox com Code.gs carregado. `sheets` é `{NOME: [[header...], [linha...]]}`.
  * `scriptProperties` é o estado inicial de PropertiesService.getScriptProperties().
  */
-export function createAppsScriptSandbox({ sheets = {}, scriptProperties = {} } = {}) {
+export function createAppsScriptSandbox({ sheets = {}, scriptProperties = {}, googleEmail = '' } = {}) {
   const fakeSheets = {};
   for (const [name, rows] of Object.entries(sheets)) {
     fakeSheets[name] = createFakeSheet(name, rows);
@@ -113,13 +114,30 @@ export function createAppsScriptSandbox({ sheets = {}, scriptProperties = {} } =
     },
     CacheService: {
       getScriptCache: () => ({
-        get: (key) => (cache.has(key) ? cache.get(key) : null),
-        put: (key, value) => { cache.set(key, value); },
-        removeAll: (keys) => { keys.forEach((key) => cache.delete(key)); },
+        get(key) {
+          if (!cache.has(key)) return null;
+          const entry = cache.get(key);
+          if (entry.expiresAt !== null && entry.expiresAt <= Date.now()) {
+            cache.delete(key);
+            return null;
+          }
+          return entry.value;
+        },
+        put(key, value, ttlSeconds) {
+          const expiresAt = typeof ttlSeconds === 'number' ? Date.now() + ttlSeconds * 1000 : null;
+          cache.set(key, { value, expiresAt });
+        },
+        remove(key) { cache.delete(key); },
+        removeAll(keys) { keys.forEach((key) => cache.delete(key)); },
       }),
     },
     Session: {
-      getActiveUser: () => ({ getEmail: () => '' }),
+      getActiveUser: () => ({ getEmail: () => googleEmail || '' }),
+    },
+    Utilities: {
+      // randomUUID() já é padrão no runtime do Node usado pelos testes; getUuid() do
+      // Apps Script tem a mesma forma (RFC 4122 v4), então serve como substituto fiel.
+      getUuid: () => randomUUID(),
     },
     ContentService: {
       MimeType: { JSON: 'JSON', JAVASCRIPT: 'JAVASCRIPT' },

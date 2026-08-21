@@ -62,14 +62,25 @@ Regras são numeradas e estáveis. Não renumere ao inserir — acrescente ao fi
 - **R4.7** Endpoint de leitura do Apps Script (`doGet`) é público e sem autenticação, com
   allowlist de datasets — segue read-only.
 - **R4.8** Configuração privada do Apps Script mora em Script Properties, nunca em célula.
-- **R4.9** *(issue #5)* O Apps Script pode expor um endpoint de escrita (`doPost`) **somente**
-  sob autenticação obrigatória — token comparado a `ADMIN_TOKEN` em Script Properties. Sem o
-  token configurado, toda escrita é recusada; não existe modo aberto. Isto substitui a proibição
-  anterior de `doPost` (antiga R4.7): a exceção é deliberada, documentada aqui, e não abre o
-  endpoint de leitura, que continua público e sem autenticação. Campo derivado
-  (`asking_price_brl_m2`) nunca é aceito como valor de entrada — é sempre calculado no servidor a
-  partir dos campos-fonte, com a mesma fórmula de `pricePerM2()` em `src/normalize.js`. Ver
-  `docs/SHEET_SETUP.md` para configurar o token.
+- **R4.9** *(issue #5, emendada pelos comentários do dono do repo na própria issue)* O Apps
+  Script pode expor um endpoint de escrita (`doPost`) **somente** sob autenticação obrigatória
+  em dois passos: `token` (comparado a `ADMIN_TOKEN` em Script Properties com
+  `timingSafeEqual_()` — nunca `===` puro, que vaza por atalho de curto-circuito) troca-se por
+  uma **sessão temporária** em `action: "authenticate"`; `create`/`update`/`delete` exigem essa
+  sessão, nunca o token cru. O token não é reenviado como credencial permanente a cada escrita —
+  é exatamente o que o dono pediu no comentário de aprovação do modelo. Autenticação tem
+  **limitação de tentativas** (`MAX_AUTH_ATTEMPTS` numa janela `AUTH_WINDOW_SECONDS`, contador
+  global — Apps Script não expõe IP de quem chama um Web App, então não há como limitar por
+  pessoa) e a sessão tem **TTL deslizante com teto absoluto** (`SESSION_TTL_SECONDS`,
+  `SESSION_MAX_LIFETIME_SECONDS`). Sem `ADMIN_TOKEN` configurado, `authenticate` nunca sucede;
+  não existe modo aberto. Isto substitui a proibição anterior de `doPost` (antiga R4.7): a
+  exceção é deliberada, documentada aqui, e não abre o endpoint de leitura, que continua público
+  e sem autenticação. Campo derivado (`asking_price_brl_m2`, `current_price_brl_m2`) nunca é
+  aceito como valor de entrada — é sempre calculado no servidor a partir dos campos-fonte, com a
+  mesma fórmula de `pricePerM2()` em `src/normalize.js`. Identidade Google
+  (`Session.getActiveUser()`) tem prioridade sobre o editor autodeclarado no `CHANGE_LOG` quando
+  o Apps Script consegue resolvê-la — o que depende da configuração de implantação do Web App e
+  não é garantido. Ver `docs/SHEET_SETUP.md` §8 para configurar o token e a rotação.
 
 ## 5. Qualidade de código
 
@@ -298,3 +309,12 @@ Cada uma nasce de um erro que aconteceu de verdade.
   logo depois de mostrar "Registro criado.". A mensagem de confirmação nunca chegava a ser lida:
   sumia no mesmo ciclo em que aparecia. Quem decide limpar um status é quem inicia uma ação nova
   (trocar de aba), nunca uma rotina de recarga chamada por outro caminho.
+- **R8.36** *(2026-08-21, revisão pré-merge da issue #5)* **Ler só o corpo de uma issue não é ler
+  a issue.** A primeira rodada de implementação da área administrativa leu o corpo da issue #5,
+  mas não os 3 comentários do dono do repo postados antes do trabalho começar — que refinavam a
+  autenticação (sessão temporária em vez de token reenviado, limitação de tentativas, comparação
+  sem vazamento parcial, identidade Google quando disponível) e ficaram sem implementar em 4 PRs
+  inteiras. `get_comments` (ou equivalente) é parte de "conferir a issue", não um passo opcional.
+  A checklist de critérios de aceite no corpo da issue também precisa ser relida item a item
+  contra o que foi entregue antes de considerar pronto — duas lacunas (busca/filtro/ordenação na
+  tabela; todas as colunas visíveis) só apareceram nessa releitura.

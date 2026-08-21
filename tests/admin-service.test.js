@@ -1,29 +1,35 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  buildWritePayload, parseWriteResponse, WriteApiError,
-  createRecord, updateRecord, deleteRecord, listRecords,
-  getToken, setToken, clearToken,
+  buildWritePayload, parseWriteResponse, WriteApiError, newCorrelationId,
+  login, createRecord, updateRecord, deleteRecord, listRecords,
+  getSession, clearSession,
 } from '../src/admin/admin-service.js';
 
 // admin-service.js é o cliente HTTP da API de escrita — aqui testamos o shaping do
 // request/response (puro) e o comportamento com `fetch` mockado, sem rede real.
+//
+// Login em dois passos (issue #5): `login()` troca token por sessão; createRecord/
+// updateRecord/deleteRecord mandam `session`, nunca `token`.
 
 // --- buildWritePayload / parseWriteResponse -------------------------------------
 
 test('buildWritePayload omite campos ausentes em vez de enviá-los vazios', () => {
-  const body = buildWritePayload({ token: 't', action: 'create', sheet: 'LISTINGS' });
-  assert.deepEqual(body, { token: 't', action: 'create', sheet: 'LISTINGS' });
+  const body = buildWritePayload({ session: 's', action: 'create', sheet: 'LISTINGS' });
+  assert.deepEqual(body, { session: 's', action: 'create', sheet: 'LISTINGS' });
   assert.equal('id' in body, false);
   assert.equal('expected_version' in body, false);
   assert.equal('editor' in body, false);
+  assert.equal('correlation_id' in body, false);
 });
 
-test('buildWritePayload inclui expected_version como string', () => {
+test('buildWritePayload inclui expected_version como string e correlation_id quando presentes', () => {
   const body = buildWritePayload({
-    token: 't', action: 'update', sheet: 'LISTINGS', id: 'X', expectedVersion: 7,
+    session: 's', action: 'update', sheet: 'LISTINGS', id: 'X', expectedVersion: 7,
+    correlationId: 'corr-1',
   });
   assert.equal(body.expected_version, '7');
+  assert.equal(body.correlation_id, 'corr-1');
 });
 
 test('parseWriteResponse devolve o payload quando ok=true', () => {
@@ -31,10 +37,13 @@ test('parseWriteResponse devolve o payload quando ok=true', () => {
   assert.deepEqual(parseWriteResponse(json), json);
 });
 
-test('parseWriteResponse lança WriteApiError tipado quando ok=false', () => {
+test('parseWriteResponse lança WriteApiError tipado quando ok=false, com correlation_id', () => {
   assert.throws(
-    () => parseWriteResponse({ ok: false, error: { code: 'NOT_FOUND', message: 'sumiu' } }),
-    (err) => err instanceof WriteApiError && err.code === 'NOT_FOUND' && err.message === 'sumiu',
+    () => parseWriteResponse({
+      ok: false, error: { code: 'NOT_FOUND', message: 'sumiu' }, correlation_id: 'corr-2',
+    }),
+    (err) => err instanceof WriteApiError && err.code === 'NOT_FOUND' && err.message === 'sumiu'
+      && err.correlationId === 'corr-2',
   );
 });
 
@@ -42,36 +51,43 @@ test('parseWriteResponse lança INTERNAL_ERROR para resposta sem o formato esper
   assert.throws(() => parseWriteResponse({}), (err) => err instanceof WriteApiError && err.code === 'INTERNAL_ERROR');
 });
 
-// --- token (sessionStorage) ------------------------------------------------------
+test('newCorrelationId devolve valores não vazios e diferentes a cada chamada', () => {
+  const a = newCorrelationId();
+  const b = newCorrelationId();
+  assert.ok(a && a.length > 0);
+  assert.ok(b && b.length > 0);
+  assert.notEqual(a, b);
+});
 
-test('getToken/setToken/clearToken funcionam sem lançar quando sessionStorage existe', () => {
+// --- sessão (sessionStorage) ------------------------------------------------------
+
+// `fn` costuma devolver uma Promise (quando combinado com withFetchMock) — usar
+// try/finally síncrono aqui apagaria o sessionStorage antes do fetch mockado
+// resolver. `.finally()` na Promise garante a limpeza só depois de tudo terminar.
+function withSessionStorage(fn) {
   const store = new Map();
   globalThis.sessionStorage = {
     getItem: (k) => (store.has(k) ? store.get(k) : null),
     setItem: (k, v) => store.set(k, v),
     removeItem: (k) => store.delete(k),
   };
-  try {
-    assert.equal(getToken(), '');
-    setToken('abc123');
-    assert.equal(getToken(), 'abc123');
-    clearToken();
-    assert.equal(getToken(), '');
-  } finally {
-    delete globalThis.sessionStorage;
-  }
-});
+  return Promise.resolve(fn(store)).finally(() => { delete globalThis.sessionStorage; });
+}
 
-test('getToken/setToken/clearToken não lançam quando sessionStorage está indisponível', () => {
-  delete globalThis.sessionStorage;
-  assert.doesNotThrow(() => {
-    setToken('x');
-    getToken();
-    clearToken();
+test('getSession/clearSession funcionam sem lançar quando sessionStorage existe', () => {
+  withSessionStorage(() => {
+    assert.equal(getSession(), '');
+    clearSession(); // não deve lançar mesmo vazio
+    assert.equal(getSession(), '');
   });
 });
 
-// --- createRecord / updateRecord / deleteRecord (fetch mockado) ------------------
+test('getSession não lança quando sessionStorage está indisponível', () => {
+  delete globalThis.sessionStorage;
+  assert.doesNotThrow(() => { getSession(); clearSession(); });
+});
+
+// --- login / createRecord / updateRecord / deleteRecord (fetch mockado) ----------
 
 function withFetchMock(handler, fn) {
   const original = globalThis.fetch;
@@ -79,16 +95,57 @@ function withFetchMock(handler, fn) {
   return fn().finally(() => { globalThis.fetch = original; });
 }
 
-test('createRecord envia POST com action=create e devolve o record em sucesso', async () => {
-  let captured = null;
-  await withFetchMock(async (url, opts) => {
-    captured = { url, opts };
-    return { json: async () => ({ ok: true, record: { listing_id: 'L1' }, dataset_version: '2' }) };
+test('login troca token por sessão, guarda a sessão (nunca o token) e nunca manda o token de novo', async () => {
+  await withSessionStorage(() => withFetchMock(async (url, opts) => {
+    const body = JSON.parse(opts.body);
+    assert.equal(body.action, 'authenticate');
+    assert.equal(body.token, 'meu-token');
+    assert.equal('session' in body, false); // login não manda sessão, só token
+    return { json: async () => ({ ok: true, session: 'sess-abc', expires_in: 1800 }) };
   }, async () => {
-    const res = await createRecord('https://script.example/exec', {
-      sheet: 'LISTINGS', id: 'L1', fields: { title: 'X' }, editor: 'Fulano',
+    const res = await login('https://script.example/exec', 'meu-token');
+    assert.equal(res.session, 'sess-abc');
+    assert.equal(getSession(), 'sess-abc');
+  }));
+});
+
+test('login propaga UNAUTHENTICATED como WriteApiError e não guarda sessão', async () => {
+  await withSessionStorage(() => withFetchMock(async () => ({
+    json: async () => ({ ok: false, error: { code: 'UNAUTHENTICATED', message: 'token errado' } }),
+  }), async () => {
+    await assert.rejects(
+      () => login('https://script.example/exec', 'errado'),
+      (err) => err instanceof WriteApiError && err.code === 'UNAUTHENTICATED',
+    );
+    assert.equal(getSession(), '');
+  }));
+});
+
+test('login propaga RATE_LIMITED como WriteApiError', async () => {
+  await withFetchMock(async () => ({
+    json: async () => ({ ok: false, error: { code: 'RATE_LIMITED', message: 'aguarde' } }),
+  }), async () => {
+    await assert.rejects(
+      () => login('https://script.example/exec', 'x'),
+      (err) => err instanceof WriteApiError && err.code === 'RATE_LIMITED',
+    );
+  });
+});
+
+test('createRecord envia POST com session (não token), action=create e devolve o record em sucesso', async () => {
+  let captured = null;
+  await withSessionStorage((store) => {
+    store.set('imob_admin_session', 'sess-xyz');
+    return withFetchMock(async (url, opts) => {
+      captured = { url, opts };
+      return { json: async () => ({ ok: true, record: { listing_id: 'L1' }, dataset_version: '2', correlation_id: 'corr-3' }) };
+    }, async () => {
+      const res = await createRecord('https://script.example/exec', {
+        sheet: 'LISTINGS', id: 'L1', fields: { title: 'X' }, editor: 'Fulano', correlationId: 'corr-3',
+      });
+      assert.equal(res.record.listing_id, 'L1');
+      assert.equal(res.correlation_id, 'corr-3');
     });
-    assert.equal(res.record.listing_id, 'L1');
   });
 
   assert.equal(captured.url, 'https://script.example/exec');
@@ -98,6 +155,9 @@ test('createRecord envia POST com action=create e devolve o record em sucesso', 
   assert.equal(body.sheet, 'LISTINGS');
   assert.equal(body.id, 'L1');
   assert.equal(body.editor, 'Fulano');
+  assert.equal(body.session, 'sess-xyz');
+  assert.equal(body.correlation_id, 'corr-3');
+  assert.equal('token' in body, false);
 });
 
 test('updateRecord propaga VERSION_CONFLICT como WriteApiError', async () => {
