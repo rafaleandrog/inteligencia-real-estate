@@ -1,6 +1,6 @@
-// Orquestração da área administrativa: login (token → sessão), carregar/listar
-// registros, buscar/ordenar/paginar, abrir formulário de criação/edição, submeter
-// escrita, tratar erro/conflito.
+// Orquestração da área administrativa: login (token validado a cada request,
+// padrão tipolis-sandbox), carregar/listar registros, buscar/ordenar/paginar,
+// abrir formulário de criação/edição, submeter escrita, tratar erro/conflito.
 //
 // Mesmo padrão de src/app.js: `state` único, `el()` para refs DOM, regiões de
 // loading/erro dedicadas alternadas via `hidden` — nunca tela em branco (R5.6/R5.7).
@@ -9,7 +9,7 @@ import { ADMIN_SHEETS, SHEET_LABELS, ID_FIELD, ADMIN_FIELDS } from './admin-sche
 import { buildTable, buildForm, buildTableToolbar, columnsFor } from './admin-ui.js';
 import { filterRecords, sortRecords, paginateRecords } from './admin-table.js';
 import {
-  getSession, clearSession, login, listRecords, createRecord, updateRecord, deleteRecord,
+  getToken, setToken, clearToken, validateToken, listRecords, createRecord, updateRecord, deleteRecord,
   newCorrelationId, WriteApiError,
 } from './admin-service.js';
 
@@ -85,12 +85,19 @@ function bindLogin() {
 
     if (dom.loginSubmitBtn) dom.loginSubmitBtn.disabled = true;
     try {
-      await login(CONFIG.appsScriptUrl, token);
-      dom.loginToken.value = ''; // o token não fica em nenhuma variável depois daqui
+      setToken(token);
+      const ok = await validateToken(CONFIG.appsScriptUrl, token);
+      dom.loginToken.value = '';
+      if (!ok) {
+        clearToken();
+        showLogin('Token inválido.');
+        return;
+      }
       showApp();
       resetTableState();
       loadSheet(state.sheet);
     } catch (err) {
+      clearToken();
       showLogin(loginErrorMessage(err));
     } finally {
       if (dom.loginSubmitBtn) dom.loginSubmitBtn.disabled = false;
@@ -99,7 +106,7 @@ function bindLogin() {
 
   if (dom.logoutBtn) {
     dom.logoutBtn.addEventListener('click', () => {
-      clearSession();
+      clearToken();
       dom.loginToken.value = '';
       showLogin();
     });
@@ -108,8 +115,6 @@ function bindLogin() {
 
 function loginErrorMessage(err) {
   if (!(err instanceof WriteApiError)) return 'Erro inesperado ao entrar.';
-  if (err.code === 'RATE_LIMITED') return 'Muitas tentativas. Aguarde alguns minutos antes de tentar de novo.';
-  if (err.code === 'UNAUTHENTICATED') return 'Token inválido.';
   return err.message || 'Erro inesperado ao entrar.';
 }
 
@@ -340,8 +345,7 @@ async function runDelete(record) {
 }
 
 const ERROR_MESSAGES = {
-  UNAUTHENTICATED: 'Sessão expirada ou inválida. Entre novamente.',
-  RATE_LIMITED: 'Muitas tentativas de autenticação. Aguarde alguns minutos.',
+  UNAUTHENTICATED: 'Token inválido ou expirado. Entre novamente.',
   VERSION_CONFLICT: 'Os dados mudaram desde que você carregou este registro. Recarregando a lista — revise antes de tentar de novo.',
   NOT_FOUND: 'Este registro não existe mais — provavelmente foi excluído por outra pessoa.',
   NETWORK_ERROR: 'Falha de rede. Verifique a conexão e tente novamente.',
@@ -358,7 +362,7 @@ function handleWriteError(err) {
   const message = withCorrelation(ERROR_MESSAGES[code] || (err && err.message) || 'Erro inesperado.', correlationId);
 
   if (code === 'UNAUTHENTICATED') {
-    clearSession();
+    clearToken();
     showLogin(message);
     return;
   }
@@ -380,7 +384,7 @@ export function main() {
   bindSheetTabs();
   bindNewRecord();
 
-  if (getSession()) {
+  if (getToken()) {
     showApp();
     loadSheet(state.sheet);
   } else {

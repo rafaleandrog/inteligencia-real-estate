@@ -99,11 +99,12 @@ confiável — leitura (`doGet`) continua pública e sem autenticação. Ver
 campos de cada aba — não só os usados no mapa), criar, editar e excluir registros de `LISTINGS`,
 `DEVELOPMENTS` e `ANCHORS`, com a mudança persistida na Google Sheet.
 
-Login em duas etapas (`ADMIN_TOKEN`, configurado em Script Properties): o token troca por uma
-sessão temporária, que é o que de fato viaja em cada escrita — o token cru nunca é reenviado. Sem
-`ADMIN_TOKEN` configurado, `doPost` recusa toda gravação (`docs/ENGINEERING_RULES.md`, R4.9). Ver
-[`docs/SHEET_SETUP.md`](docs/SHEET_SETUP.md) §8 para habilitar, incluindo o modelo de rate limit e
-expiração de sessão.
+Login por token direto (`ADMIN_TOKEN`, configurado em Script Properties), reenviado em toda
+requisição — mesmo modelo do `press-research-communications` no repo `tipolis-sandbox`. O token
+fica só em `sessionStorage` do navegador; rotacionar `ADMIN_TOKEN` invalida o acesso na próxima
+chamada, sem sessão para expirar por fora. Sem `ADMIN_TOKEN` configurado, `doPost` recusa toda
+gravação (`docs/ENGINEERING_RULES.md`, R4.9). Ver [`docs/SHEET_SETUP.md`](docs/SHEET_SETUP.md) §8
+para habilitar.
 
 ## Estado atual
 

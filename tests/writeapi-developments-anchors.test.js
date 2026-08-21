@@ -75,10 +75,8 @@ function post(context, body) {
 }
 
 /** Login em duas etapas (issue #5): troca token por sessão antes de cada escrita. */
-function write(context, body) {
-  const auth = post(context, { action: 'authenticate', token: 'secret-token' });
-  if (!auth.ok) throw new Error('login falhou no teste: ' + JSON.stringify(auth));
-  return post(context, { ...body, session: auth.session });
+function write(context, body, token = 'secret-token') {
+  return post(context, { token, ...body });
 }
 
 // --- DEVELOPMENTS ---------------------------------------------------------------

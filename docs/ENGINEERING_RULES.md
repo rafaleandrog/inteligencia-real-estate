@@ -62,25 +62,26 @@ Regras são numeradas e estáveis. Não renumere ao inserir — acrescente ao fi
 - **R4.7** Endpoint de leitura do Apps Script (`doGet`) é público e sem autenticação, com
   allowlist de datasets — segue read-only.
 - **R4.8** Configuração privada do Apps Script mora em Script Properties, nunca em célula.
-- **R4.9** *(issue #5, emendada pelos comentários do dono do repo na própria issue)* O Apps
-  Script pode expor um endpoint de escrita (`doPost`) **somente** sob autenticação obrigatória
-  em dois passos: `token` (comparado a `ADMIN_TOKEN` em Script Properties com
-  `timingSafeEqual_()` — nunca `===` puro, que vaza por atalho de curto-circuito) troca-se por
-  uma **sessão temporária** em `action: "authenticate"`; `create`/`update`/`delete` exigem essa
-  sessão, nunca o token cru. O token não é reenviado como credencial permanente a cada escrita —
-  é exatamente o que o dono pediu no comentário de aprovação do modelo. Autenticação tem
-  **limitação de tentativas** (`MAX_AUTH_ATTEMPTS` numa janela `AUTH_WINDOW_SECONDS`, contador
-  global — Apps Script não expõe IP de quem chama um Web App, então não há como limitar por
-  pessoa) e a sessão tem **TTL deslizante com teto absoluto** (`SESSION_TTL_SECONDS`,
-  `SESSION_MAX_LIFETIME_SECONDS`). Sem `ADMIN_TOKEN` configurado, `authenticate` nunca sucede;
-  não existe modo aberto. Isto substitui a proibição anterior de `doPost` (antiga R4.7): a
-  exceção é deliberada, documentada aqui, e não abre o endpoint de leitura, que continua público
-  e sem autenticação. Campo derivado (`asking_price_brl_m2`, `current_price_brl_m2`) nunca é
-  aceito como valor de entrada — é sempre calculado no servidor a partir dos campos-fonte, com a
-  mesma fórmula de `pricePerM2()` em `src/normalize.js`. Identidade Google
-  (`Session.getActiveUser()`) tem prioridade sobre o editor autodeclarado no `CHANGE_LOG` quando
-  o Apps Script consegue resolvê-la — o que depende da configuração de implantação do Web App e
-  não é garantido. Ver `docs/SHEET_SETUP.md` §8 para configurar o token e a rotação.
+- **R4.9** *(issue #5; simplificada para o padrão já usado no `press-research-communications`
+  do repo `tipolis-sandbox` — mesmo racional, sem inventar mecanismo novo)* O Apps Script pode
+  expor um endpoint de escrita (`doPost`) **somente** sob um `token` enviado em **toda**
+  requisição — inclusive `create`/`update`/`delete` — e comparado a `ADMIN_TOKEN` em Script
+  Properties (`authenticate_()`, comparação direta). Não há sessão intermediária, TTL, nem
+  limitação de tentativas: o token é a única credencial, guardado pelo frontend só em
+  `sessionStorage` (nunca em disco, nunca commitado) e reenviado a cada chamada — o mesmo
+  contrato do `press-monitor` (`js/api.js`: `TOKEN_KEY`, token em toda URL/POST, 401 limpa e
+  volta para o portão de login). Rotacionar `ADMIN_TOKEN` invalida instantaneamente a próxima
+  chamada, sem sessão para expirar por fora. Uma ação leve `action: "validate"` confere o token
+  sem ler nem escrever nada — é o que o portão de login usa antes de liberar a área
+  administrativa. Sem `ADMIN_TOKEN` configurado, nenhuma chamada autentica; não existe modo
+  aberto. Isto substitui a proibição anterior de `doPost` (antiga R4.7): a exceção é deliberada,
+  documentada aqui, e não abre o endpoint de leitura, que continua público e sem autenticação.
+  Campo derivado (`asking_price_brl_m2`, `current_price_brl_m2`) nunca é aceito como valor de
+  entrada — é sempre calculado no servidor a partir dos campos-fonte, com a mesma fórmula de
+  `pricePerM2()` em `src/normalize.js`. Identidade Google (`Session.getActiveUser()`) tem
+  prioridade sobre o editor autodeclarado no `CHANGE_LOG` quando o Apps Script consegue
+  resolvê-la — o que depende da configuração de implantação do Web App e não é garantido. Ver
+  `docs/SHEET_SETUP.md` §8 para configurar o token e a rotação.
 
 ## 5. Qualidade de código
 
@@ -318,3 +319,14 @@ Cada uma nasce de um erro que aconteceu de verdade.
   A checklist de critérios de aceite no corpo da issue também precisa ser relida item a item
   contra o que foi entregue antes de considerar pronto — duas lacunas (busca/filtro/ordenação na
   tabela; todas as colunas visíveis) só apareceram nessa releitura.
+- **R8.37** *(2026-08-21, simplificação pós-merge da autenticação admin, issue #5)* **Antes de
+  inventar um mecanismo de segurança novo, procure se o mesmo problema já foi resolvido em algum
+  outro projeto da própria organização.** A R4.9 original implementou sessão temporária + TTL
+  deslizante + limitação de tentativas + comparação de tempo constante para o endpoint de escrita
+  do admin — resolvendo o mesmo problema (frontend estático público + backend Apps Script) que o
+  repo `tipolis-sandbox` já resolve em produção com um token reenviado a cada requisição, sem
+  sessão nem rate limit, guardado só em `sessionStorage`. A complexidade extra não veio de um
+  requisito real desta issue — veio de generalizar demais um comentário sobre "não reenviar o
+  token como credencial permanente" para um modelo de sessão completo. Quando existe um padrão
+  irmão já rodando, comparar com ele primeiro é mais barato que projetar do zero — e evita
+  reescrever depois.

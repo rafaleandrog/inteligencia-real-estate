@@ -12,9 +12,10 @@
 // (mesma limitação de rede que a PR-A já documentou para validação manual). O que
 // este script verifica é o contrato entre a UI e a API — não o Apps Script real.
 //
-// Autenticação simulada em dois passos (issue #5): a fixture só aceita `action:
-// "authenticate"` com o token certo, devolve uma sessão, e só aceita escrita com essa
-// sessão — mesma forma do Code.gs real, para o teste pegar regressão de contrato.
+// Autenticação simulada por token direto (mesmo padrão do tipolis-sandbox): a
+// fixture confere `token` em toda requisição — inclusive `action: "validate"`,
+// usada pelo portão de login para conferir o token sem ler/escrever nada — igual
+// ao Code.gs real, para o teste pegar regressão de contrato.
 
 import { chromium } from 'playwright';
 
@@ -34,8 +35,7 @@ page.on('dialog', (d) => d.accept());
 
 let writeCalls = [];
 let datasetVersion = 1;
-let validSession = null;
-let authFailCount = 0;
+let validToken = 'valid-token';
 
 function fixtureRow(overrides = {}) {
   return {
@@ -68,22 +68,17 @@ await page.route('**/exec*', async (route) => {
   if (req.method() === 'POST') {
     const body = req.postDataJSON();
 
-    if (body.action === 'authenticate') {
-      if (body.token !== 'valid-token') {
-        authFailCount += 1;
-        if (authFailCount > 10) return route.fulfill(json({ ok: false, error: { code: 'RATE_LIMITED', message: 'Muitas tentativas.' } }));
-        return route.fulfill(json({ ok: false, error: { code: 'UNAUTHENTICATED', message: 'Token inválido.' } }));
-      }
-      authFailCount = 0;
-      validSession = 'sess-' + Math.random().toString(36).slice(2);
-      return route.fulfill(json({ ok: true, session: validSession, expires_in: 1800 }));
+    if (body.token !== validToken) {
+      if (body.action !== 'validate') writeCalls.push(body);
+      return route.fulfill(json({ ok: false, error: { code: 'UNAUTHENTICATED', message: 'Token inválido.' } }));
+    }
+
+    if (body.action === 'validate') {
+      return route.fulfill(json({ ok: true, record: { valid: true } }));
     }
 
     writeCalls.push(body);
 
-    if (!validSession || body.session !== validSession) {
-      return route.fulfill(json({ ok: false, error: { code: 'UNAUTHENTICATED', message: 'Sessão inválida ou expirada.' } }));
-    }
     if (body.action === 'update' && body.expected_version !== String(datasetVersion)) {
       return route.fulfill(json({ ok: false, error: { code: 'VERSION_CONFLICT', message: 'Dataset mudou.' } }));
     }
@@ -115,8 +110,8 @@ await page.click('#adminLoginForm button[type=submit]');
 await page.waitForTimeout(600);
 (await page.locator('#adminApp').isVisible()) ? pass('área admin aparece após login com token válido')
                                               : fail('área admin não aparece após login');
-const tokenAuthCall = writeCalls.length; // não deve ter ido para writeCalls (authenticate não conta como escrita)
-tokenAuthCall === 0 ? pass('login não é contado como chamada de escrita') : fail('authenticate apareceu em writeCalls');
+const tokenAuthCall = writeCalls.filter((c) => c.action === 'validate').length;
+tokenAuthCall === 0 ? pass('login (action=validate) não é contado como chamada de escrita') : fail('validate apareceu em writeCalls');
 
 console.log('\n== 2. Tabela completa, abas ==');
 const tabs = await page.locator('.admin-tab').count();
@@ -154,7 +149,7 @@ emptySubmitError ? pass('submit vazio é recusado com mensagem de obrigatório')
                  : fail('submit vazio não mostrou erro — BUG: campo obrigatório não bloqueia o envio');
 await page.click('#adminFormWrap .admin-form-actions .btn-ghost'); // cancelar
 
-console.log('\n== 6. Edição: só envia o campo mudado, sessão (não token) ==');
+console.log('\n== 6. Edição: só envia o campo mudado, com token ==');
 writeCalls = [];
 await page.click('.admin-table-actions .btn-ghost >> nth=0');
 await page.waitForTimeout(150);
@@ -169,9 +164,9 @@ if (updateCall && Object.keys(updateCall.fields).length === 1 && updateCall.fiel
 } else {
   fail('update não fez patch correto: ' + JSON.stringify(updateCall));
 }
-updateCall && updateCall.session && !updateCall.token
-  ? pass('update manda `session`, nunca `token`')
-  : fail('update ainda manda token cru ou sem sessão: ' + JSON.stringify(updateCall));
+updateCall && updateCall.token === 'valid-token'
+  ? pass('update manda `token` em toda requisição')
+  : fail('update sem token: ' + JSON.stringify(updateCall));
 updateCall && updateCall.correlation_id ? pass('update manda correlation_id') : fail('update sem correlation_id');
 const statusAfterUpdate = await page.locator('#adminStatus').textContent();
 /atualizado/i.test(statusAfterUpdate || '') ? pass('mensagem de sucesso do update aparece e não some com o reload')
@@ -204,15 +199,15 @@ const deleteCall = writeCalls.find((c) => c.action === 'delete');
 deleteCall ? pass('exclusão dispara o doPost com action=delete após confirmação')
            : fail('exclusão não chamou a API');
 
-console.log('\n== 9. Sessão inválida força novo login ==');
-validSession = null; // simula expiração/derrubada da sessão no servidor
+console.log('\n== 9. Token rotacionado no servidor força novo login ==');
+validToken = 'rotated-token'; // simula troca do ADMIN_TOKEN nas Script Properties
 await page.click('.admin-table-actions .btn-ghost >> nth=0');
 await page.waitForTimeout(150);
 await page.fill('#admin-field-title', 'Vai falhar');
 await page.click('#adminFormWrap button[type=submit]');
 await page.waitForTimeout(400);
-(await page.locator('#adminLogin').isVisible()) ? pass('sessão inválida força volta à tela de login')
-                                                : fail('sessão inválida não forçou novo login');
+(await page.locator('#adminLogin').isVisible()) ? pass('token rotacionado força volta à tela de login')
+                                                : fail('token rotacionado não forçou novo login');
 
 console.log('\n== 10. Console e XSS ==');
 const real = consoleErrors.filter((e) => !/ERR_TUNNEL|net::/i.test(e));

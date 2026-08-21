@@ -4,40 +4,36 @@
 // fetch mockado (tests/admin-service.test.js). Nenhuma lógica de DOM aqui — isso é
 // admin-ui.js.
 //
-// Autenticação em dois passos (issue #5, comentário do dono do repo: o token não
-// deve ser reenviado como credencial permanente): `login()` troca o token por uma
-// sessão; toda escrita depois disso manda a sessão, nunca mais o token cru.
+// Autenticação por token direto em cada requisição, mesmo padrão do
+// tipolis-sandbox (press-research-communications/press-monitor): o token é
+// guardado em sessionStorage e reenviado em toda chamada; o servidor valida
+// contra ADMIN_TOKEN a cada request, sem sessão intermediária.
 
-const SESSION_KEY = 'imob_admin_session';
+const TOKEN_KEY = 'imob_admin_token';
 
-/**
- * Sessão guardada em sessionStorage, não localStorage: expira com a aba fechada, o
- * que limita a janela de exposição se o navegador for compartilhado
- * (docs/SHEET_SETUP.md §8). O token em si NUNCA é guardado — só existe na memória do
- * módulo pelo tempo da chamada a `login()`.
- */
-export function getSession() {
+/** Token guardado em sessionStorage: expira com a aba fechada. */
+export function getToken() {
   try {
-    return sessionStorage.getItem(SESSION_KEY) || '';
+    return sessionStorage.getItem(TOKEN_KEY) || '';
   } catch {
     return ''; // sessionStorage pode não existir (aba privada bloqueando storage)
   }
 }
 
-function setSession(session) {
+export function setToken(token) {
   try {
-    sessionStorage.setItem(SESSION_KEY, session);
+    sessionStorage.setItem(TOKEN_KEY, token);
   } catch {
-    // Sem storage disponível: a sessão simplesmente não sobrevive a um reload.
+    // Sem storage disponível: o token simplesmente não sobrevive a um reload.
     // O formulário de login continua funcionando, só perde a conveniência.
   }
 }
 
-export function clearSession() {
+export function clearToken() {
   try {
-    sessionStorage.removeItem(SESSION_KEY);
+    sessionStorage.removeItem(TOKEN_KEY);
   } catch {
-    // ver getSession()
+    // ver getToken()
   }
 }
 
@@ -68,8 +64,8 @@ export function newCorrelationId() {
 }
 
 /** Monta o corpo da requisição de escrita. Função pura, testável sem fetch. */
-export function buildWritePayload({ session, action, sheet, id, expectedVersion, fields, editor, correlationId }) {
-  const payload = { session, action, sheet };
+export function buildWritePayload({ token, action, sheet, id, expectedVersion, fields, editor, correlationId }) {
+  const payload = { token, action, sheet };
   if (id !== undefined && id !== null && id !== '') payload.id = id;
   if (expectedVersion !== undefined && expectedVersion !== null && expectedVersion !== '') {
     payload.expected_version = String(expectedVersion);
@@ -109,33 +105,38 @@ async function postJson_(url, body) {
 }
 
 /**
- * Passo 1 do login: troca `token` por uma sessão temporária e guarda só a sessão.
- * Nunca guarda o token em storage nenhum — ele só existe no argumento desta chamada.
+ * Confere um token contra o servidor com uma chamada barata (`action: 'validate'`),
+ * sem ler nem escrever dados — mesmo padrão do `validateToken()` do tipolis-sandbox.
+ * Retorna `true`/`false`; não lança em token inválido (só em erro de rede/servidor).
  */
-export async function login(appsScriptUrl, token) {
-  const res = await postJson_(appsScriptUrl, { action: 'authenticate', token });
-  setSession(res.session);
-  return res;
+export async function validateToken(appsScriptUrl, token) {
+  try {
+    await postJson_(appsScriptUrl, { action: 'validate', token });
+    return true;
+  } catch (err) {
+    if (err instanceof WriteApiError && err.code === 'UNAUTHENTICATED') return false;
+    throw err;
+  }
 }
 
 /** Cria um registro. `fields` já deve vir coagido (ver admin-schema.js); o servidor valida de novo. */
 export function createRecord(appsScriptUrl, { sheet, id, fields, editor, correlationId }) {
-  const session = getSession();
-  const body = buildWritePayload({ session, action: 'create', sheet, id, fields, editor, correlationId });
+  const token = getToken();
+  const body = buildWritePayload({ token, action: 'create', sheet, id, fields, editor, correlationId });
   return postJson_(appsScriptUrl, body);
 }
 
 /** Atualiza um registro existente. `expectedVersion` é obrigatório — concorrência otimista. */
 export function updateRecord(appsScriptUrl, { sheet, id, fields, editor, expectedVersion, correlationId }) {
-  const session = getSession();
-  const body = buildWritePayload({ session, action: 'update', sheet, id, fields, editor, expectedVersion, correlationId });
+  const token = getToken();
+  const body = buildWritePayload({ token, action: 'update', sheet, id, fields, editor, expectedVersion, correlationId });
   return postJson_(appsScriptUrl, body);
 }
 
 /** Exclui um registro existente. `expectedVersion` é obrigatório — mesma regra de update. */
 export function deleteRecord(appsScriptUrl, { sheet, id, editor, expectedVersion, correlationId }) {
-  const session = getSession();
-  const body = buildWritePayload({ session, action: 'delete', sheet, id, editor, expectedVersion, correlationId });
+  const token = getToken();
+  const body = buildWritePayload({ token, action: 'delete', sheet, id, editor, expectedVersion, correlationId });
   return postJson_(appsScriptUrl, body);
 }
 
