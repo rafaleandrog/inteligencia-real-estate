@@ -94,6 +94,25 @@ Chave: `listing_id`. 141 linhas no dataset atual.
 `asking_price_brl_m2` é **derivado**: calculado por `asking_price_brl / area_m2` quando vazio.
 Valor já preenchido não é sobrescrito; divergência grande vira alerta em `DATA_QUALITY` (§17).
 
+#### Escrita pela área administrativa (issue #5, R4.9)
+
+A API de escrita do Apps Script (`doPost`) cobre, na primeira PR, só `LISTINGS`. Editável é
+exatamente `REQUIRED_HEADERS.LISTINGS` (as colunas críticas, já mantidas em sincronia com esta
+tabela e cross-checadas por `tests/contract.test.js`) **menos** `listing_id` e
+`asking_price_brl_m2`:
+
+- **Imutável após criação:** `listing_id` — só entra pelo campo `id` da requisição, nunca por
+  `fields`.
+- **Somente leitura, calculado pelo servidor:** `asking_price_brl_m2` — enviá-lo em `fields` é
+  recusado com `UNKNOWN_FIELD`. Ver `pricePerM2_()` em `optional-apps-script/Code.gs`.
+- **Fora do escopo desta PR:** campos de cauda longa que não estão em `REQUIRED_HEADERS`
+  (`external_id`, `portal_listing_code`, `portal_date_text`, `property_id`, `published_days`,
+  `views_count`, `interested_count`) não são editáveis pela API ainda — só pela planilha direta.
+- `property_type` é o único campo validado contra vocabulário fechado no servidor
+  (`apartamento`, `casa`, `casa_condominio`, `kitnet`, `predio`, `terreno`); `coordinate_precision`
+  e `confidence_flag` aceitam qualquer texto, porque o vocabulário completo em uso na planilha
+  não está totalmente documentado aqui.
+
 ### DEVELOPMENTS — empreendimentos
 Chave: `development_id`. 22 linhas.
 

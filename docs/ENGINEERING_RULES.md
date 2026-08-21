@@ -59,9 +59,17 @@ Regras são numeradas e estáveis. Não renumere ao inserir — acrescente ao fi
   e `textContent`, ou escape explicitamente.
 - **R4.5** Todo link externo leva `rel="noopener noreferrer"`.
 - **R4.6** URL vinda dos dados é validada antes de virar `href`: apenas `http:` e `https:`.
-- **R4.7** Endpoint do Apps Script é read-only na V1, com allowlist de datasets. Sem `doPost`
-  público, sem endpoint de administração.
+- **R4.7** Endpoint de leitura do Apps Script (`doGet`) é público e sem autenticação, com
+  allowlist de datasets — segue read-only.
 - **R4.8** Configuração privada do Apps Script mora em Script Properties, nunca em célula.
+- **R4.9** *(issue #5)* O Apps Script pode expor um endpoint de escrita (`doPost`) **somente**
+  sob autenticação obrigatória — token comparado a `ADMIN_TOKEN` em Script Properties. Sem o
+  token configurado, toda escrita é recusada; não existe modo aberto. Isto substitui a proibição
+  anterior de `doPost` (antiga R4.7): a exceção é deliberada, documentada aqui, e não abre o
+  endpoint de leitura, que continua público e sem autenticação. Campo derivado
+  (`asking_price_brl_m2`) nunca é aceito como valor de entrada — é sempre calculado no servidor a
+  partir dos campos-fonte, com a mesma fórmula de `pricePerM2()` em `src/normalize.js`. Ver
+  `docs/SHEET_SETUP.md` para configurar o token.
 
 ## 5. Qualidade de código
 

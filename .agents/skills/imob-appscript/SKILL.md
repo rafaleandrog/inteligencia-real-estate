@@ -40,8 +40,13 @@ e o job de manutenção disputam as mesmas abas. Sem lock, você perde escrita.
 ## Segurança
 
 - **Não armazene segredo em célula.** Configuração privada vai em Script Properties.
-- Endpoint é **read-only** na V1: apenas `health`, `meta` e `dataset`, com **allowlist** de
-  datasets. Sem `doPost` público. Sem endpoint de administração.
+- `doGet` (leitura) é **read-only e público, sem autenticação**: apenas `health`, `meta` e
+  `dataset`, com **allowlist** de datasets.
+- `doPost` (escrita, issue #5, R4.9) existe **só sob autenticação obrigatória**: token do
+  payload comparado a `ADMIN_TOKEN` em Script Properties. Sem o token configurado, toda escrita é
+  recusada — nunca há modo aberto. Escrita usa allowlist própria de aba **e** de campo
+  (`WRITE_ALLOWLIST`/`FIELD_SCHEMA`), busca o registro pelo ID (nunca por posição de linha), e
+  passa por `withLock_()` como qualquer outra mutação concorrente.
 - Se mantiver JSONP como fallback, **valide rigorosamente o nome do callback** — é injeção de
   script direta caso contrário.
 
@@ -62,5 +67,10 @@ remover é humana.
 
 ## Campo derivado
 
-`asking_price_brl_m2` só é calculado quando **vazio** e existem `asking_price_brl` e `area_m2`.
-Valor já preenchido não é sobrescrito na V1 — divergência grande vira alerta, não sobrescrita.
+`asking_price_brl_m2` só é calculado quando **vazio** e existem `asking_price_brl` e `area_m2`
+(manutenção periódica, `recalculateDerivedFields()`). Valor já preenchido não é sobrescrito na
+V1 — divergência grande vira alerta, não sobrescrita.
+
+Na API de escrita, o mesmo campo é **sempre** recalculado no servidor quando o payload muda preço
+e/ou área (`applyDerivedFields_()`), e nunca aceito como valor de entrada — cliente que tenta
+enviá-lo recebe `UNKNOWN_FIELD`.
