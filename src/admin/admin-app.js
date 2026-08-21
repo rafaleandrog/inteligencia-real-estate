@@ -98,6 +98,7 @@ function bindLogin() {
       loadSheet(state.sheet);
     } catch (err) {
       clearToken();
+      if (!(err instanceof WriteApiError)) console.error('Falha inesperada no login admin:', err);
       showLogin(loginErrorMessage(err));
     } finally {
       if (dom.loginSubmitBtn) dom.loginSubmitBtn.disabled = false;
