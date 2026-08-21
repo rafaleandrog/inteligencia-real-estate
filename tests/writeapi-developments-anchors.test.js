@@ -53,13 +53,18 @@ function anchorRow(overrides = {}) {
   return ANCHORS_HEADERS.map((h) => merged[h]);
 }
 
+const CHANGE_LOG_HEADERS = [
+  'timestamp', 'sheet', 'range', 'record_id', 'old_value', 'new_value', 'editor',
+  'correlation_id', 'result', 'error_reason',
+];
+
 function setup() {
   return createAppsScriptSandbox({
     sheets: {
       DEVELOPMENTS: [DEVELOPMENTS_HEADERS, developmentRow()],
       ANCHORS: [ANCHORS_HEADERS, anchorRow()],
       APP_META: [['key', 'value', 'updated_at']],
-      CHANGE_LOG: [['timestamp', 'sheet', 'range', 'record_id', 'old_value', 'new_value', 'editor']],
+      CHANGE_LOG: [CHANGE_LOG_HEADERS],
     },
     scriptProperties: { DATASET_VERSION: '1', ADMIN_TOKEN: 'secret-token' },
   });
@@ -69,12 +74,19 @@ function post(context, body) {
   return readJsonOutput(context.doPost({ postData: { contents: JSON.stringify(body) } }));
 }
 
+/** Login em duas etapas (issue #5): troca token por sessão antes de cada escrita. */
+function write(context, body) {
+  const auth = post(context, { action: 'authenticate', token: 'secret-token' });
+  if (!auth.ok) throw new Error('login falhou no teste: ' + JSON.stringify(auth));
+  return post(context, { ...body, session: auth.session });
+}
+
 // --- DEVELOPMENTS ---------------------------------------------------------------
 
 test('DEVELOPMENTS: create exige só os campos marcados sim no contrato', () => {
   const { context } = setup();
-  const res = post(context, {
-    token: 'secret-token', action: 'create', sheet: 'DEVELOPMENTS', id: 'DEV_2',
+  const res = write(context, {
+    action: 'create', sheet: 'DEVELOPMENTS', id: 'DEV_2',
     fields: {
       name: 'Torres do Lago', address: 'QI 5', neighborhood: 'Lago Sul',
       confidence_flag: 'high_attributes', spatial_usable: true, last_verified_at: '2026-08-21',
@@ -87,8 +99,8 @@ test('DEVELOPMENTS: create exige só os campos marcados sim no contrato', () => 
 
 test('DEVELOPMENTS: create sem os campos obrigatórios é VALIDATION_ERROR', () => {
   const { context } = setup();
-  const res = post(context, {
-    token: 'secret-token', action: 'create', sheet: 'DEVELOPMENTS', id: 'DEV_2',
+  const res = write(context, {
+    action: 'create', sheet: 'DEVELOPMENTS', id: 'DEV_2',
     fields: { name: 'Só o nome' },
   });
   assert.equal(res.error.code, 'VALIDATION_ERROR');
@@ -96,8 +108,8 @@ test('DEVELOPMENTS: create sem os campos obrigatórios é VALIDATION_ERROR', () 
 
 test('DEVELOPMENTS: current_price_brl_m2 é recusado como entrada direta', () => {
   const { context } = setup();
-  const res = post(context, {
-    token: 'secret-token', action: 'update', sheet: 'DEVELOPMENTS', id: 'DEV_1',
+  const res = write(context, {
+    action: 'update', sheet: 'DEVELOPMENTS', id: 'DEV_1',
     expected_version: '1', fields: { current_price_brl_m2: 9999 },
   });
   assert.equal(res.error.code, 'UNKNOWN_FIELD');
@@ -105,8 +117,8 @@ test('DEVELOPMENTS: current_price_brl_m2 é recusado como entrada direta', () =>
 
 test('DEVELOPMENTS: development_id é imutável (só via `id`, nunca em fields)', () => {
   const { context } = setup();
-  const res = post(context, {
-    token: 'secret-token', action: 'update', sheet: 'DEVELOPMENTS', id: 'DEV_1',
+  const res = write(context, {
+    action: 'update', sheet: 'DEVELOPMENTS', id: 'DEV_1',
     expected_version: '1', fields: { development_id: 'DEV_X' },
   });
   assert.equal(res.error.code, 'UNKNOWN_FIELD');
@@ -114,8 +126,8 @@ test('DEVELOPMENTS: development_id é imutável (só via `id`, nunca em fields)'
 
 test('DEVELOPMENTS: update recalcula current_price_brl_m2 usando area_min_m2 como base', () => {
   const { context } = setup();
-  const res = post(context, {
-    token: 'secret-token', action: 'update', sheet: 'DEVELOPMENTS', id: 'DEV_1',
+  const res = write(context, {
+    action: 'update', sheet: 'DEVELOPMENTS', id: 'DEV_1',
     expected_version: '1', fields: { current_price_brl: 800000 },
   });
   assert.equal(res.ok, true);
@@ -126,8 +138,8 @@ test('DEVELOPMENTS: update recalcula current_price_brl_m2 usando area_min_m2 com
 
 test('DEVELOPMENTS: spatial_usable aceita literais tolerantes de booleano', () => {
   const { context } = setup();
-  const res = post(context, {
-    token: 'secret-token', action: 'update', sheet: 'DEVELOPMENTS', id: 'DEV_1',
+  const res = write(context, {
+    action: 'update', sheet: 'DEVELOPMENTS', id: 'DEV_1',
     expected_version: '1', fields: { spatial_usable: 'sim' },
   });
   assert.equal(res.ok, true);
@@ -136,8 +148,8 @@ test('DEVELOPMENTS: spatial_usable aceita literais tolerantes de booleano', () =
 
 test('DEVELOPMENTS: delete remove a linha e audita', () => {
   const { context, sheets } = setup();
-  const res = post(context, {
-    token: 'secret-token', action: 'delete', sheet: 'DEVELOPMENTS', id: 'DEV_1', expected_version: '1',
+  const res = write(context, {
+    action: 'delete', sheet: 'DEVELOPMENTS', id: 'DEV_1', expected_version: '1',
   });
   assert.equal(res.ok, true);
   assert.equal(sheets.DEVELOPMENTS._rows.length, 1); // só o header
@@ -147,8 +159,8 @@ test('DEVELOPMENTS: delete remove a linha e audita', () => {
 
 test('ANCHORS: create exige os campos marcados sim no contrato', () => {
   const { context } = setup();
-  const res = post(context, {
-    token: 'secret-token', action: 'create', sheet: 'ANCHORS', id: 'ANCHOR_2',
+  const res = write(context, {
+    action: 'create', sheet: 'ANCHORS', id: 'ANCHOR_2',
     fields: {
       name: 'Parque da Cidade', category: 'parque_equipamento_publico', subcategory: 'parque_urbano',
       operator_name: 'GDF', latitude: -15.8, longitude: -47.92, ra_geo_id: 'RA2026_RA-I',
@@ -163,8 +175,8 @@ test('ANCHORS: create exige os campos marcados sim no contrato', () => {
 
 test('ANCHORS: category fora do vocabulário fechado é VALIDATION_ERROR', () => {
   const { context } = setup();
-  const res = post(context, {
-    token: 'secret-token', action: 'update', sheet: 'ANCHORS', id: 'ANCHOR_1',
+  const res = write(context, {
+    action: 'update', sheet: 'ANCHORS', id: 'ANCHOR_1',
     expected_version: '1', fields: { category: 'castelo' },
   });
   assert.equal(res.error.code, 'VALIDATION_ERROR');
@@ -172,8 +184,8 @@ test('ANCHORS: category fora do vocabulário fechado é VALIDATION_ERROR', () =>
 
 test('ANCHORS: não tem campo derivado — nenhum campo de preço/m² existe na allowlist', () => {
   const { context } = setup();
-  const res = post(context, {
-    token: 'secret-token', action: 'update', sheet: 'ANCHORS', id: 'ANCHOR_1',
+  const res = write(context, {
+    action: 'update', sheet: 'ANCHORS', id: 'ANCHOR_1',
     expected_version: '1', fields: { price_m2: 100 },
   });
   assert.equal(res.error.code, 'UNKNOWN_FIELD');
@@ -181,8 +193,8 @@ test('ANCHORS: não tem campo derivado — nenhum campo de preço/m² existe na 
 
 test('ANCHORS: update grava, versiona e audita', () => {
   const { context, sheets } = setup();
-  const res = post(context, {
-    token: 'secret-token', action: 'update', sheet: 'ANCHORS', id: 'ANCHOR_1',
+  const res = write(context, {
+    action: 'update', sheet: 'ANCHORS', id: 'ANCHOR_1',
     expected_version: '1', fields: { name: 'Escola Modelo II' },
   });
   assert.equal(res.ok, true);
@@ -192,8 +204,8 @@ test('ANCHORS: update grava, versiona e audita', () => {
 
 test('ANCHORS: place_id inexistente é NOT_FOUND', () => {
   const { context } = setup();
-  const res = post(context, {
-    token: 'secret-token', action: 'delete', sheet: 'ANCHORS', id: 'NAO_EXISTE', expected_version: '1',
+  const res = write(context, {
+    action: 'delete', sheet: 'ANCHORS', id: 'NAO_EXISTE', expected_version: '1',
   });
   assert.equal(res.error.code, 'NOT_FOUND');
 });
