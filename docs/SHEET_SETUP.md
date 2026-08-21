@@ -99,3 +99,8 @@ tentativa de escrita é recusada — não existe modo aberto.
    qualquer sessão administrativa aberta.
 6. Sem `ADMIN_TOKEN` configurado, `doPost` sempre responde `UNAUTHENTICATED` — é o estado seguro
    por padrão logo após importar este script numa planilha nova.
+7. A interface administrativa fica em `admin.html` (`https://<seu-pages>/admin.html`), separada
+   do site público (`index.html`). Ela não tem controle de acesso próprio na V1 — a única
+   barreira é o token: qualquer pessoa que abra a URL vê a tela de login, mas só grava dados
+   quem tiver o `ADMIN_TOKEN`. Não é uma página secreta (R4.3) — o link não é divulgado
+   publicamente, mas a segurança real está no token, não em ele não ser linkado.

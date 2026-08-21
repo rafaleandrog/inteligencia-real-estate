@@ -1,0 +1,174 @@
+/* Imob Intelligence — área administrativa (issue #5).
+   Reaproveita as variáveis e classes base de styles.css (.btn, .btn-ghost, .field,
+   .state); aqui só o que é específico de tabela/formulário administrativo. */
+
+.admin-body { overflow: auto; height: auto; }
+
+.admin-token-note {
+  margin: 0;
+  font-size: 12px;
+  color: var(--muted);
+  max-width: 60ch;
+}
+
+.admin-main {
+  max-width: 1100px;
+  margin: 0 auto;
+  padding: 24px 20px 60px;
+}
+
+.admin-login {
+  max-width: 360px;
+  margin: 60px auto;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 24px;
+  box-shadow: var(--shadow);
+}
+.admin-login h1 { font-size: 1.2rem; margin-bottom: 8px; }
+.admin-login p { color: var(--muted); font-size: 13px; }
+.admin-login input { width: 100%; padding: 8px 10px; border: 1px solid var(--line); border-radius: 8px; }
+
+.admin-error-text {
+  color: #8c2f2f;
+  background: #fbe9e9;
+  border-radius: 8px;
+  padding: 8px 10px;
+  font-size: 13px;
+  margin: 10px 0;
+}
+
+.admin-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.admin-tabs { display: flex; gap: 6px; flex-wrap: wrap; }
+.admin-tab {
+  padding: 7px 14px;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  background: #fff;
+  color: var(--muted);
+  font: inherit;
+  cursor: pointer;
+}
+.admin-tab[aria-pressed="true"] {
+  background: var(--brand);
+  border-color: var(--brand);
+  color: #fff;
+}
+
+.admin-editor-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 12px;
+  color: var(--muted);
+  margin-left: auto;
+}
+.admin-editor-field input { padding: 6px 9px; border: 1px solid var(--line); border-radius: 8px; }
+
+.admin-status {
+  padding: 8px 12px;
+  border-radius: 8px;
+  background: var(--bg);
+  font-size: 13px;
+  margin-bottom: 12px;
+}
+.admin-status[data-tone="ok"] { background: #e6f1ea; color: #2f5a41; }
+
+.admin-table-wrap-outer { position: relative; min-height: 200px; }
+
+/* A tabela pode ter mais colunas do que cabem em 390px — ela rola por dentro do
+   próprio contêiner, a página nunca rola na horizontal. */
+#adminTableWrap { overflow-x: auto; }
+
+.admin-table {
+  width: 100%;
+  min-width: 560px;
+  border-collapse: collapse;
+  background: var(--panel);
+  border-radius: var(--radius);
+  overflow: hidden;
+  font-size: 13px;
+}
+.admin-table th, .admin-table td {
+  text-align: left;
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--line);
+  white-space: nowrap;
+  max-width: 220px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.admin-table th { background: var(--bg); color: var(--muted); font-weight: 600; font-size: 11px; text-transform: uppercase; }
+.admin-table-actions { display: flex; gap: 6px; white-space: nowrap; }
+.admin-table-actions button { margin: 0; padding: 4px 10px; font-size: 12px; }
+.admin-btn-danger { color: #8c2f2f; border-color: #e3b8b8; }
+.admin-btn-danger:hover { border-color: #8c2f2f; color: #8c2f2f; }
+
+.admin-empty { color: var(--muted); padding: 20px; text-align: center; }
+
+.admin-form-dialog {
+  position: fixed;
+  inset: 0;
+  background: #17201966;
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding: 40px 16px;
+  overflow: auto;
+  z-index: 1000;
+}
+.admin-form-dialog[hidden] { display: none; }
+
+.admin-form-panel {
+  background: var(--panel);
+  border-radius: var(--radius);
+  padding: 24px;
+  max-width: 640px;
+  width: 100%;
+  box-shadow: var(--shadow);
+}
+
+.admin-form { display: grid; grid-template-columns: 1fr 1fr; gap: 4px 16px; }
+.admin-form-field { display: flex; flex-direction: column; margin: 6px 0; }
+.admin-form-field label { font-size: 12px; color: var(--muted); margin-bottom: 4px; }
+.admin-form-field input, .admin-form-field select {
+  padding: 7px 9px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  font: inherit;
+}
+.admin-form-field input[type="checkbox"] { width: auto; align-self: flex-start; }
+
+/* Destaca campo mudado em relação ao valor original, em edição — R4.4-safe: sem
+   conteúdo dinâmico, só uma classe. */
+.admin-field-changed label { color: var(--brand); font-weight: 600; }
+.admin-field-changed input, .admin-field-changed select { border-color: var(--brand); }
+
+.admin-form-note {
+  grid-column: 1 / -1;
+  font-size: 12px;
+  color: var(--muted);
+  margin: 4px 0 0;
+}
+
+.admin-form-actions {
+  grid-column: 1 / -1;
+  display: flex;
+  gap: 10px;
+  margin-top: 14px;
+}
+.admin-form-actions button { margin: 0; }
+
+@media (max-width: 640px) {
+  .admin-form { grid-template-columns: 1fr; }
+  .admin-toolbar { flex-direction: column; align-items: stretch; }
+  .admin-editor-field { margin-left: 0; }
+}

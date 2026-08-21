@@ -1,0 +1,85 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Imob Intelligence — Administração</title>
+<meta name="robots" content="noindex, nofollow">
+
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%23153b29'/%3E%3Cpath d='M8 21V13l8-5 8 5v8h-6v-6h-4v6z' fill='%23fff'/%3E%3C/svg%3E">
+<link rel="stylesheet" href="./assets/styles.css">
+<link rel="stylesheet" href="./assets/admin.css">
+</head>
+<body class="admin-body">
+
+<header class="topbar">
+  <div class="brand">
+    <strong>Imob Intelligence</strong>
+    <span class="brand-sub">Administração</span>
+  </div>
+  <p class="admin-token-note">
+    Área restrita — issue #5. Acesso por token compartilhado, não por identidade
+    pessoal (ver <code>docs/SHEET_SETUP.md</code> §8). Não use dados sensíveis reais
+    de terceiros aqui além do que já está na planilha.
+  </p>
+</header>
+
+<main class="admin-main">
+
+  <section id="adminLogin" class="admin-login" aria-label="Entrar na área administrativa">
+    <h1>Entrar</h1>
+    <p>Informe o token de administração configurado em <code>ADMIN_TOKEN</code>.</p>
+    <form id="adminLoginForm">
+      <label class="field" for="adminLoginToken">Token</label>
+      <input id="adminLoginToken" type="password" autocomplete="off" required>
+      <p id="adminLoginError" class="admin-error-text" role="alert" hidden></p>
+      <button type="submit" class="btn">Entrar</button>
+    </form>
+  </section>
+
+  <section id="adminApp" class="admin-app" hidden aria-label="Administração de dados">
+
+    <div class="admin-toolbar">
+      <nav id="adminSheetTabs" class="admin-tabs" aria-label="Aba de dados"></nav>
+
+      <label class="admin-editor-field">
+        Editor (autodeclarado, não verificado)
+        <input id="adminEditorName" type="text" placeholder="Seu nome" autocomplete="off">
+      </label>
+
+      <button type="button" class="btn" id="adminNewRecord">+ Novo registro</button>
+      <button type="button" class="btn-ghost" id="adminLogout">Sair</button>
+    </div>
+
+    <p id="adminStatus" class="admin-status" role="status" hidden></p>
+
+    <div class="admin-table-wrap-outer">
+      <div class="state" id="adminLoading" role="status">
+        <div class="spinner" aria-hidden="true"></div>
+        <p>Carregando registros…</p>
+      </div>
+
+      <div class="state state-error" id="adminError" role="alert" hidden>
+        <h2>Não foi possível carregar os registros.</h2>
+        <p id="adminErrorDetail"></p>
+      </div>
+
+      <div id="adminTableWrap"></div>
+    </div>
+
+  </section>
+
+  <div id="adminFormDialog" class="admin-form-dialog" role="dialog" aria-modal="true" hidden>
+    <div class="admin-form-panel">
+      <h2 id="adminFormTitle"></h2>
+      <p id="adminFormError" class="admin-error-text" role="alert" hidden></p>
+      <div id="adminFormWrap"></div>
+    </div>
+  </div>
+
+</main>
+
+<script src="./src/config.js"></script>
+<script type="module" src="./src/admin/admin-app.js"></script>
+</body>
+</html>
