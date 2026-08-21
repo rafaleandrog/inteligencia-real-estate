@@ -148,6 +148,13 @@ aponte para ele: `CHROMIUM_PATH=/caminho/para/chrome npm run smoke`.
 Ele já pegou dois bugs que nenhum teste unitário pegaria: `leaflet.js` ausente do HTML (R8.13) e
 marcadores SVG estilizados com `background` em vez de `fill` (R8.14).
 
+A área administrativa (`admin.html`, issue #5) tem roteiro próprio em
+[`tools/smoke-test-admin.mjs`](../tools/smoke-test-admin.mjs) (`npm run smoke:admin`), que
+mocka o Apps Script via `page.route()` — não há Web App de teste disponível neste projeto. Já
+pegou dois bugs equivalentes do lado administrativo: validação de campo obrigatório que não
+bloqueava o envio (R8.34) e mensagem de sucesso apagada pela própria recarga que a sucede
+(R8.35).
+
 Para verificar à mão:
 
 ```bash

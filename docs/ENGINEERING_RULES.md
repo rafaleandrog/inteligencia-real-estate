@@ -294,6 +294,21 @@ Cada uma nasce de um erro que aconteceu de verdade.
   e R7.6, que só relaxa depois da 3ª rodada. Duas regras descrevendo o mesmo portão com palavras
   diferentes é o mesmo problema de política duplicada da R8.7, agora entre regras. Ao escrever
   uma regra, diga o que ela **não** decide.
+- **R8.34** *(2026-08-21, desenvolvimento da PR-C da issue #5)* **Checar "campo obrigatório
+  ausente" pelo tamanho do objeto de campos, não pelo valor de cada campo, é um guard que nunca
+  dispara quando o formulário sempre popula toda chave.** O formulário genérico de admin.html
+  devolvia um valor (mesmo vazio) para todo campo do schema — `Object.keys(fields).length === 0`
+  nunca era verdadeiro, então o submit vazio passava direto para o servidor em vez de ser barrado
+  na tela. Só apareceu porque o smoke test (`tools/smoke-test-admin.mjs`) exercitou o caminho de
+  verdade num navegador; checagem de sintaxe e teste unitário do schema não cobriam isso. Mesma
+  lição da R8.4: reproduza o cenário de falha que o guard deve pegar antes de confiar nele.
+- **R8.35** *(2026-08-21, desenvolvimento da PR-C da issue #5)* **Recarregar dados após uma
+  escrita não pode apagar incondicionalmente o feedback dessa mesma escrita.** `loadSheet()` da
+  área administrativa limpava a barra de status sempre que terminava com sucesso — inclusive
+  quando tinha sido chamada por `submitForm()` só para refletir o valor persistido pelo servidor
+  logo depois de mostrar "Registro criado.". A mensagem de confirmação nunca chegava a ser lida:
+  sumia no mesmo ciclo em que aparecia. Quem decide limpar um status é quem inicia uma ação nova
+  (trocar de aba), nunca uma rotina de recarga chamada por outro caminho.
 - **R8.36** *(2026-08-21, revisão pré-merge da issue #5)* **Ler só o corpo de uma issue não é ler
   a issue.** A primeira rodada de implementação da área administrativa leu o corpo da issue #5,
   mas não os 3 comentários do dono do repo postados antes do trabalho começar — que refinavam a

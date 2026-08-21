@@ -60,7 +60,8 @@ Smoke test em navegador (roteiro completo, exige `npm install` do playwright):
 
 ```bash
 npm run serve &
-npm run smoke
+npm run smoke        # site público
+npm run smoke:admin  # área administrativa (issue #5) — Apps Script mockado via page.route()
 ```
 
 ## Regra anti-dessincronização
@@ -89,7 +90,20 @@ dados: setup da planilha, validação, `DATA_QUALITY`, `APP_META`, `CHANGE_LOG`,
 dataset e gatilhos.
 
 Ele **não** substitui a leitura direta da planilha pelo site enquanto o GViz for simples e
-confiável. Ver [`docs/SHEET_SETUP.md`](docs/SHEET_SETUP.md).
+confiável — leitura (`doGet`) continua pública e sem autenticação. Ver
+[`docs/SHEET_SETUP.md`](docs/SHEET_SETUP.md).
+
+## Área administrativa
+
+`admin.html` permite listar (com busca, ordenação por coluna e paginação, mostrando todos os
+campos de cada aba — não só os usados no mapa), criar, editar e excluir registros de `LISTINGS`,
+`DEVELOPMENTS` e `ANCHORS`, com a mudança persistida na Google Sheet.
+
+Login em duas etapas (`ADMIN_TOKEN`, configurado em Script Properties): o token troca por uma
+sessão temporária, que é o que de fato viaja em cada escrita — o token cru nunca é reenviado. Sem
+`ADMIN_TOKEN` configurado, `doPost` recusa toda gravação (`docs/ENGINEERING_RULES.md`, R4.9). Ver
+[`docs/SHEET_SETUP.md`](docs/SHEET_SETUP.md) §8 para habilitar, incluindo o modelo de rate limit e
+expiração de sessão.
 
 ## Estado atual
 
