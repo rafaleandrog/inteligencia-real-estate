@@ -145,6 +145,22 @@ Chave: `development_id`. 22 linhas.
 > coordenada é pior que nenhuma — colocaria o ponto no lugar errado. `computeKpis` expõe isso em
 > `withoutCoord` para que o buraco fique visível em vez de silencioso.
 
+#### Escrita pela área administrativa (issue #5, R4.9)
+
+Editável: `REQUIRED_HEADERS.DEVELOPMENTS` menos `development_id` (imutável, só via `id` da
+requisição) e `current_price_brl_m2`. Este último é tratado como derivado pela API de escrita
+mesmo o contrato marcando `Obrig. = não` (e não `derivado`, como em LISTINGS): `src/normalize.js`
+já o computa via `pricePerM2()` quando ausente, então a API mantém o mesmo comportamento e
+recusa (`UNKNOWN_FIELD`) valor enviado diretamente — calcula sempre a partir de
+`current_price_brl` / `area_min_m2` quando um dos dois muda. Diferente de LISTINGS, a manutenção
+periódica (`recalculateDerivedFields()`) **não** recalcula este campo fora da API de escrita —
+ver Pendências.
+
+`spatial_usable` é `bool` (mesmos literais tolerantes de `toBoolean()`/`toBoolean_()`).
+`latitude`/`longitude` **não** são obrigatórios na criação — sete dos 22 registros do dataset
+atual não têm coordenada por design, e a API não pode forçar um valor que a semântica do dado
+não exige.
+
 ### ANCHORS — pontos de interesse
 Chave: `place_id`. 35 linhas.
 
@@ -172,6 +188,13 @@ Chave: `place_id`. 35 linhas.
 
 Diferente dos anúncios, âncoras têm coordenada **precisa** (`school_polygon_reference_point` e
 similares, `confidence_flag: high`).
+
+#### Escrita pela área administrativa (issue #5, R4.9)
+
+Editável: `REQUIRED_HEADERS.ANCHORS` menos `place_id` (imutável, só via `id` da requisição).
+ANCHORS não tem campo de preço, então não tem noção de derivado. `category` é validado contra o
+vocabulário fechado acima; os demais enums (`status`, `coordinate_precision`) ficam como texto
+livre pelo mesmo motivo de LISTINGS.
 
 ---
 
