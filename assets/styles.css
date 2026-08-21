@@ -114,6 +114,17 @@ h1, h2 { margin: 0; font-size: 1rem; }
 }
 .source-badge[data-source="demo"] { background: #e27a2c; }
 
+.admin-link {
+  margin-left: auto;
+  font-size: 12px;
+  opacity: .7;
+  color: #fff;
+  white-space: nowrap;
+  text-decoration: none;
+}
+.admin-link:hover,
+.admin-link:focus { opacity: 1; text-decoration: underline; }
+
 /* Layout ---------------------------------------------------------------- */
 
 .layout {
