@@ -38,8 +38,24 @@ var CHANGELOG_SHEET = 'CHANGE_LOG';
 var OPERATIONAL_HEADERS = {
   APP_META: ['key', 'value', 'updated_at'],
   DATA_QUALITY: ['severity', 'sheet', 'row', 'record_id', 'field', 'code', 'message', 'detected_at'],
-  CHANGE_LOG: ['timestamp', 'sheet', 'range', 'record_id', 'old_value', 'new_value', 'editor']
+  /**
+   * `correlation_id`, `result` e `error_reason` foram acrescentadas na issue #5 para
+   * cobrir o pedido de auditoria da API de escrita ("timestamp; aba; operação;
+   * intervalo/campos; record_id; valor anterior; valor novo; editor; correlation_id;
+   * resultado; motivo de erro"). Só o gatilho de edição manual (`logChange_`) e o
+   * caminho de sucesso da API de escrita preenchem as 7 colunas antigas sem as novas
+   * três — `appendChangeLogRow_` aceita linha com 7 ou 10 células, então planilhas já
+   * provisionadas com o cabeçalho antigo continuam funcionando até `upgradeChangeLogHeader_()`
+   * rodar (ver setupProject()).
+   */
+  CHANGE_LOG: [
+    'timestamp', 'sheet', 'range', 'record_id', 'old_value', 'new_value', 'editor',
+    'correlation_id', 'result', 'error_reason'
+  ]
 };
+
+/** Cabeçalho do CHANGE_LOG antes da issue #5 — usado só por upgradeChangeLogHeader_(). */
+var CHANGE_LOG_HEADERS_V1 = ['timestamp', 'sheet', 'range', 'record_id', 'old_value', 'new_value', 'editor'];
 
 /** Coluna que identifica o registro em cada aba de dados. */
 var ID_FIELD = {
@@ -107,6 +123,26 @@ var CHANGELOG_LIMIT = 5000;
 var PRICE_M2_TOLERANCE = 0.05;
 
 var LOCK_TIMEOUT_MS = 30000;
+
+/**
+ * Sessão administrativa (issue #5, comentário do dono do repo): o token não é
+ * reenviado em toda escrita — só uma vez, para trocar por uma sessão temporária.
+ * TTL deslizante: cada uso válido renova por mais SESSION_TTL_SECONDS, até o teto
+ * absoluto SESSION_MAX_LIFETIME_SECONDS a partir da criação.
+ */
+var SESSION_TTL_SECONDS = 1800; // 30 min de inatividade
+var SESSION_MAX_LIFETIME_SECONDS = 8 * 3600; // 8h mesmo com uso contínuo
+
+/**
+ * Limitação de tentativas de autenticação (issue #5). CacheService não dá acesso ao
+ * IP de quem chama um Web App do Apps Script, então o limite é necessariamente
+ * GLOBAL — todas as tentativas erradas de qualquer origem compartilham o mesmo
+ * contador. É uma mitigação real contra força bruta, mas não isola um atacante de um
+ * usuário legítimo digitando errado; documentado assim de propósito, não fingindo
+ * granularidade por pessoa que a plataforma não oferece.
+ */
+var MAX_AUTH_ATTEMPTS = 10;
+var AUTH_WINDOW_SECONDS = 900; // 15 min
 
 // ---------------------------------------------------------------------------
 // Escrita (admin) — R4.9
@@ -312,6 +348,32 @@ function toNumber_(value) {
   return isFinite(n) ? n : null;
 }
 
+/**
+ * Compara duas strings sem atalho por tamanho ou por primeira divergência
+ * (issue #5, comentário do dono: "falhas de token não poderão revelar se o token
+ * está correto parcialmente").
+ *
+ * `a !== b` do JavaScript sai assim que encontra a primeira diferença — em teoria dá
+ * para medir por tempo de resposta até onde um valor tentado bate com o segredo.
+ * Aqui sempre percorremos o comprimento do maior dos dois e acumulamos as
+ * divergências com OU bit a bit, sem `return` antecipado nem `if` que dependa do
+ * conteúdo comparado. Não é uma primitiva criptográfica formalmente time-safe (V8
+ * pode otimizar de formas que este código não controla), mas é estritamente melhor
+ * que `===`, que é garantidamente vulnerável ao atalho.
+ */
+function timingSafeEqual_(a, b) {
+  var sa = String(a === null || a === undefined ? '' : a);
+  var sb = String(b === null || b === undefined ? '' : b);
+  var len = Math.max(sa.length, sb.length);
+  var diff = sa.length ^ sb.length;
+  for (var i = 0; i < len; i++) {
+    var ca = i < sa.length ? sa.charCodeAt(i) : 0;
+    var cb = i < sb.length ? sb.charCodeAt(i) : 0;
+    diff |= ca ^ cb;
+  }
+  return diff === 0;
+}
+
 /** Texto normalizado. `null`/`undefined` viram string vazia. Espelha toText() de src/normalize.js. */
 function toText_(value) {
   if (value === null || value === undefined) return '';
@@ -378,15 +440,37 @@ function setupProject() {
     if (!props_().getProperty('DATASET_VERSION')) props_().setProperty('DATASET_VERSION', '1');
     props_().setProperty('APP_VERSION', APP_VERSION);
 
+    var changeLogUpgraded = upgradeChangeLogHeader_();
     refreshMeta();
 
     var message = 'Abas criadas: ' + (created.length ? created.join(', ') : 'nenhuma') +
       '\nAbas preservadas: ' + (kept.length ? kept.join(', ') : 'nenhuma') +
+      (changeLogUpgraded ? '\nCHANGE_LOG: cabeçalho estendido para as colunas novas da issue #5.' : '') +
       '\n\nPróximos passos: Validar dados agora, depois Instalar gatilhos.';
     Logger.log(message);
     notify_('Configuração concluída', message);
     return message;
   });
+}
+
+/**
+ * Migração idempotente do cabeçalho do CHANGE_LOG (issue #5): planilhas já
+ * provisionadas antes desta PR têm as 7 colunas antigas (CHANGE_LOG_HEADERS_V1). Só
+ * estende o cabeçalho — nunca reescreve linha de dado existente — e só quando o
+ * cabeçalho é EXATAMENTE o antigo, para nunca sobrescrever um cabeçalho já
+ * customizado à mão de um jeito inesperado. Devolve `true` se estendeu algo.
+ */
+function upgradeChangeLogHeader_() {
+  var sheet = ss_().getSheetByName(CHANGELOG_SHEET);
+  if (!sheet) return false;
+
+  var current = headersOf_(sheet);
+  if (current.join('|') !== CHANGE_LOG_HEADERS_V1.join('|')) return false;
+
+  var target = OPERATIONAL_HEADERS.CHANGE_LOG;
+  var extra = target.slice(current.length);
+  sheet.getRange(1, current.length + 1, 1, extra.length).setValues([extra]);
+  return true;
 }
 
 /** Mostra alerta quando há interface; caso contrário só registra no log. */
@@ -492,18 +576,29 @@ function logChange_(sheet, e) {
     recordId,
     single ? String(e.oldValue === undefined ? '' : e.oldValue) : '(múltiplas células)',
     single ? String(e.value === undefined ? '' : e.value) : '(múltiplas células)',
-    editor
+    editor,
+    '', // correlation_id: só existe para escritas via API
+    'ok',
+    ''
   ]);
 }
 
 /**
- * Registra uma mudança feita pela API de escrita (admin) no CHANGE_LOG.
+ * Registra uma mudança feita pela API de escrita (admin) no CHANGE_LOG, incluindo
+ * `correlation_id` (issue #5: rastrear uma operação inteira através de várias linhas
+ * de log, uma por campo alterado) e `result`/`error_reason`.
  *
- * `editor` vem autodeclarado no payload — o modelo de auth por token compartilhado
- * (R4.9) não identifica pessoa de verdade, então a atribuição aqui não é verificada.
+ * `editor`: prioriza a identidade Google quando o Apps Script consegue resolvê-la
+ * (`Session.getActiveUser()` — funciona quando o Web App está implantado como
+ * "Executar como: usuário que acessa"; costuma vir vazio em outras configurações, daí
+ * o try/catch e o fallback). Sem isso, cai para o valor autodeclarado no formulário —
+ * o modelo de auth por token compartilhado (R4.9) não identifica pessoa por si só.
  */
-function logWriteChange_(sheetName, recordId, field, oldValue, newValue, editor) {
-  var who = toText_(editor);
+function logWriteChange_(sheetName, recordId, field, oldValue, newValue, editor, correlationId, result, errorReason) {
+  var googleEmail = '';
+  try { googleEmail = Session.getActiveUser().getEmail() || ''; } catch (err) { googleEmail = ''; }
+  var who = googleEmail || toText_(editor) || '(não informado)';
+
   appendChangeLogRow_([
     nowISO_(),
     sheetName,
@@ -511,7 +606,10 @@ function logWriteChange_(sheetName, recordId, field, oldValue, newValue, editor)
     recordId,
     oldValue === null || oldValue === undefined ? '' : String(oldValue),
     newValue === null || newValue === undefined ? '' : String(newValue),
-    who || '(não informado)'
+    who,
+    toText_(correlationId),
+    result || 'ok',
+    toText_(errorReason)
   ]);
 }
 
@@ -962,25 +1060,32 @@ function dataset_(name) {
 // ---------------------------------------------------------------------------
 
 /**
- * Web App de escrita, sob autenticação obrigatória.
+ * Web App de escrita, em dois passos (issue #5, comentário do dono do repo: token não
+ * deve ser reenviado como credencial permanente).
  *
- * Corpo JSON esperado:
+ * Passo 1 — trocar o token por uma sessão:
+ *   { action: "authenticate", token: "..." }
+ *   → { ok: true, session: "...", expires_in: 1800 }
+ *   Falha: { ok: false, error: { code: "UNAUTHENTICATED" | "RATE_LIMITED", message } }
+ *
+ * Passo 2 — usar a sessão em create/update/delete:
  *   {
- *     token: "...",                  // obrigatório, comparado a ADMIN_TOKEN
+ *     session: "...",                // obrigatório, devolvido pelo passo 1
  *     action: "create"|"update"|"delete",
  *     sheet: "LISTINGS",
  *     id: "...",                     // obrigatório em create/update/delete
  *     expected_version: "7",         // obrigatório em update/delete (DATASET_VERSION observado)
  *     fields: { ... },               // create/update, só campos da allowlist
- *     editor: "Nome de quem edita"   // autodeclarado, não verificado (R4.9)
+ *     editor: "Nome de quem edita",  // autodeclarado; a identidade Google, quando disponível, tem prioridade
+ *     correlation_id: "..."          // opcional, gerado pelo cliente; ecoado na resposta e no CHANGE_LOG
  *   }
  *
- * Resposta: { ok: true, record: {...}, dataset_version: "N" } ou
- * { ok: false, error: { code, message } }, com `code` em UNAUTHENTICATED,
- * INVALID_PAYLOAD, UNKNOWN_SHEET, UNKNOWN_FIELD, NOT_FOUND, VERSION_CONFLICT,
- * VALIDATION_ERROR ou INTERNAL_ERROR.
+ * Resposta: { ok: true, record: {...}, dataset_version: "N", correlation_id } ou
+ * { ok: false, error: { code, message }, correlation_id }, com `code` em
+ * UNAUTHENTICATED, RATE_LIMITED, INVALID_PAYLOAD, UNKNOWN_SHEET, UNKNOWN_FIELD,
+ * NOT_FOUND, VERSION_CONFLICT, VALIDATION_ERROR ou INTERNAL_ERROR.
  *
- * Sem ADMIN_TOKEN configurado em Script Properties, toda escrita é recusada — não
+ * Sem ADMIN_TOKEN configurado em Script Properties, `authenticate` nunca sucede — não
  * existe modo aberto (R4.9, que supera a restrição anterior de R4.7: o endpoint só
  * deixa de ser read-only sob autenticação obrigatória).
  */
@@ -993,8 +1098,12 @@ function doPost(e) {
   }
 
   try {
-    if (!authenticate_(params)) {
-      return errorResponse_('UNAUTHENTICATED', 'Token ausente ou inválido.');
+    var action = toText_(params.action);
+
+    if (action === 'authenticate') return handleAuthenticate_(params);
+
+    if (!validateSession_(params.session)) {
+      return errorResponse_('UNAUTHENTICATED', 'Sessão ausente, inválida ou expirada. Autentique de novo.');
     }
 
     var sheetName = toText_(params.sheet);
@@ -1002,9 +1111,8 @@ function doPost(e) {
       return errorResponse_('UNKNOWN_SHEET', 'Aba não permitida para escrita: ' + sheetName);
     }
 
-    var action = toText_(params.action);
     if (['create', 'update', 'delete'].indexOf(action) === -1) {
-      return errorResponse_('INVALID_PAYLOAD', 'action deve ser create, update ou delete.');
+      return errorResponse_('INVALID_PAYLOAD', 'action deve ser authenticate, create, update ou delete.');
     }
 
     var result = withLock_(function () { return doWrite_(sheetName, action, params); });
@@ -1014,80 +1122,166 @@ function doPost(e) {
   }
 }
 
-/** Token do payload contra ADMIN_TOKEN em Script Properties. Sem token configurado, nunca autentica. */
-function authenticate_(params) {
+/**
+ * Passo 1 do login: troca `token` por uma sessão temporária.
+ *
+ * Limitação de tentativas antes de checar o token — se já estourou, nem chega a
+ * comparar (evita gastar tempo de execução em tentativa que já será recusada, e
+ * mantém a mensagem igual independente de o token estar certo ou errado).
+ */
+function handleAuthenticate_(params) {
+  if (authFailureCount_() >= MAX_AUTH_ATTEMPTS) {
+    return errorResponse_('RATE_LIMITED', 'Muitas tentativas de autenticação. Aguarde alguns minutos.');
+  }
+
   var expected = props_().getProperty('ADMIN_TOKEN');
-  if (!expected) return false;
   var provided = params && params.token ? String(params.token) : '';
-  return provided !== '' && provided === expected;
+  var ok = !!expected && timingSafeEqual_(provided, expected);
+
+  if (!ok) {
+    registerAuthFailure_();
+    return errorResponse_('UNAUTHENTICATED', 'Token inválido ou ausente.');
+  }
+
+  resetAuthFailures_();
+  var session = createSession_();
+  return json_({ ok: true, session: session, expires_in: SESSION_TTL_SECONDS }, {});
+}
+
+/** Cria uma sessão nova em CacheService, com o instante de criação como valor. */
+function createSession_() {
+  var id = Utilities.getUuid();
+  CacheService.getScriptCache().put('session_' + id, String(Date.now()), SESSION_TTL_SECONDS);
+  return id;
+}
+
+/**
+ * Sessão válida? TTL deslizante: cada chamada bem-sucedida renova por mais
+ * SESSION_TTL_SECONDS, mas nunca além de SESSION_MAX_LIFETIME_SECONDS desde a criação
+ * — o timestamp de criação (guardado como valor da chave) não muda entre renovações.
+ */
+function validateSession_(sessionId) {
+  var id = toText_(sessionId);
+  if (!id) return false;
+
+  var cache = CacheService.getScriptCache();
+  var key = 'session_' + id;
+  var createdRaw = cache.get(key);
+  if (!createdRaw) return false;
+
+  var created = parseInt(createdRaw, 10);
+  if (isNaN(created)) return false;
+
+  if (Date.now() - created > SESSION_MAX_LIFETIME_SECONDS * 1000) {
+    cache.remove(key);
+    return false;
+  }
+
+  cache.put(key, createdRaw, SESSION_TTL_SECONDS);
+  return true;
+}
+
+/** Tentativas de autenticação falhas na janela atual — contador GLOBAL, ver MAX_AUTH_ATTEMPTS. */
+function authFailureCount_() {
+  var n = parseInt(CacheService.getScriptCache().get('auth_fail_count') || '0', 10);
+  return isNaN(n) ? 0 : n;
+}
+
+function registerAuthFailure_() {
+  var cache = CacheService.getScriptCache();
+  cache.put('auth_fail_count', String(authFailureCount_() + 1), AUTH_WINDOW_SECONDS);
+}
+
+function resetAuthFailures_() {
+  CacheService.getScriptCache().remove('auth_fail_count');
 }
 
 /** Orquestra create/update/delete para uma aba já validada contra a allowlist. */
 function doWrite_(sheetName, action, params) {
   var sheet = ss_().getSheetByName(sheetName);
-  if (!sheet) return errorResponse_('UNKNOWN_SHEET', 'Aba ausente na planilha: ' + sheetName);
+  var correlationId = toText_(params.correlation_id);
+  var editor = params.editor;
+  var id = toText_(params.id);
+
+  if (!sheet) return writeError_(sheetName, id, correlationId, editor, 'UNKNOWN_SHEET', 'Aba ausente na planilha: ' + sheetName);
 
   var headers = headersOf_(sheet);
   var index = headerIndex_(headers);
   var idField = ID_FIELD[sheetName];
-  var id = toText_(params.id);
 
   if (action === 'create') {
-    if (!id) return errorResponse_('INVALID_PAYLOAD', 'id é obrigatório para create.');
+    if (!id) return writeError_(sheetName, id, correlationId, editor, 'INVALID_PAYLOAD', 'id é obrigatório para create.');
 
     var validatedCreate = validateWritePayload_(sheetName, 'create', params.fields || {});
-    if (!validatedCreate.ok) return errorResponse_(validatedCreate.error.code, validatedCreate.error.message);
+    if (!validatedCreate.ok) {
+      return writeError_(sheetName, id, correlationId, editor, validatedCreate.error.code, validatedCreate.error.message);
+    }
     applyDerivedFields_(sheetName, validatedCreate.fields, null);
 
     if (findRowById_(sheet, headers, index, idField, id)) {
-      return errorResponse_('VALIDATION_ERROR', 'Já existe um registro com este id: ' + id);
+      return writeError_(sheetName, id, correlationId, editor, 'VALIDATION_ERROR', 'Já existe um registro com este id: ' + id);
     }
 
     var created = applyCreate_(sheet, headers, idField, id, validatedCreate.fields);
     return finishWrite_(sheetName, id, [
       { field: '*', oldValue: '', newValue: JSON.stringify(validatedCreate.fields) }
-    ], params.editor, created);
+    ], editor, correlationId, created);
   }
 
-  if (!id) return errorResponse_('INVALID_PAYLOAD', 'id é obrigatório.');
+  if (!id) return writeError_(sheetName, id, correlationId, editor, 'INVALID_PAYLOAD', 'id é obrigatório.');
 
   var found = findRowById_(sheet, headers, index, idField, id);
-  if (!found) return errorResponse_('NOT_FOUND', 'Registro não encontrado: ' + id);
+  if (!found) return writeError_(sheetName, id, correlationId, editor, 'NOT_FOUND', 'Registro não encontrado: ' + id);
 
   var conflict = checkVersionConflict_(params.expected_version);
-  if (conflict) return conflict;
+  if (conflict) return writeError_(sheetName, id, correlationId, editor, conflict.code, conflict.message);
 
   if (action === 'delete') {
     sheet.deleteRow(found.rowNumber);
     return finishWrite_(sheetName, id, [
       { field: '*', oldValue: JSON.stringify(found.record), newValue: '' }
-    ], params.editor, { id: id });
+    ], editor, correlationId, { id: id });
   }
 
   // update
   var validatedUpdate = validateWritePayload_(sheetName, 'update', params.fields || {});
-  if (!validatedUpdate.ok) return errorResponse_(validatedUpdate.error.code, validatedUpdate.error.message);
+  if (!validatedUpdate.ok) {
+    return writeError_(sheetName, id, correlationId, editor, validatedUpdate.error.code, validatedUpdate.error.message);
+  }
   applyDerivedFields_(sheetName, validatedUpdate.fields, found.record);
 
   var changes = applyUpdate_(sheet, headers, found.rowNumber, validatedUpdate.fields);
   if (changes.length === 0) {
-    return errorResponse_('INVALID_PAYLOAD', 'Nenhum campo mudou de valor.');
+    return writeError_(sheetName, id, correlationId, editor, 'INVALID_PAYLOAD', 'Nenhum campo mudou de valor.');
   }
 
   var updated = readRecord_(sheet, headers, found.rowNumber);
-  return finishWrite_(sheetName, id, changes, params.editor, updated);
+  return finishWrite_(sheetName, id, changes, editor, correlationId, updated);
+}
+
+/**
+ * Registra no CHANGE_LOG uma tentativa de escrita que passou da autenticação mas foi
+ * recusada (payload inválido, conflito de versão, registro não encontrado etc.) e
+ * devolve a resposta de erro. Só aqui, depois de `validateSession_` já ter aceitado a
+ * sessão — falha de autenticação/rate-limit nunca chega a este ponto, então não vira
+ * ruído de tentativa de força bruta no log operacional (issue #5: log cobre
+ * "resultado" e "motivo de erro" das operações de escrita, não das tentativas de login).
+ */
+function writeError_(sheetName, id, correlationId, editor, code, message) {
+  logWriteChange_(sheetName, id, '*', '', '', editor, correlationId, 'error', code + (message ? ': ' + message : ''));
+  return errorResponse_(code, message, correlationId);
 }
 
 /** Bump de versão, log de auditoria por campo, metadados dirty e invalidação de cache. */
-function finishWrite_(sheetName, id, changes, editor, record) {
+function finishWrite_(sheetName, id, changes, editor, correlationId, record) {
   var version = bumpDatasetVersion_();
   changes.forEach(function (change) {
-    logWriteChange_(sheetName, id, change.field, change.oldValue, change.newValue, editor);
+    logWriteChange_(sheetName, id, change.field, change.oldValue, change.newValue, editor, correlationId, 'ok', '');
   });
   setMeta_('validation_status', 'dirty');
   setMeta_('last_data_change_at', nowISO_());
   clearCache();
-  return successResponse_(record, version);
+  return successResponse_(record, version, correlationId);
 }
 
 /**
@@ -1095,19 +1289,21 @@ function finishWrite_(sheetName, id, changes, editor, record) {
  *
  * Concorrência otimista de granularidade grosseira (todo o dataset, não por registro):
  * mais simples, sem mudança de schema, aceitável para o volume de edição concorrente
- * esperado numa ferramenta interna (ver plano da PR). Retorna a resposta de erro
- * pronta, ou `null` quando não há conflito.
+ * esperado numa ferramenta interna (ver plano da PR). Devolve `{code, message}` do
+ * erro, ou `null` quando não há conflito — quem chama decide como responder/logar.
  */
 function checkVersionConflict_(expectedVersion) {
   var current = props_().getProperty('DATASET_VERSION') || '1';
   var expected = expectedVersion === undefined || expectedVersion === null ? '' : String(expectedVersion);
 
   if (expected === '') {
-    return errorResponse_('INVALID_PAYLOAD', 'expected_version é obrigatório para update e delete.');
+    return { code: 'INVALID_PAYLOAD', message: 'expected_version é obrigatório para update e delete.' };
   }
   if (expected !== current) {
-    return errorResponse_('VERSION_CONFLICT',
-      'O dataset mudou desde que este registro foi carregado (versão atual: ' + current + ').');
+    return {
+      code: 'VERSION_CONFLICT',
+      message: 'O dataset mudou desde que este registro foi carregado (versão atual: ' + current + ').'
+    };
   }
   return null;
 }
@@ -1305,12 +1501,16 @@ function applyUpdate_(sheet, headers, rowNumber, fields) {
   return changes;
 }
 
-function successResponse_(record, version) {
-  return json_({ ok: true, record: record, dataset_version: String(version) }, {});
+function successResponse_(record, version, correlationId) {
+  var payload = { ok: true, record: record, dataset_version: String(version) };
+  if (correlationId) payload.correlation_id = correlationId;
+  return json_(payload, {});
 }
 
-function errorResponse_(code, message) {
-  return json_({ ok: false, error: { code: code, message: message } }, {});
+function errorResponse_(code, message, correlationId) {
+  var payload = { ok: false, error: { code: code, message: message } };
+  if (correlationId) payload.correlation_id = correlationId;
+  return json_(payload, {});
 }
 
 /**
