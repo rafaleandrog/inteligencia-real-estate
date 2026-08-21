@@ -148,22 +148,29 @@ var AUTH_WINDOW_SECONDS = 900; // 15 min
 // Escrita (admin) — R4.9
 // ---------------------------------------------------------------------------
 //
-// Campos editáveis pela API de escrita, por aba. V1 cobre só LISTINGS e reaproveita
-// REQUIRED_HEADERS como base: são as colunas críticas já mantidas em sincronia com
-// docs/DATA_CONTRACT.md e cross-checadas por tests/contract.test.js. `listing_id`
-// (chave primária, imutável após criação) e `asking_price_brl_m2` (campo derivado,
-// calculado pelo servidor) ficam de fora — nunca aceitos como valor de entrada.
+// Campos editáveis pela API de escrita, por aba. Reaproveita REQUIRED_HEADERS como
+// base: são as colunas críticas já mantidas em sincronia com docs/DATA_CONTRACT.md e
+// cross-checadas por tests/contract.test.js. A chave primária de cada aba (imutável
+// após criação) e o campo de preço/m² derivado (calculado pelo servidor) ficam de
+// fora — nunca aceitos como valor de entrada.
 //
-// Campos de cauda longa que não estão em REQUIRED_HEADERS (`external_id`,
+// Campos de cauda longa que não estão em REQUIRED_HEADERS (ex.: `external_id`,
 // `portal_listing_code`, `portal_date_text`, `property_id`, `published_days`,
-// `views_count`, `interested_count`) não são editáveis nesta PR — ver Pendências.
+// `views_count`, `interested_count` em LISTINGS) não são editáveis ainda — ver
+// Pendências das PRs que introduziram cada aba.
 var WRITE_ALLOWLIST = {
   LISTINGS: REQUIRED_HEADERS.LISTINGS.filter(function (f) {
     return f !== 'listing_id' && f !== 'asking_price_brl_m2';
+  }),
+  DEVELOPMENTS: REQUIRED_HEADERS.DEVELOPMENTS.filter(function (f) {
+    return f !== 'development_id' && f !== 'current_price_brl_m2';
+  }),
+  ANCHORS: REQUIRED_HEADERS.ANCHORS.filter(function (f) {
+    return f !== 'place_id';
   })
 };
 
-/** Campos que docs/DATA_CONTRACT.md marca como obrigatórios (Obrig. = sim) para LISTINGS. */
+/** Campos que docs/DATA_CONTRACT.md marca como obrigatórios (Obrig. = sim), por aba. */
 var REQUIRED_FOR_CREATE = {
   LISTINGS: [
     'portal', 'transaction_type', 'title', 'source_url', 'source_url_type',
@@ -171,19 +178,34 @@ var REQUIRED_FOR_CREATE = {
     'locality', 'ra_geo_id', 'latitude', 'longitude', 'coordinate_precision',
     'confidence_flag', 'observed_at', 'asking_price_brl', 'area_m2', 'area_basis',
     'bedrooms', 'quality_flag'
+  ],
+  DEVELOPMENTS: [
+    'name', 'address', 'neighborhood', 'confidence_flag', 'spatial_usable', 'last_verified_at'
+  ],
+  ANCHORS: [
+    'name', 'category', 'subcategory', 'operator_name', 'latitude', 'longitude', 'ra_geo_id',
+    'source_url', 'coordinate_source_url', 'confidence_flag', 'coordinate_precision',
+    'last_verified_at', 'status'
   ]
 };
 
-/** Vocabulário fechado de `property_type`, conforme docs/DATA_CONTRACT.md. */
-var PROPERTY_TYPE_VALUES = ['apartamento', 'casa', 'casa_condominio', 'kitnet', 'predio', 'terreno'];
-
 /**
- * Tipo de cada campo editável, para coerção e validação no servidor.
- *
- * `coordinate_precision` e `confidence_flag` ficam como `text`: o contrato só documenta
- * parte do vocabulário em uso (R8.3-style — a fonte real é a planilha), e tratá-los como
- * enum fechado rejeitaria valores legítimos que o contrato ainda não lista.
+ * Vocabulário fechado de campos enum, conforme docs/DATA_CONTRACT.md — só os campos em
+ * que o contrato documenta a lista completa entram aqui. `coordinate_precision`,
+ * `confidence_flag`, `status`, `coordinate_status`, `product`, `segment` ficam como
+ * `text` em FIELD_SCHEMA: o contrato só documenta parte do vocabulário em uso
+ * (R8.3-style — a fonte real é a planilha), e tratá-los como enum fechado rejeitaria
+ * valores legítimos que o contrato ainda não lista.
  */
+var ENUM_VALUES = {
+  property_type: ['apartamento', 'casa', 'casa_condominio', 'kitnet', 'predio', 'terreno'],
+  category: [
+    'escola', 'mobilidade', 'parque_equipamento_publico', 'saude', 'shopping_center',
+    'supermercado_atacarejo', 'universidade'
+  ]
+};
+
+/** Tipo de cada campo editável, por aba, para coerção e validação no servidor. */
 var FIELD_SCHEMA = {
   LISTINGS: {
     address: 'text', area_basis: 'text', area_m2: 'number', asking_price_brl: 'number',
@@ -194,7 +216,33 @@ var FIELD_SCHEMA = {
     ra_geo_id: 'text', source_page_verified_at: 'date', source_url: 'url',
     source_url_type: 'text', status: 'text', suites: 'int', title: 'text',
     transaction_type: 'text'
+  },
+  DEVELOPMENTS: {
+    address: 'text', area_max_m2: 'number', area_min_m2: 'number', confidence_flag: 'text',
+    coordinate_status: 'text', current_price_brl: 'number', developer_name: 'text',
+    expected_delivery: 'date', last_verified_at: 'date', latitude: 'number', longitude: 'number',
+    name: 'text', neighborhood: 'text', product: 'text', quality_flag: 'text',
+    ra_geo_id: 'text', segment: 'text', source_url: 'url', spatial_usable: 'bool',
+    status: 'text', unit_mix: 'text', units_total: 'int', work_progress_pct: 'number'
+  },
+  ANCHORS: {
+    address: 'text', category: 'enum:category', confidence_flag: 'text',
+    coordinate_precision: 'text', coordinate_source_url: 'url', last_verified_at: 'date',
+    latitude: 'number', longitude: 'number', name: 'text', neighborhood: 'text',
+    operator_name: 'text', ra_geo_id: 'text', scale_capacity: 'text', source_url: 'url',
+    status: 'text', subcategory: 'text'
   }
+};
+
+/**
+ * Campo de preço/m² derivado, por aba, e os dois campos-fonte usados para calculá-lo.
+ * Só LISTINGS e DEVELOPMENTS têm essa noção — ANCHORS não tem preço. Mesmo padrão de
+ * `pricePerM2()` em src/normalize.js: usa o valor informado quando existe, senão
+ * calcula a partir de preço e área.
+ */
+var DERIVED_PRICE_M2_FIELD = {
+  LISTINGS: { price: 'asking_price_brl', area: 'area_m2', target: 'asking_price_brl_m2' },
+  DEVELOPMENTS: { price: 'current_price_brl', area: 'area_min_m2', target: 'current_price_brl_m2' }
 };
 
 // ---------------------------------------------------------------------------
@@ -330,6 +378,21 @@ function timingSafeEqual_(a, b) {
 function toText_(value) {
   if (value === null || value === undefined) return '';
   return String(value).trim();
+}
+
+/**
+ * Booleano tolerante — mesmos literais aceitos por toBoolean() de src/normalize.js,
+ * para que um `spatial_usable` escrito pela API leia igual, tanto pelo GViz quanto
+ * pelo Apps Script.
+ */
+function toBoolean_(value) {
+  if (typeof value === 'boolean') return value;
+  var s = toText_(value).toLowerCase();
+  if (s === '') return false;
+  if (['1', 'true', 'sim', 'yes', 'y', 'x', 'verdadeiro'].indexOf(s) !== -1) return true;
+  if (['0', 'false', 'nao', 'não', 'no', 'n', 'falso'].indexOf(s) !== -1) return false;
+  var n = toNumber_(s);
+  return n !== null && n !== 0;
 }
 
 /** URL http(s) válida? Qualquer outro esquema é suspeito numa planilha pública. */
@@ -1295,28 +1358,33 @@ function validateWritePayload_(sheetName, action, fields) {
 }
 
 /**
- * Recalcula `asking_price_brl_m2` quando o payload muda preço e/ou área, combinando
- * o valor submetido com o valor atual da linha para o campo que não mudou.
+ * Recalcula o campo de preço/m² derivado da aba (ver DERIVED_PRICE_M2_FIELD) quando o
+ * payload muda o preço e/ou a área-fonte, combinando o valor submetido com o valor
+ * atual da linha para o campo que não mudou. ANCHORS não tem entrada no mapa — a
+ * função não faz nada para essa aba.
  *
- * Em `create`, `currentRecord` é `null` e ambos os campos já são obrigatórios
- * (REQUIRED_FOR_CREATE), então sempre há o par completo. Em `update`, um payload que
- * só muda `area_m2` precisa do `asking_price_brl` que já está na planilha — sem isso,
- * mudar só a área deixaria o preço/m² desatualizado até a manutenção periódica passar.
+ * Em `create`, `currentRecord` é `null` e ambos os campos-fonte já são obrigatórios
+ * (REQUIRED_FOR_CREATE em LISTINGS; em DEVELOPMENTS nenhum dos dois é obrigatório, e
+ * o derivado simplesmente fica ausente até que preço e área sejam informados). Em
+ * `update`, um payload que só muda a área precisa do preço que já está na planilha —
+ * sem isso, mudar só a área deixaria o preço/m² desatualizado até a manutenção
+ * periódica passar (que hoje só recalcula LISTINGS — ver Pendências desta PR).
  */
 function applyDerivedFields_(sheetName, fields, currentRecord) {
-  if (sheetName !== 'LISTINGS') return;
+  var config = DERIVED_PRICE_M2_FIELD[sheetName];
+  if (!config) return;
 
-  var touchesPrice = 'asking_price_brl' in fields;
-  var touchesArea = 'area_m2' in fields;
+  var touchesPrice = config.price in fields;
+  var touchesArea = config.area in fields;
   if (!touchesPrice && !touchesArea) return;
 
-  var price = touchesPrice ? fields.asking_price_brl
-    : (currentRecord ? toNumber_(currentRecord.asking_price_brl) : null);
-  var area = touchesArea ? fields.area_m2
-    : (currentRecord ? toNumber_(currentRecord.area_m2) : null);
+  var price = touchesPrice ? fields[config.price]
+    : (currentRecord ? toNumber_(currentRecord[config.price]) : null);
+  var area = touchesArea ? fields[config.area]
+    : (currentRecord ? toNumber_(currentRecord[config.area]) : null);
   if (price === null || area === null) return;
 
-  fields.asking_price_brl_m2 = pricePerM2_(price, area);
+  fields[config.target] = pricePerM2_(price, area);
 }
 
 /**
@@ -1354,9 +1422,14 @@ function coerceField_(type, raw) {
     return { ok: true, value: type === 'int' ? Math.trunc(n) : n };
   }
 
-  if (type === 'enum:property_type') {
-    if (text !== '' && PROPERTY_TYPE_VALUES.indexOf(text) === -1) {
-      return { ok: false, message: 'valor fora do vocabulário permitido (' + PROPERTY_TYPE_VALUES.join(', ') + ').' };
+  if (type === 'bool') {
+    return { ok: true, value: toBoolean_(raw) };
+  }
+
+  if (type.indexOf('enum:') === 0) {
+    var values = ENUM_VALUES[type.slice(5)] || [];
+    if (text !== '' && values.indexOf(text) === -1) {
+      return { ok: false, message: 'valor fora do vocabulário permitido (' + values.join(', ') + ').' };
     }
     return { ok: true, value: text };
   }
