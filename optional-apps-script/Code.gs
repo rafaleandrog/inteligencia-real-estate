@@ -237,6 +237,7 @@ function onOpen() {
     .addItem('Recalcular campos derivados', 'recalculateDerivedFields')
     .addItem('Instalar gatilhos', 'installTriggers')
     .addItem('Atualizar metadados', 'refreshMeta')
+    .addItem('Configurar / trocar token de administração', 'configureAdminToken')
     .addItem('Limpar cache', 'clearCache')
     .addToUi();
 }
@@ -1083,6 +1084,25 @@ function authenticate_(params) {
   if (!expected) return false;
   var provided = params && params.token ? String(params.token) : '';
   return provided !== '' && provided === expected;
+}
+
+/**
+ * Gera um novo ADMIN_TOKEN e grava em Script Properties — mesma propriedade que
+ * `authenticate_()` lê, sem sessão intermediária (R4.9). Atalho pelo menu para o passo
+ * manual já documentado em docs/SHEET_SETUP.md §8 (Configurações do projeto →
+ * Propriedades do Script). Gerar um token novo invalida o anterior imediatamente, na
+ * próxima chamada — a checagem é sempre ao vivo, nunca cacheada (ver `authenticate_`).
+ */
+function configureAdminToken() {
+  var token = 'imob-' + Utilities.getUuid().replace(/-/g, '');
+  props_().setProperty('ADMIN_TOKEN', token);
+  setMeta_('admin_token_rotated_at', nowISO_());
+
+  var message = 'Token gerado. Copie e guarde agora em local seguro — ele não será ' +
+    'mostrado de novo (mas pode ser rotacionado a qualquer momento por este menu):\n\n' + token;
+  Logger.log('ADMIN_TOKEN rotacionado em %s', nowISO_());
+  notify_('Token de administração', message);
+  return token;
 }
 
 /** Orquestra create/update/delete para uma aba já validada contra a allowlist. */

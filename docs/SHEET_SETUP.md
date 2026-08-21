@@ -84,11 +84,13 @@ requisição. Sem este passo, toda tentativa de escrita é recusada — não exi
 é o mesmo modelo já usado em produção no `press-research-communications` (repo
 `tipolis-sandbox`): token direto, sem sessão intermediária.
 
-1. Na planilha, **Extensões → Apps Script → Configurações do projeto (ícone de engrenagem) →
-   Propriedades do script**.
-2. Adicione a propriedade `ADMIN_TOKEN` com um valor aleatório e longo (por exemplo, gerado com
-   `openssl rand -hex 32`). **Nunca** coloque este valor numa célula da planilha (R4.3, R4.8) nem
-   no repositório (R4.1).
+1. Na planilha, use o menu **Imob Intelligence → Configurar / trocar token de administração** —
+   ele gera um token aleatório, grava direto na propriedade `ADMIN_TOKEN` e mostra o valor uma
+   única vez num alerta. É o mesmo efeito do passo manual abaixo, só que sem sair da planilha.
+   Alternativa manual: **Extensões → Apps Script → Configurações do projeto (ícone de engrenagem)
+   → Propriedades do script**, e adicione a propriedade `ADMIN_TOKEN` com um valor aleatório e
+   longo (por exemplo, gerado com `openssl rand -hex 32`). **Nunca** coloque este valor numa
+   célula da planilha (R4.3, R4.8) nem no repositório (R4.1).
 3. Publique/reimplante o Web App (**Implantar → Gerenciar implantações**) para que o `doPost`
    novo entre em vigor. O endpoint de leitura (`doGet`) continua no mesmo deploy, sem mudança de
    comportamento.
@@ -105,8 +107,9 @@ requisição. Sem este passo, toda tentativa de escrita é recusada — não exi
    identidade do Google quando o Apps Script consegue resolvê-la (`Session.getActiveUser()` —
    depende da configuração de "Executar como" da implantação do Web App, não é garantido) e cai
    para o nome autodeclarado no formulário quando não consegue.
-6. **Rotação:** se o token vazar (compartilhado por engano, por exemplo), gere um novo valor e
-   sobrescreva a propriedade `ADMIN_TOKEN`. Como não há sessão nem cache intermediário, a
+6. **Rotação:** se o token vazar (compartilhado por engano, por exemplo), gere um novo valor pelo
+   menu **Imob Intelligence → Configurar / trocar token de administração** (ou sobrescreva a
+   propriedade `ADMIN_TOKEN` manualmente). Como não há sessão nem cache intermediário, a
    invalidação é **instantânea**: a próxima chamada de qualquer navegador com o token antigo
    recebe `UNAUTHENTICATED` e volta para a tela de login. Não há nada além disso para gerenciar.
 7. Sem `ADMIN_TOKEN` configurado, nenhuma chamada autentica — é o estado seguro por padrão logo
