@@ -11,6 +11,17 @@
 
 const TOKEN_KEY = 'imob_admin_token';
 
+/**
+ * Protocolo que esta tela fala com o Apps Script. O `health_()` do Code.gs devolve
+ * este mesmo valor em `write_api`; divergência (ou ausência) significa que o Web App
+ * implantado é de outra versão do script.
+ *
+ * Marcador explícito em vez de comparar `app_version`: números de versão de scripts
+ * que já circularam não são comparáveis de forma confiável, e o que importa aqui não
+ * é "qual versão" e sim "fala o mesmo protocolo".
+ */
+export const WRITE_API_PROTOCOL = 'token-direct-v1';
+
 /** Token guardado em sessionStorage: expira com a aba fechada. */
 export function getToken() {
   try {
@@ -76,11 +87,35 @@ export function buildWritePayload({ token, action, sheet, id, expectedVersion, f
   return payload;
 }
 
-/** Interpreta a resposta JSON do doPost/doGet — lança WriteApiError em caso de erro. */
+/**
+ * Interpreta a resposta JSON do doPost — lança WriteApiError em caso de erro.
+ *
+ * Trata as três formas possíveis de `error`, e nunca produz mensagem vazia. A versão
+ * anterior fazia `(json.error || {}).code` e, quando `error` vinha como **texto**
+ * (string não vazia é truthy, então o `|| {}` não disparava), `code` e `message`
+ * viravam `undefined` — o `WriteApiError` nascia com `.message === ''` e a tela
+ * exibia "Erro inesperado ao entrar." com o motivo real descartado.
+ */
 export function parseWriteResponse(json) {
   if (json && json.ok === true) return json;
-  const error = (json && json.error) || {};
-  throw new WriteApiError(error.code, error.message, json && json.correlation_id);
+
+  const raw = json && json.error;
+  const correlationId = json && json.correlation_id;
+
+  // Formato atual: { ok: false, error: { code, message } }.
+  if (raw && typeof raw === 'object') {
+    throw new WriteApiError(raw.code, raw.message, correlationId);
+  }
+
+  // `error` em texto simples. Aqui isso só pode vir de um Web App que não fala o
+  // protocolo atual — tipicamente uma implantação presa numa versão antiga do
+  // Code.gs, cujo doPost devolvia { ok: false, error: "..." }. O texto do servidor
+  // é preservado como mensagem, em vez de descartado.
+  if (typeof raw === 'string' && raw.trim() !== '') {
+    throw new WriteApiError('STALE_DEPLOYMENT', raw.trim(), correlationId);
+  }
+
+  throw new WriteApiError('INTERNAL_ERROR', 'Resposta do servidor fora do formato esperado.', correlationId);
 }
 
 async function postJson_(url, body) {
@@ -164,4 +199,45 @@ export async function listRecords(appsScriptUrl, sheet) {
 
   if (json && json.error) throw new WriteApiError('INTERNAL_ERROR', json.error);
   return json; // { name, dataset_version, count, rows }
+}
+
+/**
+ * Confere, antes de qualquer login, se o Web App implantado é o que esta tela espera.
+ *
+ * Existe porque a falha mais comum da área administrativa não é o token: é editar o
+ * Code.gs no editor do Apps Script e esquecer de **reimplantar**. O `/exec` continua
+ * servindo a versão antiga em silêncio, e o sintoma que chega ao usuário é um erro de
+ * autenticação genérico que não aponta para a causa.
+ *
+ * Usa o `?resource=health`, que já existia no Code.gs e nunca tinha sido consumido pelo
+ * cliente. Devolve um estado classificado — nunca lança, para que a sonda jamais
+ * impeça uma tentativa de login legítima:
+ *
+ *   ok           implantação fala o protocolo atual
+ *   stale        JSON válido, mas sem `write_api` — versão antiga do script
+ *   not-json     resposta não é JSON (costuma ser a página de login do Google, quando
+ *                a implantação não está com "Quem tem acesso: Qualquer pessoa")
+ *   unreachable  fetch falhou — URL errada em config.js ou implantação inativa
+ *   unconfigured appsScriptUrl ausente em config.js
+ */
+export async function checkDeployment(appsScriptUrl) {
+  if (!appsScriptUrl) return { status: 'unconfigured', appVersion: '' };
+
+  let res;
+  try {
+    res = await fetch(`${appsScriptUrl}?resource=health`);
+  } catch {
+    return { status: 'unreachable', appVersion: '' };
+  }
+
+  let json;
+  try {
+    json = await res.json();
+  } catch {
+    return { status: 'not-json', appVersion: '' };
+  }
+
+  const appVersion = (json && json.app_version) || '';
+  if (json && json.write_api === WRITE_API_PROTOCOL) return { status: 'ok', appVersion };
+  return { status: 'stale', appVersion };
 }

@@ -26,6 +26,11 @@
 
 <main class="admin-main">
 
+  <!-- Diagnóstico da implantação do Web App, preenchido por checkDeployment().
+       Fica fora do card de login de propósito: o problema mais comum aqui é a
+       implantação desatualizada, que precisa ficar visível também depois de entrar. -->
+  <div id="adminDeploymentWarning" class="admin-deployment-warning" role="alert" hidden></div>
+
   <section id="adminLogin" class="admin-login" aria-label="Entrar na área administrativa">
     <h1>Entrar</h1>
     <p>Informe o token de administração configurado em <code>ADMIN_TOKEN</code>.</p>

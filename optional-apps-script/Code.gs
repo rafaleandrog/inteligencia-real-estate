@@ -24,6 +24,19 @@
 
 var APP_VERSION = '1.0.0';
 
+/**
+ * Protocolo da API de escrita que este script fala, exposto em `health_()`.
+ *
+ * A tela administrativa consulta `?resource=health` antes do login e compara com o
+ * valor que ela própria espera (WRITE_API_PROTOCOL em src/admin/admin-service.js).
+ * É assim que uma implantação presa numa versão antiga do Web App é detectada e
+ * reportada — em vez de virar um erro de autenticação genérico, que não aponta para a
+ * causa real (editar o Code.gs não reimplanta o /exec).
+ *
+ * Só mude este valor junto com uma mudança incompatível no formato de doPost.
+ */
+var WRITE_API_PROTOCOL = 'token-direct-v1';
+
 /** Abas obrigatórias da V1. Ausência é erro crítico. */
 var REQUIRED_SHEETS = ['LISTINGS', 'DEVELOPMENTS', 'ANCHORS'];
 
@@ -937,6 +950,8 @@ function health_() {
   return {
     status: 'ok',
     app_version: APP_VERSION,
+    // Lido pela tela administrativa para detectar implantação desatualizada.
+    write_api: WRITE_API_PROTOCOL,
     dataset_version: props_().getProperty('DATASET_VERSION') || '1',
     server_time: nowISO_()
   };

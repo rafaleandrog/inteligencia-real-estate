@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createAppsScriptSandbox, readJsonOutput } from './helpers/appsScriptSandbox.mjs';
 import { pricePerM2 } from '../src/normalize.js';
+import { WRITE_API_PROTOCOL } from '../src/admin/admin-service.js';
 
 // API de escrita (admin) do Apps Script — PR-A: só LISTINGS, ver docs/DATA_CONTRACT.md
 // e a issue #5. Executa Code.gs de verdade dentro de um sandbox de vm (ver
@@ -401,4 +402,17 @@ test('pricePerM2_ (Code.gs) concorda com pricePerM2 (src/normalize.js) sem valor
   for (const [price, area] of casos) {
     assert.equal(context.pricePerM2_(price, area), pricePerM2(price, area, null));
   }
+});
+
+// --- marcador de protocolo (implantação desatualizada) ---------------------------
+
+// A tela administrativa consulta ?resource=health antes do login e compara `write_api`
+// com o valor que ela própria espera. É assim que um Web App preso numa versão antiga
+// do Code.gs é diagnosticado, em vez de virar um erro de token sem explicação. Se os
+// dois lados saírem de sincronia, a detecção acusaria "desatualizado" numa implantação
+// correta — por isso a paridade é testada, não só documentada.
+test('health expõe write_api igual ao WRITE_API_PROTOCOL esperado pelo cliente', () => {
+  const { context } = setup();
+  const health = readJsonOutput(context.doGet({ parameter: { resource: 'health' } }));
+  assert.equal(health.write_api, WRITE_API_PROTOCOL);
 });

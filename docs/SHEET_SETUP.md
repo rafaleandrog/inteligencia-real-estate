@@ -91,30 +91,43 @@ requisição. Sem este passo, toda tentativa de escrita é recusada — não exi
    → Propriedades do script**, e adicione a propriedade `ADMIN_TOKEN` com um valor aleatório e
    longo (por exemplo, gerado com `openssl rand -hex 32`). **Nunca** coloque este valor numa
    célula da planilha (R4.3, R4.8) nem no repositório (R4.1).
-3. Publique/reimplante o Web App (**Implantar → Gerenciar implantações**) para que o `doPost`
-   novo entre em vigor. O endpoint de leitura (`doGet`) continua no mesmo deploy, sem mudança de
-   comportamento.
-4. **Como o login funciona:**
+2. > ⚠️ **Reimplante o Web App. Salvar o código no editor NÃO atualiza o `/exec`.**
+   >
+   > Este é o passo que mais falha, e ele falha em silêncio: a URL `/exec` fica presa na
+   > versão em que foi implantada, então o Apps Script continua servindo o código antigo
+   > enquanto o editor já mostra o novo. O sintoma que chega é o token ser recusado — o que
+   > manda procurar no lugar errado.
+   >
+   > **Implantar → Gerenciar implantações → ícone de lápis → Versão: Nova versão → Implantar.**
+   >
+   > Confira também **Quem tem acesso: Qualquer pessoa** — sem isso o Google devolve uma
+   > página de login em vez de JSON, e nenhuma chamada do navegador funciona.
+
+   Para não depender de lembrar disso, `admin.html` consulta `?resource=health` ao abrir e
+   compara o campo `write_api` com o protocolo que ela espera. Implantação divergente vira uma
+   faixa de aviso no topo da tela, dizendo exatamente qual é o problema — desatualizada, sem
+   acesso público, inalcançável ou URL não configurada. Faixa some quando estiver tudo certo.
+3. **Como o login funciona:**
    - `admin.html` pede o token uma vez e chama `{action: "validate", token}` — uma chamada
      barata que só confere o token, sem ler nem escrever nada.
    - Se válido, o token fica guardado em `sessionStorage` do navegador (nunca em disco, nunca
      commitado) e viaja em **toda** chamada seguinte, inclusive `create`/`update`/`delete`.
    - Um `UNAUTHENTICATED` em qualquer chamada (token errado ou rotacionado) limpa o
      `sessionStorage` e volta para a tela de login.
-5. Distribua o token só para quem vai administrar os dados — quem tiver o token consegue criar,
+4. Distribua o token só para quem vai administrar os dados — quem tiver o token consegue criar,
    editar e excluir registros de `LISTINGS`/`DEVELOPMENTS`/`ANCHORS`. O modelo de auth é de
    **token compartilhado**, não de identidade por pessoa: o campo `editor` do `CHANGE_LOG` usa a
    identidade do Google quando o Apps Script consegue resolvê-la (`Session.getActiveUser()` —
    depende da configuração de "Executar como" da implantação do Web App, não é garantido) e cai
    para o nome autodeclarado no formulário quando não consegue.
-6. **Rotação:** se o token vazar (compartilhado por engano, por exemplo), gere um novo valor pelo
+5. **Rotação:** se o token vazar (compartilhado por engano, por exemplo), gere um novo valor pelo
    menu **Imob Intelligence → Configurar / trocar token de administração** (ou sobrescreva a
    propriedade `ADMIN_TOKEN` manualmente). Como não há sessão nem cache intermediário, a
    invalidação é **instantânea**: a próxima chamada de qualquer navegador com o token antigo
    recebe `UNAUTHENTICATED` e volta para a tela de login. Não há nada além disso para gerenciar.
-7. Sem `ADMIN_TOKEN` configurado, nenhuma chamada autentica — é o estado seguro por padrão logo
+6. Sem `ADMIN_TOKEN` configurado, nenhuma chamada autentica — é o estado seguro por padrão logo
    após importar este script numa planilha nova.
-8. A interface administrativa fica em `admin.html` (`https://<seu-pages>/admin.html`), separada
+7. A interface administrativa fica em `admin.html` (`https://<seu-pages>/admin.html`), separada
    do site público (`index.html`). Ela não tem controle de acesso próprio na V1 — a única
    barreira é o token: qualquer pessoa que abra a URL vê a tela de login, mas só grava dados quem
    tiver o `ADMIN_TOKEN`. Não é uma página secreta (R4.3) — o link não é divulgado publicamente,

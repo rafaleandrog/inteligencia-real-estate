@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {
   buildWritePayload, parseWriteResponse, WriteApiError, newCorrelationId,
   validateToken, createRecord, updateRecord, deleteRecord, listRecords,
-  getToken, setToken, clearToken,
+  getToken, setToken, clearToken, checkDeployment, WRITE_API_PROTOCOL,
 } from '../src/admin/admin-service.js';
 
 // admin-service.js é o cliente HTTP da API de escrita — aqui testamos o shaping do
@@ -51,6 +51,28 @@ test('parseWriteResponse lança WriteApiError tipado quando ok=false, com correl
 
 test('parseWriteResponse lança INTERNAL_ERROR para resposta sem o formato esperado', () => {
   assert.throws(() => parseWriteResponse({}), (err) => err instanceof WriteApiError && err.code === 'INTERNAL_ERROR');
+});
+
+// Regressão: um Web App implantado numa versão antiga do Code.gs responde
+// `{ ok: false, error: "texto" }` em vez de `error: { code, message }`. A versão
+// anterior fazia `(json.error || {}).message` — como string não vazia é truthy, o
+// fallback `|| {}` não disparava, `.message` virava undefined e o WriteApiError
+// nascia com mensagem VAZIA. Na tela isso saía como "Erro inesperado ao entrar." e o
+// motivo real do servidor era descartado em todos os canais (tela, console e o
+// próprio objeto de erro).
+test('parseWriteResponse preserva a mensagem quando `error` vem como texto simples', () => {
+  assert.throws(
+    () => parseWriteResponse({ ok: false, error: 'Sessao invalida.', time: '2026-08-22T02:00:00Z' }),
+    (err) => err instanceof WriteApiError
+      && err.code === 'STALE_DEPLOYMENT'
+      && err.message === 'Sessao invalida.',
+  );
+});
+
+test('parseWriteResponse nunca produz mensagem vazia', () => {
+  for (const json of [{}, { ok: false }, { ok: false, error: '' }, { ok: false, error: '   ' }]) {
+    assert.throws(() => parseWriteResponse(json), (err) => err instanceof WriteApiError && err.message.length > 0);
+  }
 });
 
 test('newCorrelationId devolve valores não vazios e diferentes a cada chamada', () => {
@@ -211,4 +233,50 @@ test('listRecords lança erro quando o servidor devolve { error }', async () => 
   await withFetchMock(async () => ({ json: async () => ({ error: 'dataset não permitido' }) }), async () => {
     await assert.rejects(() => listRecords('https://script.example/exec', 'FOO'), WriteApiError);
   });
+});
+
+// --- checkDeployment ----------------------------------------------------------------
+
+// A sonda distingue os quatro modos de falha da implantação do Apps Script para que a
+// tela diga o que fazer, em vez de reportar tudo como erro de token. Ela nunca lança:
+// diagnóstico não pode impedir uma tentativa de login legítima.
+
+test('checkDeployment reconhece a implantação atual pelo marcador write_api', async () => {
+  let capturedUrl = null;
+  await withFetchMock(async (url) => {
+    capturedUrl = url;
+    return { json: async () => ({ status: 'ok', app_version: '1.0.0', write_api: WRITE_API_PROTOCOL }) };
+  }, async () => {
+    const result = await checkDeployment('https://script.example/exec');
+    assert.equal(result.status, 'ok');
+    assert.equal(result.appVersion, '1.0.0');
+  });
+  assert.equal(capturedUrl, 'https://script.example/exec?resource=health');
+});
+
+test('checkDeployment marca como stale um health sem write_api (Web App de versão antiga)', async () => {
+  await withFetchMock(async () => ({
+    json: async () => ({ ok: true, app: 'imob-intelligence', app_version: '1.1.0' }),
+  }), async () => {
+    const result = await checkDeployment('https://script.example/exec');
+    assert.equal(result.status, 'stale');
+    assert.equal(result.appVersion, '1.1.0');
+  });
+});
+
+test('checkDeployment marca como not-json quando a resposta não é JSON', async () => {
+  await withFetchMock(async () => ({ json: async () => { throw new Error('Unexpected token <'); } }), async () => {
+    assert.equal((await checkDeployment('https://script.example/exec')).status, 'not-json');
+  });
+});
+
+test('checkDeployment marca como unreachable quando o fetch falha, sem lançar', async () => {
+  await withFetchMock(async () => { throw new Error('offline'); }, async () => {
+    assert.equal((await checkDeployment('https://script.example/exec')).status, 'unreachable');
+  });
+});
+
+test('checkDeployment marca como unconfigured sem appsScriptUrl, sem tocar na rede', async () => {
+  assert.equal((await checkDeployment('')).status, 'unconfigured');
+  assert.equal((await checkDeployment(undefined)).status, 'unconfigured');
 });
