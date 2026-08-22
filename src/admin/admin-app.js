@@ -10,7 +10,7 @@ import { buildTable, buildForm, buildTableToolbar, columnsFor } from './admin-ui
 import { filterRecords, sortRecords, paginateRecords } from './admin-table.js';
 import {
   getToken, setToken, clearToken, validateToken, listRecords, createRecord, updateRecord, deleteRecord,
-  newCorrelationId, WriteApiError,
+  newCorrelationId, checkDeployment, WriteApiError,
 } from './admin-service.js';
 
 const CONFIG = window.APP_CONFIG || {};
@@ -28,6 +28,7 @@ const dom = {
   formDialog: el('adminFormDialog'), formTitle: el('adminFormTitle'), formWrap: el('adminFormWrap'),
   formError: el('adminFormError'),
   statusBar: el('adminStatus'),
+  deploymentWarning: el('adminDeploymentWarning'),
 };
 
 const state = {
@@ -58,6 +59,57 @@ function resetTableState() {
   state.sortField = null;
   state.sortDirection = 'asc';
   state.page = 1;
+}
+
+// --- Diagnóstico da implantação ------------------------------------------------
+
+/**
+ * Orientação por estado devolvido por `checkDeployment()`.
+ *
+ * A falha mais comum desta tela nunca foi o token em si: é o Web App do Apps Script
+ * continuar servindo uma versão antiga do Code.gs porque ninguém reimplantou depois de
+ * editar. Antes disso ficar visível aqui, o sintoma chegava como um erro genérico de
+ * login, que não aponta para a causa e faz procurar no lugar errado.
+ */
+const DEPLOYMENT_WARNINGS = {
+  stale: {
+    title: 'A implantação do Apps Script está desatualizada.',
+    body: 'O Web App em uso ainda serve uma versão antiga do Code.gs, e é por isso que o token é '
+      + 'recusado. Na planilha: Extensões → Apps Script → Implantar → Gerenciar implantações → '
+      + 'ícone de lápis → Versão: Nova versão → Implantar. Salvar o código no editor não atualiza '
+      + 'a implantação.',
+  },
+  'not-json': {
+    title: 'A implantação não está acessível publicamente.',
+    body: 'O Web App respondeu uma página em vez de JSON, o que costuma significar "Quem tem acesso" '
+      + 'diferente de "Qualquer pessoa". Ajuste em Implantar → Gerenciar implantações.',
+  },
+  unreachable: {
+    title: 'Não foi possível contatar o Apps Script.',
+    body: 'Confira se appsScriptUrl em src/config.js aponta para a URL /exec da implantação ativa, e '
+      + 'se há conexão de rede.',
+  },
+  unconfigured: {
+    title: 'appsScriptUrl não está configurado.',
+    body: 'Defina a URL /exec do Web App em src/config.js para a área administrativa funcionar.',
+  },
+};
+
+/** Desenha (ou esconde) a faixa de diagnóstico. Texto sempre por nó de texto, nunca innerHTML (R4.4). */
+function renderDeploymentWarning(status) {
+  if (!dom.deploymentWarning) return;
+
+  const warning = DEPLOYMENT_WARNINGS[status];
+  if (!warning) {
+    dom.deploymentWarning.replaceChildren();
+    dom.deploymentWarning.hidden = true;
+    return;
+  }
+
+  const title = document.createElement('strong');
+  title.textContent = warning.title;
+  dom.deploymentWarning.replaceChildren(title, document.createTextNode(warning.body));
+  dom.deploymentWarning.hidden = false;
 }
 
 // --- Login -------------------------------------------------------------------
@@ -98,7 +150,12 @@ function bindLogin() {
       loadSheet(state.sheet);
     } catch (err) {
       clearToken();
-      if (!(err instanceof WriteApiError)) console.error('Falha inesperada no login admin:', err);
+      // Loga SEMPRE o erro original. A versão anterior só logava quando não era
+      // WriteApiError — e o caso que mais precisava de diagnóstico (resposta de uma
+      // implantação antiga) chegava justamente como WriteApiError de mensagem vazia,
+      // então não sobrava pista nem na tela nem no console.
+      console.error('Falha no login admin:', err);
+      if (err instanceof WriteApiError && err.code === 'STALE_DEPLOYMENT') renderDeploymentWarning('stale');
       showLogin(loginErrorMessage(err));
     } finally {
       if (dom.loginSubmitBtn) dom.loginSubmitBtn.disabled = false;
@@ -116,6 +173,10 @@ function bindLogin() {
 
 function loginErrorMessage(err) {
   if (!(err instanceof WriteApiError)) return 'Erro inesperado ao entrar.';
+  if (err.code === 'STALE_DEPLOYMENT') {
+    return 'A implantação do Apps Script está desatualizada — reimplante como nova versão '
+      + `(resposta do servidor: ${err.message}).`;
+  }
   return err.message || 'Erro inesperado ao entrar.';
 }
 
@@ -350,6 +411,8 @@ const ERROR_MESSAGES = {
   VERSION_CONFLICT: 'Os dados mudaram desde que você carregou este registro. Recarregando a lista — revise antes de tentar de novo.',
   NOT_FOUND: 'Este registro não existe mais — provavelmente foi excluído por outra pessoa.',
   NETWORK_ERROR: 'Falha de rede. Verifique a conexão e tente novamente.',
+  STALE_DEPLOYMENT: 'A implantação do Apps Script está desatualizada — reimplante como nova versão '
+    + '(Implantar → Gerenciar implantações) e recarregue esta página.',
 };
 
 /** Sufixo com o correlation_id, para quem for reportar o problema conseguir apontar a operação exata. */
@@ -391,6 +454,13 @@ export function main() {
   } else {
     showLogin();
   }
+
+  // Sonda em segundo plano, deliberadamente sem `await`: ela só acrescenta diagnóstico,
+  // nunca é pré-requisito para tentar entrar. Se a própria sonda falhar, a tela segue
+  // funcionando como antes.
+  checkDeployment(CONFIG.appsScriptUrl)
+    .then((result) => renderDeploymentWarning(result.status))
+    .catch((err) => console.error('Sonda de implantação falhou:', err));
 }
 
 document.addEventListener('DOMContentLoaded', main);

@@ -39,6 +39,27 @@
   margin: 10px 0;
 }
 
+/* Diagnóstico da implantação do Apps Script. Tom de aviso, não de erro fatal: a tela
+   continua utilizável, e o texto explica o que precisa ser feito na planilha. */
+.admin-deployment-warning {
+  color: #6b4708;
+  background: #fdf3dd;
+  border: 1px solid #e6c983;
+  border-left-width: 4px;
+  border-radius: 8px;
+  padding: 12px 14px;
+  font-size: 13px;
+  line-height: 1.5;
+  margin: 0 0 20px;
+}
+
+.admin-deployment-warning strong { display: block; margin-bottom: 4px; }
+.admin-deployment-warning code {
+  background: #00000010;
+  border-radius: 4px;
+  padding: 1px 4px;
+}
+
 .admin-toolbar {
   display: flex;
   flex-wrap: wrap;
