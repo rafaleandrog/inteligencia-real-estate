@@ -436,6 +436,23 @@ const RA_AGE_BANDS = [
 ];
 
 /**
+ * Teto da soma que ainda conta como escala decimal.
+ *
+ * É o MESMO teto que `validateRaProfile_()` no Apps Script usa para aceitar a
+ * distribuição (`Math.abs(sum - 1) <= 0.02`). Cortar antes — em 1,01, como esta
+ * função fazia — criava uma faixa de valores que o servidor aceita como escala
+ * decimal e a tela desenhava como porcento: `0,20 + 0,20 + 0,20 + 0,20 + 0,219`
+ * soma 1,019, passa na validação do backend e virava "0,2%" em vez de "20,0%",
+ * subestimando toda faixa etária em 100× (P2 do review do Codex na PR #44).
+ *
+ * O piso do servidor (`sum >= 0,98`) NÃO é espelhado de propósito: ele descreve uma
+ * distribuição COMPLETA, e aqui a distribuição pode estar parcial. Duas faixas
+ * decimais somando 0,35 são escala decimal legítima e precisam ser convertidas — o
+ * que denuncia a composição incompleta é o `total`, não a escala.
+ */
+const DECIMAL_SCALE_MAX_SUM = 1.02;
+
+/**
  * Distribuição etária de uma RA, pronta para desenhar.
  *
  * Três coisas que o contrato obriga a tratar aqui, e que são a razão de isto ser
@@ -448,8 +465,9 @@ const RA_AGE_BANDS = [
  *    as duas ("aproximadamente 100%, ou 1, em escala decimal"), então a planilha pode
  *    trazer `18.2` ou `0.182`. Desenhar `0.182` numa escala de porcento daria cinco
  *    barras invisíveis. A conversão só acontece quando ela é inequívoca: pelo menos
- *    duas faixas publicadas, todas ≤ 1, e a soma ≤ 1,01 — três condições que uma
- *    distribuição em porcento não satisfaz.
+ *    duas faixas publicadas, todas ≤ 1, e a soma dentro do teto que o servidor usa
+ *    para aceitar a escala decimal — três condições que uma distribuição em porcento
+ *    não satisfaz.
  * 3. **A soma pode não fechar 100.** Com faixas faltando ou com divergência que o
  *    servidor registrou como `AGE_DISTRIBUTION_SUM`, a composição está incompleta —
  *    e `total` sai junto para a interface poder dizer isso em vez de apresentar um
@@ -470,7 +488,7 @@ export function raAgeBands(profile) {
   const sum = present.reduce((acc, b) => acc + b.pct, 0);
   const scaledFromDecimal = present.length >= 2
     && present.every((b) => b.pct >= 0 && b.pct <= 1)
-    && sum <= 1.01;
+    && sum <= DECIMAL_SCALE_MAX_SUM;
 
   const bands = scaledFromDecimal
     ? present.map((b) => ({ ...b, pct: b.pct * 100 }))

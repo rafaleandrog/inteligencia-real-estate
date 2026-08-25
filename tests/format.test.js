@@ -353,11 +353,46 @@ test('raAgeBands não converte quando a escala é ambígua', () => {
   const cheia = raAgeBands(perfil(FAIXAS_CHEIAS));
   assert.equal(cheia.scaledFromDecimal, false);
 
-  // Mistura de escalas também não converte: a soma passa de 1,01.
+  // Mistura de escalas também não converte: nem toda faixa fica em 0–1.
   const mista = raAgeBands(perfil({
     population_age_0_14_pct: 0.18, population_age_15_29_pct: 21.4,
   }));
   assert.equal(mista.scaledFromDecimal, false);
+});
+
+test('raAgeBands usa o MESMO teto de escala decimal que o servidor (P2 do Codex na PR #44)', () => {
+  // `validateRaProfile_()` no Apps Script aceita `Math.abs(sum - 1) <= 0.02`. Cortando
+  // em 1,01, esta soma de 1,019 passava na validação do backend e saía da tela como
+  // "0,2%" em vez de "20,0%" — toda faixa subestimada em 100×.
+  const limite = raAgeBands(perfil({
+    population_age_0_14_pct: 0.20, population_age_15_29_pct: 0.20,
+    population_age_30_44_pct: 0.20, population_age_45_59_pct: 0.20,
+    population_age_60_plus_pct: 0.219,
+  }));
+  assert.equal(limite.scaledFromDecimal, true);
+  assert.equal(Math.round(limite.bands[0].pct * 10) / 10, 20);
+  assert.equal(Math.round(limite.total * 10) / 10, 101.9);
+
+  // Acima do teto do servidor continua sem converter: aí a planilha está fora do que
+  // o contrato chama de "aproximadamente 1", e adivinhar seria pior que não mexer.
+  const acima = raAgeBands(perfil({
+    population_age_0_14_pct: 0.30, population_age_15_29_pct: 0.30,
+    population_age_30_44_pct: 0.45,
+  }));
+  assert.equal(acima.scaledFromDecimal, false);
+});
+
+test('raAgeBands converte distribuição decimal PARCIAL, que soma bem abaixo de 1', () => {
+  // O piso do servidor (`sum >= 0,98`) descreve uma distribuição completa. Aqui ela
+  // pode estar parcial: duas faixas decimais somando 0,35 são escala decimal legítima
+  // e precisam virar 18,2% e 16,7%, não 0,2% e 0,2%. Quem denuncia a composição
+  // incompleta é o `total`, não a escala.
+  const { bands, total, scaledFromDecimal } = raAgeBands(perfil({
+    population_age_0_14_pct: 0.182, population_age_60_plus_pct: 0.167,
+  }));
+  assert.equal(scaledFromDecimal, true);
+  assert.equal(Math.round(bands[0].pct * 10) / 10, 18.2);
+  assert.equal(Math.round(total * 10) / 10, 34.9);
 });
 
 test('raAgeBands ignora valor não numérico sem quebrar', () => {

@@ -396,3 +396,16 @@ Cada uma nasce de um erro que aconteceu de verdade.
   e teste de "limpar" começa pelo estado que só o próprio controle produz, não pelo que
   outro controle já limpou de brinde. Mesma família de R8.35, pelo lado espelhado: lá uma
   recarga apagava o que não devia, aqui uma restauração preservava o que não devia.
+
+- **R8.42** *(2026-08-25, review do Codex na PR #44)* **Tolerância que cliente e servidor
+  aplicam ao mesmo dado é um número só, e ele se copia — não se estima.** O Apps Script
+  aceita a distribuição etária em escala decimal quando `Math.abs(sum - 1) <= 0.02`; a tela
+  convertia a escala quando `sum <= 1.01`. Entre 1,01 e 1,02 abria uma faixa em que o
+  backend **aceita** o dado e a interface o desenha na escala errada: `0,219 + 4 × 0,20`
+  soma 1,019, passa na validação, e cada faixa aparecia como `0,2%` em vez de `20,0%` —
+  erro de 100× sem nenhum aviso, porque os dois lados estavam "quase" de acordo. Um valor
+  escolhido por conta própria porque parecia próximo do outro é uma divergência esperando
+  um dado que caia no vão. Ao replicar um limiar do outro lado do pipeline, copie o valor e
+  cite a origem — e, quando **não** espelhar alguma borda, escreva por que: aqui o piso
+  (`sum >= 0,98`) fica de fora de propósito, porque ele descreve uma distribuição completa
+  e a tela também precisa desenhar distribuição parcial.
