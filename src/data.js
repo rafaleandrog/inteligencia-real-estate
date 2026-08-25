@@ -10,7 +10,7 @@
 // Todas devolvem o mesmo formato:
 //   { entities, meta, source, warnings, errors }
 
-import { normalizeAll, normalizeAppMeta, appMetaConflicts } from './normalize.js';
+import { normalizeAll, normalizeAppMeta, appMetaConflicts, normalizeRaProfiles } from './normalize.js';
 
 /** Entidades obrigatórias na V1. Ausência de qualquer uma é erro. */
 export const REQUIRED_ENTITIES = ['listings', 'developments', 'anchors'];
@@ -165,6 +165,7 @@ async function loadFromGviz(config) {
   // os dados já disponíveis. Em paralelo, o custo é o máximo e não a soma — e o
   // timeout curto dedicado limita o quanto uma aba opcional pendurada pode atrasar.
   const metaPromise = fetchAppMetaFromGviz(config);
+  const raProfilesPromise = fetchRaProfilesFromGviz(config);
 
   const settled = await Promise.allSettled(
     entries.map(([, sheetName]) => fetchGvizSheet(config.spreadsheetId, sheetName))
@@ -182,7 +183,14 @@ async function loadFromGviz(config) {
   });
 
   const { meta, warnings } = await metaPromise;
-  return { raw, errors, warnings, meta: { spreadsheetId: config.spreadsheetId, ...meta } };
+  const { raProfiles, warnings: raProfileWarnings } = await raProfilesPromise;
+  return {
+    raw,
+    errors,
+    warnings: [...warnings, ...raProfileWarnings],
+    meta: { spreadsheetId: config.spreadsheetId, ...meta },
+    raProfiles,
+  };
 }
 
 /**
@@ -208,6 +216,30 @@ async function fetchAppMetaFromGviz(config) {
     return {
       meta: {},
       warnings: [`Metadados do dataset indisponíveis (${sheetName}): ${error?.message || error}`],
+    };
+  }
+}
+
+/**
+ * Lê a aba opcional `RA_PROFILES` (issue #33/#34): indicadores por Região
+ * Administrativa, usados para enriquecer o filtro de RA com nome/população/
+ * densidade. Mesmo tratamento de `APP_META`: falha ou ausência vira **aviso, nunca
+ * erro** — o filtro de RA continua funcionando com o código bruto como rótulo
+ * (R2.5).
+ */
+async function fetchRaProfilesFromGviz(config) {
+  const sheetName = config.raProfilesSheet;
+  if (!sheetName) return { raProfiles: {}, warnings: [] };
+
+  try {
+    const rows = await fetchGvizSheet(config.spreadsheetId, sheetName, {
+      timeoutMs: META_FETCH_TIMEOUT_MS,
+    });
+    return { raProfiles: normalizeRaProfiles(rows), warnings: [] };
+  } catch (error) {
+    return {
+      raProfiles: {},
+      warnings: [`Indicadores por Região Administrativa indisponíveis (${sheetName}): ${error?.message || error}`],
     };
   }
 }
@@ -242,6 +274,8 @@ async function loadFromDemo(config) {
     errors: [],
     warnings: metaConflictWarnings(payload.meta),
     meta: { ...normalizeAppMeta(payload.meta), demo: payload.meta || {} },
+    // Mesmo tratamento de `raw`: aba ausente no demo.json vira mapa vazio, não erro.
+    raProfiles: normalizeRaProfiles(payload.ra_profiles || []),
   };
 }
 
@@ -296,7 +330,21 @@ async function loadFromAppsScript(config) {
     warnings.push(`Metadados do dataset indisponíveis: ${error?.message || error}`);
   }
 
-  return { raw, errors, warnings, meta };
+  let raProfiles = {};
+  if (config.raProfilesSheet) {
+    try {
+      const url = `${config.appsScriptUrl}?resource=dataset&name=${encodeURIComponent(config.raProfilesSheet)}`;
+      const response = await fetchWithTimeout(url);
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      const payload = await response.json();
+      if (payload.error) throw new Error(payload.error);
+      raProfiles = normalizeRaProfiles(payload.rows || []);
+    } catch (error) {
+      warnings.push(`Indicadores por Região Administrativa indisponíveis: ${error?.message || error}`);
+    }
+  }
+
+  return { raw, errors, warnings, meta, raProfiles };
 }
 
 const STRATEGIES = {
@@ -339,6 +387,7 @@ export async function loadDataset(config) {
     return {
       entities: { listings: [], developments: [], anchors: [] },
       meta: {},
+      raProfiles: {},
       source: strategy,
       warnings,
       errors: [error?.message || String(error)],
@@ -374,6 +423,7 @@ export async function loadDataset(config) {
   return {
     entities,
     meta: result.meta || {},
+    raProfiles: result.raProfiles || {},
     source: strategy,
     warnings,
     errors,

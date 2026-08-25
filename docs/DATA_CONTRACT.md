@@ -94,6 +94,22 @@ Chave: `listing_id`. 141 linhas no dataset atual.
 `asking_price_brl_m2` é **derivado**: calculado por `asking_price_brl / area_m2` quando vazio.
 Valor já preenchido não é sobrescrito; divergência grande vira alerta em `DATA_QUALITY` (§17).
 
+#### `building_orientation` — classificação vertical/horizontal (issue #31)
+
+**Não é uma coluna da planilha.** `normalizeListing()` deriva `building_orientation`
+(`vertical`/`horizontal`/`null`) a partir de `property_type`, que já é vocabulário fechado:
+`apartamento`, `predio`, `kitnet` → `vertical`; `casa`, `casa_condominio`, `terreno` →
+`horizontal`. Não precisa de mudança de backend.
+
+#### `regularization_status` — preparação para classificação futura (issue #32)
+
+Coluna ainda não existe na planilha. `normalizeListing()` já lê `regularization_status`
+(`toText()`, ausência vira string vazia) para o dia em que existir. Fora de
+`REQUIRED_HEADERS.LISTINGS` de propósito, mesmo motivo de `segment` em ANCHORS (ver nota
+correspondente mais abaixo): adicionar à validação obrigatória sem a coluna existir geraria
+`MISSING_HEADER` em produção. Decisão pendente (issue #32): esse campo é exibido na tela pública
+ou só na área administrativa?
+
 #### Escrita pela área administrativa (issue #5, R4.9)
 
 A API de escrita do Apps Script (`doPost`) cobre, na primeira PR, só `LISTINGS`. Editável é
@@ -144,6 +160,22 @@ Chave: `development_id`. 22 linhas.
 > existindo como registro, aparecem na contagem e na busca, e **não vão ao mapa**. Metade de uma
 > coordenada é pior que nenhuma — colocaria o ponto no lugar errado. `computeKpis` expõe isso em
 > `withoutCoord` para que o buraco fique visível em vez de silencioso.
+
+#### `sales_stage`, `building_orientation`, `regularization_status` — preparação (issues #30, #31, #32)
+
+Três colunas ainda não existem na planilha. `normalizeDevelopment()` já lê os três
+(`toText()`, ausência vira string vazia/`null`) para o dia em que existirem:
+
+- `sales_stage` (#30): estágio de comercialização. Vocabulário proposto: `em_construcao` /
+  `em_lancamento` / `oferta`.
+- `building_orientation` (#31): vertical/horizontal. Diferente de LISTINGS (derivado de
+  `property_type`, vocabulário fechado), aqui não dá para derivar com segurança de `product`/
+  `unit_mix` (texto livre) — precisa de coluna dedicada.
+- `regularization_status` (#32): mesma decisão pendente de LISTINGS sobre visibilidade pública
+  × administrativa.
+
+Todos fora de `REQUIRED_HEADERS.DEVELOPMENTS` de propósito, mesmo motivo já documentado para
+`segment` de ANCHORS.
 
 #### Escrita pela área administrativa (issue #5, R4.9)
 
@@ -202,6 +234,12 @@ tabela acima (`Obrig. = não`) e, se for o caso, entrar em `REQUIRED_HEADERS.ANC
 automaticamente a partir daí. Até lá, a ausência da coluna é segura: `toText()` devolve string
 vazia e o registro normaliza e aparece no mapa normalmente.
 
+#### `brand_name`, `occupied_area_m2` — dados comerciais (issue #39)
+
+Mesmo padrão de `segment` acima: `normalizeAnchor()` já lê `brand_name` (texto) e
+`occupied_area_m2` (número), colunas que ainda não existem na planilha, fora de
+`REQUIRED_HEADERS.ANCHORS` até existirem de fato.
+
 #### Escrita pela área administrativa (issue #5, R4.9)
 
 Editável: `REQUIRED_HEADERS.ANCHORS` menos `place_id` (imutável, só via `id` da requisição).
@@ -214,18 +252,39 @@ livre pelo mesmo motivo de LISTINGS.
 ## Abas opcionais
 
 Ausência gera **warning**, nunca erro. A aplicação não pode cair porque uma aba futura está
-vazia (R2.5). Nenhuma delas é lida pela tela da V1.
+vazia (R2.5). `PRIMARY_OFFERS`, `IVV_MONTHLY` e `IVV_REGION` não são lidas pela tela ainda.
+`RA_PROFILES` passou a ser lida a partir da issue #33/#34 — ver seção dedicada abaixo.
 
 | Aba | Chave | Linhas | Papel |
 |---|---|---|---|
 | `PRIMARY_OFFERS` | `observation_id` | 29 | Observações unitárias do mercado primário, previstas para uma fase futura |
 | `IVV_MONTHLY` | `reference_month` | 1 | Índice de Velocidade de Vendas mensal do DF |
 | `IVV_REGION` | `reference_month` + `market_region` + `bedroom_bucket` | 95 | IVV por região e faixa de quartos |
-| `RA_PROFILES` | `ra_geo_id` | 35 | Indicadores territoriais por Região Administrativa (censo + PDAD) |
+| `RA_PROFILES` | `ra_geo_id` | 35 | Indicadores territoriais por Região Administrativa (censo + PDAD) — **lida pela tela** |
 
 > **Divergência D2 — `IVV_REGION` tem `ivv_pct` e `ivv_pct_published`.** `ivv_pct` é alias de
 > compatibilidade consumido pelo Apps Script; `ivv_pct_published` é o valor do dataset original.
 > Manter os dois em sincronia é responsabilidade de quem edita a aba.
+
+### RA_PROFILES — indicadores por Região Administrativa (issues #33, #34, #35)
+
+Buscada por `src/data.js` (`config.raProfilesSheet`) com o mesmo tratamento de `APP_META`: falha
+ou ausência vira aviso, nunca erro, e o filtro por RA (#33) continua funcionando com o código
+bruto de `ra_geo_id` como rótulo. `normalizeRaProfile()`/`normalizeRaProfiles()`
+(`src/normalize.js`) leem hoje só os campos abaixo — o restante das 38 colunas existe na
+planilha (indicadores PDAD de atividade econômica, escolaridade, cobertura de saúde etc.) mas
+não é consumido pela tela ainda.
+
+| Campo lido | Uso |
+|---|---|
+| `ra_geo_id` | Chave, casada com `ra_geo_id` de LISTINGS/DEVELOPMENTS/ANCHORS |
+| `ra_name` | Rótulo do filtro por RA (#33) |
+| `population_total` | Nota de população ao selecionar uma RA (#34) |
+| `population_density_km2` | Nota de densidade ao selecionar uma RA (#34) |
+
+**Não existem ainda** (issue #36, bloqueada): renda per capita e distribuição por faixa etária.
+Não inventar nome de coluna adiantado aqui — a issue #36 documenta a extensão quando o dado
+existir de fato na planilha.
 
 ---
 

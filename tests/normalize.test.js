@@ -2,7 +2,8 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
   toText, toNumber, toInteger, toBoolean, toDateISO, toCoord, pricePerM2, toPriceNumber,
-  isApproximateLocation, normalizeListing, normalizeDevelopment, normalizeAnchor,
+  buildingOrientation, isApproximateLocation, normalizeListing, normalizeDevelopment,
+  normalizeAnchor, normalizeRaProfile, normalizeRaProfiles,
   normalizeAppMeta, appMetaRows, appMetaConflicts,
   normalizeAll,
 } from '../src/normalize.js';
@@ -209,6 +210,57 @@ test('normalizeAnchor aceita segment opcional sem quebrar quando ausente (issue 
 
   const semSegmento = normalizeAnchor({ place_id: 'A2', name: 'Y' });
   assert.equal(semSegmento.segment, '', 'coluna ainda não existe na planilha — ausência é normal');
+});
+
+test('normalizeAnchor aceita brand_name/occupied_area_m2 opcionais sem quebrar (issue #39)', () => {
+  const comMarca = normalizeAnchor({
+    place_id: 'A3', name: 'Farmácia X', brand_name: 'Droga Raia', occupied_area_m2: '180',
+  });
+  assert.equal(comMarca.brand_name, 'Droga Raia');
+  assert.equal(comMarca.occupied_area_m2, 180);
+
+  const semMarca = normalizeAnchor({ place_id: 'A4', name: 'Y' });
+  assert.equal(semMarca.brand_name, '');
+  assert.equal(semMarca.occupied_area_m2, null);
+});
+
+test('buildingOrientation classifica pelo vocabulário fechado de property_type (issue #31)', () => {
+  assert.equal(buildingOrientation('apartamento'), 'vertical');
+  assert.equal(buildingOrientation('predio'), 'vertical');
+  assert.equal(buildingOrientation('kitnet'), 'vertical');
+  assert.equal(buildingOrientation('casa'), 'horizontal');
+  assert.equal(buildingOrientation('casa_condominio'), 'horizontal');
+  assert.equal(buildingOrientation('terreno'), 'horizontal');
+  assert.equal(buildingOrientation('APARTAMENTO'), 'vertical', 'ignora caixa');
+  assert.equal(buildingOrientation(''), null);
+  assert.equal(buildingOrientation('tipo_novo_desconhecido'), null, 'vocabulário novo não quebra, só não classifica');
+});
+
+test('normalizeListing deriva building_orientation e lê regularization_status opcional (issues #31, #32)', () => {
+  const apto = normalizeListing({ listing_id: 'L1', property_type: 'apartamento' });
+  assert.equal(apto.building_orientation, 'vertical');
+  assert.equal(apto.regularization_status, '', 'coluna ainda não existe na planilha');
+
+  const casa = normalizeListing({
+    listing_id: 'L2', property_type: 'casa', regularization_status: 'regularizado',
+  });
+  assert.equal(casa.building_orientation, 'horizontal');
+  assert.equal(casa.regularization_status, 'regularizado');
+});
+
+test('normalizeDevelopment lê sales_stage/building_orientation/regularization_status opcionais (issues #30, #31, #32)', () => {
+  const semColunas = normalizeDevelopment({ development_id: 'D3' });
+  assert.equal(semColunas.sales_stage, '');
+  assert.equal(semColunas.building_orientation, null);
+  assert.equal(semColunas.regularization_status, '');
+
+  const comColunas = normalizeDevelopment({
+    development_id: 'D4', sales_stage: 'em_lancamento', building_orientation: 'vertical',
+    regularization_status: 'em_regularizacao',
+  });
+  assert.equal(comColunas.sales_stage, 'em_lancamento');
+  assert.equal(comColunas.building_orientation, 'vertical');
+  assert.equal(comColunas.regularization_status, 'em_regularizacao');
 });
 
 test('normalizeAll descarta registro sem ID e conta o descarte', () => {
@@ -420,4 +472,30 @@ test('appMetaConflicts tolera entrada que não é lista', () => {
   for (const entrada of [null, undefined, {}, { dataset_version: '7' }, 'texto', 42]) {
     assert.deepEqual(appMetaConflicts(entrada), [], `esperado [] para ${JSON.stringify(entrada)}`);
   }
+});
+
+test('normalizeRaProfile lê nome, população e densidade (issues #33, #34)', () => {
+  const profile = normalizeRaProfile({
+    ra_geo_id: 'RA2026_RA-I', ra_name: 'PLANO PILOTO',
+    population_total: '198697', population_density_km2: '454.4747758305593',
+  });
+  assert.equal(profile.ra_geo_id, 'RA2026_RA-I');
+  assert.equal(profile.ra_name, 'PLANO PILOTO');
+  assert.equal(profile.population_total, 198697);
+  assert.equal(profile.population_density_km2, 454.4747758305593);
+});
+
+test('normalizeRaProfiles indexa por ra_geo_id e descarta linha sem chave (issue #33)', () => {
+  const byId = normalizeRaProfiles([
+    { ra_geo_id: 'RA2026_RA-I', ra_name: 'PLANO PILOTO', population_total: '198697' },
+    { ra_geo_id: '', ra_name: 'sem chave' },
+    null,
+  ]);
+  assert.deepEqual(Object.keys(byId), ['RA2026_RA-I']);
+  assert.equal(byId['RA2026_RA-I'].ra_name, 'PLANO PILOTO');
+});
+
+test('normalizeRaProfiles tolera entrada ausente', () => {
+  assert.deepEqual(normalizeRaProfiles(undefined), {});
+  assert.deepEqual(normalizeRaProfiles(null), {});
 });

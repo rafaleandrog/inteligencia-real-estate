@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import {
   formatBRL, formatBRLCompact, formatM2, formatPriceM2, formatNumber, formatDate,
   escapeHtml, safeExternalUrl, hostnameOf, formatPropertyType, formatSpatialPrecision,
+  formatBuildingOrientation,
 } from '../src/format.js';
 
 test('ausência vira travessão, não zero', () => {
@@ -89,4 +90,12 @@ test('formatSpatialPrecision nunca expõe o identificador cru de pipeline (issue
   // não pode voltar cru, com underscore, para a tela.
   assert.equal(formatSpatialPrecision('some_new_vocabulary_term'), 'Some new vocabulary term');
   assert.doesNotMatch(formatSpatialPrecision('some_new_vocabulary_term'), /_/);
+});
+
+test('formatBuildingOrientation traduz o vocabulário fechado (issue #31)', () => {
+  assert.equal(formatBuildingOrientation('vertical'), 'Vertical');
+  assert.equal(formatBuildingOrientation('horizontal'), 'Horizontal');
+  assert.equal(formatBuildingOrientation(''), '');
+  assert.equal(formatBuildingOrientation(null), '');
+  assert.equal(formatBuildingOrientation('valor_desconhecido'), '', 'sem fallback humanizado: não é vocabulário aberto');
 });

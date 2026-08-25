@@ -77,10 +77,15 @@ if (missing.length > 0) {
   process.exit(1);
 }
 
+// RA_PROFILES é opcional (issue #33/#34): ausente no .xlsx de origem vira lista
+// vazia, não erro — mesmo tratamento que a aplicação já dá à aba na planilha real.
+payload.ra_profiles = workbook.RA_PROFILES ? workbook.RA_PROFILES.rows.map(convertDates) : [];
+
 mkdirSync(dirname(target), { recursive: true });
 writeFileSync(target, `${JSON.stringify(payload, null, 2)}\n`);
 
 for (const [sheet, entity] of Object.entries(ENTITY_BY_SHEET)) {
   console.log(`${sheet.padEnd(15)} -> ${String(entity).padEnd(14)} ${payload[entity].length} linhas`);
 }
+console.log(`RA_PROFILES     -> ra_profiles    ${payload.ra_profiles.length} linhas`);
 console.log(`\n${target} gerado.`);

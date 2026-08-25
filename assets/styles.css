@@ -306,6 +306,16 @@ h1, h2 { margin: 0; font-size: 1rem; }
   margin: 10px 0 4px;
 }
 
+/* Nota de indicadores da RA selecionada (issue #34). */
+.field-note {
+  margin: 4px 0 0;
+  font-size: 11px;
+  line-height: 1.4;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+.field-note[hidden] { display: none; }
+
 select, input[type="number"] {
   width: 100%;
   padding: 7px 9px;

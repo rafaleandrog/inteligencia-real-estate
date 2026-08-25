@@ -199,6 +199,23 @@ export function toPriceNumber(rawValue, { areaValue, informedPriceM2Value } = {}
   return thousandsError < decimalError ? asThousands : asDecimal;
 }
 
+/**
+ * Classificação vertical/horizontal de um imóvel, derivada de `property_type`
+ * (issue #31). `property_type` já é vocabulário fechado (`docs/DATA_CONTRACT.md`),
+ * então dá para classificar com segurança sem depender de coluna nova no backend —
+ * diferente de DEVELOPMENTS, cujo `product`/`unit_mix` são texto livre e por isso
+ * não entram aqui (aguardam coluna dedicada, ver issue #31).
+ */
+const VERTICAL_PROPERTY_TYPES = new Set(['apartamento', 'predio', 'kitnet']);
+const HORIZONTAL_PROPERTY_TYPES = new Set(['casa', 'casa_condominio', 'terreno']);
+
+export function buildingOrientation(propertyType) {
+  const key = toText(propertyType).toLowerCase();
+  if (VERTICAL_PROPERTY_TYPES.has(key)) return 'vertical';
+  if (HORIZONTAL_PROPERTY_TYPES.has(key)) return 'horizontal';
+  return null;
+}
+
 /** Campos de qualidade espacial. Precisam sobreviver da planilha até a tela (R3.5). */
 function spatialQuality(row) {
   return {
@@ -260,6 +277,8 @@ export function normalizeListing(row) {
     id: toText(row.listing_id),
     title: toText(row.title) || toText(row.address),
     property_type: toText(row.property_type),
+    // Derivado de property_type, sem depender de coluna nova (issue #31).
+    building_orientation: buildingOrientation(row.property_type),
     transaction_type: toText(row.transaction_type),
     locality: toText(row.locality),
     address: toText(row.address),
@@ -281,6 +300,9 @@ export function normalizeListing(row) {
     source: toText(row.portal),
     observed_at: toDateISO(row.observed_at),
     status: toText(row.status),
+    // Coluna ainda não existe na planilha (issue #32) — leitura preparatória, mesmo
+    // padrão de `segment` em #22: ausência normaliza para string vazia sem quebrar.
+    regularization_status: toText(row.regularization_status),
     ...spatialQuality(row),
   };
 }
@@ -300,6 +322,12 @@ export function normalizeDevelopment(row) {
     product: toText(row.product),
     segment: toText(row.segment),
     status: toText(row.status),
+    // Colunas ainda não existem na planilha (issues #30 e #32) — leitura
+    // preparatória; `product`/`unit_mix` são texto livre demais para derivar com
+    // segurança (diferente de LISTINGS, onde property_type é vocabulário fechado).
+    sales_stage: toText(row.sales_stage),
+    building_orientation: toText(row.building_orientation) || null,
+    regularization_status: toText(row.regularization_status),
     units_total: toInteger(row.units_total),
     area_min_m2: toNumber(row.area_min_m2),
     area_max_m2: toNumber(row.area_max_m2),
@@ -333,6 +361,10 @@ export function normalizeAnchor(row) {
     // backend/planilha em etapa posterior (issue #22). Coluna opcional: registro sem
     // segmento continua normalizando e aparecendo no mapa normalmente.
     segment: toText(row.segment),
+    // Colunas ainda não existem na planilha (issue #39) — leitura preparatória,
+    // mesmo padrão de `segment` em #22.
+    brand_name: toText(row.brand_name),
+    occupied_area_m2: toNumber(row.occupied_area_m2),
     operator_name: toText(row.operator_name),
     address: toText(row.address),
     locality: toText(row.neighborhood),
@@ -345,6 +377,38 @@ export function normalizeAnchor(row) {
     scale_capacity: toText(row.scale_capacity),
     ...spatialQuality(row),
   };
+}
+
+/**
+ * Perfil de uma Região Administrativa, vindo da aba opcional `RA_PROFILES`
+ * (issue #33/#34). Diferente de LISTINGS/DEVELOPMENTS/ANCHORS, não é um registro
+ * plotável no mapa (sem `kind`, sem coordenada) — é uma tabela de enriquecimento,
+ * consultada pelo `ra_geo_id` que os três tipos de registro já carregam.
+ *
+ * Só os campos já publicados na planilha hoje (nome, população, densidade) são
+ * lidos. Renda per capita e faixa etária não existem em `RA_PROFILES` ainda —
+ * ver issue #35 — e por isso não aparecem aqui: inventar a chave adiantado só
+ * criaria a ilusão de que o dado já existe.
+ */
+export function normalizeRaProfile(row) {
+  return {
+    ra_geo_id: toText(row.ra_geo_id),
+    ra_name: toText(row.ra_name),
+    population_total: toInteger(row.population_total),
+    population_density_km2: toNumber(row.population_density_km2),
+  };
+}
+
+/** Linhas cruas de `RA_PROFILES` -> mapa `ra_geo_id` -> perfil. Linha sem chave é descartada. */
+export function normalizeRaProfiles(rows) {
+  const byId = {};
+  for (const row of rows || []) {
+    if (!row || typeof row !== 'object') continue;
+    const profile = normalizeRaProfile(row);
+    if (!profile.ra_geo_id) continue;
+    byId[profile.ra_geo_id] = profile;
+  }
+  return byId;
 }
 
 /** Normalizador por nome de entidade, usado pelo loader. */

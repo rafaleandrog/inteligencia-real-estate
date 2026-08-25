@@ -270,6 +270,95 @@ test('o modo demo não reintroduz metadado que o normalizador rejeitou', async (
   }
 });
 
+test('demo.json inclui ra_profiles com nome e população para as RAs em uso (issue #33/#34)', async () => {
+  const { normalizeRaProfiles } = await import('../src/normalize.js');
+
+  assert.ok(Array.isArray(demo.ra_profiles), 'ra_profiles deve ser array');
+  assert.ok(demo.ra_profiles.length > 0, 'ra_profiles não pode estar vazia no dataset de demonstração');
+
+  const byId = normalizeRaProfiles(demo.ra_profiles);
+  const { records: listings } = normalizeAll('listings', demo.listings);
+  const someRaId = listings.find((r) => r.ra_geo_id)?.ra_geo_id;
+
+  assert.ok(someRaId, 'algum anúncio do demo precisa ter ra_geo_id');
+  assert.ok(byId[someRaId], `RA_PROFILES precisa ter perfil para ${someRaId}`);
+  assert.ok(byId[someRaId].ra_name, 'perfil precisa ter nome');
+  assert.ok(byId[someRaId].population_total > 0, 'perfil precisa ter população');
+});
+
+test('loadDataset (demo) devolve raProfiles indexado por ra_geo_id (issue #33/#34)', async () => {
+  const { loadDataset } = await import('../src/data.js');
+
+  const config = {
+    demoMode: true,
+    demoUrl: 'inline',
+    sheets: { listings: 'LISTINGS', developments: 'DEVELOPMENTS', anchors: 'ANCHORS' },
+  };
+
+  const original = globalThis.fetch;
+  globalThis.fetch = async () => ({
+    ok: true,
+    json: async () => ({
+      listings: [{ listing_id: 'A', ra_geo_id: 'RA2026_RA-I' }],
+      developments: [{ development_id: 'B' }],
+      anchors: [{ place_id: 'C' }],
+      meta: { note: 'Dataset de DEMONSTRAÇÃO', generated_at: '2026-08-20' },
+      ra_profiles: [
+        { ra_geo_id: 'RA2026_RA-I', ra_name: 'PLANO PILOTO', population_total: '198697' },
+      ],
+    }),
+  });
+
+  try {
+    const result = await loadDataset(config);
+    assert.deepEqual(Object.keys(result.raProfiles), ['RA2026_RA-I']);
+    assert.equal(result.raProfiles['RA2026_RA-I'].ra_name, 'PLANO PILOTO');
+  } finally {
+    globalThis.fetch = original;
+  }
+});
+
+test('loadDataset (demo) devolve raProfiles vazio quando ra_profiles não vem no payload', async () => {
+  // RA_PROFILES é opcional (R2.5): payload sem a chave não pode quebrar o carregamento.
+  const { loadDataset } = await import('../src/data.js');
+
+  const config = {
+    demoMode: true,
+    demoUrl: 'inline',
+    sheets: { listings: 'LISTINGS', developments: 'DEVELOPMENTS', anchors: 'ANCHORS' },
+  };
+
+  const original = globalThis.fetch;
+  globalThis.fetch = async () => ({
+    ok: true,
+    json: async () => ({
+      listings: [{ listing_id: 'A' }],
+      developments: [{ development_id: 'B' }],
+      anchors: [{ place_id: 'C' }],
+      meta: { note: 'Dataset de DEMONSTRAÇÃO', generated_at: '2026-08-20' },
+    }),
+  });
+
+  try {
+    const result = await loadDataset(config);
+    assert.deepEqual(result.raProfiles, {});
+    assert.equal(result.ok, true, 'ausência de RA_PROFILES não impede o carregamento');
+  } finally {
+    globalThis.fetch = original;
+  }
+});
+
+test('a RA_PROFILES do gviz é buscada em paralelo com as abas obrigatórias (issue #33/#34)', async () => {
+  const src = readFileSync(new URL('../src/data.js', import.meta.url), 'utf8');
+  const corpo = src.slice(src.indexOf('async function loadFromGviz'), src.indexOf('\n}', src.indexOf('async function loadFromGviz')));
+
+  const posRa = corpo.indexOf('fetchRaProfilesFromGviz(config)');
+  const posLote = corpo.indexOf('Promise.allSettled');
+  assert.ok(posRa !== -1 && posLote !== -1);
+  assert.ok(posRa < posLote, 'a busca de RA_PROFILES precisa começar antes do await do lote');
+  assert.ok(!/await fetchRaProfilesFromGviz/.test(corpo), 'não pode ser aguardada em sequência');
+});
+
 test('a APP_META do gviz é buscada em paralelo com as abas obrigatórias', async () => {
   // Regressão: buscá-la depois do lote somava o tempo dela ao das outras e podia
   // segurar o mapa na tela de carregamento com os dados já disponíveis.
