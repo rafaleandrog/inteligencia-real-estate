@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  toText, toNumber, toInteger, toBoolean, toDateISO, toCoord, pricePerM2,
+  toText, toNumber, toInteger, toBoolean, toDateISO, toCoord, pricePerM2, toPriceNumber,
   isApproximateLocation, normalizeListing, normalizeDevelopment, normalizeAnchor,
   normalizeAppMeta, appMetaRows, appMetaConflicts,
   normalizeAll,
@@ -138,6 +138,41 @@ test('normalizeListing preserva a qualidade espacial e deriva preço/m²', () =>
   assert.equal(record.coordinate_precision, 'locality_centroid_deterministic_jitter');
 });
 
+test('toPriceNumber resolve o ponto único de milhar quando há preço/m² e área para ancorar', () => {
+  // Caso real: Kitnet CA 02, preço bruto "385.000" (milhar pt-BR), 42 m², R$ 9.167/m².
+  // toNumber() sozinho devolveria 385 (decimal); com a âncora, resolve para 385000.
+  assert.equal(
+    toPriceNumber('385.000', { areaValue: '42', informedPriceM2Value: '9167' }),
+    385000,
+  );
+
+  // Sem preço/m² informado (ou sem área), não há como decidir com segurança — mantém
+  // o mesmo comportamento documentado de toNumber().
+  assert.equal(toPriceNumber('385.000', {}), 385);
+  assert.equal(toPriceNumber('385.000', { areaValue: '42' }), 385);
+
+  // Valor que já bate como decimal não deve ser "corrigido" para milhar.
+  assert.equal(
+    toPriceNumber('2.500', { areaValue: '1', informedPriceM2Value: '2.5' }),
+    2.5,
+  );
+
+  // Fora do padrão ambíguo (mais de um ponto, sem ponto, vírgula) segue toNumber().
+  assert.equal(toPriceNumber('2.500.000', { areaValue: '100', informedPriceM2Value: '1' }), 2500000);
+  assert.equal(toPriceNumber('2500000', {}), 2500000);
+  assert.equal(toPriceNumber('', {}), null);
+});
+
+test('normalizeListing corrige o preço quando o bruto é ambíguo e há preço/m² informado', () => {
+  const record = normalizeListing({
+    listing_id: 'LIST_KITNET', title: 'Kitnet à venda', property_type: 'kitnet',
+    locality: 'Lago Norte', latitude: '-15.75', longitude: '-47.85',
+    asking_price_brl: '385.000', area_m2: '42', asking_price_brl_m2: '9167',
+  });
+  assert.equal(record.price, 385000);
+  assert.equal(record.price_m2, 9167);
+});
+
 test('normalizeDevelopment lida com empreendimento sem coordenada', () => {
   const record = normalizeDevelopment({
     development_id: 'DEV_1', name: 'Nexus 710', latitude: '', longitude: '',
@@ -166,6 +201,14 @@ test('normalizeAnchor mapeia place_id e neighborhood', () => {
   assert.equal(record.locality, 'Asa Norte');
   assert.equal(record.category, 'escola');
   assert.equal(isApproximateLocation(record), false);
+});
+
+test('normalizeAnchor aceita segment opcional sem quebrar quando ausente (issue #22)', () => {
+  const comSegmento = normalizeAnchor({ place_id: 'A1', name: 'X', segment: 'hospital' });
+  assert.equal(comSegmento.segment, 'hospital');
+
+  const semSegmento = normalizeAnchor({ place_id: 'A2', name: 'Y' });
+  assert.equal(semSegmento.segment, '', 'coluna ainda não existe na planilha — ausência é normal');
 });
 
 test('normalizeAll descarta registro sem ID e conta o descarte', () => {
@@ -307,6 +350,21 @@ test('appMetaRows respeita a ordem de exibição e rotula em português', () => 
   assert.equal(rows[1].value, 'v7', 'versão recebe o prefixo v');
   assert.equal(rows[2].value, 'OK');
   assert.equal(rows[0].type, 'date', 'o tipo volta para a tela poder formatar em pt-BR');
+});
+
+test('appMetaRows marca apenas "Atualizado em" como resumo público (issue #19)', () => {
+  const rows = appMetaRows(normalizeAppMeta({
+    rows_listings: '141',
+    dataset_version: '7',
+    last_data_change_at: '2026-08-20',
+    validation_status: 'ok',
+  }));
+
+  const byKey = Object.fromEntries(rows.map((r) => [r.key, r.visibility]));
+  assert.equal(byKey.last_data_change_at, 'summary');
+  assert.equal(byKey.dataset_version, 'technical');
+  assert.equal(byKey.validation_status, 'technical');
+  assert.equal(byKey.rows_listings, 'technical');
 });
 
 test('status de validação desconhecido nunca recebe o tom de sucesso', () => {

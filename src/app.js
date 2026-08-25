@@ -15,7 +15,7 @@ import {
 } from './filters.js';
 import {
   formatBRL, formatBRLCompact, formatM2, formatNumber, formatPriceM2, formatDate,
-  formatPropertyType, safeExternalUrl, hostnameOf,
+  formatPropertyType, formatSpatialPrecision, safeExternalUrl, hostnameOf,
 } from './format.js';
 
 const CONFIG = window.APP_CONFIG || {};
@@ -25,14 +25,16 @@ const el = (id) => document.getElementById(id);
 const dom = {
   search: el('search'), locality: el('locality'), ptype: el('ptype'),
   priceMin: el('priceMin'), priceMax: el('priceMax'), beds: el('beds'),
-  clearFilters: el('clearFilters'), layers: el('layers'),
+  clearFilters: el('clearFilters'), layers: el('layersSection'),
   kpiVisible: el('kpiVisible'), kpiMedian: el('kpiMedian'), kpiNote: el('kpiNote'),
   loadingState: el('loadingState'), errorState: el('errorState'),
   errorTitle: el('errorTitle'), errorDetail: el('errorDetail'), retryBtn: el('retryBtn'),
   warnings: el('warnings'), sourceBadge: el('sourceBadge'),
   datasetMeta: el('datasetMeta'), datasetMetaList: el('datasetMetaList'),
+  datasetMetaSummary: el('datasetMetaSummary'),
   detail: el('detail'), detailTitle: el('detailTitle'), detailBody: el('detailBody'),
   closeDetail: el('closeDetail'),
+  anchorCategories: el('anchorCategories'),
 };
 
 const state = {
@@ -53,6 +55,49 @@ const LAYER_LABEL = {
   development: 'Empreendimento',
   anchor: 'Âncora',
 };
+
+/**
+ * Cor por categoria de âncora (vocabulário fechado, `docs/DATA_CONTRACT.md`), para
+ * diferenciar visualmente escola, saúde, shopping etc. no mapa em vez de um único
+ * verde para todo ponto comercial. Prepara o terreno para a classificação por
+ * segmento (mais fina que categoria) que virá do backend depois (issue #22).
+ */
+const ANCHOR_CATEGORY_LABELS = {
+  escola: 'Escola',
+  mobilidade: 'Mobilidade',
+  parque_equipamento_publico: 'Parque / equipamento público',
+  saude: 'Saúde',
+  shopping_center: 'Shopping center',
+  supermercado_atacarejo: 'Supermercado / atacarejo',
+  universidade: 'Universidade',
+};
+
+const ANCHOR_CATEGORY_COLORS = {
+  escola: '#c9862c',
+  mobilidade: '#3e7cb1',
+  parque_equipamento_publico: '#4f9d5b',
+  saude: '#b1473e',
+  shopping_center: '#8a4fae',
+  supermercado_atacarejo: '#2c9aa3',
+  universidade: '#8a7a2c',
+};
+
+/** Cor de preenchimento de uma âncora por categoria; `null` deixa a cor padrão da camada. */
+function anchorCategoryColor(record) {
+  if (record.kind !== 'anchor') return null;
+  const key = String(record.category || '').trim().toLowerCase();
+  return ANCHOR_CATEGORY_COLORS[key] || null;
+}
+
+/** Rótulo humano de uma categoria de âncora; categoria fora do vocabulário conhecido
+ * ainda vira texto legível, nunca o código cru (mesma lógica de formatPropertyType). */
+function anchorCategoryLabel(category) {
+  const key = String(category || '').trim().toLowerCase();
+  if (!key) return 'Sem categoria';
+  if (ANCHOR_CATEGORY_LABELS[key]) return ANCHOR_CATEGORY_LABELS[key];
+  const spaced = key.replace(/_/g, ' ');
+  return spaced.charAt(0).toUpperCase() + spaced.slice(1);
+}
 
 // --- Mapa -----------------------------------------------------------------
 
@@ -79,12 +124,16 @@ function renderMarkers(records) {
   for (const record of records) {
     if (!record.coord) continue; // sem coordenada o registro existe, mas não é mapeável
 
+    const categoryColor = anchorCategoryColor(record);
     const marker = L.circleMarker([record.coord.lat, record.coord.lon], {
       radius: MARKER_RADIUS[record.kind] || 6,
       className: `marker marker-${record.kind}`,
       color: '#fff',
       weight: 2,
       fillOpacity: 0.9,
+      // Categoria conhecida sobrepõe a cor padrão da camada (definida em CSS por
+      // `marker-anchor`); sem categoria reconhecida, mantém o verde único de sempre.
+      ...(categoryColor ? { fillColor: categoryColor } : {}),
     });
 
     // O tooltip recebe um ELEMENTO, nunca uma string. O Leaflet faz
@@ -141,10 +190,16 @@ function buildPrecisionNotice(record) {
 
   const precision = record.coordinate_precision || record.confidence_flag;
   if (precision) {
-    box.append(document.createElement('br'));
-    const code = document.createElement('code');
-    code.textContent = precision;
-    box.append(code);
+    const label = formatSpatialPrecision(precision);
+    if (label) {
+      box.append(document.createElement('br'));
+      const code = document.createElement('code');
+      code.textContent = label;
+      // Identificador técnico cru fica só no atributo, para suporte/depuração —
+      // nunca como texto visível (issue #21).
+      code.title = precision;
+      box.append(code);
+    }
   }
   return box;
 }
@@ -209,8 +264,9 @@ function buildDetailBody(record) {
     addRow(dl, 'Entrega prevista', record.expected_delivery);
     addRow(dl, 'Verificado em', formatDate(record.observed_at));
   } else {
-    addRow(dl, 'Categoria', record.category);
+    addRow(dl, 'Categoria', record.category ? anchorCategoryLabel(record.category) : '');
     addRow(dl, 'Subcategoria', record.subcategory);
+    addRow(dl, 'Segmento', record.segment);
     addRow(dl, 'Operador', record.operator_name);
     addRow(dl, 'Bairro', record.locality);
     addRow(dl, 'Endereço', record.address);
@@ -325,6 +381,36 @@ function render() {
   if (state.selectedId && !visible.some((r) => recordKey(r) === state.selectedId)) closeDetail();
 }
 
+/**
+ * Legenda das categorias de âncora presentes no dataset carregado, com a cor usada
+ * no mapa para cada uma. Calculada uma vez no carregamento (as categorias existentes
+ * não mudam com os filtros de busca) — issue #22.
+ */
+function renderAnchorCategoryLegend(records) {
+  const categories = new Set();
+  for (const record of records) {
+    if (record.kind === 'anchor' && record.category) categories.add(record.category);
+  }
+
+  if (categories.size === 0) {
+    dom.anchorCategories.hidden = true;
+    dom.anchorCategories.replaceChildren();
+    return;
+  }
+
+  const frag = document.createDocumentFragment();
+  for (const category of [...categories].sort()) {
+    const li = document.createElement('li');
+    const dot = document.createElement('span');
+    dot.className = 'dot';
+    dot.style.background = ANCHOR_CATEGORY_COLORS[category.toLowerCase()] || 'var(--anchor)';
+    li.append(dot, document.createTextNode(anchorCategoryLabel(category)));
+    frag.append(li);
+  }
+  dom.anchorCategories.replaceChildren(frag);
+  dom.anchorCategories.hidden = false;
+}
+
 function populateSelect(select, values, formatter = (v) => v) {
   const keep = select.firstElementChild; // a opção "Todas"/"Todos"
   select.replaceChildren(keep);
@@ -391,6 +477,12 @@ function showWarnings(messages) {
  * com travessão sugeriria que o dado existe e está vazio, quando na verdade ele nunca
  * foi publicado.
  *
+ * Só `visibility: 'summary'` (hoje, "Atualizado em") fica exposto de cara — é a única
+ * informação de procedência que quem pesquisa imóvel precisa. O resto (versão do
+ * dataset, status/contagens de validação, versão do app) é jargão de pipeline e fica
+ * dentro do `<details>` "Detalhes técnicos", sem sumir, para quem opera os dados
+ * (issue #19).
+ *
  * Os valores vêm de uma planilha pública e editável: todos entram por `textContent`,
  * nunca por `innerHTML` (R4.4).
  */
@@ -398,12 +490,20 @@ function renderDatasetMeta(meta) {
   const rows = appMetaRows(meta);
   if (rows.length === 0) {
     dom.datasetMeta.hidden = true;
+    dom.datasetMetaSummary.textContent = '';
     dom.datasetMetaList.replaceChildren();
     return;
   }
 
+  const summaryRow = rows.find((row) => row.visibility === 'summary');
+  dom.datasetMetaSummary.textContent = summaryRow
+    ? `${summaryRow.label}: ${formatDate(summaryRow.value)}`
+    : '';
+
   const frag = document.createDocumentFragment();
   for (const row of rows) {
+    if (row.visibility === 'summary') continue;
+
     const dt = document.createElement('dt');
     dt.textContent = row.label;
 
@@ -457,6 +557,7 @@ async function load() {
 
   populateSelect(dom.locality, distinctLocalities(state.records));
   populateSelect(dom.ptype, distinctPropertyTypes(state.records), formatPropertyType);
+  renderAnchorCategoryLegend(state.records);
 
   showWarnings([...result.warnings, ...result.errors]);
   render();

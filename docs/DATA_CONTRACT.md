@@ -189,6 +189,19 @@ Chave: `place_id`. 35 linhas.
 Diferente dos anúncios, âncoras têm coordenada **precisa** (`school_polygon_reference_point` e
 similares, `confidence_flag: high`).
 
+#### `segment` — preparação para classificação futura (issue #22)
+
+`normalizeAnchor()` já lê um campo opcional `segment` (`toText(row.segment)`), pensado como uma
+classificação mais fina que `category` — por exemplo, dentro de `saude`: `hospital`, `clinica`,
+`farmacia`. **A coluna ainda não existe na planilha** e por isso, deliberadamente, **não** entra
+em `REQUIRED_HEADERS.ANCHORS` nem na tabela de colunas acima: adicioná-la à validação obrigatória
+sem a coluna existir na planilha real geraria erro `MISSING_HEADER` em produção. Quando a coluna
+for criada na planilha, com uma taxonomia definida, este bloco deve virar uma entrada normal na
+tabela acima (`Obrig. = não`) e, se for o caso, entrar em `REQUIRED_HEADERS.ANCHORS` no
+`optional-apps-script/Code.gs` — e o teste `tests/contract.test.js` vai cobrar essa consistência
+automaticamente a partir daí. Até lá, a ausência da coluna é segura: `toText()` devolve string
+vazia e o registro normaliza e aparece no mapa normalmente.
+
 #### Escrita pela área administrativa (issue #5, R4.9)
 
 Editável: `REQUIRED_HEADERS.ANCHORS` menos `place_id` (imutável, só via `id` da requisição).

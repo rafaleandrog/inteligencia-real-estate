@@ -162,6 +162,43 @@ export function pricePerM2(priceValue, areaValue, informedValue) {
   return price / area;
 }
 
+/**
+ * Preço monetário, resolvendo a ambiguidade documentada de `toNumber()` para o caso
+ * de um único ponto (`"385.000"`: milhar pt-BR sem decimais, ou `385.0`?) quando há
+ * como decidir com segurança.
+ *
+ * `toNumber()` sozinho assume decimal nesse caso — correto para valores calculados
+ * como `"19117.647"`, mas errado quando a célula guarda um preço formatado como texto
+ * com separador de milhar em vez do número puro que o contrato exige. Resultado real
+ * visto no dataset: um imóvel de R$ 385.000 exibido como R$ 385.
+ *
+ * A correção só é aplicada quando existe uma âncora confiável — preço/m² informado
+ * (não calculado a partir do próprio preço ambíguo) e área — que permite comparar as
+ * duas leituras possíveis (decimal × milhar) contra `preço/m² × área` e ficar com a
+ * que bate. Sem essa âncora, mantém o valor decimal: é o mesmo comportamento
+ * documentado de `toNumber()`, e é o correto na ausência de qualquer sinal a mais.
+ */
+export function toPriceNumber(rawValue, { areaValue, informedPriceM2Value } = {}) {
+  const asDecimal = toNumber(rawValue);
+  if (asDecimal === null) return null;
+
+  const raw = toText(rawValue).replace(/[R$\s ]/gi, '');
+  if (!/^-?\d{1,3}\.\d{3}$/.test(raw)) return asDecimal; // não é o caso ambíguo de 1 ponto
+
+  const area = toNumber(areaValue);
+  const informedPriceM2 = toNumber(informedPriceM2Value);
+  if (area === null || area <= 0 || informedPriceM2 === null || informedPriceM2 <= 0) {
+    return asDecimal;
+  }
+
+  const asThousands = asDecimal * 1000;
+  const expected = informedPriceM2 * area;
+  const decimalError = Math.abs(asDecimal - expected);
+  const thousandsError = Math.abs(asThousands - expected);
+
+  return thousandsError < decimalError ? asThousands : asDecimal;
+}
+
 /** Campos de qualidade espacial. Precisam sobreviver da planilha até a tela (R3.5). */
 function spatialQuality(row) {
   return {
@@ -228,7 +265,10 @@ export function normalizeListing(row) {
     address: toText(row.address),
     ra_geo_id: toText(row.ra_geo_id),
     coord,
-    price: toNumber(row.asking_price_brl),
+    price: toPriceNumber(row.asking_price_brl, {
+      areaValue: row.area_m2,
+      informedPriceM2Value: row.asking_price_brl_m2,
+    }),
     area_m2: toNumber(row.area_m2),
     price_m2: pricePerM2(row.asking_price_brl, row.area_m2, row.asking_price_brl_m2),
     bedrooms: toInteger(row.bedrooms),
@@ -263,7 +303,10 @@ export function normalizeDevelopment(row) {
     units_total: toInteger(row.units_total),
     area_min_m2: toNumber(row.area_min_m2),
     area_max_m2: toNumber(row.area_max_m2),
-    price: toNumber(row.current_price_brl),
+    price: toPriceNumber(row.current_price_brl, {
+      areaValue: row.area_min_m2,
+      informedPriceM2Value: row.current_price_brl_m2,
+    }),
     price_m2: pricePerM2(row.current_price_brl, row.area_min_m2, row.current_price_brl_m2),
     work_progress_pct: toNumber(row.work_progress_pct),
     expected_delivery: toDateISO(row.expected_delivery),
@@ -286,6 +329,10 @@ export function normalizeAnchor(row) {
     title: toText(row.name),
     category: toText(row.category),
     subcategory: toText(row.subcategory),
+    // Classificação de segmento mais fina que `category`, a ser preenchida no
+    // backend/planilha em etapa posterior (issue #22). Coluna opcional: registro sem
+    // segmento continua normalizando e aparecendo no mapa normalmente.
+    segment: toText(row.segment),
     operator_name: toText(row.operator_name),
     address: toText(row.address),
     locality: toText(row.neighborhood),
@@ -340,17 +387,24 @@ export function normalizeAll(entity, rows) {
  * Os rótulos são curtos de propósito: o painel tem 300 px e o título "Sobre estes
  * dados" já dá o contexto. "Dados atualizados em" quebrava em três linhas.
  */
+/**
+ * `visibility: 'summary'` fica sempre visível — é a única informação de procedência
+ * que interessa a quem está pesquisando imóvel ("quando os dados foram atualizados").
+ * `visibility: 'technical'` (o resto: versão do dataset, status/contagens de
+ * validação, versão do app) é jargão de pipeline e só aparece dentro do
+ * `<details>` "Detalhes técnicos", para quem opera ou audita os dados (issue #19).
+ */
 const APP_META_FIELDS = [
-  { key: 'last_data_change_at', label: 'Atualizado em', type: 'date' },
-  { key: 'dataset_version', label: 'Dataset', type: 'version' },
-  { key: 'validation_status', label: 'Qualidade', type: 'status' },
-  { key: 'last_validation_at', label: 'Validado em', type: 'date' },
-  { key: 'validation_errors', label: 'Erros', type: 'count' },
-  { key: 'validation_warnings', label: 'Avisos', type: 'count' },
-  { key: 'rows_listings', label: 'Anúncios', type: 'count' },
-  { key: 'rows_developments', label: 'Empreendimentos', type: 'count' },
-  { key: 'rows_anchors', label: 'Âncoras', type: 'count' },
-  { key: 'app_version', label: 'App', type: 'version' },
+  { key: 'last_data_change_at', label: 'Atualizado em', type: 'date', visibility: 'summary' },
+  { key: 'dataset_version', label: 'Dataset', type: 'version', visibility: 'technical' },
+  { key: 'validation_status', label: 'Qualidade', type: 'status', visibility: 'technical' },
+  { key: 'last_validation_at', label: 'Validado em', type: 'date', visibility: 'technical' },
+  { key: 'validation_errors', label: 'Erros', type: 'count', visibility: 'technical' },
+  { key: 'validation_warnings', label: 'Avisos', type: 'count', visibility: 'technical' },
+  { key: 'rows_listings', label: 'Anúncios', type: 'count', visibility: 'technical' },
+  { key: 'rows_developments', label: 'Empreendimentos', type: 'count', visibility: 'technical' },
+  { key: 'rows_anchors', label: 'Âncoras', type: 'count', visibility: 'technical' },
+  { key: 'app_version', label: 'App', type: 'version', visibility: 'technical' },
 ];
 
 /** Rótulo e tom de cada `validation_status` conhecido. */
@@ -449,7 +503,7 @@ export function appMetaRows(meta) {
   const source = meta || {};
   const rows = [];
 
-  for (const { key, label, type } of APP_META_FIELDS) {
+  for (const { key, label, type, visibility } of APP_META_FIELDS) {
     if (!(key in source)) continue;
     const raw = source[key];
 
@@ -459,6 +513,7 @@ export function appMetaRows(meta) {
         key,
         label,
         type,
+        visibility,
         value: known ? known.label : toText(raw),
         tone: known ? known.tone : 'unknown',
       });
@@ -471,6 +526,7 @@ export function appMetaRows(meta) {
       key,
       label,
       type,
+      visibility,
       value: type === 'version' ? `v${toText(raw)}` : String(raw),
       tone: null,
     });

@@ -1,5 +1,9 @@
-/* Imob Intelligence — visual da V1.
-   Paleta herdada do modelo V3 (reference/index-v3.html) para manter continuidade.
+/* Imob Intelligence — visual da V1 (redesign issue #23, design-taste-frontend).
+   Paleta herdada do modelo V3 (reference/index-v3.html): identidade de marca
+   preservada de propósito (verde), não é um redesign do zero. Ver notas de
+   modo escuro logo abaixo — só a cromática de interface muda; os tiles do
+   mapa (Leaflet/OSM) continuam claros, por não existir provedor de tiles
+   escuro configurado nesta aplicação (fora de escopo deste PR).
    Estrutura fica no index.html, comportamento em src/app.js (docs/ARCHITECTURE.md). */
 
 :root {
@@ -10,9 +14,18 @@
   --line: #dde2dd;
   --brand: #153b29;
   --brand2: #24563d;
+  /* Cor de texto/ícone sobre --bg/--panel (nunca de preenchimento sólido). Em
+     modo escuro, --brand/--brand2 continuam servindo preenchimento sólido
+     (topo, botão) sem alteração — só o uso como *texto* precisa de um tom
+     mais claro para manter contraste sobre fundo escuro. */
+  --accent-text: var(--brand2);
 
   --listing: #3478b9;
   --primary: #e27a2c;
+  /* Mesma cor de marca do aviso "Modo demonstração", mas escurecida o
+     suficiente para texto branco em cima passar em WCAG AA (4,76:1;
+     o --primary puro dava 2,63:1). */
+  --primary-on-fill: #b5591c;
   --development: #7252a3;
   --anchor: #397d53;
 
@@ -22,6 +35,29 @@
   --topbar-h: 56px;
   --panel-w: 300px;
   --detail-w: 360px;
+
+  --font-sans: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  /* Reforça o caráter de dado (preço, m², contagens) sem depender de fonte
+     externa — pilha só com fontes já instaladas no sistema. */
+  --font-mono: ui-monospace, "SF Mono", "Cascadia Mono", "Roboto Mono", Consolas, monospace;
+}
+
+/* Modo escuro: só a cromática de interface (superfícies, texto, linhas).
+   --brand/--brand2/--listing/--development/--anchor ficam intactos — são
+   preenchimento sólido (topo, botões) ou codificação semântica de camada no
+   mapa/legenda, e mudar cor por tema quebraria a associação visual que o
+   usuário já aprendeu (R8.C: "hierarquia que funciona em claro tem que
+   funcionar em escuro", não "a mesma cor em toda parte"). */
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #0f1310;
+    --panel: #161c18;
+    --ink: #e9ede9;
+    --muted: #8fa196;
+    --line: #29332c;
+    --accent-text: #57b57e;
+    --shadow: 0 10px 30px #00000066;
+  }
 }
 
 * { box-sizing: border-box; }
@@ -34,7 +70,7 @@ html, body {
 body {
   background: var(--bg);
   color: var(--ink);
-  font: 15px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  font: 15px/1.5 var(--font-sans);
   overflow: hidden;
 }
 
@@ -64,7 +100,7 @@ h1, h2 { margin: 0; font-size: 1rem; }
 .skip-link:focus { left: 0; top: 0; }
 
 :focus-visible {
-  outline: 2px solid var(--brand2);
+  outline: 2px solid var(--accent-text);
   outline-offset: 2px;
 }
 
@@ -112,7 +148,7 @@ h1, h2 { margin: 0; font-size: 1rem; }
   background: #ffffff24;
   white-space: nowrap;
 }
-.source-badge[data-source="demo"] { background: #e27a2c; }
+.source-badge[data-source="demo"] { background: var(--primary-on-fill); }
 
 .admin-link {
   margin-left: auto;
@@ -162,7 +198,13 @@ h1, h2 { margin: 0; font-size: 1rem; }
   border-radius: var(--radius);
 }
 
-.kpi-value { font-size: 19px; font-weight: 650; color: var(--brand); }
+.kpi-value {
+  font-family: var(--font-mono);
+  font-size: 20px;
+  font-weight: 600;
+  letter-spacing: -.01em;
+  color: var(--accent-text);
+}
 .kpi-label { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: .04em; }
 
 .kpi-note {
@@ -178,13 +220,22 @@ h1, h2 { margin: 0; font-size: 1rem; }
 .dataset-meta { margin-bottom: 20px; }
 .dataset-meta[hidden] { display: none; }
 
-.dataset-meta h2 {
+.meta-summary {
+  font-size: 12px;
+  color: var(--muted);
+  margin: 0 0 6px;
+}
+
+.dataset-meta-details summary {
   font-size: 11px;
   text-transform: uppercase;
   letter-spacing: .06em;
   color: var(--muted);
+  cursor: pointer;
   margin-bottom: 8px;
 }
+
+.dataset-meta-details[open] summary { margin-bottom: 8px; }
 
 .dataset-meta dl {
   display: grid;
@@ -230,6 +281,13 @@ h1, h2 { margin: 0; font-size: 1rem; }
 .meta-status[data-tone="dirty"]   { background: #eceaf5; color: #4f3f7a; }
 .meta-status[data-tone="unknown"] { background: var(--bg); color: var(--muted); }
 
+@media (prefers-color-scheme: dark) {
+  .meta-status[data-tone="ok"]      { background: #163524; color: #8fd6ac; }
+  .meta-status[data-tone="warning"] { background: #3a2a12; color: #f0b877; }
+  .meta-status[data-tone="error"]   { background: #3a1a1a; color: #f0a3a3; }
+  .meta-status[data-tone="dirty"]   { background: #241d3a; color: #c3b3f5; }
+}
+
 /* Campos ---------------------------------------------------------------- */
 
 .field-group { margin-bottom: 20px; }
@@ -253,9 +311,14 @@ select, input[type="number"] {
   padding: 7px 9px;
   border: 1px solid var(--line);
   border-radius: 8px;
-  background: #fff;
+  background: var(--panel);
   color: var(--ink);
   font: inherit;
+  transition: border-color .15s ease;
+}
+select:focus, input[type="number"]:focus {
+  outline: none;
+  border-color: var(--brand2);
 }
 
 .field-inline {
@@ -276,6 +339,8 @@ select, input[type="number"] {
   border-radius: 8px;
   font: inherit;
   cursor: pointer;
+  transition: background-color .15s ease, border-color .15s ease, color .15s ease,
+    transform .1s ease;
 }
 .btn {
   border: 0;
@@ -285,11 +350,12 @@ select, input[type="number"] {
 .btn-ghost {
   width: 100%;
   border: 1px solid var(--line);
-  background: #fff;
+  background: var(--panel);
   color: var(--muted);
 }
 .btn:hover { background: var(--brand2); }
-.btn-ghost:hover { border-color: var(--brand2); color: var(--brand); }
+.btn-ghost:hover { border-color: var(--brand2); color: var(--accent-text); }
+.btn:active, .btn-ghost:active { transform: scale(.98); }
 
 /* Camadas --------------------------------------------------------------- */
 
@@ -308,7 +374,39 @@ select, input[type="number"] {
 .dot-development { background: var(--development); }
 .dot-anchor { background: var(--anchor); }
 
-.count { margin-left: auto; font-size: 12px; color: var(--muted); font-variant-numeric: tabular-nums; }
+.count {
+  margin-left: auto;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+/* Agrupamento "Imóveis à venda" × "Pontos comerciais de referência" (issue #22). */
+.layers-group-label {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: .06em;
+  color: var(--muted);
+  margin: 0 0 6px;
+}
+.layers-group-label-anchor { margin-top: 14px; }
+
+.anchor-categories {
+  list-style: none;
+  margin: 8px 0 0;
+  padding: 8px 0 0;
+  border-top: 1px solid var(--line);
+}
+.anchor-categories[hidden] { display: none; }
+.anchor-categories li {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  color: var(--muted);
+}
+.anchor-categories li + li { margin-top: 4px; }
 
 .disclaimer {
   font-size: 12px;
@@ -331,11 +429,11 @@ select, input[type="number"] {
   gap: 12px;
   padding: 24px;
   text-align: center;
-  background: #f4f5f2f2;
+  background: color-mix(in srgb, var(--bg) 95%, transparent);
 }
 .state[hidden] { display: none; }
 .state p { margin: 0; color: var(--muted); max-width: 34ch; }
-.state-error h2 { font-size: 17px; color: var(--brand); max-width: 30ch; }
+.state-error h2 { font-size: 17px; color: var(--accent-text); max-width: 30ch; }
 
 .spinner {
   width: 26px; height: 26px;
@@ -358,7 +456,7 @@ select, input[type="number"] {
   padding: 10px 12px;
   border-radius: var(--radius);
   border-left: 3px solid var(--primary);
-  background: #fff;
+  background: var(--panel);
   box-shadow: var(--shadow);
   font-size: 12px;
   color: var(--muted);
@@ -421,7 +519,7 @@ select, input[type="number"] {
 .detail-source {
   display: inline-block;
   margin-top: 4px;
-  color: var(--brand2);
+  color: var(--accent-text);
   word-break: break-word;
 }
 
@@ -442,11 +540,19 @@ select, input[type="number"] {
   background: #f0f6f2;
   color: #2f5a41;
 }
+
+@media (prefers-color-scheme: dark) {
+  .precision { background: #2c2116; color: #e3c9a4; }
+  .precision.precision-exact { background: #16261c; color: #a8d9bb; }
+}
 .precision code {
   font-size: 11px;
   color: inherit;
   opacity: .8;
-  word-break: break-all;
+  /* O texto agora é uma frase traduzida (issue #21), não mais um identificador
+     snake_case sem espaços — quebrar em qualquer letra volta a fazer palavras
+     partirem ao meio sem necessidade. */
+  overflow-wrap: break-word;
 }
 
 /* Marcadores ------------------------------------------------------------ */

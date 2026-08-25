@@ -50,15 +50,23 @@
     <!-- Metadados do dataset, vindos da aba APP_META. Fica escondido enquanto a aba
          não existir ou estiver vazia, que é o estado antes de rodar setupProject(). -->
     <section class="dataset-meta" id="datasetMeta" aria-label="Procedência dos dados" hidden>
-      <h2>Sobre estes dados</h2>
-      <!-- As contagens aqui são o total publicado na planilha. As de "Camadas" são o
-           que está visível depois dos filtros: coincidem sem filtro e divergem com. -->
-      <p class="meta-caption">Publicado na planilha, antes dos filtros.</p>
-      <dl id="datasetMetaList"></dl>
+      <p class="meta-summary" id="datasetMetaSummary"></p>
+      <!-- Contagens, versão do dataset e status de validação são jargão de pipeline de
+           dados: úteis para quem opera a planilha, ruído para quem pesquisa imóvel.
+           Ficam recolhidos por padrão em vez de somem — issue #19. -->
+      <details class="dataset-meta-details">
+        <summary>Detalhes técnicos</summary>
+        <p class="meta-caption">Publicado na planilha, antes dos filtros.</p>
+        <dl id="datasetMetaList"></dl>
+      </details>
     </section>
 
-    <section class="field-group" aria-label="Camadas">
+    <section class="field-group" aria-label="Camadas" id="layersSection">
       <h2>Camadas</h2>
+      <!-- Duas famílias conceitualmente distintas: imóveis à venda (o que o usuário
+           busca) e pontos comerciais de referência (contexto do entorno). Ver
+           issue #22. -->
+      <p class="layers-group-label">Imóveis à venda</p>
       <ul class="layers" id="layers">
         <li><label><input type="checkbox" data-layer="listing" checked>
           <span class="dot dot-listing"></span> Anúncios secundários
@@ -66,10 +74,14 @@
         <li><label><input type="checkbox" data-layer="development" checked>
           <span class="dot dot-development"></span> Empreendimentos
           <span class="count" id="countDevelopment">0</span></label></li>
+      </ul>
+      <p class="layers-group-label layers-group-label-anchor">Pontos comerciais de referência</p>
+      <ul class="layers" id="anchorLayers">
         <li><label><input type="checkbox" data-layer="anchor" checked>
           <span class="dot dot-anchor"></span> Âncoras
           <span class="count" id="countAnchor">0</span></label></li>
       </ul>
+      <ul class="anchor-categories" id="anchorCategories" hidden></ul>
     </section>
 
     <section class="field-group">
