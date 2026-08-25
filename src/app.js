@@ -89,11 +89,23 @@ const ANCHOR_CATEGORY_COLORS = {
   universidade: '#8a7a2c',
 };
 
-/** Cor de preenchimento de uma âncora por categoria; `null` deixa a cor padrão da camada. */
+/**
+ * Verde padrão de âncora sem categoria reconhecida. Precisa bater com `--anchor`
+ * em `assets/styles.css` — não dá para referenciar a variável CSS aqui porque o
+ * Leaflet escreve `fill` como atributo de apresentação SVG (`setAttribute`), que
+ * uma regra de folha de estilo (`.marker-anchor { fill: ... }`) sempre vence,
+ * mesmo vindo de JS. Por isso essa regra de CSS foi removida (review do PR #40:
+ * antes disso, TODA âncora saía verde, porque a regra da classe sobrepunha
+ * silenciosamente qualquer `fillColor` passado ao marcador) e a cor — inclusive a
+ * de fallback — passa a vir sempre daqui.
+ */
+const ANCHOR_FALLBACK_COLOR = '#397d53';
+
+/** Cor de preenchimento de uma âncora: por categoria quando reconhecida, senão o fallback. */
 function anchorCategoryColor(record) {
   if (record.kind !== 'anchor') return null;
   const key = String(record.category || '').trim().toLowerCase();
-  return ANCHOR_CATEGORY_COLORS[key] || null;
+  return ANCHOR_CATEGORY_COLORS[key] || ANCHOR_FALLBACK_COLOR;
 }
 
 /** Rótulo humano de uma categoria de âncora; categoria fora do vocabulário conhecido
@@ -138,8 +150,9 @@ function renderMarkers(records) {
       color: '#fff',
       weight: 2,
       fillOpacity: 0.9,
-      // Categoria conhecida sobrepõe a cor padrão da camada (definida em CSS por
-      // `marker-anchor`); sem categoria reconhecida, mantém o verde único de sempre.
+      // listing/development continuam pegando a cor de `assets/styles.css`
+      // (`.marker-listing`/`.marker-development`); âncora sempre recebe `fillColor`
+      // explícito (categoria ou fallback) — ver nota de `ANCHOR_FALLBACK_COLOR`.
       ...(categoryColor ? { fillColor: categoryColor } : {}),
     });
 
@@ -259,8 +272,10 @@ function buildDetailBody(record) {
     addRow(dl, 'Vagas', record.parking_spaces === null ? '' : formatNumber(record.parking_spaces));
     addRow(dl, 'Condomínio', formatBRL(record.condo_fee_brl));
     addRow(dl, 'IPTU', formatBRL(record.iptu_brl));
-    // Vazio até o backend publicar a coluna (issue #32) — addRow omite sozinho.
-    addRow(dl, 'Regularização', record.regularization_status);
+    // `regularization_status` NÃO é exibido aqui de propósito: a issue #32 deixa
+    // em aberto se é público ou só administrativo, e essa decisão precisa ser
+    // tomada antes de qualquer exibição — não quando o backend publicar a coluna
+    // (review do PR #40). O campo continua lido em src/normalize.js.
     addRow(dl, 'Portal', record.source);
     addRow(dl, 'Observado em', formatDate(record.observed_at));
   } else if (record.kind === 'development') {
@@ -268,10 +283,11 @@ function buildDetailBody(record) {
     addRow(dl, 'Bairro', record.locality);
     addRow(dl, 'Endereço', record.address);
     addRow(dl, 'Situação', record.status);
-    // Vazios até o backend publicar as colunas (issues #30 e #32).
+    // Vazio até o backend publicar a coluna (issue #30) — addRow omite sozinho.
     addRow(dl, 'Estágio de comercialização', record.sales_stage);
     addRow(dl, 'Classificação', formatBuildingOrientation(record.building_orientation));
-    addRow(dl, 'Regularização', record.regularization_status);
+    // `regularization_status` fica de fora da exibição pública — mesma nota da
+    // seção de anúncios acima (issue #32, decisão de visibilidade pendente).
     addRow(dl, 'Segmento', record.segment);
     addRow(dl, 'Produto', record.product);
     addRow(dl, 'Unidades', record.units_total === null ? '' : formatNumber(record.units_total));

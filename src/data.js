@@ -28,9 +28,9 @@ const FETCH_TIMEOUT_MS = 20000;
 const META_FETCH_TIMEOUT_MS = 6000;
 
 /** `fetch` com timeout, para que falha de rede vire erro tratável e não espera infinita. */
-async function fetchWithTimeout(url, options = {}) {
+async function fetchWithTimeout(url, { timeoutMs = FETCH_TIMEOUT_MS, ...options } = {}) {
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
   try {
     return await fetch(url, { ...options, signal: controller.signal });
   } finally {
@@ -289,6 +289,13 @@ async function loadFromAppsScript(config) {
   if (!config.appsScriptUrl) throw new Error('appsScriptUrl não configurada');
 
   const entries = Object.entries(config.sheets);
+
+  // RA_PROFILES é opcional e começa a ser buscada já, em paralelo com o lote
+  // obrigatório — não depois dele — e com um teto menor, mesmo tratamento que o
+  // caminho gviz já dá a ela e à APP_META (R2.5: aba opcional não pode empurrar a
+  // tela de carregamento para além do necessário).
+  const raProfilesPromise = fetchRaProfilesFromAppsScript(config);
+
   const settled = await Promise.allSettled(
     entries.map(async ([, sheetName]) => {
       const url = `${config.appsScriptUrl}?resource=dataset&name=${encodeURIComponent(sheetName)}`;
@@ -330,21 +337,29 @@ async function loadFromAppsScript(config) {
     warnings.push(`Metadados do dataset indisponíveis: ${error?.message || error}`);
   }
 
-  let raProfiles = {};
-  if (config.raProfilesSheet) {
-    try {
-      const url = `${config.appsScriptUrl}?resource=dataset&name=${encodeURIComponent(config.raProfilesSheet)}`;
-      const response = await fetchWithTimeout(url);
-      if (!response.ok) throw new Error(`HTTP ${response.status}`);
-      const payload = await response.json();
-      if (payload.error) throw new Error(payload.error);
-      raProfiles = normalizeRaProfiles(payload.rows || []);
-    } catch (error) {
-      warnings.push(`Indicadores por Região Administrativa indisponíveis: ${error?.message || error}`);
-    }
-  }
+  const { raProfiles, warnings: raProfileWarnings } = await raProfilesPromise;
+  warnings.push(...raProfileWarnings);
 
   return { raw, errors, warnings, meta, raProfiles };
+}
+
+/** RA_PROFILES pelo endpoint read-only do Web App — mesmo formato de resposta que as abas obrigatórias. */
+async function fetchRaProfilesFromAppsScript(config) {
+  if (!config.raProfilesSheet) return { raProfiles: {}, warnings: [] };
+
+  try {
+    const url = `${config.appsScriptUrl}?resource=dataset&name=${encodeURIComponent(config.raProfilesSheet)}`;
+    const response = await fetchWithTimeout(url, { timeoutMs: META_FETCH_TIMEOUT_MS });
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    const payload = await response.json();
+    if (payload.error) throw new Error(payload.error);
+    return { raProfiles: normalizeRaProfiles(payload.rows || []), warnings: [] };
+  } catch (error) {
+    return {
+      raProfiles: {},
+      warnings: [`Indicadores por Região Administrativa indisponíveis: ${error?.message || error}`],
+    };
+  }
 }
 
 const STRATEGIES = {
