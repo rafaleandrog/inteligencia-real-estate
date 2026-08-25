@@ -61,8 +61,12 @@
       </details>
     </section>
 
-    <section class="field-group" aria-label="Camadas">
+    <section class="field-group" aria-label="Camadas" id="layersSection">
       <h2>Camadas</h2>
+      <!-- Duas famílias conceitualmente distintas: imóveis à venda (o que o usuário
+           busca) e pontos comerciais de referência (contexto do entorno). Ver
+           issue #22. -->
+      <p class="layers-group-label">Imóveis à venda</p>
       <ul class="layers" id="layers">
         <li><label><input type="checkbox" data-layer="listing" checked>
           <span class="dot dot-listing"></span> Anúncios secundários
@@ -70,10 +74,14 @@
         <li><label><input type="checkbox" data-layer="development" checked>
           <span class="dot dot-development"></span> Empreendimentos
           <span class="count" id="countDevelopment">0</span></label></li>
+      </ul>
+      <p class="layers-group-label layers-group-label-anchor">Pontos comerciais de referência</p>
+      <ul class="layers" id="anchorLayers">
         <li><label><input type="checkbox" data-layer="anchor" checked>
           <span class="dot dot-anchor"></span> Âncoras
           <span class="count" id="countAnchor">0</span></label></li>
       </ul>
+      <ul class="anchor-categories" id="anchorCategories" hidden></ul>
     </section>
 
     <section class="field-group">

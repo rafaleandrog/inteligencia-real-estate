@@ -47,7 +47,7 @@ export function normalizeSearchText(value) {
 /** Campos que a busca livre percorre. */
 function searchableText(record) {
   return normalizeSearchText(
-    [record.title, record.locality, record.address, record.property_type, record.developer_name, record.category]
+    [record.title, record.locality, record.address, record.property_type, record.developer_name, record.category, record.segment]
       .filter(Boolean)
       .join(' ')
   );

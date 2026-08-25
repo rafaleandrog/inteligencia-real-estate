@@ -203,6 +203,14 @@ test('normalizeAnchor mapeia place_id e neighborhood', () => {
   assert.equal(isApproximateLocation(record), false);
 });
 
+test('normalizeAnchor aceita segment opcional sem quebrar quando ausente (issue #22)', () => {
+  const comSegmento = normalizeAnchor({ place_id: 'A1', name: 'X', segment: 'hospital' });
+  assert.equal(comSegmento.segment, 'hospital');
+
+  const semSegmento = normalizeAnchor({ place_id: 'A2', name: 'Y' });
+  assert.equal(semSegmento.segment, '', 'coluna ainda não existe na planilha — ausência é normal');
+});
+
 test('normalizeAll descarta registro sem ID e conta o descarte', () => {
   const { records, dropped } = normalizeAll('listings', [
     { listing_id: 'A', title: 'ok' },

@@ -329,6 +329,10 @@ export function normalizeAnchor(row) {
     title: toText(row.name),
     category: toText(row.category),
     subcategory: toText(row.subcategory),
+    // Classificação de segmento mais fina que `category`, a ser preenchida no
+    // backend/planilha em etapa posterior (issue #22). Coluna opcional: registro sem
+    // segmento continua normalizando e aparecendo no mapa normalmente.
+    segment: toText(row.segment),
     operator_name: toText(row.operator_name),
     address: toText(row.address),
     locality: toText(row.neighborhood),
