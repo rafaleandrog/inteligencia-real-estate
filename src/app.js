@@ -18,7 +18,8 @@ import {
   formatBRL, formatBRLCompact, formatM2, formatNumber, formatPriceM2, formatDate,
   formatPropertyType, formatSpatialPrecision, formatBuildingOrientation, safeExternalUrl,
   hostnameOf, anchorColor, anchorLegendEntries, formatAnchorCategory, formatAnchorGroup,
-  formatAnchorSegment, formatSalesStage, formatRegularizationStatus,
+  formatAnchorSegment, formatSalesStage, formatRegularizationStatus, formatPercent,
+  raAgeBands,
 } from './format.js';
 
 const CONFIG = window.APP_CONFIG || {};
@@ -27,7 +28,7 @@ const el = (id) => document.getElementById(id);
 
 const dom = {
   search: el('search'), locality: el('locality'), ptype: el('ptype'),
-  raFilter: el('raFilter'), raProfileNote: el('raProfileNote'),
+  raFilter: el('raFilter'), raProfile: el('raProfile'),
   buildingOrientation: el('buildingOrientation'),
   anchorGroup: el('anchorGroup'), anchorSegment: el('anchorSegment'),
   salesStage: el('salesStage'), regularizationStatus: el('regularizationStatus'),
@@ -399,25 +400,130 @@ function renderKpis(kpis) {
   dom.kpiNote.textContent = notes.join(' ');
 }
 
+/** Uma linha "rótulo → valor" do bloco de indicadores da RA. */
+function raStatRow(label, value) {
+  const li = document.createElement('li');
+  const name = document.createElement('span');
+  name.className = 'ra-stat-label';
+  name.textContent = label;
+  const figure = document.createElement('span');
+  figure.className = 'ra-stat-value';
+  figure.textContent = value;
+  li.append(name, figure);
+  return li;
+}
+
 /**
- * Nota de população/densidade da RA selecionada (issue #34). Só aparece quando há
- * RA selecionada E `RA_PROFILES` trouxe dado para ela — ausência de qualquer um
- * dos dois simplesmente omite a nota, sem afetar o filtro em si (que funciona só
- * com `ra_geo_id`, presente nos registros independente de `RA_PROFILES`).
+ * Distribuição por faixa etária, como barras horizontais.
+ *
+ * Escolhas que valem explicar, porque são as que um gráfico erra:
+ *
+ * - **Uma série só, uma cor só.** As cinco faixas não são cinco categorias
+ *   concorrentes: são a mesma medida (percentual da população) em cinco recortes de
+ *   idade. Pintar cada barra de uma cor pediria uma paleta categórica de cinco
+ *   matizes para não informar nada — a identidade da faixa já está escrita ao lado.
+ * - **Barras ancoradas em zero, escala até a maior faixa.** O comprimento é
+ *   proporcional ao valor desde o zero; o que a maior faixa define é só o alcance do
+ *   eixo. Numa escala fixa de 0 a 100 % as cinco barras ficariam com menos de um
+ *   terço da régua num painel de 300 px, e diferenças de 5 pontos sumiriam.
+ * - **O número fica em cada linha.** São cinco linhas, não cinquenta: rotular todas
+ *   custa pouco e evita que quem lê tenha que estimar a partir do comprimento.
+ * - **Faixa sem valor não vira barra de zero** — ela simplesmente não aparece.
  */
-function renderRaProfileNote() {
+function buildRaAgeChart(profile) {
+  const { bands, total } = raAgeBands(profile);
+  if (bands.length === 0) return null;
+
+  const figure = document.createElement('figure');
+  figure.className = 'ra-ages';
+
+  const caption = document.createElement('figcaption');
+  caption.textContent = 'População por faixa etária';
+  figure.append(caption);
+
+  const max = Math.max(...bands.map((b) => b.pct));
+  const list = document.createElement('ul');
+
+  for (const band of bands) {
+    const li = document.createElement('li');
+
+    const label = document.createElement('span');
+    label.className = 'ra-age-label';
+    label.textContent = band.label;
+
+    // A trilha é decoração: o valor já está escrito ao lado, em texto.
+    const track = document.createElement('span');
+    track.className = 'ra-age-track';
+    track.setAttribute('aria-hidden', 'true');
+    const bar = document.createElement('span');
+    bar.className = 'ra-age-bar';
+    // Número calculado, nunca string de dado — e limitado a 0–100 para uma célula
+    // absurda não empurrar a barra para fora do painel.
+    const ratio = max > 0 ? (band.pct / max) * 100 : 0;
+    bar.style.width = `${Math.max(0, Math.min(100, ratio))}%`;
+    track.append(bar);
+
+    const value = document.createElement('span');
+    value.className = 'ra-age-value';
+    value.textContent = formatPercent(band.pct);
+
+    li.append(label, track, value);
+    list.append(li);
+  }
+  figure.append(list);
+
+  // Composição incompleta se declara. Cinco faixas que somam 87 % descrevem 87 % da
+  // população, e apresentá-las como se fossem o todo seria o mesmo erro da mediana
+  // que mistura tipos de imóvel (R8.15).
+  if (total !== null && Math.abs(total - 100) > 1) {
+    const note = document.createElement('p');
+    note.className = 'ra-ages-note';
+    note.textContent = `As faixas publicadas somam ${formatPercent(total)} da população.`;
+    figure.append(note);
+  }
+
+  return figure;
+}
+
+/**
+ * Bloco de indicadores da RA selecionada (issues #34, #35).
+ *
+ * Só aparece quando há RA selecionada E `RA_PROFILES` trouxe dado para ela. Cada
+ * indicador é independente: a coluna de renda e as de faixa etária existem na planilha
+ * desde a v2.0.0, mas o dado pode não existir (`0/35` hoje), e indicador sem valor é
+ * OMITIDO — não vira travessão nem espaço vazio. Sem nenhum deles, o bloco inteiro
+ * some, e o filtro por RA continua funcionando igual: ele depende só do `ra_geo_id`
+ * que os registros já carregam.
+ */
+function renderRaProfile() {
   const profile = state.filters.ra ? state.raProfiles[state.filters.ra] : null;
-  const parts = [];
+  const frag = document.createDocumentFragment();
+
+  const stats = document.createElement('ul');
+  stats.className = 'ra-stats';
   if (profile) {
     if (profile.population_total !== null) {
-      parts.push(`População: ${formatNumber(profile.population_total)}`);
+      stats.append(raStatRow('População', formatNumber(profile.population_total)));
     }
     if (profile.population_density_km2 !== null) {
-      parts.push(`Densidade: ${formatNumber(Math.round(profile.population_density_km2))} hab/km²`);
+      stats.append(raStatRow('Densidade', `${formatNumber(Math.round(profile.population_density_km2))} hab/km²`));
+    }
+    if (profile.income_per_capita_brl !== null) {
+      stats.append(raStatRow('Renda per capita', formatBRL(profile.income_per_capita_brl)));
     }
   }
-  dom.raProfileNote.textContent = parts.join(' · ');
-  dom.raProfileNote.hidden = parts.length === 0;
+  if (stats.childElementCount > 0) frag.append(stats);
+
+  const chart = profile ? buildRaAgeChart(profile) : null;
+  if (chart) frag.append(chart);
+
+  if (frag.childElementCount === 0) {
+    dom.raProfile.hidden = true;
+    dom.raProfile.replaceChildren();
+    return;
+  }
+  dom.raProfile.replaceChildren(frag);
+  dom.raProfile.hidden = false;
 }
 
 function render() {
@@ -425,7 +531,7 @@ function render() {
   const visible = applyFilters(state.records, state.filters);
   renderMarkers(visible);
   renderKpis(computeKpis(visible));
-  renderRaProfileNote();
+  renderRaProfile();
 
   // Detalhe aberto de um registro que saiu do filtro deixa de fazer sentido.
   if (state.selectedId && !visible.some((r) => recordKey(r) === state.selectedId)) closeDetail();

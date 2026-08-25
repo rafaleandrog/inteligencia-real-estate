@@ -407,3 +407,78 @@ export function anchorLegendEntries(entries) {
 
   return [...merged.values()].sort((a, b) => a.label.localeCompare(b.label, 'pt-BR'));
 }
+
+// --- Indicadores por Região Administrativa (issues #34, #35) ----------------
+
+/** Percentual com uma casa: `18.24` → "18,2%". Ausente devolve travessão. */
+export function formatPercent(value) {
+  if (value === null || value === undefined || !Number.isFinite(value)) return '—';
+  return `${value.toLocaleString('pt-BR', { minimumFractionDigits: 1, maximumFractionDigits: 1 })}%`;
+}
+
+/**
+ * As cinco faixas etárias de `RA_PROFILES`, na ordem em que se lê uma pirâmide
+ * etária. A ordem é fixa e não alfabética: `population_age_60_plus_pct` viria antes
+ * de `population_age_0_14_pct` numa ordenação por nome, e uma distribuição etária
+ * fora de ordem deixa de ser legível como distribuição.
+ *
+ * Rótulos curtos porque a coluna deles é fixa e estreita: "60 ou mais" quebrava em
+ * duas linhas em 390 px e derrubava a barra daquela linha para fora do alinhamento
+ * das outras quatro — comprimento comparável exige que todas comecem na mesma coluna.
+ * A legenda do gráfico ("População por faixa etária") é quem diz que são idades.
+ */
+const RA_AGE_BANDS = [
+  ['population_age_0_14_pct', '0–14'],
+  ['population_age_15_29_pct', '15–29'],
+  ['population_age_30_44_pct', '30–44'],
+  ['population_age_45_59_pct', '45–59'],
+  ['population_age_60_plus_pct', '60+'],
+];
+
+/**
+ * Distribuição etária de uma RA, pronta para desenhar.
+ *
+ * Três coisas que o contrato obriga a tratar aqui, e que são a razão de isto ser
+ * função pura com teste em vez de código de DOM:
+ *
+ * 1. **A coluna existe, o dado pode não existir.** A cobertura do PDAD é esparsa
+ *    (`0/35` hoje). Faixa sem valor é OMITIDA — não vira barra de zero, que afirmaria
+ *    que ninguém naquela RA tem entre 0 e 14 anos.
+ * 2. **A escala pode vir em porcento ou em decimal.** `docs/DATA_CONTRACT.md` aceita
+ *    as duas ("aproximadamente 100%, ou 1, em escala decimal"), então a planilha pode
+ *    trazer `18.2` ou `0.182`. Desenhar `0.182` numa escala de porcento daria cinco
+ *    barras invisíveis. A conversão só acontece quando ela é inequívoca: pelo menos
+ *    duas faixas publicadas, todas ≤ 1, e a soma ≤ 1,01 — três condições que uma
+ *    distribuição em porcento não satisfaz.
+ * 3. **A soma pode não fechar 100.** Com faixas faltando ou com divergência que o
+ *    servidor registrou como `AGE_DISTRIBUTION_SUM`, a composição está incompleta —
+ *    e `total` sai junto para a interface poder dizer isso em vez de apresentar um
+ *    todo que não é o todo (R8.15).
+ *
+ * Devolve `{ bands, total, scaledFromDecimal }`; `bands` vazio quando não há
+ * distribuição nenhuma.
+ */
+export function raAgeBands(profile) {
+  const present = [];
+  for (const [key, label] of RA_AGE_BANDS) {
+    const value = profile ? profile[key] : null;
+    if (value === null || value === undefined || !Number.isFinite(value)) continue;
+    present.push({ key, label, pct: value });
+  }
+  if (present.length === 0) return { bands: [], total: null, scaledFromDecimal: false };
+
+  const sum = present.reduce((acc, b) => acc + b.pct, 0);
+  const scaledFromDecimal = present.length >= 2
+    && present.every((b) => b.pct >= 0 && b.pct <= 1)
+    && sum <= 1.01;
+
+  const bands = scaledFromDecimal
+    ? present.map((b) => ({ ...b, pct: b.pct * 100 }))
+    : present;
+
+  return {
+    bands,
+    total: bands.reduce((acc, b) => acc + b.pct, 0),
+    scaledFromDecimal,
+  };
+}

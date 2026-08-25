@@ -546,6 +546,107 @@ cardListing['Vertical / horizontal'] ? pass('card do anúncio traz vertical/hori
   : fail('selo de estágio apareceu num anúncio');
 await classPage.close();
 
+console.log('\n== 12f. Indicadores por RA (issues #34, #35) ==');
+const lerBlocoRa = (alvo) => alvo.evaluate(() => {
+  const box = document.querySelector('#raProfile');
+  if (!box || box.hidden) return null;
+  return {
+    stats: [...box.querySelectorAll('.ra-stats li')].map((li) => [
+      li.querySelector('.ra-stat-label').textContent,
+      li.querySelector('.ra-stat-value').textContent]),
+    faixas: [...box.querySelectorAll('.ra-ages li')].map((li) => ({
+      faixa: li.querySelector('.ra-age-label').textContent,
+      valor: li.querySelector('.ra-age-value').textContent,
+      largura: li.querySelector('.ra-age-bar').style.width,
+    })),
+    nota: box.querySelector('.ra-ages-note')?.textContent ?? null,
+  };
+});
+
+// Sem RA selecionada o bloco fica escondido; com RA, população e densidade aparecem
+// mesmo sem renda e sem faixa etária publicadas — que é o estado da planilha hoje.
+(await lerBlocoRa(page)) === null ? pass('sem RA selecionada, o bloco de indicadores fica escondido')
+                                  : fail('bloco de RA visível sem seleção');
+await page.selectOption('#raFilter', { index: 1 });
+await page.waitForTimeout(400);
+const raSemDado = await lerBlocoRa(page);
+raSemDado && raSemDado.stats.length >= 1
+  ? pass('população/densidade continuam aparecendo sem os campos novos')
+  : fail('bloco de RA vazio: ' + JSON.stringify(raSemDado));
+raSemDado && raSemDado.faixas.length === 0 && raSemDado.nota === null
+  ? pass('sem faixa etária publicada, nenhuma barra e nenhuma nota')
+  : fail('gráfico desenhado sem dado: ' + JSON.stringify(raSemDado));
+!raSemDado.stats.some(([k]) => k === 'Renda per capita')
+  ? pass('sem renda publicada, a linha some em vez de virar travessão')
+  : fail('linha de renda apareceu sem dado');
+await page.click('#clearFilters'); await page.waitForTimeout(300);
+
+const raPage = await browser.newPage({ viewport: { width: 1440, height: 900 } });
+await raPage.addInitScript(() => {
+  Object.defineProperty(window, 'APP_CONFIG', {
+    configurable: true,
+    set(value) { delete window.APP_CONFIG; window.APP_CONFIG = value; if (value) value.demoMode = true; },
+    get() { return undefined; },
+  });
+});
+await raPage.route('**/data/demo.json', async (route) => {
+  const response = await route.fetch();
+  const payload = await response.json();
+  // Quatro cenários no mesmo carregamento: completa; só renda; distribuição parcial;
+  // e distribuição em escala decimal, que docs/DATA_CONTRACT.md admite.
+  const PERFIS = {
+    'RA2026_RA-I': { income_per_capita_brl: '3250.75', population_age_0_14_pct: '18.2',
+      population_age_15_29_pct: '21.4', population_age_30_44_pct: '24.1',
+      population_age_45_59_pct: '19.6', population_age_60_plus_pct: '16.7' },
+    'RA2026_RA-V': { income_per_capita_brl: '1480' },
+    'RA2026_RA-III': { population_age_0_14_pct: '18.2', population_age_60_plus_pct: '16.7' },
+    'RA2026_RA-IX': { population_age_0_14_pct: '0.182', population_age_15_29_pct: '0.214',
+      population_age_30_44_pct: '0.241', population_age_45_59_pct: '0.196',
+      population_age_60_plus_pct: '0.167' },
+  };
+  payload.ra_profiles = payload.ra_profiles.map((r) => ({ ...r, ...(PERFIS[r.ra_geo_id] || {}) }));
+  await route.fulfill({ response, json: payload });
+});
+await raPage.goto('http://localhost:8080/', { waitUntil: 'networkidle' });
+await raPage.waitForTimeout(1200);
+
+await raPage.selectOption('#raFilter', 'RA2026_RA-I');
+await raPage.waitForTimeout(400);
+const raCheia = await lerBlocoRa(raPage);
+JSON.stringify(raCheia.stats.map(([k]) => k)) === JSON.stringify(['População', 'Densidade', 'Renda per capita'])
+  ? pass('os três indicadores aparecem quando há dado') : fail('indicadores: ' + JSON.stringify(raCheia.stats));
+JSON.stringify(raCheia.faixas.map((f) => f.faixa)) === JSON.stringify(['0–14', '15–29', '30–44', '45–59', '60+'])
+  ? pass('as cinco faixas saem na ordem da pirâmide etária, não na alfabética')
+  : fail('faixas: ' + JSON.stringify(raCheia.faixas.map((f) => f.faixa)));
+// Barra ancorada em zero e proporcional: 18,2 / 24,1 = 75,5 % da régua.
+Math.abs(parseFloat(raCheia.faixas[0].largura) - (18.2 / 24.1) * 100) < 0.5
+  ? pass('comprimento da barra é proporcional ao valor desde o zero')
+  : fail('barra fora de proporção: ' + raCheia.faixas[0].largura);
+raCheia.faixas[0].valor === '18,2%' ? pass('cada linha traz o valor com vírgula decimal') : fail('valor: ' + raCheia.faixas[0].valor);
+raCheia.nota === null ? pass('somando ~100 %, nenhuma nota de composição incompleta') : fail('nota indevida: ' + raCheia.nota);
+
+await raPage.selectOption('#raFilter', 'RA2026_RA-V');
+await raPage.waitForTimeout(400);
+const raSoRenda = await lerBlocoRa(raPage);
+raSoRenda.stats.some(([k]) => k === 'Renda per capita') && raSoRenda.faixas.length === 0
+  ? pass('RA com renda e sem faixa mostra só a renda, sem deixar buraco')
+  : fail('RA só com renda: ' + JSON.stringify(raSoRenda));
+
+await raPage.selectOption('#raFilter', 'RA2026_RA-III');
+await raPage.waitForTimeout(400);
+const raParcial = await lerBlocoRa(raPage);
+raParcial.faixas.length === 2 ? pass('faixa não publicada não vira barra de zero') : fail('faixas: ' + raParcial.faixas.length);
+/somam 34,9% da população/.test(raParcial.nota || '')
+  ? pass('composição incompleta é declarada na tela (R8.15)') : fail('nota ausente: ' + raParcial.nota);
+
+await raPage.selectOption('#raFilter', 'RA2026_RA-IX');
+await raPage.waitForTimeout(400);
+const raDecimal = await lerBlocoRa(raPage);
+raDecimal.faixas[0].valor === '18,2%'
+  ? pass('escala decimal (0,182) vira porcento em vez de cinco barras invisíveis')
+  : fail('escala decimal não convertida: ' + raDecimal.faixas[0].valor);
+await raPage.close();
+
 console.log('\n== 13. Mobile 390px ==');
 await page.click('#closeDetail').catch(()=>{});
 await page.setViewportSize({ width: 390, height: 844 });
