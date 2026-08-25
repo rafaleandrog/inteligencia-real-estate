@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  toText, toNumber, toInteger, toBoolean, toDateISO, toCoord, pricePerM2,
+  toText, toNumber, toInteger, toBoolean, toDateISO, toCoord, pricePerM2, toPriceNumber,
   isApproximateLocation, normalizeListing, normalizeDevelopment, normalizeAnchor,
   normalizeAppMeta, appMetaRows, appMetaConflicts,
   normalizeAll,
@@ -136,6 +136,41 @@ test('normalizeListing preserva a qualidade espacial e deriva preço/m²', () =>
   // Estes dois precisam sobreviver da planilha até a tela (R3.5).
   assert.equal(record.confidence_flag, 'low_spatial_high_attribute');
   assert.equal(record.coordinate_precision, 'locality_centroid_deterministic_jitter');
+});
+
+test('toPriceNumber resolve o ponto único de milhar quando há preço/m² e área para ancorar', () => {
+  // Caso real: Kitnet CA 02, preço bruto "385.000" (milhar pt-BR), 42 m², R$ 9.167/m².
+  // toNumber() sozinho devolveria 385 (decimal); com a âncora, resolve para 385000.
+  assert.equal(
+    toPriceNumber('385.000', { areaValue: '42', informedPriceM2Value: '9167' }),
+    385000,
+  );
+
+  // Sem preço/m² informado (ou sem área), não há como decidir com segurança — mantém
+  // o mesmo comportamento documentado de toNumber().
+  assert.equal(toPriceNumber('385.000', {}), 385);
+  assert.equal(toPriceNumber('385.000', { areaValue: '42' }), 385);
+
+  // Valor que já bate como decimal não deve ser "corrigido" para milhar.
+  assert.equal(
+    toPriceNumber('2.500', { areaValue: '1', informedPriceM2Value: '2.5' }),
+    2.5,
+  );
+
+  // Fora do padrão ambíguo (mais de um ponto, sem ponto, vírgula) segue toNumber().
+  assert.equal(toPriceNumber('2.500.000', { areaValue: '100', informedPriceM2Value: '1' }), 2500000);
+  assert.equal(toPriceNumber('2500000', {}), 2500000);
+  assert.equal(toPriceNumber('', {}), null);
+});
+
+test('normalizeListing corrige o preço quando o bruto é ambíguo e há preço/m² informado', () => {
+  const record = normalizeListing({
+    listing_id: 'LIST_KITNET', title: 'Kitnet à venda', property_type: 'kitnet',
+    locality: 'Lago Norte', latitude: '-15.75', longitude: '-47.85',
+    asking_price_brl: '385.000', area_m2: '42', asking_price_brl_m2: '9167',
+  });
+  assert.equal(record.price, 385000);
+  assert.equal(record.price_m2, 9167);
 });
 
 test('normalizeDevelopment lida com empreendimento sem coordenada', () => {

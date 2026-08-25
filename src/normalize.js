@@ -162,6 +162,43 @@ export function pricePerM2(priceValue, areaValue, informedValue) {
   return price / area;
 }
 
+/**
+ * Preço monetário, resolvendo a ambiguidade documentada de `toNumber()` para o caso
+ * de um único ponto (`"385.000"`: milhar pt-BR sem decimais, ou `385.0`?) quando há
+ * como decidir com segurança.
+ *
+ * `toNumber()` sozinho assume decimal nesse caso — correto para valores calculados
+ * como `"19117.647"`, mas errado quando a célula guarda um preço formatado como texto
+ * com separador de milhar em vez do número puro que o contrato exige. Resultado real
+ * visto no dataset: um imóvel de R$ 385.000 exibido como R$ 385.
+ *
+ * A correção só é aplicada quando existe uma âncora confiável — preço/m² informado
+ * (não calculado a partir do próprio preço ambíguo) e área — que permite comparar as
+ * duas leituras possíveis (decimal × milhar) contra `preço/m² × área` e ficar com a
+ * que bate. Sem essa âncora, mantém o valor decimal: é o mesmo comportamento
+ * documentado de `toNumber()`, e é o correto na ausência de qualquer sinal a mais.
+ */
+export function toPriceNumber(rawValue, { areaValue, informedPriceM2Value } = {}) {
+  const asDecimal = toNumber(rawValue);
+  if (asDecimal === null) return null;
+
+  const raw = toText(rawValue).replace(/[R$\s ]/gi, '');
+  if (!/^-?\d{1,3}\.\d{3}$/.test(raw)) return asDecimal; // não é o caso ambíguo de 1 ponto
+
+  const area = toNumber(areaValue);
+  const informedPriceM2 = toNumber(informedPriceM2Value);
+  if (area === null || area <= 0 || informedPriceM2 === null || informedPriceM2 <= 0) {
+    return asDecimal;
+  }
+
+  const asThousands = asDecimal * 1000;
+  const expected = informedPriceM2 * area;
+  const decimalError = Math.abs(asDecimal - expected);
+  const thousandsError = Math.abs(asThousands - expected);
+
+  return thousandsError < decimalError ? asThousands : asDecimal;
+}
+
 /** Campos de qualidade espacial. Precisam sobreviver da planilha até a tela (R3.5). */
 function spatialQuality(row) {
   return {
@@ -228,7 +265,10 @@ export function normalizeListing(row) {
     address: toText(row.address),
     ra_geo_id: toText(row.ra_geo_id),
     coord,
-    price: toNumber(row.asking_price_brl),
+    price: toPriceNumber(row.asking_price_brl, {
+      areaValue: row.area_m2,
+      informedPriceM2Value: row.asking_price_brl_m2,
+    }),
     area_m2: toNumber(row.area_m2),
     price_m2: pricePerM2(row.asking_price_brl, row.area_m2, row.asking_price_brl_m2),
     bedrooms: toInteger(row.bedrooms),
@@ -263,7 +303,10 @@ export function normalizeDevelopment(row) {
     units_total: toInteger(row.units_total),
     area_min_m2: toNumber(row.area_min_m2),
     area_max_m2: toNumber(row.area_max_m2),
-    price: toNumber(row.current_price_brl),
+    price: toPriceNumber(row.current_price_brl, {
+      areaValue: row.area_min_m2,
+      informedPriceM2Value: row.current_price_brl_m2,
+    }),
     price_m2: pricePerM2(row.current_price_brl, row.area_min_m2, row.current_price_brl_m2),
     work_progress_pct: toNumber(row.work_progress_pct),
     expected_delivery: toDateISO(row.expected_delivery),
