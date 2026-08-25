@@ -330,3 +330,23 @@ Cada uma nasce de um erro que aconteceu de verdade.
   token como credencial permanente" para um modelo de sessão completo. Quando existe um padrão
   irmão já rodando, comparar com ele primeiro é mais barato que projetar do zero — e evita
   reescrever depois.
+- **R8.38** *(2026-08-25, sync do Apps Script v2.0.0)* **Concorrência otimista compara contra
+  mudança de dado feita por outra pessoa, nunca contra mudança que a própria requisição causou.**
+  A v2.0.0 passou a provisionar coluna faltante no início de cada escrita (`ensureWriteSheetSchema_`),
+  e provisionar incrementa `DATASET_VERSION`. O `expected_version` que o cliente leu antes de
+  enviar passava então a perder para um incremento gerado pela própria requisição, e **toda
+  primeira escrita administrativa depois de uma migração de schema devolvia `VERSION_CONFLICT`**
+  sem ninguém ter tocado no dado — um erro que se cura sozinho na segunda tentativa, que é o pior
+  tipo: parece intermitente e some antes de ser diagnosticado. A referência do check tem que ser
+  o estado observado no **início** da requisição, capturado antes de qualquer efeito colateral dela.
+- **R8.39** *(2026-08-25, sync do Apps Script v2.0.0)* **Quando a lista de validação também vira
+  lista de provisionamento, todo teste que usava a semente como verdade muda de significado.**
+  Enquanto `REQUIRED_HEADERS` só *exigia* cabeçalho, um erro de digitação nele produzia um
+  `MISSING_HEADER` barulhento e o teste "todo cabeçalho exigido existe na semente" bastava. Depois
+  que `ensureHeaders_()` passou a *criar* o que falta, o mesmo erro cria uma coluna chamada
+  `latitud` em silêncio — a garantia ficou mais necessária, e a semente deixou de ser a
+  autoridade sobre "que colunas existem". A resposta certa não é afrouxar o teste nem congelar a
+  semente à força: é **mover a rede** — declarar o delta explicitamente, cercá-lo de asserções que
+  o impeçam de virar esconderijo (cada entrada precisa estar mesmo ausente da semente, mesmo
+  presente no schema e mesmo documentada), e cobrar do provisionador o que antes se cobrava do
+  arquivo congelado.

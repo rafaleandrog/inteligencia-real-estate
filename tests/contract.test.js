@@ -2,8 +2,10 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { readXlsx } from '../tools/xlsx.mjs';
+import { createAppsScriptSandbox } from './helpers/appsScriptSandbox.mjs';
 import {
-  SHEETS, expectedRequiredHeaders, declaredRequiredHeaders, contractColumns,
+  SHEETS, REQUIRED_SHEETS, OPTIONAL_SCHEMA_SHEETS, POST_SEED_COLUMNS, POST_SEED_SHEETS,
+  expectedRequiredHeaders, declaredRequiredHeaders, contractColumns, postSeedFromContract,
 } from './helpers/schema.mjs';
 
 // A validação de schema do Apps Script depende de uma lista de cabeçalhos que não é
@@ -21,14 +23,14 @@ import {
 const read = (p) => readFileSync(new URL(p, import.meta.url), 'utf8');
 const normalizeSrc = read('../src/normalize.js');
 const contractMd = read('../docs/DATA_CONTRACT.md');
-const scriptSrc = read('../optional-apps-script/Code.gs');
+const seed = () => readXlsx(readFileSync(new URL('../migration/imob-intelligence-backend.xlsx', import.meta.url)));
 
 test('REQUIRED_HEADERS cobre exatamente o que contrato e normalizadores exigem', () => {
   const expected = expectedRequiredHeaders(normalizeSrc, contractMd);
-  const declared = declaredRequiredHeaders(scriptSrc);
+  const declared = declaredRequiredHeaders();
 
   assert.deepEqual(Object.keys(declared).sort(), [...SHEETS].sort(),
-    'as três abas obrigatórias precisam ter cabeçalhos declarados');
+    'toda aba com contrato de cabeçalho precisa estar declarada, e nenhuma além');
 
   for (const sheet of SHEETS) {
     const faltando = expected[sheet].filter((f) => !declared[sheet].includes(f));
@@ -41,31 +43,93 @@ test('REQUIRED_HEADERS cobre exatamente o que contrato e normalizadores exigem',
   }
 });
 
-test('nenhum cabeçalho exigido é inexistente na planilha', () => {
-  const workbook = readXlsx(readFileSync(new URL('../migration/imob-intelligence-backend.xlsx', import.meta.url)));
-  const declared = declaredRequiredHeaders(scriptSrc);
+test('obrigatória e opcional-com-schema são conceitos distintos, e o Code.gs concorda', () => {
+  // O risco de uma aba opcional passar a ter REQUIRED_HEADERS é alguém concluir que ela
+  // virou obrigatória e ligá-la ao caminho de erro fatal. Estas asserções fixam a
+  // separação nos dois lados.
+  const { context } = createAppsScriptSandbox();
 
-  for (const sheet of SHEETS) {
-    const headers = new Set(workbook[sheet].headers);
-    const inexistentes = declared[sheet].filter((f) => !headers.has(f));
-    assert.deepEqual(inexistentes, [],
-      `${sheet}: a validação acusaria erro em coluna que não faz parte do schema`);
+  assert.deepEqual([...REQUIRED_SHEETS].sort(), [...context.REQUIRED_SHEETS].sort());
+  for (const sheet of OPTIONAL_SCHEMA_SHEETS) {
+    assert.ok(context.OPTIONAL_SHEETS.includes(sheet), `${sheet} precisa ser opcional no Code.gs`);
+    assert.ok(!context.REQUIRED_SHEETS.includes(sheet), `${sheet} não pode ser obrigatória`);
+  }
+
+  // E o loader do navegador só pode tratar como entidade obrigatória as três de sempre.
+  const configSrc = read('../src/config.js');
+  const sheetsBlock = configSrc.slice(configSrc.indexOf('sheets: {'), configSrc.indexOf('}', configSrc.indexOf('sheets: {')));
+  for (const sheet of OPTIONAL_SCHEMA_SHEETS) {
+    assert.ok(!sheetsBlock.includes(sheet),
+      `${sheet} é opcional e não pode entrar em config.sheets, que é o caminho de erro fatal`);
   }
 });
 
-test('as três abas validam latitude e longitude', () => {
-  const declared = declaredRequiredHeaders(scriptSrc);
-  for (const sheet of ['LISTINGS', 'DEVELOPMENTS', 'ANCHORS']) {
+test('todo cabeçalho exigido existe na semente, ou está declarado como provisionado depois dela', () => {
+  // A semente é um bootstrap histórico de uma vez só (migration/README.md) e não
+  // acompanha o schema. Na v1.0.0 um erro de digitação em REQUIRED_HEADERS produzia um
+  // MISSING_HEADER barulhento; na v2.0.0 `ensureHeaders_()` provisiona, então o mesmo
+  // erro CRIA uma coluna chamada `latitud` em silêncio. A rede não foi removida — ela
+  // mudou de lugar: o delta entre semente e schema vira lista explícita, e as três
+  // asserções abaixo impedem que essa lista vire esconderijo.
+  const workbook = seed();
+  const declared = declaredRequiredHeaders();
+
+  for (const sheet of SHEETS) {
+    const naSemente = workbook[sheet] ? new Set(workbook[sheet].headers) : null;
+    const provisionadas = POST_SEED_COLUMNS[sheet] || [];
+
+    if (!naSemente) {
+      assert.ok(POST_SEED_SHEETS.includes(sheet),
+        `${sheet}: ausente da semente sem estar declarada em POST_SEED_SHEETS`);
+      continue;
+    }
+
+    assert.ok(!POST_SEED_SHEETS.includes(sheet),
+      `${sheet}: declarada como aba pós-semente, mas existe na semente`);
+
+    const inexistentes = declared[sheet]
+      .filter((f) => !naSemente.has(f) && !provisionadas.includes(f));
+    assert.deepEqual(inexistentes, [],
+      `${sheet}: exigido, ausente da semente e não declarado em POST_SEED_COLUMNS`);
+
+    // Anti-apodrecimento: se alguém reexportar a planilha, a lista é obrigada a encolher.
+    const jaExistem = provisionadas.filter((f) => naSemente.has(f));
+    assert.deepEqual(jaExistem, [],
+      `${sheet}: POST_SEED_COLUMNS lista coluna que a semente já tem — remova-a`);
+
+    // E nenhuma entrada órfã, que ninguém exige.
+    const orfas = provisionadas.filter((f) => !declared[sheet].includes(f));
+    assert.deepEqual(orfas, [],
+      `${sheet}: POST_SEED_COLUMNS lista coluna que REQUIRED_HEADERS não exige`);
+  }
+});
+
+test('o delta pós-semente está documentado no contrato', () => {
+  // A quarta trava: a lista no código precisa bater com a tabela em prosa, para que
+  // quem lê o contrato veja o mesmo que o teste vê.
+  const documentado = postSeedFromContract(contractMd);
+  const noCodigo = {};
+  for (const [sheet, cols] of Object.entries(POST_SEED_COLUMNS)) noCodigo[sheet] = [...cols].sort();
+  for (const sheet of POST_SEED_SHEETS) noCodigo[sheet] = ['*'];
+
+  assert.deepEqual(documentado, noCodigo,
+    'a tabela "Provisionamento pós-semente" do DATA_CONTRACT.md divergiu de POST_SEED_COLUMNS/POST_SEED_SHEETS');
+});
+
+test('as três abas obrigatórias validam latitude e longitude', () => {
+  const declared = declaredRequiredHeaders();
+  for (const sheet of REQUIRED_SHEETS) {
     for (const field of ['latitude', 'longitude']) {
       assert.ok(declared[sheet].includes(field), `${sheet} usa ${field}`);
     }
   }
 });
 
-test('o contrato declara colunas para as três abas obrigatórias', () => {
+test('o contrato declara colunas para toda aba com schema', () => {
   const { all, required } = contractColumns(contractMd);
   for (const sheet of SHEETS) {
     assert.ok(all[sheet] && all[sheet].size > 0, `${sheet} sem tabela de colunas no contrato`);
+    // Toda aba tem ao menos a chave primária marcada obrigatória.
     assert.ok(required[sheet].size > 0, `${sheet} sem nenhum campo obrigatório declarado`);
   }
 });
@@ -84,9 +148,10 @@ test('a seção de uma aba termina no próximo heading de qualquer nível', () =
   }
 
   // E o contrato precisa declarar ao menos toda coluna que a semente de fato tem —
-  // o corte por heading não pode ter comido uma tabela legítima.
-  const workbook = readXlsx(readFileSync(new URL('../migration/imob-intelligence-backend.xlsx', import.meta.url)));
-  for (const sheet of SHEETS) {
+  // o corte por heading não pode ter comido uma tabela legítima. Só vale para as abas
+  // que existem na semente: POLYGONS é criada depois dela, por setupProject().
+  const workbook = seed();
+  for (const sheet of SHEETS.filter((s) => workbook[s])) {
     const naoDeclaradas = workbook[sheet].headers.filter((h) => h && !all[sheet].has(h));
     assert.deepEqual(naoDeclaradas, [], `${sheet}: coluna da semente ausente do contrato`);
   }

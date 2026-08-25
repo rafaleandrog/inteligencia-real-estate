@@ -19,7 +19,8 @@ const LISTINGS_HEADERS = [
   'condo_fee_brl', 'confidence_flag', 'coordinate_precision', 'iptu_brl', 'last_seen_at',
   'latitude', 'listing_id', 'locality', 'longitude', 'observed_at', 'parking_spaces',
   'portal', 'property_type', 'quality_flag', 'ra_geo_id', 'source_page_verified_at',
-  'source_url', 'source_url_type', 'status', 'suites', 'title', 'transaction_type',
+  'regularization_status', 'source_url', 'source_url_type', 'status', 'suites', 'title',
+  'transaction_type',
 ];
 
 const CHANGE_LOG_HEADERS = [
@@ -38,7 +39,8 @@ function listingRow(overrides = {}) {
     locality: 'Asa Norte', longitude: -47.87, observed_at: '2026-08-18',
     parking_spaces: 2, portal: 'QuintoAndar', property_type: 'apartamento',
     quality_flag: 'web_search_direct_item_page_indexed', ra_geo_id: 'RA2026_RA-I',
-    source_page_verified_at: '2026-08-18', source_url: 'https://example.com/imovel/1',
+    source_page_verified_at: '2026-08-18', regularization_status: '',
+    source_url: 'https://example.com/imovel/1',
     source_url_type: 'individual_listing', status: 'active', suites: 4,
     title: 'Apartamento 4 quartos', transaction_type: 'sale',
   };
@@ -415,4 +417,73 @@ test('health expõe write_api igual ao WRITE_API_PROTOCOL esperado pelo cliente'
   const { context } = setup();
   const health = readJsonOutput(context.doGet({ parameter: { resource: 'health' } }));
   assert.equal(health.write_api, WRITE_API_PROTOCOL);
+});
+
+// --- provisionamento de schema × concorrência otimista (R8.38) -------------------
+
+test('escrita numa aba sem as colunas novas provisiona e NÃO acusa VERSION_CONFLICT', () => {
+  // Regressão real encontrada ao sincronizar o Code.gs com a v2.0.0 implantada:
+  // `ensureWriteSheetSchema_()` cria a coluna faltante e, ao criar, incrementa
+  // DATASET_VERSION. O `expected_version` que o cliente leu antes de enviar passava a
+  // perder para um incremento causado pela própria requisição — e toda primeira escrita
+  // depois de uma migração de schema devolvia VERSION_CONFLICT sem ninguém ter tocado no
+  // dado. Curava-se sozinha na segunda tentativa, que é o pior tipo de bug: parece
+  // intermitente e some antes de ser diagnosticado.
+  const { context, sheets, properties } = setup({
+    sheets: {
+      // Schema anterior à v2.0.0: sem `regularization_status`.
+      LISTINGS: [
+        ['listing_id', 'title', 'locality'],
+        ['LIST_1', 'Apartamento à venda', 'Asa Norte'],
+      ],
+    },
+  });
+
+  const response = readJsonOutput(context.doPost({
+    postData: {
+      contents: JSON.stringify({
+        token: 'secret-token',
+        action: 'update',
+        sheet: 'LISTINGS',
+        id: 'LIST_1',
+        expected_version: '1',
+        fields: { title: 'Apartamento reformado' },
+      }),
+    },
+  }));
+
+  assert.equal(response.ok, true, `esperado sucesso, veio ${JSON.stringify(response.error)}`);
+
+  // A coluna foi de fato provisionada...
+  const headers = sheets.LISTINGS._rows[0];
+  assert.ok(headers.includes('regularization_status'), 'a coluna nova precisa ter sido criada');
+
+  // ...o dado foi gravado...
+  assert.equal(sheets.LISTINGS._rows[1][headers.indexOf('title')], 'Apartamento reformado');
+
+  // ...e a versão subiu duas vezes: uma pelo schema, outra pela escrita. O que não pode
+  // é o incremento do schema ser cobrado do cliente como se fosse conflito.
+  assert.equal(properties.DATASET_VERSION, '3');
+});
+
+test('VERSION_CONFLICT continua valendo para mudança de dado feita por outra pessoa', () => {
+  // A contrapartida do teste acima: afrouxar o check para o schema não pode ter
+  // afrouxado o check de verdade.
+  const { context } = setup({ scriptProperties: { DATASET_VERSION: '9' } });
+
+  const response = readJsonOutput(context.doPost({
+    postData: {
+      contents: JSON.stringify({
+        token: 'secret-token',
+        action: 'update',
+        sheet: 'LISTINGS',
+        id: 'LIST_1',
+        expected_version: '7', // desatualizado de verdade
+        fields: { title: 'Outro título' },
+      }),
+    },
+  }));
+
+  assert.equal(response.ok, false);
+  assert.equal(response.error.code, 'VERSION_CONFLICT');
 });

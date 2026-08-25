@@ -360,9 +360,13 @@ export function normalizeAnchor(row) {
     // Classificação de segmento mais fina que `category`, a ser preenchida no
     // backend/planilha em etapa posterior (issue #22). Coluna opcional: registro sem
     // segmento continua normalizando e aparecendo no mapa normalmente.
+    // Classificação em dois eixos, provisionada pelo Apps Script v2.0.0 e derivada por
+    // ele a partir de `category`/`subcategory`/`name` quando a célula está vazia:
+    // `group` separa infraestrutura de comércio/serviço, `segment` é mais fino que
+    // `category`. Vocabulário de `segment` é aberto — o backend infere 12 tipos, o
+    // resto entra à mão (issues #22, #26).
+    group: toText(row.group),
     segment: toText(row.segment),
-    // Colunas ainda não existem na planilha (issue #39) — leitura preparatória,
-    // mesmo padrão de `segment` em #22.
     brand_name: toText(row.brand_name),
     occupied_area_m2: toNumber(row.occupied_area_m2),
     operator_name: toText(row.operator_name),
@@ -396,7 +400,75 @@ export function normalizeRaProfile(row) {
     ra_name: toText(row.ra_name),
     population_total: toInteger(row.population_total),
     population_density_km2: toNumber(row.population_density_km2),
+    // Provisionadas pelo Apps Script v2.0.0 (issue #35). A COLUNA existe; o DADO pode
+    // não existir ainda — a cobertura do PDAD é esparsa e a própria semente avisa
+    // "not yet all 35 RAs". `null` aqui significa "não publicado", e quem renderiza
+    // omite o indicador em vez de mostrar buraco.
+    income_per_capita_brl: toNumber(row.income_per_capita_brl),
+    population_age_0_14_pct: toNumber(row.population_age_0_14_pct),
+    population_age_15_29_pct: toNumber(row.population_age_15_29_pct),
+    population_age_30_44_pct: toNumber(row.population_age_30_44_pct),
+    population_age_45_59_pct: toNumber(row.population_age_45_59_pct),
+    population_age_60_plus_pct: toNumber(row.population_age_60_plus_pct),
   };
+}
+
+/**
+ * Objeto a partir de uma célula com JSON. Devolve `null` para qualquer coisa que não
+ * seja um objeto JSON parseável — nunca lança.
+ *
+ * A célula vem de `properties_json`, que por sua vez veio de `ExtendedData` de um KML
+ * de terceiro. Deixar um `JSON.parse` cru aqui faria um único arquivo malformado
+ * derrubar o carregamento inteiro do dataset (R2.6).
+ */
+export function toJsonObject(value) {
+  if (value && typeof value === 'object' && !Array.isArray(value)) return value;
+  const raw = toText(value);
+  if (raw === '') return null;
+  try {
+    const parsed = JSON.parse(raw);
+    return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Polígono da aba POLYGONS (Apps Script v2.0.0, issues #27/#28).
+ *
+ * Deliberadamente **sem `kind`**: não é registro plotável como ponto, e um `kind` aqui
+ * faria `flattenEntities`/`matchesFilters` tratá-lo como marcador do mapa.
+ *
+ * `geometry_geojson` fica como **texto**, sem parsear. Parsear é problema de quem for
+ * desenhar (issue #28): um blob malformado precisa isolar aquele polígono, não
+ * interromper o carregamento do dataset inteiro.
+ */
+export function normalizePolygon(row) {
+  return {
+    id: toText(row.polygon_id),
+    name: toText(row.name),
+    category: toText(row.category),
+    geometry_geojson: toText(row.geometry_geojson),
+    color: toText(row.color),
+    description: toText(row.description),
+    properties: toJsonObject(row.properties_json),
+    source_url: toText(row.source_url),
+    source_file: toText(row.source_file),
+    imported_at: toDateISO(row.imported_at),
+    status: toText(row.status),
+  };
+}
+
+/** Linhas de POLYGONS -> lista. Registro sem id é descartado, como em `normalizeAll`. */
+export function normalizePolygons(rows) {
+  const out = [];
+  for (const row of rows || []) {
+    if (!row || typeof row !== 'object') continue;
+    const polygon = normalizePolygon(row);
+    if (!polygon.id) continue;
+    out.push(polygon);
+  }
+  return out;
 }
 
 /** Linhas cruas de `RA_PROFILES` -> mapa `ra_geo_id` -> perfil. Linha sem chave é descartada. */
@@ -468,6 +540,8 @@ const APP_META_FIELDS = [
   { key: 'rows_listings', label: 'Anúncios', type: 'count', visibility: 'technical' },
   { key: 'rows_developments', label: 'Empreendimentos', type: 'count', visibility: 'technical' },
   { key: 'rows_anchors', label: 'Âncoras', type: 'count', visibility: 'technical' },
+  { key: 'rows_ra_profiles', label: 'Regiões Administrativas', type: 'count', visibility: 'technical' },
+  { key: 'rows_polygons', label: 'Polígonos', type: 'count', visibility: 'technical' },
   { key: 'app_version', label: 'App', type: 'version', visibility: 'technical' },
 ];
 
