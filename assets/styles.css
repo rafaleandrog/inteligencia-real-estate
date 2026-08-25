@@ -322,6 +322,9 @@ h1, h2 { margin: 0; font-size: 1rem; }
 }
 .field-note[hidden] { display: none; }
 
+/* A mesma nota, quando aparece dentro do card de detalhe em vez do painel de filtros. */
+.field-note-inline { margin: -6px 0 16px; }
+
 select, input[type="number"] {
   width: 100%;
   padding: 7px 9px;
@@ -538,6 +541,21 @@ select:focus, input[type="number"]:focus {
 .detail-kind[data-kind="listing"] { background: var(--listing); }
 .detail-kind[data-kind="development"] { background: var(--development); }
 .detail-kind[data-kind="anchor"] { background: var(--anchor); }
+
+/* Estágio de comercialização (issue #30): mesma pílula do rótulo de camada, mas
+   contornada em vez de preenchida — é o estado do produto, não a identidade dele,
+   e competir em peso visual com a camada trocaria a hierarquia de leitura. */
+.detail-stage {
+  display: inline-block;
+  margin: 8px 0 14px 6px;
+  padding: 2px 9px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: .05em;
+  color: var(--muted);
+}
 
 .detail dl {
   display: grid;

@@ -161,6 +161,50 @@ export function formatSpatialPrecision(value) {
   return spaced.charAt(0).toUpperCase() + spaced.slice(1);
 }
 
+/** Humaniza um slug: `estacao_metro` → "Estacao metro". Último recurso de rótulo. */
+function humanizeSlug(key) {
+  const spaced = key.replace(/_/g, ' ');
+  return spaced.charAt(0).toUpperCase() + spaced.slice(1);
+}
+
+/**
+ * Rótulo de `sales_stage` de DEVELOPMENTS (issue #30). Vocabulário **fechado** no
+ * contrato — mas a planilha é pública e editável, então valor fora do enum é
+ * humanizado em vez de sumir: um estágio digitado errado precisa ficar visível para
+ * ser corrigido, não desaparecer da tela.
+ */
+const SALES_STAGE_LABELS = {
+  em_construcao: 'Em construção',
+  em_lancamento: 'Em lançamento',
+  oferta: 'Oferta',
+};
+
+export function formatSalesStage(value) {
+  const key = String(value || '').trim().toLowerCase();
+  if (key === '') return '';
+  return SALES_STAGE_LABELS[key] || humanizeSlug(key);
+}
+
+/**
+ * Rótulo de `regularization_status` (issue #32).
+ *
+ * Diferente de `sales_stage`, este campo é **texto livre** no backend: o Apps Script
+ * não o valida contra enum nenhum. Os três valores abaixo são os esperados, não os
+ * únicos possíveis — qualquer outro é humanizado, nunca tratado como se fosse um dos
+ * três (mesma lição de R8.16: vocabulário que ninguém previu cai no lado conservador).
+ */
+const REGULARIZATION_LABELS = {
+  regularizado: 'Regularizado',
+  nao_regularizado: 'Não regularizado',
+  em_regularizacao: 'Em regularização',
+};
+
+export function formatRegularizationStatus(value) {
+  const key = String(value || '').trim().toLowerCase();
+  if (key === '') return '';
+  return REGULARIZATION_LABELS[key] || humanizeSlug(key);
+}
+
 // --- Âncoras: grupo, segmento e cor no mapa (issues #22, #26, #39) ----------
 //
 // A classificação de âncora tem dois eixos, provisionados pelo Apps Script v2.0.0:
@@ -172,12 +216,6 @@ export function formatSpatialPrecision(value) {
 // Como a planilha é pública e editável, nenhum dos dois pode ser tratado como
 // vocabulário garantido: valor desconhecido é **humanizado**, nunca descartado nem
 // exibido como slug cru — mesma escolha de `formatSpatialPrecision` (issue #21).
-
-/** Humaniza um slug: `estacao_metro` → "Estacao metro". Último recurso de rótulo. */
-function humanizeSlug(key) {
-  const spaced = key.replace(/_/g, ' ');
-  return spaced.charAt(0).toUpperCase() + spaced.slice(1);
-}
 
 const ANCHOR_GROUP_LABELS = {
   infraestrutura: 'Infraestrutura',
