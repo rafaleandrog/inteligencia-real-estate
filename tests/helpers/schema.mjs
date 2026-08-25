@@ -16,10 +16,25 @@ export function fieldsReadByNormalizers(src) {
   return out;
 }
 
-/** Tabelas do contrato: todas as colunas e as marcadas como obrigatórias. */
+/**
+ * Tabelas do contrato: todas as colunas e as marcadas como obrigatórias.
+ *
+ * A seção de uma aba termina no **próximo heading de qualquer nível**, não só no
+ * próximo `###`. Separar apenas por `\n### ` fazia a seção de ANCHORS engolir tudo que
+ * viesse depois dela até o próximo `###` — inclusive a tabela de `## Abas opcionais`,
+ * cujos nomes de aba (`PRIMARY_OFFERS`, `IVV_MONTHLY`, `IVV_REGION`, `RA_PROFILES`)
+ * entravam em `all.ANCHORS` como se fossem colunas de ANCHORS.
+ *
+ * Era inofensivo por acidente: nenhum deles é marcado obrigatório nem lido por
+ * normalizador, então a interseção de `expectedRequiredHeaders()` os descartava. Mas
+ * `all` é justamente a lista que autoriza um campo a virar cabeçalho exigido — uma
+ * tabela nova colocada no lugar errado passaria a poder exigir coluna da aba errada.
+ */
 export function contractColumns(md) {
   const all = {}; const required = {};
-  for (const section of md.split(/\n### /).slice(1)) {
+  for (const chunk of md.split(/\n(?=#{1,6} )/)) {
+    if (!chunk.startsWith('### ')) continue;
+    const section = chunk.slice(4);
     const name = section.split(/[ \n—]/)[0].trim();
     if (!SHEETS.includes(name)) continue;
     all[name] = new Set(); required[name] = new Set();

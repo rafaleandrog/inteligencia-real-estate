@@ -70,6 +70,28 @@ test('o contrato declara colunas para as três abas obrigatórias', () => {
   }
 });
 
+test('a seção de uma aba termina no próximo heading de qualquer nível', () => {
+  // Regressão: separar as seções só por `\n### ` fazia a de ANCHORS engolir tudo até o
+  // próximo `###`, inclusive a tabela de `## Abas opcionais` — e os nomes de aba dali
+  // (PRIMARY_OFFERS, IVV_MONTHLY, IVV_REGION, RA_PROFILES) entravam em `all.ANCHORS`
+  // como se fossem colunas de ANCHORS. `all` é a lista que autoriza um campo a virar
+  // cabeçalho exigido, então uma tabela nova no lugar errado poderia exigir coluna da
+  // aba errada.
+  const { all } = contractColumns(contractMd);
+  for (const invasor of ['PRIMARY_OFFERS', 'IVV_MONTHLY', 'IVV_REGION', 'RA_PROFILES']) {
+    assert.equal(all.ANCHORS.has(invasor), false,
+      `"${invasor}" é nome de aba e vazou para as colunas de ANCHORS`);
+  }
+
+  // E o contrato precisa declarar ao menos toda coluna que a semente de fato tem —
+  // o corte por heading não pode ter comido uma tabela legítima.
+  const workbook = readXlsx(readFileSync(new URL('../migration/imob-intelligence-backend.xlsx', import.meta.url)));
+  for (const sheet of SHEETS) {
+    const naoDeclaradas = workbook[sheet].headers.filter((h) => h && !all[sheet].has(h));
+    assert.deepEqual(naoDeclaradas, [], `${sheet}: coluna da semente ausente do contrato`);
+  }
+});
+
 test('o leitor de .xlsx mapeia a aba pelo r:id, não pelo sheetId', () => {
   // Regressão: o mapeamento por `sheetId` só funciona enquanto os ids forem
   // sequenciais. Com PRIMARY_MARKET (id 5) removida, os ids pulam de 4 para 6 enquanto
