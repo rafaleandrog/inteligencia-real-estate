@@ -15,7 +15,7 @@ import {
 } from './filters.js';
 import {
   formatBRL, formatBRLCompact, formatM2, formatNumber, formatPriceM2, formatDate,
-  formatPropertyType, safeExternalUrl, hostnameOf,
+  formatPropertyType, formatSpatialPrecision, safeExternalUrl, hostnameOf,
 } from './format.js';
 
 const CONFIG = window.APP_CONFIG || {};
@@ -142,10 +142,16 @@ function buildPrecisionNotice(record) {
 
   const precision = record.coordinate_precision || record.confidence_flag;
   if (precision) {
-    box.append(document.createElement('br'));
-    const code = document.createElement('code');
-    code.textContent = precision;
-    box.append(code);
+    const label = formatSpatialPrecision(precision);
+    if (label) {
+      box.append(document.createElement('br'));
+      const code = document.createElement('code');
+      code.textContent = label;
+      // Identificador técnico cru fica só no atributo, para suporte/depuração —
+      // nunca como texto visível (issue #21).
+      code.title = precision;
+      box.append(code);
+    }
   }
   return box;
 }

@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
   formatBRL, formatBRLCompact, formatM2, formatPriceM2, formatNumber, formatDate,
-  escapeHtml, safeExternalUrl, hostnameOf, formatPropertyType,
+  escapeHtml, safeExternalUrl, hostnameOf, formatPropertyType, formatSpatialPrecision,
 } from '../src/format.js';
 
 test('ausência vira travessão, não zero', () => {
@@ -74,4 +74,19 @@ test('formatPropertyType traduz o vocabulário do dataset', () => {
 
   // Tipo novo na planilha não pode virar tela em branco.
   assert.equal(formatPropertyType('loft_duplex'), 'Loft duplex');
+});
+
+test('formatSpatialPrecision nunca expõe o identificador cru de pipeline (issue #21)', () => {
+  assert.equal(
+    formatSpatialPrecision('locality_centroid_deterministic_jitter'),
+    'Centro da localidade, com variação controlada',
+  );
+  assert.equal(formatSpatialPrecision('high_attributes'), 'Atributos confiáveis');
+  assert.equal(formatSpatialPrecision(''), '');
+  assert.equal(formatSpatialPrecision(null), '');
+
+  // Vocabulário não documentado (o contrato é explícito: não é fechado) ainda assim
+  // não pode voltar cru, com underscore, para a tela.
+  assert.equal(formatSpatialPrecision('some_new_vocabulary_term'), 'Some new vocabulary term');
+  assert.doesNotMatch(formatSpatialPrecision('some_new_vocabulary_term'), /_/);
 });
