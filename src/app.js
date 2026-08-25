@@ -31,6 +31,7 @@ const dom = {
   errorTitle: el('errorTitle'), errorDetail: el('errorDetail'), retryBtn: el('retryBtn'),
   warnings: el('warnings'), sourceBadge: el('sourceBadge'),
   datasetMeta: el('datasetMeta'), datasetMetaList: el('datasetMetaList'),
+  datasetMetaSummary: el('datasetMetaSummary'),
   detail: el('detail'), detailTitle: el('detailTitle'), detailBody: el('detailBody'),
   closeDetail: el('closeDetail'),
 };
@@ -391,6 +392,12 @@ function showWarnings(messages) {
  * com travessão sugeriria que o dado existe e está vazio, quando na verdade ele nunca
  * foi publicado.
  *
+ * Só `visibility: 'summary'` (hoje, "Atualizado em") fica exposto de cara — é a única
+ * informação de procedência que quem pesquisa imóvel precisa. O resto (versão do
+ * dataset, status/contagens de validação, versão do app) é jargão de pipeline e fica
+ * dentro do `<details>` "Detalhes técnicos", sem sumir, para quem opera os dados
+ * (issue #19).
+ *
  * Os valores vêm de uma planilha pública e editável: todos entram por `textContent`,
  * nunca por `innerHTML` (R4.4).
  */
@@ -398,12 +405,20 @@ function renderDatasetMeta(meta) {
   const rows = appMetaRows(meta);
   if (rows.length === 0) {
     dom.datasetMeta.hidden = true;
+    dom.datasetMetaSummary.textContent = '';
     dom.datasetMetaList.replaceChildren();
     return;
   }
 
+  const summaryRow = rows.find((row) => row.visibility === 'summary');
+  dom.datasetMetaSummary.textContent = summaryRow
+    ? `${summaryRow.label}: ${formatDate(summaryRow.value)}`
+    : '';
+
   const frag = document.createDocumentFragment();
   for (const row of rows) {
+    if (row.visibility === 'summary') continue;
+
     const dt = document.createElement('dt');
     dt.textContent = row.label;
 

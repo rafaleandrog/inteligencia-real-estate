@@ -178,13 +178,22 @@ h1, h2 { margin: 0; font-size: 1rem; }
 .dataset-meta { margin-bottom: 20px; }
 .dataset-meta[hidden] { display: none; }
 
-.dataset-meta h2 {
+.meta-summary {
+  font-size: 12px;
+  color: var(--muted);
+  margin: 0 0 6px;
+}
+
+.dataset-meta-details summary {
   font-size: 11px;
   text-transform: uppercase;
   letter-spacing: .06em;
   color: var(--muted);
+  cursor: pointer;
   margin-bottom: 8px;
 }
+
+.dataset-meta-details[open] summary { margin-bottom: 8px; }
 
 .dataset-meta dl {
   display: grid;

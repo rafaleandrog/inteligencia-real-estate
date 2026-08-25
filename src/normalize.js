@@ -383,17 +383,24 @@ export function normalizeAll(entity, rows) {
  * Os rótulos são curtos de propósito: o painel tem 300 px e o título "Sobre estes
  * dados" já dá o contexto. "Dados atualizados em" quebrava em três linhas.
  */
+/**
+ * `visibility: 'summary'` fica sempre visível — é a única informação de procedência
+ * que interessa a quem está pesquisando imóvel ("quando os dados foram atualizados").
+ * `visibility: 'technical'` (o resto: versão do dataset, status/contagens de
+ * validação, versão do app) é jargão de pipeline e só aparece dentro do
+ * `<details>` "Detalhes técnicos", para quem opera ou audita os dados (issue #19).
+ */
 const APP_META_FIELDS = [
-  { key: 'last_data_change_at', label: 'Atualizado em', type: 'date' },
-  { key: 'dataset_version', label: 'Dataset', type: 'version' },
-  { key: 'validation_status', label: 'Qualidade', type: 'status' },
-  { key: 'last_validation_at', label: 'Validado em', type: 'date' },
-  { key: 'validation_errors', label: 'Erros', type: 'count' },
-  { key: 'validation_warnings', label: 'Avisos', type: 'count' },
-  { key: 'rows_listings', label: 'Anúncios', type: 'count' },
-  { key: 'rows_developments', label: 'Empreendimentos', type: 'count' },
-  { key: 'rows_anchors', label: 'Âncoras', type: 'count' },
-  { key: 'app_version', label: 'App', type: 'version' },
+  { key: 'last_data_change_at', label: 'Atualizado em', type: 'date', visibility: 'summary' },
+  { key: 'dataset_version', label: 'Dataset', type: 'version', visibility: 'technical' },
+  { key: 'validation_status', label: 'Qualidade', type: 'status', visibility: 'technical' },
+  { key: 'last_validation_at', label: 'Validado em', type: 'date', visibility: 'technical' },
+  { key: 'validation_errors', label: 'Erros', type: 'count', visibility: 'technical' },
+  { key: 'validation_warnings', label: 'Avisos', type: 'count', visibility: 'technical' },
+  { key: 'rows_listings', label: 'Anúncios', type: 'count', visibility: 'technical' },
+  { key: 'rows_developments', label: 'Empreendimentos', type: 'count', visibility: 'technical' },
+  { key: 'rows_anchors', label: 'Âncoras', type: 'count', visibility: 'technical' },
+  { key: 'app_version', label: 'App', type: 'version', visibility: 'technical' },
 ];
 
 /** Rótulo e tom de cada `validation_status` conhecido. */
@@ -492,7 +499,7 @@ export function appMetaRows(meta) {
   const source = meta || {};
   const rows = [];
 
-  for (const { key, label, type } of APP_META_FIELDS) {
+  for (const { key, label, type, visibility } of APP_META_FIELDS) {
     if (!(key in source)) continue;
     const raw = source[key];
 
@@ -502,6 +509,7 @@ export function appMetaRows(meta) {
         key,
         label,
         type,
+        visibility,
         value: known ? known.label : toText(raw),
         tone: known ? known.tone : 'unknown',
       });
@@ -514,6 +522,7 @@ export function appMetaRows(meta) {
       key,
       label,
       type,
+      visibility,
       value: type === 'version' ? `v${toText(raw)}` : String(raw),
       tone: null,
     });

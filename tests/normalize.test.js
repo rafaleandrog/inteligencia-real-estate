@@ -344,6 +344,21 @@ test('appMetaRows respeita a ordem de exibição e rotula em português', () => 
   assert.equal(rows[0].type, 'date', 'o tipo volta para a tela poder formatar em pt-BR');
 });
 
+test('appMetaRows marca apenas "Atualizado em" como resumo público (issue #19)', () => {
+  const rows = appMetaRows(normalizeAppMeta({
+    rows_listings: '141',
+    dataset_version: '7',
+    last_data_change_at: '2026-08-20',
+    validation_status: 'ok',
+  }));
+
+  const byKey = Object.fromEntries(rows.map((r) => [r.key, r.visibility]));
+  assert.equal(byKey.last_data_change_at, 'summary');
+  assert.equal(byKey.dataset_version, 'technical');
+  assert.equal(byKey.validation_status, 'technical');
+  assert.equal(byKey.rows_listings, 'technical');
+});
+
 test('status de validação desconhecido nunca recebe o tom de sucesso', () => {
   const tom = (status) => appMetaRows(normalizeAppMeta({ validation_status: status }))[0].tone;
 
