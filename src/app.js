@@ -469,9 +469,14 @@ function populateSelect(select, values, formatter = (v) => v) {
  * vazio sem explicar por quê. A seleção atual é preservada quando ainda existe no
  * novo grupo, e zerada quando não — deixá-la valendo escondida no estado seria um
  * filtro ativo invisível.
+ *
+ * `keepSelection: false` é para quem está LIMPANDO. Preservar a seleção é o trabalho
+ * desta função, então "limpar filtros" não pode delegar a limpeza a ela sem dizer que
+ * agora o trabalho é o oposto: com a lista completa, o segmento escolhido sempre
+ * continua presente e sempre era restaurado (P1 do review do Codex na PR #42, R8.43).
  */
-function populateAnchorSegments(group) {
-  const previous = dom.anchorSegment.value;
+function populateAnchorSegments(group, { keepSelection = true } = {}) {
+  const previous = keepSelection ? dom.anchorSegment.value : '';
   const segments = distinctAnchorSegments(state.records, group);
   populateSelect(dom.anchorSegment, segments, formatAnchorSegment);
   dom.anchorSegment.value = segments.includes(previous) ? previous : '';
@@ -484,7 +489,7 @@ function clearFilters() {
   dom.ptype.value = '';
   dom.buildingOrientation.value = '';
   dom.anchorGroup.value = '';
-  populateAnchorSegments('');
+  populateAnchorSegments('', { keepSelection: false });
   dom.priceMin.value = '';
   dom.priceMax.value = '';
   dom.beds.value = '';

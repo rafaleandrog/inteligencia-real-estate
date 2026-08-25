@@ -341,6 +341,22 @@ await anchorPage.waitForTimeout(400);
 (await anchorPage.inputValue('#anchorSegment')) === ''
   ? pass('trocar de grupo zera segmento incompatível, sem filtro invisível ativo')
   : fail('segmento incompatível sobreviveu à troca de grupo');
+await anchorPage.click('#clearFilters'); await anchorPage.waitForTimeout(400);
+
+// P1 do review do Codex na PR #42: escolher SÓ o segmento, sem tocar no grupo, e
+// limpar. Com a lista completa o segmento continua presente, e a rotina que repopula
+// o select o restaurava — "Limpar filtros" não limpava (R8.43).
+await anchorPage.selectOption('#anchorSegment', 'estacao_metro');
+await anchorPage.waitForTimeout(400);
+const comSegmento = Number((await anchorPage.textContent('#kpiVisible')).replace(/\D/g, ''));
+comSegmento < totalAnchor ? pass(`só o segmento já filtra (${totalAnchor} -> ${comSegmento})`) : fail('segmento sozinho não filtrou');
+await anchorPage.click('#clearFilters'); await anchorPage.waitForTimeout(400);
+(await anchorPage.inputValue('#anchorSegment')) === ''
+  ? pass('"Limpar filtros" zera o segmento escolhido sem grupo')
+  : fail('segmento sobreviveu a "Limpar filtros"');
+Number((await anchorPage.textContent('#kpiVisible')).replace(/\D/g, '')) === totalAnchor
+  ? pass('"Limpar filtros" devolve o conjunto completo')
+  : fail('conjunto não voltou ao total depois de limpar');
 
 // Card de âncora: os campos novos aparecem, e `brand_name` hostil continua texto (R4.4).
 await anchorPage.selectOption('#anchorSegment', 'food_hall');

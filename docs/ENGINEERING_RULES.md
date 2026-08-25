@@ -381,3 +381,18 @@ Cada uma nasce de um erro que aconteceu de verdade.
   Regra geral: quando duas telas descrevem o mesmo dado, o teste é a **igualdade entre elas**,
   não a correção de cada uma isolada. E o corolário de projeto: quem tem cadeia de fallback
   transporta o registro inteiro até o ponto que resolve a cadeia, em vez de achatar antes.
+
+- **R8.43** *(2026-08-25, review do Codex na PR #42)* **"Limpar" não delega a limpeza a uma
+  rotina cujo trabalho é preservar.** `populateAnchorSegments()` existe para repopular o
+  select de segmento quando o grupo muda, **preservando** a seleção se ela ainda fizer
+  sentido — e `clearFilters()` chamava exatamente essa função para "zerar" o campo. Com a
+  lista completa (grupo vazio), o segmento escolhido está sempre presente, então ele era
+  sempre restaurado: **"Limpar filtros" não limpava**, e o mapa continuava filtrado com
+  todos os controles aparentando estar vazios — o pior tipo de filtro invisível, porque a
+  própria interface afirma que não há filtro. Escapou de duas verificações em navegador
+  porque as duas escolhiam o grupo antes do segmento, e a troca de grupo já zerava o campo
+  por outro caminho. Duas lições: uma função de restauração e uma de reset são operações
+  **opostas**, e compartilhá-las exige que a intenção viaje junto (aqui, `keepSelection`);
+  e teste de "limpar" começa pelo estado que só o próprio controle produz, não pelo que
+  outro controle já limpou de brinde. Mesma família de R8.35, pelo lado espelhado: lá uma
+  recarga apagava o que não devia, aqui uma restauração preservava o que não devia.
