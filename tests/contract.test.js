@@ -148,10 +148,15 @@ test('a seção de uma aba termina no próximo heading de qualquer nível', () =
   }
 
   // E o contrato precisa declarar ao menos toda coluna que a semente de fato tem —
-  // o corte por heading não pode ter comido uma tabela legítima. Só vale para as abas
-  // que existem na semente: POLYGONS é criada depois dela, por setupProject().
+  // o corte por heading não pode ter comido uma tabela legítima.
+  //
+  // Só vale para as três abas obrigatórias. RA_PROFILES documenta 10 das suas 38
+  // colunas de propósito: as 28 restantes são indicadores PDAD que a tela não lê, e
+  // documentá-las numa tabela `|` as tornaria cabeçalhos exigidos (a tabela alimenta
+  // `all`, que autoriza um campo a entrar em `expected`). POLYGONS nem existe na
+  // semente.
   const workbook = seed();
-  for (const sheet of SHEETS.filter((s) => workbook[s])) {
+  for (const sheet of REQUIRED_SHEETS) {
     const naoDeclaradas = workbook[sheet].headers.filter((h) => h && !all[sheet].has(h));
     assert.deepEqual(naoDeclaradas, [], `${sheet}: coluna da semente ausente do contrato`);
   }
