@@ -459,10 +459,17 @@ export function normalizePolygon(row) {
   };
 }
 
-/** Linhas de POLYGONS -> lista. Registro sem id é descartado, como em `normalizeAll`. */
+/**
+ * Linhas de POLYGONS -> lista. Registro sem id é descartado, como em `normalizeAll`.
+ *
+ * `Array.isArray` em vez de `rows || []`: esta aba é opcional e o fetch dela pode
+ * falhar de formas que as três obrigatórias não falham — um `/exec` devolvendo objeto
+ * de erro em vez de lista, por exemplo. `for...of` sobre um objeto lança, e uma exceção
+ * aqui derrubaria o carregamento inteiro por causa de uma camada acessória (R2.6).
+ */
 export function normalizePolygons(rows) {
   const out = [];
-  for (const row of rows || []) {
+  for (const row of Array.isArray(rows) ? rows : []) {
     if (!row || typeof row !== 'object') continue;
     const polygon = normalizePolygon(row);
     if (!polygon.id) continue;
@@ -474,7 +481,8 @@ export function normalizePolygons(rows) {
 /** Linhas cruas de `RA_PROFILES` -> mapa `ra_geo_id` -> perfil. Linha sem chave é descartada. */
 export function normalizeRaProfiles(rows) {
   const byId = {};
-  for (const row of rows || []) {
+  // Mesma guarda de `normalizePolygons`: aba opcional, entrada não confiável.
+  for (const row of Array.isArray(rows) ? rows : []) {
     if (!row || typeof row !== 'object') continue;
     const profile = normalizeRaProfile(row);
     if (!profile.ra_geo_id) continue;

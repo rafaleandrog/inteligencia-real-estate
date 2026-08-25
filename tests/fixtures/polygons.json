@@ -1,0 +1,63 @@
+{
+  "_comment": [
+    "Fixture SINTÉTICO. Nenhuma destas geometrias representa território real de Brasília",
+    "nem de lugar nenhum: são quadrados de laboratório, com coordenadas escolhidas para",
+    "serem obviamente artificiais. data/demo.json publica `polygons: []` de propósito —",
+    "polígono inventado num artefato publicado é geografia falsa. Este arquivo existe só",
+    "para exercitar normalizePolygon() ponta a ponta, inclusive nos casos ruins."
+  ],
+  "rows": [
+    {
+      "polygon_id": "fixture-quadrado-ok",
+      "name": "Quadrado de teste",
+      "category": "fixture",
+      "geometry_geojson": "{\"type\":\"Polygon\",\"coordinates\":[[[-47.9,-15.8],[-47.8,-15.8],[-47.8,-15.7],[-47.9,-15.7],[-47.9,-15.8]]]}",
+      "color": "#336699",
+      "description": "Geometria sintética — não representa território real.",
+      "properties_json": "{\"populacao\":1234,\"renda_per_capita\":5678.9}",
+      "source_url": "",
+      "source_file": "fixture.kml",
+      "imported_at": "2026-08-01",
+      "status": "active"
+    },
+    {
+      "polygon_id": "fixture-properties-quebrado",
+      "name": "Propriedades malformadas",
+      "category": "fixture",
+      "geometry_geojson": "{\"type\":\"Polygon\",\"coordinates\":[[[-47.7,-15.8],[-47.6,-15.8],[-47.6,-15.7],[-47.7,-15.8]]]}",
+      "color": "",
+      "description": "properties_json não é JSON válido — não pode derrubar o carregamento.",
+      "properties_json": "{isto nao e json,,,",
+      "source_url": "",
+      "source_file": "fixture.kml",
+      "imported_at": "",
+      "status": "active"
+    },
+    {
+      "polygon_id": "fixture-geometria-quebrada",
+      "name": "Geometria malformada",
+      "category": "fixture",
+      "geometry_geojson": "{\"type\":\"Polygon\", isto tambem nao e json",
+      "color": "#aa3344",
+      "description": "geometry_geojson inválido — normalizePolygon não pode parsear nem lançar.",
+      "properties_json": "",
+      "source_url": "",
+      "source_file": "fixture.kml",
+      "imported_at": "",
+      "status": "inactive"
+    },
+    {
+      "polygon_id": "",
+      "name": "Sem id",
+      "category": "fixture",
+      "geometry_geojson": "{\"type\":\"Polygon\",\"coordinates\":[]}",
+      "color": "",
+      "description": "Linha sem chave primária — tem que ser descartada, sem erro.",
+      "properties_json": "",
+      "source_url": "",
+      "source_file": "",
+      "imported_at": "",
+      "status": "active"
+    }
+  ]
+}

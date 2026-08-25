@@ -43,6 +43,18 @@ export function createFakeSheet(name, rows) {
   return sheet;
 }
 
+/**
+ * O Sheets real estende a grade sozinho: escrever em A1 de uma aba recém-criada por
+ * `insertSheet()` funciona, mesmo que a aba não tenha linha nenhuma. O mock guarda as
+ * linhas num array, então precisa crescer explicitamente — sem isto, `ensureHeaders_()`
+ * numa aba nova (o caminho de `setupProject()` criando RA_PROFILES e POLYGONS) morre
+ * com "Cannot set properties of undefined", que é bug do mock, não do Code.gs.
+ */
+function ensureRow(data, index) {
+  while (data.length <= index) data.push([]);
+  return data[index];
+}
+
 function createRange(data, row, col, numRows, numCols) {
   return {
     getValue() {
@@ -50,7 +62,7 @@ function createRange(data, row, col, numRows, numCols) {
       return cell === undefined ? '' : cell;
     },
     setValue(value) {
-      data[row - 1][col - 1] = value;
+      ensureRow(data, row - 1)[col - 1] = value;
     },
     getValues() {
       const out = [];
@@ -70,8 +82,9 @@ function createRange(data, row, col, numRows, numCols) {
     },
     setValues(values) {
       for (let r = 0; r < numRows; r++) {
+        const line = ensureRow(data, row - 1 + r);
         for (let c = 0; c < numCols; c++) {
-          data[row - 1 + r][col - 1 + c] = values[r][c];
+          line[col - 1 + c] = values[r][c];
         }
       }
     },
