@@ -6,18 +6,29 @@ Use uma planilha separada para o dataset público. Não misture dados privados, 
 
 ## 2. Crie/importa as abas
 
-As três abas exigidas na V1 são:
+As três abas exigidas são:
 
 - `LISTINGS`
 - `DEVELOPMENTS`
 - `ANCHORS`
 
-Abas já previstas para evolução:
+Abas opcionais:
 
 - `PRIMARY_OFFERS`
 - `IVV_MONTHLY`
 - `IVV_REGION`
-- `RA_PROFILES`
+- `RA_PROFILES` — **gerenciada** a partir da v2.0.0: se não existir, `setupProject()` cria
+- `POLYGONS` — **gerenciada**: contornos de KML/KMZ, criada por `setupProject()`
+
+Não é preciso criar coluna à mão. A partir do Apps Script **v2.0.0**, **Configurar projeto**
+provisiona de forma **aditiva** toda coluna que falta nas abas do contrato: cria a coluna nova no
+fim, **preserva as existentes na posição original** e não escreve em célula nenhuma de dado. É
+assim que uma planilha semeada antes da v2.0.0 ganha `regularization_status`, `sales_stage`,
+`group`, `segment` e as demais — a lista completa está em **Provisionamento pós-semente**, em
+[`DATA_CONTRACT.md`](DATA_CONTRACT.md).
+
+Rodar **Configurar projeto** de novo é seguro e é o procedimento normal depois de cada atualização
+do `Code.gs`: a segunda execução não altera nada.
 
 ## 3. Migre o modelo atual
 
@@ -67,6 +78,21 @@ window.APP_CONFIG = {
 
 Mais direto que os CSVs: importe [`migration/imob-intelligence-backend.xlsx`](../migration/),
 que já traz as 11 abas com os cabeçalhos corretos. Ver [`migration/README.md`](../migration/README.md).
+
+## 6.1 Importar polígonos de KML/KMZ (aba `POLYGONS`)
+
+A partir da v2.0.0 o mapa aceita contornos vindos de arquivo KML ou KMZ:
+
+1. Suba o arquivo no Google Drive, na mesma conta da planilha.
+2. Copie o ID do arquivo (o trecho entre `/d/` e `/view` na URL).
+3. Na planilha, menu **Imob Intelligence → Importar polígonos de KML/KMZ**, cole o ID.
+
+O importador converte cada *placemark* em uma linha de `POLYGONS` com a geometria em GeoJSON,
+as propriedades do KML em `properties_json` e um `polygon_id` derivado por hash **estável** do
+conteúdo. Reimportar o mesmo arquivo **atualiza** as linhas em vez de duplicá-las.
+
+Anel aberto, com menos de 4 posições ou com menos de 3 pontos distintos é rejeitado com erro
+legível — a geometria não entra pela metade.
 
 ## 7. Valide antes de publicar
 

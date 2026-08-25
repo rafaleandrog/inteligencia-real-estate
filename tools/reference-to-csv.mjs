@@ -63,7 +63,18 @@ export function toCsv(headers, rows) {
   return `${lines.join('\n')}\n`;
 }
 
-/** Aba de saída -> como obter suas linhas a partir do objeto do V3. */
+/**
+ * Aba de saída -> como obter suas linhas a partir do objeto do V3.
+ *
+ * Estes cabeçalhos são, de propósito, os da **semente** (schema da v1.0.0), não os do
+ * contrato em vigor: o HTML de referência do V3 é anterior à v2.0.0 e não tem dado
+ * nenhum para as colunas novas. Acrescentá-las aqui só produziria coluna vazia com
+ * aparência de coluna preenchida.
+ *
+ * Quem importa um CSV gerado por este script chega ao schema atual pelo menu
+ * **Imob Intelligence → Configurar projeto**, que provisiona o que falta de forma
+ * aditiva. O delta está em "Provisionamento pós-semente", em docs/DATA_CONTRACT.md.
+ */
 const SHEETS = {
   LISTINGS: {
     headers: ['listing_id', 'portal', 'transaction_type', 'title', 'source_url', 'source_url_type',

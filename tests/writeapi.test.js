@@ -487,3 +487,46 @@ test('VERSION_CONFLICT continua valendo para mudança de dado feita por outra pe
   assert.equal(response.ok, false);
   assert.equal(response.error.code, 'VERSION_CONFLICT');
 });
+
+// Risco de maior severidade levantado na revisão do Code.gs v2.0.0: `applyUpdate_()`
+// ignora coluna inexistente em silêncio (`if (col === -1) return;`). Sem o
+// provisionamento rodando antes, uma edição administrativa num campo novo devolveria
+// `ok: true`, gravaria CHANGE_LOG, subiria a versão — e não guardaria nada. É a pior
+// falha possível numa tela de edição: confirma o salvamento e perde o dado.
+//
+// O teste acima prova que a coluna é criada; este prova que o valor **chega nela** na
+// mesma requisição. São afirmações diferentes, e é a segunda que fecha o risco.
+test('editar um campo cuja coluna ainda não existe grava o valor, não devolve ok vazio', () => {
+  const { context, sheets } = setup({
+    sheets: {
+      LISTINGS: [
+        ['listing_id', 'title', 'locality'],
+        ['LIST_1', 'Apartamento à venda', 'Asa Norte'],
+      ],
+    },
+  });
+
+  const response = readJsonOutput(context.doPost({
+    postData: {
+      contents: JSON.stringify({
+        token: 'secret-token',
+        action: 'update',
+        sheet: 'LISTINGS',
+        id: 'LIST_1',
+        expected_version: '1',
+        fields: { regularization_status: 'regularizado' },
+      }),
+    },
+  }));
+
+  assert.equal(response.ok, true, `esperado sucesso, veio ${JSON.stringify(response.error)}`);
+
+  const headers = sheets.LISTINGS._rows[0];
+  const col = headers.indexOf('regularization_status');
+  assert.notEqual(col, -1, 'a coluna nova precisa ter sido criada');
+  assert.equal(
+    sheets.LISTINGS._rows[1][col],
+    'regularizado',
+    'a resposta disse ok mas o valor não chegou na planilha',
+  );
+});

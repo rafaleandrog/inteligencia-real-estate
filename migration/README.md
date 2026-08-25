@@ -26,6 +26,25 @@ inicializar a planilha de uma vez, sem migração manual.
 As três abas operacionais vêm com cabeçalho e sem linhas — é o Apps Script que as preenche.
 `setupProject()` deve completá-las sem sobrescrever o que já existir.
 
+## Esta semente está deliberadamente atrás do schema
+
+O arquivo reproduz o schema da **v1.0.0** do Apps Script. O backend está na v2.0.0, que acrescentou
+colunas às três abas obrigatórias e a aba `POLYGONS`, que aqui **não existe**. Isso é intencional,
+não esquecimento:
+
+- A semente é um bootstrap de uma vez só. Reexportá-la a cada mudança de schema dobraria dado de
+  produção dentro de um artefato de migração — o fluxo `Sheet → commit` que
+  [`docs/ARCHITECTURE.md`](../docs/ARCHITECTURE.md) proíbe.
+- Não é preciso: `setupProject()` provisiona as colunas que faltam de forma aditiva, logo depois da
+  importação. Uma planilha semeada por este `.xlsx` chega ao schema em vigor pelo menu, não por
+  edição manual.
+
+O delta exato entre este arquivo e o schema atual está na tabela **Provisionamento pós-semente** de
+[`docs/DATA_CONTRACT.md`](../docs/DATA_CONTRACT.md), e é verificado por
+`tests/setup-provisioning.test.js`, que executa o `setupProject()` real sobre estes cabeçalhos e
+afirma que ele cria **exatamente** aquela lista — nada a mais. No dia em que alguém reexportar a
+planilha, aquela tabela encolhe e o teste obriga a lista a encolher junto.
+
 ## Como importar
 
 Google Drive → **Novo** → **Upload de arquivo** → selecione o `.xlsx` → abrir com Google Planilhas.
