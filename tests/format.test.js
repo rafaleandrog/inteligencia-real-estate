@@ -3,7 +3,8 @@ import assert from 'node:assert/strict';
 import {
   formatBRL, formatBRLCompact, formatM2, formatPriceM2, formatNumber, formatDate,
   escapeHtml, safeExternalUrl, hostnameOf, formatPropertyType, formatSpatialPrecision,
-  formatBuildingOrientation,
+  formatBuildingOrientation, formatAnchorGroup, formatAnchorSegment, formatAnchorCategory,
+  anchorColor, anchorLegendColor, anchorLegendEntries, ANCHOR_FALLBACK_COLOR,
 } from '../src/format.js';
 
 test('ausência vira travessão, não zero', () => {
@@ -98,4 +99,153 @@ test('formatBuildingOrientation traduz o vocabulário fechado (issue #31)', () =
   assert.equal(formatBuildingOrientation(''), '');
   assert.equal(formatBuildingOrientation(null), '');
   assert.equal(formatBuildingOrientation('valor_desconhecido'), '', 'sem fallback humanizado: não é vocabulário aberto');
+});
+
+// --- Âncoras: grupo, segmento e cor (issues #26, #39) ----------------------
+
+test('formatAnchorGroup traduz o enum e humaniza valor inesperado (issue #26)', () => {
+  assert.equal(formatAnchorGroup('infraestrutura'), 'Infraestrutura');
+  assert.equal(formatAnchorGroup('comercio_servico'), 'Comércio e serviço');
+
+  // Ausência é ausência: quem renderiza omite a linha em vez de escrever travessão.
+  assert.equal(formatAnchorGroup(''), '');
+  assert.equal(formatAnchorGroup(null), '');
+  assert.equal(formatAnchorGroup(undefined), '');
+
+  // `group` é enum fechado NO CONTRATO, mas a planilha é pública e editável: valor
+  // fora do enum vira texto legível, nunca o slug cru e nunca sumiço silencioso.
+  assert.equal(formatAnchorGroup('lazer_urbano'), 'Lazer urbano');
+  assert.equal(formatAnchorGroup('  INFRAESTRUTURA  '), 'Infraestrutura');
+});
+
+test('formatAnchorSegment cobre os 12 inferidos, os digitados à mão e o desconhecido', () => {
+  // Inferidos pelo backend (Code.gs, inferAnchorSegment_).
+  for (const [slug, label] of [
+    ['escola', 'Escola'], ['universidade', 'Universidade'], ['supermercado', 'Supermercado'],
+    ['atacado', 'Atacado'], ['hospital', 'Hospital'], ['laboratorio', 'Laboratório'],
+    ['clinica', 'Clínica'], ['estacao_metro', 'Estação de metrô'],
+    ['estacao_trem', 'Estação de trem'], ['terminal_rodoviario', 'Terminal rodoviário'],
+    ['aeroporto', 'Aeroporto'], ['ponto_onibus', 'Ponto de ônibus'],
+  ]) assert.equal(formatAnchorSegment(slug), label, slug);
+
+  // Digitados à mão na planilha.
+  assert.equal(formatAnchorSegment('department_store'), 'Loja de departamento');
+  assert.equal(formatAnchorSegment('material_construcao'), 'Material de construção');
+  assert.equal(formatAnchorSegment('posto_combustivel'), 'Posto de combustível');
+
+  // Vocabulário ABERTO: termo que ninguém previu não pode vazar o slug para a tela
+  // (mesma regra de formatSpatialPrecision, issue #21).
+  assert.equal(formatAnchorSegment('food_hall'), 'Food hall');
+  assert.equal(formatAnchorSegment('coworking'), 'Coworking');
+  assert.equal(formatAnchorSegment(''), '');
+});
+
+test('anchorColor: segmento vence categoria, categoria vence o verde padrão (issue #26)', () => {
+  const anchor = (over) => ({ kind: 'anchor', ...over });
+
+  // Segmento reconhecido manda, mesmo com categoria também reconhecida.
+  const porSegmento = anchorColor(anchor({ segment: 'hospital', category: 'escola' }));
+  assert.notEqual(porSegmento, ANCHOR_FALLBACK_COLOR);
+  assert.notEqual(porSegmento, anchorColor(anchor({ category: 'escola' })));
+
+  // Sem segmento, a categoria ainda colore — nenhuma âncora do dataset atual tem
+  // segmento preenchido, então este é o caminho que roda hoje em produção.
+  assert.equal(anchorColor(anchor({ category: 'escola' })), anchorColor(anchor({ segment: 'escola' })));
+
+  // Segmento desconhecido cai para a categoria, não para o verde padrão.
+  assert.equal(
+    anchorColor(anchor({ segment: 'food_hall', category: 'saude' })),
+    anchorColor(anchor({ category: 'saude' })),
+  );
+
+  // Sem nada reconhecível, verde padrão — nunca `undefined` virando marcador preto.
+  assert.equal(anchorColor(anchor({})), ANCHOR_FALLBACK_COLOR);
+  assert.equal(anchorColor(anchor({ segment: 'food_hall', category: 'algo_novo' })), ANCHOR_FALLBACK_COLOR);
+
+  // Quem não é âncora devolve null: listing/development pegam a cor do CSS da camada,
+  // e devolver uma cor aqui sobrescreveria essa codificação.
+  assert.equal(anchorColor({ kind: 'listing', segment: 'hospital' }), null);
+  assert.equal(anchorColor({ kind: 'development', segment: 'alto padrão' }), null);
+  assert.equal(anchorColor(null), null);
+});
+
+test('anchorLegendColor usa exatamente a mesma cadeia do marcador', () => {
+  // Legenda e mapa divergirem é o bug clássico de legenda: mesma função, mesma cor.
+  for (const entry of [
+    { segment: 'estacao_metro', category: '' },
+    { segment: '', category: 'mobilidade' },
+    { segment: '', category: '' },
+    { segment: 'coworking', category: '' },
+  ]) {
+    assert.equal(anchorLegendColor(entry), anchorColor({ kind: 'anchor', ...entry }));
+  }
+});
+
+test('cores de âncora são hex válidos e o padrão bate com --anchor do CSS', () => {
+  const slugs = [
+    'escola', 'universidade', 'livraria', 'hospital', 'clinica', 'laboratorio',
+    'supermercado', 'atacado', 'posto_combustivel', 'estacao_metro', 'estacao_trem',
+    'aeroporto', 'terminal_rodoviario', 'ponto_onibus', 'department_store', 'vestuario',
+    'moveis', 'artigos_esportivos', 'loja_pet', 'material_construcao', 'cinema',
+    'academia', 'restaurantes', 'hotelaria',
+  ];
+  for (const slug of slugs) {
+    const color = anchorColor({ kind: 'anchor', segment: slug });
+    assert.match(color, /^#[0-9a-f]{6}$/, `${slug} -> ${color}`);
+    assert.notEqual(color, ANCHOR_FALLBACK_COLOR, `${slug} caiu no fallback`);
+  }
+  // O verde padrão precisa continuar igual a `--anchor` em assets/styles.css: é a
+  // mesma cor do ponto "Âncoras" na lista de camadas.
+  assert.equal(ANCHOR_FALLBACK_COLOR, '#397d53');
+});
+
+test('formatAnchorCategory continua legível para categoria fora do vocabulário', () => {
+  assert.equal(formatAnchorCategory('supermercado_atacarejo'), 'Supermercado / atacarejo');
+  assert.equal(formatAnchorCategory('parque_equipamento_publico'), 'Parque / equipamento público');
+  assert.equal(formatAnchorCategory('coisa_nova'), 'Coisa nova');
+  assert.equal(formatAnchorCategory(''), '');
+});
+
+test('anchorLegendEntries resolve a MESMA cor que o marcador (regressão do PR A)', () => {
+  // Reproduzido no navegador: uma âncora `segment: "food_hall"` + `category: "escola"`
+  // sai âmbar no mapa, porque a cor cai do segmento desconhecido para a categoria.
+  // A legenda tem que sair âmbar também, ou aponta para uma cor que ninguém usa.
+  const entry = { segment: 'food_hall', category: 'escola', count: 1 };
+  const [linha] = anchorLegendEntries([entry]);
+  assert.equal(linha.label, 'Food hall');
+  assert.equal(linha.color, anchorColor({ kind: 'anchor', ...entry }));
+  assert.notEqual(linha.color, ANCHOR_FALLBACK_COLOR);
+});
+
+test('anchorLegendEntries funde o que é a mesma linha e separa o que é cor diferente', () => {
+  // Mesmo rótulo e mesma cor: uma linha só, com as contagens somadas.
+  const fundidas = anchorLegendEntries([
+    { segment: 'escola', category: 'escola', count: 2 },
+    { segment: 'escola', category: '', count: 3 },
+  ]);
+  assert.deepEqual(fundidas.map((e) => e.label), ['Escola']);
+  assert.equal(fundidas[0].count, 5);
+
+  // Mesmo rótulo, cores diferentes: DUAS linhas. São dois tons no mapa, e esconder um
+  // deixaria marcador sem legenda.
+  const separadas = anchorLegendEntries([
+    { segment: 'food_hall', category: 'escola', count: 1 },
+    { segment: 'food_hall', category: '', count: 1 },
+  ]);
+  assert.equal(separadas.length, 2);
+  assert.deepEqual(separadas.map((e) => e.label), ['Food hall', 'Food hall']);
+  assert.notEqual(separadas[0].color, separadas[1].color);
+});
+
+test('anchorLegendEntries rotula a âncora sem classificação e ordena em pt-BR', () => {
+  const entries = anchorLegendEntries([
+    { segment: '', category: '', count: 1 },
+    { segment: 'universidade', category: '', count: 1 },
+    { segment: '', category: 'escola', count: 1 },
+    { segment: 'academia', category: '', count: 1 },
+  ]);
+  assert.deepEqual(entries.map((e) => e.label), ['Academia', 'Escola', 'Sem classificação', 'Universidade']);
+  assert.equal(entries.find((e) => e.label === 'Sem classificação').color, ANCHOR_FALLBACK_COLOR);
+  assert.deepEqual(anchorLegendEntries([]), []);
+  assert.deepEqual(anchorLegendEntries(undefined), []);
 });

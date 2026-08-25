@@ -81,7 +81,10 @@
           <span class="dot dot-anchor"></span> Âncoras
           <span class="count" id="countAnchor">0</span></label></li>
       </ul>
-      <ul class="anchor-categories" id="anchorCategories" hidden></ul>
+      <!-- Legenda em dois níveis: grupo (Infraestrutura × Comércio e serviço) e,
+           dentro dele, o segmento que colore o marcador. Preenchida por src/app.js a
+           partir das âncoras carregadas — issue #26. -->
+      <div class="anchor-legend" id="anchorLegend" hidden></div>
     </section>
 
     <section class="field-group">
@@ -96,6 +99,12 @@
 
       <label class="field" for="ptype">Tipo de imóvel</label>
       <select id="ptype"><option value="">Todos</option></select>
+
+      <label class="field" for="anchorGroup">Grupo de âncora</label>
+      <select id="anchorGroup"><option value="">Todos</option></select>
+
+      <label class="field" for="anchorSegment">Segmento de âncora</label>
+      <select id="anchorSegment"><option value="">Todos</option></select>
 
       <label class="field" for="buildingOrientation">Vertical / horizontal</label>
       <select id="buildingOrientation">
