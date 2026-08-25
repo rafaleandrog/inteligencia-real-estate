@@ -1,0 +1,37 @@
+# Labels gerenciados automaticamente — edite aqui e execute o workflow setup-labels
+
+- name: "priority:high"
+  color: "d73a4a"
+  description: "Bloqueia funcionalidade principal ou está quebrando o app"
+
+- name: "priority:medium"
+  color: "e4a11b"
+  description: "Importante mas o app funciona sem ela"
+
+- name: "priority:low"
+  color: "0075ca"
+  description: "Refinamento, cosmético, nice-to-have"
+
+- name: "type:bug"
+  color: "b60205"
+  description: "Comportamento incorreto ou erro"
+
+- name: "type:feature"
+  color: "0e8a16"
+  description: "Nova funcionalidade"
+
+- name: "type:refactor"
+  color: "6f42c1"
+  description: "Reorganização interna sem mudança de comportamento"
+
+- name: "type:docs"
+  color: "cfd3d7"
+  description: "Documentação, comentários, README"
+
+- name: "type:chore"
+  color: "fef2c0"
+  description: "Configuração, dependências, CI, scripts"
+
+- name: "logged-by-claude"
+  color: "000000"
+  description: "Issue registrada automaticamente pelo Claude Code"
