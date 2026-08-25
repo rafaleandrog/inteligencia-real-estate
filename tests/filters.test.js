@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
   median, applyFilters, matchesFilters, computeKpis, createFilterState,
-  distinctLocalities, distinctPropertyTypes, normalizeSearchText, LAYERS,
+  distinctLocalities, distinctPropertyTypes, distinctRegions, normalizeSearchText, LAYERS,
 } from '../src/filters.js';
 
 /** Registro de teste com os campos que os filtros examinam. */
@@ -121,6 +121,31 @@ test('listas de opções vêm ordenadas e sem repetição', () => {
   ];
   assert.deepEqual(distinctLocalities(records), ['Asa Norte', 'Lago Sul', 'Sudoeste']);
   assert.deepEqual(distinctPropertyTypes(records), ['apartamento'], 'só anúncios têm tipo');
+});
+
+test('distinctRegions devolve o código bruto de ra_geo_id, ordenado e sem repetição (issue #33)', () => {
+  const records = [
+    rec({ ra_geo_id: 'RA2026_RA-III' }), rec({ ra_geo_id: 'RA2026_RA-I' }),
+    rec({ ra_geo_id: 'RA2026_RA-I' }), rec({ ra_geo_id: '' }),
+    rec({ kind: 'anchor', ra_geo_id: 'RA2026_RA-II' }),
+  ];
+  assert.deepEqual(distinctRegions(records), ['RA2026_RA-I', 'RA2026_RA-II', 'RA2026_RA-III']);
+});
+
+test('filtro de Região Administrativa restringe por ra_geo_id, nos três tipos de registro (issue #33)', () => {
+  const state = { ...createFilterState(), ra: 'RA2026_RA-I' };
+  assert.equal(matchesFilters(rec({ ra_geo_id: 'RA2026_RA-I' }), state), true);
+  assert.equal(matchesFilters(rec({ ra_geo_id: 'RA2026_RA-II' }), state), false);
+  assert.equal(matchesFilters(rec({ kind: 'anchor', ra_geo_id: 'RA2026_RA-I' }), state), true);
+  assert.equal(matchesFilters(rec({ ra_geo_id: '' }), state), false, 'registro sem RA some quando o filtro está ativo');
+});
+
+test('filtro vertical/horizontal exclui registro sem a classificação quando ativo (issue #31)', () => {
+  const state = { ...createFilterState(), buildingOrientation: 'vertical' };
+  assert.equal(matchesFilters(rec({ building_orientation: 'vertical' }), state), true);
+  assert.equal(matchesFilters(rec({ building_orientation: 'horizontal' }), state), false);
+  assert.equal(matchesFilters(rec({ building_orientation: null }), state), false);
+  assert.equal(matchesFilters(rec({ kind: 'anchor' }), state), false, 'âncora não tem a classificação');
 });
 
 test('applyFilters tolera entrada ausente', () => {

@@ -133,12 +133,18 @@ h1, h2 { margin: 0; font-size: 1rem; }
 }
 #search::placeholder { color: #ffffffa8; }
 #search:focus {
+  /* Fundo e texto fixos, não themed: o campo sempre vira branco sólido ao
+     focar (para ler bem sobre o topo verde-escuro, que também não muda de
+     tema). `color: var(--ink)` quebrava em modo escuro — --ink vira quase
+     branco lá, texto digitado ficava branco sobre fundo branco (review do
+     PR #40). */
   background: #fff;
-  color: var(--ink);
+  color: #172019;
   outline: none;
   border-color: var(--brand2);
 }
-#search:focus::placeholder { color: var(--muted); }
+/* Mesmo motivo do bloco acima: fundo fixo, cor fixa, não themed. */
+#search:focus::placeholder { color: #69736d; }
 
 .source-badge {
   margin-left: auto;
@@ -305,6 +311,16 @@ h1, h2 { margin: 0; font-size: 1rem; }
   color: var(--muted);
   margin: 10px 0 4px;
 }
+
+/* Nota de indicadores da RA selecionada (issue #34). */
+.field-note {
+  margin: 4px 0 0;
+  font-size: 11px;
+  line-height: 1.4;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+.field-note[hidden] { display: none; }
 
 select, input[type="number"] {
   width: 100%;
@@ -563,7 +579,12 @@ select:focus, input[type="number"]:focus {
 .marker { stroke: #fff; stroke-width: 2; fill-opacity: .9; }
 .marker-listing { fill: var(--listing); }
 .marker-development { fill: var(--development); }
-.marker-anchor { fill: var(--anchor); }
+/* Sem regra de `fill` para `.marker-anchor`, de propósito: uma regra de classe
+   sempre vence o atributo `fill` que o Leaflet escreve via `setAttribute`
+   (issue #22/#26, review do PR #40) — com a regra aqui, TODA âncora saía verde,
+   ignorando silenciosamente a cor por categoria. `src/app.js` agora passa
+   `fillColor` explícito para toda âncora, categoria conhecida ou não
+   (`ANCHOR_FALLBACK_COLOR`, mesmo verde que estava aqui: #397d53). */
 .marker-selected { stroke: var(--brand); stroke-width: 3; }
 
 .leaflet-container { font: inherit; background: #e8ebe6; }

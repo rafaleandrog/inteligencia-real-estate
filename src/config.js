@@ -52,19 +52,30 @@ window.APP_CONFIG = {
   metaSheet: 'APP_META',
 
   /**
+   * Aba de indicadores por Região Administrativa (issue #33/#34). Opcional: ausência
+   * ou falha ao buscá-la vira aviso, nunca erro (R2.5) — o filtro por RA (#33) segue
+   * funcionando com o código bruto de `ra_geo_id` como rótulo, só sem o
+   * enriquecimento de nome/população/densidade de #34.
+   */
+  raProfilesSheet: 'RA_PROFILES',
+
+  /**
    * Abas previstas para as próximas fases.
    *
-   * A tela da V1 **não lê nenhuma delas**, e por isso não são buscadas no
-   * carregamento: seriam quatro requisições por abertura de página para dado que
-   * ninguém renderiza. Esta lista existe como declaração do que a planilha contém,
-   * e quem verifica a presença delas é o `validateAll()` do Apps Script, que roda
-   * do lado da planilha e registra o resultado em DATA_QUALITY.
+   * A tela da V1 não lê PRIMARY_OFFERS/IVV_MONTHLY/IVV_REGION, e por isso não são
+   * buscadas no carregamento: seriam requisições por abertura de página para dado
+   * que ninguém renderiza. Esta lista existe como declaração do que a planilha
+   * contém, e quem verifica a presença delas é o `validateAll()` do Apps Script, que
+   * roda do lado da planilha e registra o resultado em DATA_QUALITY.
    *
-   * Quando uma delas entrar na interface, ela é buscada aqui e sua ausência vira
-   * aviso — nunca erro, porque a aplicação não pode cair por causa de aba futura
+   * RA_PROFILES saiu daqui porque passou a ser buscada de verdade — ver
+   * `raProfilesSheet` acima.
+   *
+   * Quando uma das restantes entrar na interface, ela é buscada aqui e sua ausência
+   * vira aviso — nunca erro, porque a aplicação não pode cair por causa de aba futura
    * vazia (R2.5).
    */
-  optionalSheets: ['PRIMARY_OFFERS', 'IVV_MONTHLY', 'IVV_REGION', 'RA_PROFILES'],
+  optionalSheets: ['PRIMARY_OFFERS', 'IVV_MONTHLY', 'IVV_REGION'],
 
   /** Centro inicial do mapa: Distrito Federal. */
   defaultCenter: [-15.78, -47.93],

@@ -206,13 +206,20 @@ await metaPage.waitForTimeout(1200);
   ? pass('com APP_META publicada, a seção aparece')
   : fail('seção de metadados não apareceu');
 
+// "Atualizado em" é o único campo de resumo público (issue #19) — fica fora do
+// <details> "Detalhes técnicos", no próprio #datasetMetaSummary.
+const summary = await metaPage.textContent('#datasetMetaSummary');
+/atualizado em/i.test(summary || '') ? pass('resumo mostra a data de atualização') : fail('resumo ausente: ' + summary);
+/19\/08\/2026/.test(summary || '') ? pass('data em formato brasileiro') : fail('data não formatada: ' + summary);
+
+// O resto (versão do dataset, status de validação etc.) é jargão de pipeline e
+// fica recolhido dentro do <details>, longe do resumo público.
 const metaRows = await metaPage.$$eval('#datasetMetaList dt', (nodes) => nodes.map((n) => n.textContent));
-metaRows.includes('Atualizado em') ? pass('mostra a data de atualização') : fail('data ausente: ' + metaRows);
+metaRows.includes('Atualizado em') ? fail('data não pode duplicar no bloco técnico: ' + metaRows) : pass('resumo não duplica no bloco técnico');
 metaRows.includes('Dataset') ? pass('mostra a versão do dataset') : fail('versão ausente');
 metaRows.includes('Qualidade') ? pass('mostra o estado da validação') : fail('qualidade ausente');
 
 const dataFormatada = await metaPage.$$eval('#datasetMetaList dd', (n) => n.map((x) => x.textContent));
-dataFormatada.includes('19/08/2026') ? pass('data em formato brasileiro') : fail('data não formatada: ' + dataFormatada);
 dataFormatada.includes('v12') ? pass('versão prefixada') : fail('versão sem prefixo');
 
 // A legenda existe para o leitor não confundir o total publicado com o que os

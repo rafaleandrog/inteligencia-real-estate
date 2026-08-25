@@ -121,6 +121,14 @@ export function formatPropertyType(value) {
   return spaced.charAt(0).toUpperCase() + spaced.slice(1);
 }
 
+/** Rótulo de `building_orientation` (issue #31). Valor fora do vocabulário some, não quebra. */
+const BUILDING_ORIENTATION_LABELS = { vertical: 'Vertical', horizontal: 'Horizontal' };
+
+export function formatBuildingOrientation(value) {
+  const key = String(value || '').trim().toLowerCase();
+  return BUILDING_ORIENTATION_LABELS[key] || '';
+}
+
 /**
  * Vocabulário conhecido de `coordinate_precision`/`confidence_flag`/`coordinate_status`,
  * documentado em `docs/DATA_CONTRACT.md`. O contrato é explícito: esse vocabulário

@@ -17,6 +17,8 @@ export function createFilterState() {
     priceMin: null,
     priceMax: null,
     bedrooms: null,
+    ra: '',
+    buildingOrientation: '',
     layers: new Set(LAYERS),
   };
 }
@@ -70,6 +72,15 @@ export function matchesFilters(record, state) {
   }
 
   if (state.locality && record.locality !== state.locality) return false;
+
+  // Região Administrativa (issue #33): existe nos três tipos de registro, então não
+  // restringe camada como o filtro de tipo de imóvel faz.
+  if (state.ra && record.ra_geo_id !== state.ra) return false;
+
+  // Vertical/horizontal (issue #31): hoje só anúncios têm o campo preenchido
+  // (derivado de property_type); empreendimentos aguardam coluna do backend.
+  // Registro sem o campo é excluído quando o filtro está ativo, mesma regra geral.
+  if (state.buildingOrientation && record.building_orientation !== state.buildingOrientation) return false;
 
   // Tipo de imóvel só existe em anúncios. Filtrar por tipo esconde as outras camadas,
   // que é o comportamento esperado: o usuário está procurando um tipo de imóvel.
@@ -143,5 +154,17 @@ export function distinctLocalities(records) {
 export function distinctPropertyTypes(records) {
   const set = new Set();
   for (const r of records || []) if (r.kind === 'listing' && r.property_type) set.add(r.property_type);
+  return [...set].sort((a, b) => a.localeCompare(b, 'pt-BR'));
+}
+
+/**
+ * Códigos de Região Administrativa (`ra_geo_id`) distintos presentes nos dados
+ * (issue #33). Devolve o código bruto, não o nome — rotular com `RA_PROFILES` é
+ * responsabilidade de quem renderiza (`src/app.js`), para este módulo continuar
+ * puro e sem depender de outra fonte além dos próprios registros.
+ */
+export function distinctRegions(records) {
+  const set = new Set();
+  for (const r of records || []) if (r.ra_geo_id) set.add(r.ra_geo_id);
   return [...set].sort((a, b) => a.localeCompare(b, 'pt-BR'));
 }

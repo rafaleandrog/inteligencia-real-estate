@@ -11,11 +11,12 @@ import { loadDataset, flattenEntities } from './data.js';
 import { isApproximateLocation, appMetaRows } from './normalize.js';
 import {
   applyFilters, computeKpis, createFilterState, distinctLocalities,
-  distinctPropertyTypes, LAYERS,
+  distinctPropertyTypes, distinctRegions, LAYERS,
 } from './filters.js';
 import {
   formatBRL, formatBRLCompact, formatM2, formatNumber, formatPriceM2, formatDate,
-  formatPropertyType, formatSpatialPrecision, safeExternalUrl, hostnameOf,
+  formatPropertyType, formatSpatialPrecision, formatBuildingOrientation, safeExternalUrl,
+  hostnameOf,
 } from './format.js';
 
 const CONFIG = window.APP_CONFIG || {};
@@ -24,6 +25,8 @@ const el = (id) => document.getElementById(id);
 
 const dom = {
   search: el('search'), locality: el('locality'), ptype: el('ptype'),
+  raFilter: el('raFilter'), raProfileNote: el('raProfileNote'),
+  buildingOrientation: el('buildingOrientation'),
   priceMin: el('priceMin'), priceMax: el('priceMax'), beds: el('beds'),
   clearFilters: el('clearFilters'), layers: el('layersSection'),
   kpiVisible: el('kpiVisible'), kpiMedian: el('kpiMedian'), kpiNote: el('kpiNote'),
@@ -42,6 +45,10 @@ const state = {
   filters: createFilterState(),
   markers: new Map(),
   selectedId: null,
+  // Indicadores por RA (issue #33/#34): mapa ra_geo_id -> perfil, vazio quando
+  // RA_PROFILES está ausente/indisponível — o filtro de RA continua funcionando,
+  // só sem nome/população/densidade.
+  raProfiles: {},
 };
 
 let map = null;
@@ -82,11 +89,23 @@ const ANCHOR_CATEGORY_COLORS = {
   universidade: '#8a7a2c',
 };
 
-/** Cor de preenchimento de uma âncora por categoria; `null` deixa a cor padrão da camada. */
+/**
+ * Verde padrão de âncora sem categoria reconhecida. Precisa bater com `--anchor`
+ * em `assets/styles.css` — não dá para referenciar a variável CSS aqui porque o
+ * Leaflet escreve `fill` como atributo de apresentação SVG (`setAttribute`), que
+ * uma regra de folha de estilo (`.marker-anchor { fill: ... }`) sempre vence,
+ * mesmo vindo de JS. Por isso essa regra de CSS foi removida (review do PR #40:
+ * antes disso, TODA âncora saía verde, porque a regra da classe sobrepunha
+ * silenciosamente qualquer `fillColor` passado ao marcador) e a cor — inclusive a
+ * de fallback — passa a vir sempre daqui.
+ */
+const ANCHOR_FALLBACK_COLOR = '#397d53';
+
+/** Cor de preenchimento de uma âncora: por categoria quando reconhecida, senão o fallback. */
 function anchorCategoryColor(record) {
   if (record.kind !== 'anchor') return null;
   const key = String(record.category || '').trim().toLowerCase();
-  return ANCHOR_CATEGORY_COLORS[key] || null;
+  return ANCHOR_CATEGORY_COLORS[key] || ANCHOR_FALLBACK_COLOR;
 }
 
 /** Rótulo humano de uma categoria de âncora; categoria fora do vocabulário conhecido
@@ -131,8 +150,9 @@ function renderMarkers(records) {
       color: '#fff',
       weight: 2,
       fillOpacity: 0.9,
-      // Categoria conhecida sobrepõe a cor padrão da camada (definida em CSS por
-      // `marker-anchor`); sem categoria reconhecida, mantém o verde único de sempre.
+      // listing/development continuam pegando a cor de `assets/styles.css`
+      // (`.marker-listing`/`.marker-development`); âncora sempre recebe `fillColor`
+      // explícito (categoria ou fallback) — ver nota de `ANCHOR_FALLBACK_COLOR`.
       ...(categoryColor ? { fillColor: categoryColor } : {}),
     });
 
@@ -240,7 +260,10 @@ function buildDetailBody(record) {
 
   if (record.kind === 'listing') {
     addRow(dl, 'Tipo', formatPropertyType(record.property_type));
+    // Derivado de Tipo, sem depender do backend (issue #31).
+    addRow(dl, 'Classificação', formatBuildingOrientation(record.building_orientation));
     addRow(dl, 'Localidade', record.locality);
+    addRow(dl, 'Endereço', record.address);
     addRow(dl, 'Preço pedido', formatBRL(record.price));
     addRow(dl, 'Área', formatM2(record.area_m2));
     addRow(dl, 'Preço/m²', formatPriceM2(record.price_m2));
@@ -249,12 +272,22 @@ function buildDetailBody(record) {
     addRow(dl, 'Vagas', record.parking_spaces === null ? '' : formatNumber(record.parking_spaces));
     addRow(dl, 'Condomínio', formatBRL(record.condo_fee_brl));
     addRow(dl, 'IPTU', formatBRL(record.iptu_brl));
+    // `regularization_status` NÃO é exibido aqui de propósito: a issue #32 deixa
+    // em aberto se é público ou só administrativo, e essa decisão precisa ser
+    // tomada antes de qualquer exibição — não quando o backend publicar a coluna
+    // (review do PR #40). O campo continua lido em src/normalize.js.
     addRow(dl, 'Portal', record.source);
     addRow(dl, 'Observado em', formatDate(record.observed_at));
   } else if (record.kind === 'development') {
     addRow(dl, 'Incorporadora', record.developer_name);
     addRow(dl, 'Bairro', record.locality);
+    addRow(dl, 'Endereço', record.address);
     addRow(dl, 'Situação', record.status);
+    // Vazio até o backend publicar a coluna (issue #30) — addRow omite sozinho.
+    addRow(dl, 'Estágio de comercialização', record.sales_stage);
+    addRow(dl, 'Classificação', formatBuildingOrientation(record.building_orientation));
+    // `regularization_status` fica de fora da exibição pública — mesma nota da
+    // seção de anúncios acima (issue #32, decisão de visibilidade pendente).
     addRow(dl, 'Segmento', record.segment);
     addRow(dl, 'Produto', record.product);
     addRow(dl, 'Unidades', record.units_total === null ? '' : formatNumber(record.units_total));
@@ -267,6 +300,9 @@ function buildDetailBody(record) {
     addRow(dl, 'Categoria', record.category ? anchorCategoryLabel(record.category) : '');
     addRow(dl, 'Subcategoria', record.subcategory);
     addRow(dl, 'Segmento', record.segment);
+    // Vazios até o backend publicar as colunas (issue #39).
+    addRow(dl, 'Marca', record.brand_name);
+    addRow(dl, 'Área ocupada', formatM2(record.occupied_area_m2));
     addRow(dl, 'Operador', record.operator_name);
     addRow(dl, 'Bairro', record.locality);
     addRow(dl, 'Endereço', record.address);
@@ -329,7 +365,9 @@ function numberFieldValue(input) {
 function readFilters() {
   state.filters.search = dom.search.value.trim();
   state.filters.locality = dom.locality.value;
+  state.filters.ra = dom.raFilter.value;
   state.filters.propertyType = dom.ptype.value;
+  state.filters.buildingOrientation = dom.buildingOrientation.value;
   state.filters.priceMin = numberFieldValue(dom.priceMin);
   state.filters.priceMax = numberFieldValue(dom.priceMax);
 
@@ -371,11 +409,33 @@ function renderKpis(kpis) {
   dom.kpiNote.textContent = notes.join(' ');
 }
 
+/**
+ * Nota de população/densidade da RA selecionada (issue #34). Só aparece quando há
+ * RA selecionada E `RA_PROFILES` trouxe dado para ela — ausência de qualquer um
+ * dos dois simplesmente omite a nota, sem afetar o filtro em si (que funciona só
+ * com `ra_geo_id`, presente nos registros independente de `RA_PROFILES`).
+ */
+function renderRaProfileNote() {
+  const profile = state.filters.ra ? state.raProfiles[state.filters.ra] : null;
+  const parts = [];
+  if (profile) {
+    if (profile.population_total !== null) {
+      parts.push(`População: ${formatNumber(profile.population_total)}`);
+    }
+    if (profile.population_density_km2 !== null) {
+      parts.push(`Densidade: ${formatNumber(Math.round(profile.population_density_km2))} hab/km²`);
+    }
+  }
+  dom.raProfileNote.textContent = parts.join(' · ');
+  dom.raProfileNote.hidden = parts.length === 0;
+}
+
 function render() {
   readFilters();
   const visible = applyFilters(state.records, state.filters);
   renderMarkers(visible);
   renderKpis(computeKpis(visible));
+  renderRaProfileNote();
 
   // Detalhe aberto de um registro que saiu do filtro deixa de fazer sentido.
   if (state.selectedId && !visible.some((r) => recordKey(r) === state.selectedId)) closeDetail();
@@ -425,7 +485,9 @@ function populateSelect(select, values, formatter = (v) => v) {
 function clearFilters() {
   dom.search.value = '';
   dom.locality.value = '';
+  dom.raFilter.value = '';
   dom.ptype.value = '';
+  dom.buildingOrientation.value = '';
   dom.priceMin.value = '';
   dom.priceMax.value = '';
   dom.beds.value = '';
@@ -554,9 +616,15 @@ async function load() {
   }
 
   state.records = flattenEntities(result.entities);
+  state.raProfiles = result.raProfiles || {};
 
   populateSelect(dom.locality, distinctLocalities(state.records));
   populateSelect(dom.ptype, distinctPropertyTypes(state.records), formatPropertyType);
+  populateSelect(
+    dom.raFilter,
+    distinctRegions(state.records),
+    (id) => state.raProfiles[id]?.ra_name || id,
+  );
   renderAnchorCategoryLegend(state.records);
 
   showWarnings([...result.warnings, ...result.errors]);
@@ -575,7 +643,7 @@ function bindEvents() {
   for (const node of [dom.search, dom.priceMin, dom.priceMax]) {
     node.addEventListener('input', render);
   }
-  for (const node of [dom.locality, dom.ptype, dom.beds]) {
+  for (const node of [dom.locality, dom.raFilter, dom.ptype, dom.buildingOrientation, dom.beds]) {
     node.addEventListener('change', render);
   }
   dom.layers.addEventListener('change', render);
