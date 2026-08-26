@@ -65,3 +65,32 @@ test('normalizePolygons() aguenta entrada não-array sem lançar', () => {
     assert.deepEqual(normalizePolygons(input), [], JSON.stringify(input));
   }
 });
+
+// --- camada de contornos no carregamento (issue #28) ------------------------------
+
+import { readFileSync as readDemo } from 'node:fs';
+import { createFilterState, DISPLAY_LAYERS, LAYERS, computeKpis } from '../src/filters.js';
+
+const demo = JSON.parse(readDemo(new URL('../data/demo.json', import.meta.url)));
+
+test('o demo publica polygons vazio — geografia não se inventa', () => {
+  assert.ok(Array.isArray(demo.polygons), 'o demo precisa ter a chave, mesmo vazia');
+  assert.deepEqual(demo.polygons, []);
+});
+
+test('a camada de contornos vem ligada no estado inicial dos filtros', () => {
+  assert.equal(createFilterState().layers.has('polygon'), true);
+});
+
+// Contorno não é registro plotável: não tem `kind`, não entra em `applyFilters` e não
+// participa de KPI. Se entrasse em LAYERS, `byKind` ganharia uma chave sempre zerada.
+test('contorno é camada de exibição, não tipo de registro', () => {
+  assert.equal(LAYERS.includes('polygon'), false);
+  assert.equal(DISPLAY_LAYERS.includes('polygon'), true);
+  assert.deepEqual(DISPLAY_LAYERS.slice(0, LAYERS.length), LAYERS);
+});
+
+test('nenhum KPI ganha uma chave de contorno', () => {
+  const kpis = computeKpis([]);
+  assert.equal('polygon' in kpis.byKind, false);
+});

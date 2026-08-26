@@ -129,7 +129,6 @@ Regras são numeradas e estáveis. Não renumere ao inserir — acrescente ao fi
   o objetivo do review é impedir defeito grave em produção, não convergir para consenso
   estilístico. Depois de uma rodada sem P0/P1, o merge é imediato.
 
-
 - **R7.5** Mudança de schema atualiza código **e** documentação na mesma PR.
 
 ## 8. Regras aprendidas
@@ -409,6 +408,15 @@ Cada uma nasce de um erro que aconteceu de verdade.
   cite a origem — e, quando **não** espelhar alguma borda, escreva por que: aqui o piso
   (`sum >= 0,98`) fica de fora de propósito, porque ele descreve uma distribuição completa
   e a tela também precisa desenhar distribuição parcial.
+- **R8.45** *(2026-08-26, camada de contornos, issue #28)* **No Leaflet, seletor genérico de SVG
+  ou de imagem dentro do mapa mede a coisa errada.** Duas armadilhas que custam uma rodada de CI
+  cada: `circleMarker` é renderizado como `<path>`, então `#map path` casa com **todos os
+  marcadores** e uma contagem de polígonos escrita assim dá centenas; e os tiles do OpenStreetMap
+  são `<img>`, então uma checagem de XSS escrita como "nenhum `img` dentro do mapa" **falha sempre**,
+  mesmo com a página perfeitamente segura. Camada nova ganha `className` próprio e o seletor
+  aponta para ele (`.polygon-shape`, `img:not(.leaflet-tile)`). O `className` é para **encontrar**
+  o elemento — pintar continua sendo por `color`/`fillColor` no JS, pela R8.31: regra de classe
+  vence o atributo que o Leaflet escreve no SVG.
 - **R8.46** *(2026-08-25, rebase das PRs #42-#44 na `main`)* **Guard que interroga uma fonte e
   afirma sobre outra não é guard.** Ao renumerar uma regra durante um rebase, a numeração foi
   conferida com `grep` no **arquivo em disco** e o commit foi declarado correto — mas o

@@ -647,6 +647,100 @@ raDecimal.faixas[0].valor === '18,2%'
   : fail('escala decimal não convertida: ' + raDecimal.faixas[0].valor);
 await raPage.close();
 
+// == Camada de contornos (issue #28) ==
+//
+// O demo.json publica `polygons: []` de propósito — polígono inventado num artefato
+// publicado é geografia falsa. Aqui a camada é exercitada injetando um contorno
+// SINTÉTICO por interceptação, do mesmo jeito que a APP_META acima: assim o caminho
+// real de carregamento é testado sem sujar o dado versionado.
+console.log('\n== 12g. Camada de contornos (issue #28) ==');
+
+const polyPage = await browser.newPage({ viewport: { width: 1440, height: 900 } });
+await polyPage.addInitScript(() => {
+  Object.defineProperty(window, 'APP_CONFIG', {
+    configurable: true,
+    set(value) { delete window.APP_CONFIG; window.APP_CONFIG = value; if (value) value.demoMode = true; },
+    get() { return undefined; },
+  });
+});
+await polyPage.route('**/data/demo.json', async (route) => {
+  const response = await route.fetch();
+  const payload = await response.json();
+  payload.polygons = [
+    {
+      polygon_id: 'SMOKE_1',
+      // Nome hostil: propriedade de KML de terceiro é entrada não confiável (R4.4).
+      name: '<img src=x onerror=alert(1)>Contorno sintético',
+      category: 'fixture',
+      geometry_geojson: JSON.stringify({
+        type: 'Polygon',
+        coordinates: [[[-47.95, -15.82], [-47.85, -15.82], [-47.85, -15.74], [-47.95, -15.82]]],
+      }),
+      color: '#aa3344',
+      description: 'Geometria de teste — não representa território real.',
+      properties_json: '{"populacao":4321}',
+      source_file: 'smoke.kml',
+      imported_at: '2026-08-01',
+      status: 'active',
+    },
+    {
+      polygon_id: 'SMOKE_QUEBRADO',
+      name: 'Geometria ilegível',
+      geometry_geojson: '{isto nao e json',
+      status: 'active',
+    },
+  ];
+  await route.fulfill({ response, json: payload });
+});
+await polyPage.goto('http://localhost:8080/', { waitUntil: 'networkidle' });
+await polyPage.waitForTimeout(1200);
+
+(await polyPage.locator('#polygonLayers').isVisible())
+  ? pass('com contorno na planilha, a caixa da camada aparece')
+  : fail('caixa da camada de contornos não apareceu');
+
+const polyCount = await polyPage.textContent('#countPolygon');
+polyCount === '2' ? pass('a contagem mostra os contornos carregados') : fail('contagem errada: ' + polyCount);
+
+// Um contorno com geometria ilegível some do mapa e os outros seguem (R2.6): dois
+// registros carregados, um só caminho desenhado.
+// `#map path` casaria com todo marcador — `circleMarker` do Leaflet também é <path>.
+// A classe `.polygon-shape` isola os contornos.
+const paths = await polyPage.evaluate(() => document.querySelectorAll('#map .polygon-shape').length);
+paths === 1 ? pass('geometria ilegível não é desenhada, a boa continua') : fail(`contornos desenhados: ${paths}`);
+
+// `#map img` casaria com os tiles do OpenStreetMap — falso positivo garantido.
+const polyXss = await polyPage.evaluate(
+  () => document.querySelectorAll('#map img:not(.leaflet-tile)').length,
+);
+polyXss === 0 ? pass('nome hostil de contorno não virou markup') : fail('markup injetado via POLYGONS!');
+
+// Clique no contorno abre o painel com as propriedades do KML.
+await polyPage.click('#map .polygon-shape');
+await polyPage.waitForTimeout(400);
+const polyDetail = await polyPage.textContent('#detail');
+/4321/.test(polyDetail || '')
+  ? pass('clique no contorno abre o painel com as propriedades do KML')
+  : fail('painel do contorno sem as propriedades: ' + polyDetail);
+/smoke\.kml/.test(polyDetail || '')
+  ? pass('o painel nomeia o arquivo de origem')
+  : fail('arquivo de origem ausente no painel');
+
+// Desligar a camada tira os contornos sem mexer nos marcadores.
+await polyPage.uncheck('input[data-layer="polygon"]');
+await polyPage.waitForTimeout(400);
+const afterUncheck = await polyPage.evaluate(() => document.querySelectorAll('#map .polygon-shape').length);
+afterUncheck === 0 ? pass('desligar a camada remove os contornos') : fail(`contornos após desligar: ${afterUncheck}`);
+const markersLeft = await polyPage.evaluate(() => document.querySelectorAll('#map .marker').length);
+markersLeft > 0 ? pass('desligar contornos não afeta os marcadores') : fail('os marcadores sumiram junto');
+
+await polyPage.close();
+
+// Sem contorno nenhum — o estado normal da planilha hoje — a caixa nem aparece.
+(await page.locator('#polygonLayers').isHidden())
+  ? pass('sem contorno na planilha, a camada não aparece na legenda')
+  : fail('caixa de contornos apareceu com a aba vazia');
+
 console.log('\n== 13. Mobile 390px ==');
 await page.click('#closeDetail').catch(()=>{});
 await page.setViewportSize({ width: 390, height: 844 });

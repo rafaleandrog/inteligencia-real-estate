@@ -355,6 +355,13 @@ estar fechado (primeira posição igual à última), e longitude/latitude precis
 válida. Ordem é sempre `[longitude, latitude]`, como manda o GeoJSON — invertida seria o Golfo da
 Guiné em vez do Distrito Federal.
 
+A camada é renderizada por `renderPolygons()` (`src/app.js`, issue #28): caixa própria na
+legenda, que **só aparece quando há contorno** — planilha sem nenhum KML importado é o estado
+normal, não defeito. `geometry_geojson` é parseado **ali**, por registro e com erro isolado: um
+contorno ilegível some do mapa e os outros continuam (R2.6). As propriedades de `properties_json`
+vão para o painel por `textContent`, nunca `innerHTML`: são atributos de arquivo de terceiro, tão
+não confiáveis quanto o título de um anúncio (R4.4).
+
 `normalizePolygon()` (`src/normalize.js`) **não parseia** `geometry_geojson`: mantém como texto e
 deixa o parse para quem for desenhar. Um blob malformado precisa isolar aquele polígono, não
 interromper o carregamento do dataset inteiro (R2.6).
