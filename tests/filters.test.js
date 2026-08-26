@@ -4,6 +4,7 @@ import {
   median, applyFilters, matchesFilters, computeKpis, createFilterState,
   distinctLocalities, distinctPropertyTypes, distinctRegions, normalizeSearchText, LAYERS,
   distinctAnchorGroups, distinctAnchorSegments, anchorLegendGroups,
+  distinctSalesStages, distinctRegularizationStatuses,
 } from '../src/filters.js';
 
 /** Registro de teste com os campos que os filtros examinam. */
@@ -282,4 +283,89 @@ test('anchorLegendGroups preserva o par (segment, category) inteiro', () => {
     { segment: 'food_hall', category: 'escola', count: 1 },
     { segment: 'hospital', category: 'saude', count: 1 },
   ]);
+});
+
+// --- Classificação de imóveis (issues #30, #31, #32) -----------------------
+
+/** Empreendimento de teste, com os campos que os filtros novos examinam. */
+const dev = (over = {}) => rec({
+  kind: 'development', property_type: '', bedrooms: null,
+  sales_stage: '', building_orientation: null, regularization_status: '', ...over,
+});
+
+test('filtro de estágio de comercialização restringe aos empreendimentos (issue #30)', () => {
+  const state = { ...createFilterState(), salesStage: 'em_construcao' };
+  assert.equal(matchesFilters(dev({ sales_stage: 'em_construcao' }), state), true);
+  assert.equal(matchesFilters(dev({ sales_stage: 'oferta' }), state), false);
+  assert.equal(matchesFilters(dev({ sales_stage: '' }), state), false, 'empreendimento sem estágio some com o filtro ativo');
+
+  // Só DEVELOPMENTS tem `sales_stage`: filtrar por ele esconde as outras camadas.
+  assert.equal(matchesFilters(rec({ kind: 'listing' }), state), false);
+  assert.equal(matchesFilters(rec({ kind: 'anchor' }), state), false);
+});
+
+test('filtro de regularização cobre anúncio E empreendimento, sem restringir camada (issue #32)', () => {
+  const state = { ...createFilterState(), regularizationStatus: 'regularizado' };
+  assert.equal(matchesFilters(rec({ regularization_status: 'regularizado' }), state), true);
+  assert.equal(matchesFilters(dev({ regularization_status: 'regularizado' }), state), true);
+  assert.equal(matchesFilters(rec({ regularization_status: 'nao_regularizado' }), state), false);
+  assert.equal(matchesFilters(rec({ regularization_status: '' }), state), false);
+
+  // Âncora não tem o campo: some quando o filtro está ativo, como no filtro de RA.
+  assert.equal(matchesFilters(rec({ kind: 'anchor' }), state), false);
+});
+
+test('filtro vertical/horizontal cobre empreendimento, não só anúncio (issue #31)', () => {
+  const vertical = { ...createFilterState(), buildingOrientation: 'vertical' };
+  const horizontal = { ...createFilterState(), buildingOrientation: 'horizontal' };
+
+  // Anúncio: derivado de property_type pelo normalizador, sempre canônico.
+  assert.equal(matchesFilters(rec({ building_orientation: 'vertical' }), vertical), true);
+
+  // Empreendimento: coluna própria da planilha.
+  assert.equal(matchesFilters(dev({ building_orientation: 'vertical' }), vertical), true);
+  assert.equal(matchesFilters(dev({ building_orientation: 'horizontal' }), vertical), false);
+  assert.equal(matchesFilters(dev({ building_orientation: 'horizontal' }), horizontal), true);
+  assert.equal(matchesFilters(dev({ building_orientation: null }), vertical), false);
+});
+
+test('vertical/horizontal tolera caixa e espaço vindos da célula (issue #31)', () => {
+  // As opções deste filtro são FIXAS no index.html, então o valor comparado não vem
+  // dos dados — e `building_orientation` de DEVELOPMENTS é célula digitada à mão.
+  // Sem tolerância, "Vertical" aparecia como Vertical no card e sumia do filtro.
+  const state = { ...createFilterState(), buildingOrientation: 'vertical' };
+  assert.equal(matchesFilters(dev({ building_orientation: 'Vertical' }), state), true);
+  assert.equal(matchesFilters(dev({ building_orientation: ' vertical ' }), state), true);
+  assert.equal(matchesFilters(dev({ building_orientation: 'VERTICAL' }), state), true);
+  assert.equal(matchesFilters(dev({ building_orientation: 'Horizontal' }), state), false);
+});
+
+test('sem os campos novos preenchidos, nada é escondido (issues #30, #32)', () => {
+  // Estado da planilha até o backend publicar as colunas (R2.5).
+  const records = [rec(), dev(), rec({ kind: 'anchor' })];
+  assert.equal(applyFilters(records, createFilterState()).length, 3);
+});
+
+test('distinctSalesStages só olha empreendimento, ordenado e sem repetição (issue #30)', () => {
+  const records = [
+    dev({ sales_stage: 'oferta' }), dev({ sales_stage: 'em_construcao' }),
+    dev({ sales_stage: 'em_construcao' }), dev({ sales_stage: '' }),
+    rec({ kind: 'listing', sales_stage: 'em_lancamento' }),
+  ];
+  assert.deepEqual(distinctSalesStages(records), ['em_construcao', 'oferta']);
+  assert.deepEqual(distinctSalesStages([]), []);
+});
+
+test('distinctRegularizationStatuses vem dos dados, não de lista fixa (issue #32)', () => {
+  // O campo é texto livre: uma lista fixa deixaria de fora qualquer valor que a
+  // planilha inventasse, e o registro sumiria do filtro sem explicação.
+  const records = [
+    rec({ regularization_status: 'regularizado' }),
+    dev({ regularization_status: 'em_regularizacao' }),
+    rec({ regularization_status: 'regularizado' }),
+    rec({ regularization_status: 'processo_judicial' }),
+    rec({ regularization_status: '' }),
+  ];
+  assert.deepEqual(distinctRegularizationStatuses(records),
+    ['em_regularizacao', 'processo_judicial', 'regularizado']);
 });

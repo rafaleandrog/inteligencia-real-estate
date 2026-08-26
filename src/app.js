@@ -11,13 +11,14 @@ import { loadDataset, flattenEntities } from './data.js';
 import { isApproximateLocation, appMetaRows } from './normalize.js';
 import {
   anchorLegendGroups, applyFilters, computeKpis, createFilterState, distinctAnchorGroups,
-  distinctAnchorSegments, distinctLocalities, distinctPropertyTypes, distinctRegions, LAYERS,
+  distinctAnchorSegments, distinctLocalities, distinctPropertyTypes, distinctRegions,
+  distinctRegularizationStatuses, distinctSalesStages, LAYERS,
 } from './filters.js';
 import {
   formatBRL, formatBRLCompact, formatM2, formatNumber, formatPriceM2, formatDate,
   formatPropertyType, formatSpatialPrecision, formatBuildingOrientation, safeExternalUrl,
   hostnameOf, anchorColor, anchorLegendEntries, formatAnchorCategory, formatAnchorGroup,
-  formatAnchorSegment,
+  formatAnchorSegment, formatSalesStage, formatRegularizationStatus,
 } from './format.js';
 
 const CONFIG = window.APP_CONFIG || {};
@@ -29,6 +30,7 @@ const dom = {
   raFilter: el('raFilter'), raProfileNote: el('raProfileNote'),
   buildingOrientation: el('buildingOrientation'),
   anchorGroup: el('anchorGroup'), anchorSegment: el('anchorSegment'),
+  salesStage: el('salesStage'), regularizationStatus: el('regularizationStatus'),
   priceMin: el('priceMin'), priceMax: el('priceMax'), beds: el('beds'),
   clearFilters: el('clearFilters'), layers: el('layersSection'),
   kpiVisible: el('kpiVisible'), kpiMedian: el('kpiMedian'), kpiNote: el('kpiNote'),
@@ -193,6 +195,25 @@ function buildSourceLink(record) {
   return wrap;
 }
 
+/**
+ * Ressalva de procedência da regularização (issue #32).
+ *
+ * A decisão de mostrar `regularization_status` na tela pública é do dono do
+ * repositório, mas o valor é **declarado por quem cadastra**, não certidão de
+ * cartório — e "não regularizado" é afirmação pesada para exibir sem dizer de onde
+ * veio. Mesma família de R8.15 e do aviso de precisão espacial: quando um número ou
+ * rótulo pode ser lido como mais forte do que é, a interface declara o que ele é.
+ *
+ * Só aparece quando há valor; sem o campo, nada é dito.
+ */
+function buildRegularizationNotice(record) {
+  if (!formatRegularizationStatus(record.regularization_status)) return null;
+  const note = document.createElement('p');
+  note.className = 'field-note field-note-inline';
+  note.textContent = 'Regularização informada por quem cadastra o registro, não certidão oficial.';
+  return note;
+}
+
 function buildDetailBody(record) {
   const frag = document.createDocumentFragment();
 
@@ -202,14 +223,26 @@ function buildDetailBody(record) {
   kind.textContent = LAYER_LABEL[record.kind] || record.kind;
   frag.append(kind);
 
+  // Estágio de comercialização como selo, ao lado do rótulo de camada (issue #30).
+  // Fica fora da lista de definições porque é o estado do produto, não um atributo
+  // dele — e some inteiro quando a planilha não classificou.
+  const stage = formatSalesStage(record.sales_stage);
+  if (stage) {
+    const badge = document.createElement('span');
+    badge.className = 'detail-stage';
+    badge.textContent = stage;
+    frag.append(badge);
+  }
+
   frag.append(buildPrecisionNotice(record));
 
   const dl = document.createElement('dl');
 
   if (record.kind === 'listing') {
     addRow(dl, 'Tipo', formatPropertyType(record.property_type));
-    // Derivado de Tipo, sem depender do backend (issue #31).
-    addRow(dl, 'Classificação', formatBuildingOrientation(record.building_orientation));
+    // Derivada de Tipo, sem depender do backend (issue #31) — o empreendimento traz a
+    // mesma linha, vinda da coluna própria dele.
+    addRow(dl, 'Vertical / horizontal', formatBuildingOrientation(record.building_orientation));
     addRow(dl, 'Localidade', record.locality);
     addRow(dl, 'Endereço', record.address);
     addRow(dl, 'Preço pedido', formatBRL(record.price));
@@ -220,10 +253,9 @@ function buildDetailBody(record) {
     addRow(dl, 'Vagas', record.parking_spaces === null ? '' : formatNumber(record.parking_spaces));
     addRow(dl, 'Condomínio', formatBRL(record.condo_fee_brl));
     addRow(dl, 'IPTU', formatBRL(record.iptu_brl));
-    // `regularization_status` NÃO é exibido aqui de propósito: a issue #32 deixa
-    // em aberto se é público ou só administrativo, e essa decisão precisa ser
-    // tomada antes de qualquer exibição — não quando o backend publicar a coluna
-    // (review do PR #40). O campo continua lido em src/normalize.js.
+    // Exibição pública decidida pelo dono do repositório na issue #32. A ressalva de
+    // procedência vai logo abaixo da lista, em `buildRegularizationNotice`.
+    addRow(dl, 'Regularização', formatRegularizationStatus(record.regularization_status));
     addRow(dl, 'Portal', record.source);
     addRow(dl, 'Observado em', formatDate(record.observed_at));
   } else if (record.kind === 'development') {
@@ -231,11 +263,10 @@ function buildDetailBody(record) {
     addRow(dl, 'Bairro', record.locality);
     addRow(dl, 'Endereço', record.address);
     addRow(dl, 'Situação', record.status);
-    // Vazio até o backend publicar a coluna (issue #30) — addRow omite sozinho.
-    addRow(dl, 'Estágio de comercialização', record.sales_stage);
-    addRow(dl, 'Classificação', formatBuildingOrientation(record.building_orientation));
-    // `regularization_status` fica de fora da exibição pública — mesma nota da
-    // seção de anúncios acima (issue #32, decisão de visibilidade pendente).
+    // O estágio de comercialização (issue #30) aparece como selo no topo do card, não
+    // como linha aqui — ver `buildDetailBody`.
+    addRow(dl, 'Vertical / horizontal', formatBuildingOrientation(record.building_orientation));
+    addRow(dl, 'Regularização', formatRegularizationStatus(record.regularization_status));
     addRow(dl, 'Segmento', record.segment);
     addRow(dl, 'Produto', record.product);
     addRow(dl, 'Unidades', record.units_total === null ? '' : formatNumber(record.units_total));
@@ -262,6 +293,9 @@ function buildDetailBody(record) {
   }
 
   if (dl.childElementCount > 0) frag.append(dl);
+
+  const regularization = buildRegularizationNotice(record);
+  if (regularization) frag.append(regularization);
 
   if (!record.coord) {
     const note = document.createElement('p');
@@ -320,6 +354,8 @@ function readFilters() {
   state.filters.ra = dom.raFilter.value;
   state.filters.propertyType = dom.ptype.value;
   state.filters.buildingOrientation = dom.buildingOrientation.value;
+  state.filters.salesStage = dom.salesStage.value;
+  state.filters.regularizationStatus = dom.regularizationStatus.value;
   state.filters.anchorGroup = dom.anchorGroup.value;
   state.filters.anchorSegment = dom.anchorSegment.value;
   state.filters.priceMin = numberFieldValue(dom.priceMin);
@@ -488,6 +524,8 @@ function clearFilters() {
   dom.raFilter.value = '';
   dom.ptype.value = '';
   dom.buildingOrientation.value = '';
+  dom.salesStage.value = '';
+  dom.regularizationStatus.value = '';
   dom.anchorGroup.value = '';
   populateAnchorSegments('', { keepSelection: false });
   dom.priceMin.value = '';
@@ -627,6 +665,12 @@ async function load() {
     distinctRegions(state.records),
     (id) => state.raProfiles[id]?.ra_name || id,
   );
+  populateSelect(dom.salesStage, distinctSalesStages(state.records), formatSalesStage);
+  populateSelect(
+    dom.regularizationStatus,
+    distinctRegularizationStatuses(state.records),
+    formatRegularizationStatus,
+  );
   populateSelect(dom.anchorGroup, distinctAnchorGroups(state.records), formatAnchorGroup);
   populateAnchorSegments('');
   renderAnchorLegend(state.records);
@@ -648,7 +692,7 @@ function bindEvents() {
     node.addEventListener('input', render);
   }
   for (const node of [dom.locality, dom.raFilter, dom.ptype, dom.buildingOrientation,
-    dom.anchorSegment, dom.beds]) {
+    dom.salesStage, dom.regularizationStatus, dom.anchorSegment, dom.beds]) {
     node.addEventListener('change', render);
   }
   // O grupo restringe a lista de segmentos antes de renderizar, então tem handler

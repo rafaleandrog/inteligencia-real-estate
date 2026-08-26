@@ -19,6 +19,8 @@ export function createFilterState() {
     bedrooms: null,
     ra: '',
     buildingOrientation: '',
+    salesStage: '',
+    regularizationStatus: '',
     anchorGroup: '',
     anchorSegment: '',
     layers: new Set(LAYERS),
@@ -58,6 +60,16 @@ function searchableText(record) {
 }
 
 /**
+ * Igualdade tolerante para valor de enum vindo de célula digitada à mão: ignora
+ * espaço em volta e caixa. Só serve para filtro cujas opções são fixas no HTML — quem
+ * popula o select a partir dos próprios registros compara cru, porque os dois lados
+ * são literalmente o mesmo valor.
+ */
+function sameEnumValue(recordValue, filterValue) {
+  return String(recordValue || '').trim().toLowerCase() === String(filterValue || '').trim().toLowerCase();
+}
+
+/**
  * Um registro passa pelo filtro?
  *
  * Regra geral: filtro vazio não restringe. Um registro **sem** o dado que o filtro
@@ -79,10 +91,27 @@ export function matchesFilters(record, state) {
   // restringe camada como o filtro de tipo de imóvel faz.
   if (state.ra && record.ra_geo_id !== state.ra) return false;
 
-  // Vertical/horizontal (issue #31): hoje só anúncios têm o campo preenchido
-  // (derivado de property_type); empreendimentos aguardam coluna do backend.
-  // Registro sem o campo é excluído quando o filtro está ativo, mesma regra geral.
-  if (state.buildingOrientation && record.building_orientation !== state.buildingOrientation) return false;
+  // Vertical/horizontal (issue #31): anúncio deriva de `property_type` no
+  // normalizador; empreendimento traz a coluna própria `building_orientation`. O
+  // filtro cobre os dois — âncora não tem a classificação e some quando ele está ativo.
+  //
+  // Este é o ÚNICO filtro cujas opções são fixas no `index.html` em vez de virem dos
+  // dados, e por isso o único que compara de forma tolerante: o valor derivado do
+  // anúncio é sempre canônico, mas o do empreendimento vem de célula digitada à mão e
+  // pode chegar como "Vertical" ou " vertical". Comparar cru esconderia o registro do
+  // filtro enquanto o card, que já normaliza para exibir, o mostraria como Vertical.
+  if (state.buildingOrientation && !sameEnumValue(record.building_orientation, state.buildingOrientation)) return false;
+
+  // Estágio de comercialização (issue #30) só existe em DEVELOPMENTS: filtrar por ele
+  // esconde as outras camadas, mesma regra do tipo de imóvel.
+  if (state.salesStage) {
+    if (record.kind !== 'development') return false;
+    if (record.sales_stage !== state.salesStage) return false;
+  }
+
+  // Regularização (issue #32) existe em anúncios E empreendimentos, então não restringe
+  // camada — só exclui quem não tem o dado, como o filtro de RA.
+  if (state.regularizationStatus && record.regularization_status !== state.regularizationStatus) return false;
 
   // Grupo e segmento (issue #26) só existem em âncoras. Como o filtro de tipo de
   // imóvel, filtrar por eles esconde as outras camadas: quem escolheu "Infraestrutura"
@@ -276,4 +305,29 @@ export function anchorLegendGroups(records) {
       return compareAnchorGroups(a, b);
     })
     .map((group) => ({ group, entries: [...groups.get(group).values()] }));
+}
+
+/**
+ * Estágios de comercialização (`sales_stage`) distintos presentes nos empreendimentos
+ * (issue #30). Como todo `distinctX` deste módulo, devolve o valor bruto e deixa a
+ * tradução para `formatSalesStage`.
+ */
+export function distinctSalesStages(records) {
+  const set = new Set();
+  for (const r of records || []) if (r.kind === 'development' && r.sales_stage) set.add(r.sales_stage);
+  return [...set].sort((a, b) => a.localeCompare(b, 'pt-BR'));
+}
+
+/**
+ * Situações de regularização (`regularization_status`) distintas presentes em anúncios
+ * e empreendimentos (issue #32).
+ *
+ * O select vem dos dados, e não de uma lista fixa, justamente porque o campo é texto
+ * livre no backend: uma opção fixa deixaria de fora qualquer valor que a planilha
+ * inventasse, e o registro sumiria do filtro sem explicação.
+ */
+export function distinctRegularizationStatuses(records) {
+  const set = new Set();
+  for (const r of records || []) if (r.regularization_status) set.add(r.regularization_status);
+  return [...set].sort((a, b) => a.localeCompare(b, 'pt-BR'));
 }

@@ -423,6 +423,129 @@ cardAnchor['Área ocupada'] === '2.450 m²' ? pass('card de âncora mostra a Ár
   ? pass('nenhum markup injetado por brand_name (R4.4)') : fail('markup injetado via brand_name!');
 await anchorPage.close();
 
+console.log('\n== 12e. Estágio, vertical/horizontal e regularização (issues #30, #31, #32) ==');
+// `sales_stage` é DERIVADO pelo gerador do demo, então o artefato versionado já o traz:
+// checar a ausência sobre a `page` compartilhada mediria a coisa errada. A ausência é
+// injetada, como na 12d. `regularization_status` não tem derivação e continua vazio no
+// demo — mas é lido pela mesma fonte de propósito, para as duas asserções não
+// dependerem de qual coluna por acaso está preenchida hoje (R8.39).
+const semClassificacao = await abrirSemColunas({
+  developments: ['sales_stage', 'regularization_status'],
+  listings: ['regularization_status'],
+});
+(await semClassificacao.$$eval('#salesStage option', (o) => o.length)) === 1
+  ? pass('sem sales_stage, o select de estágio fica só com "Todos"')
+  : fail('select de estágio populado sem dado');
+(await semClassificacao.$$eval('#regularizationStatus option', (o) => o.length)) === 1
+  ? pass('sem regularization_status, o select de regularização fica só com "Todas"')
+  : fail('select de regularização populado sem dado');
+await semClassificacao.close();
+
+// E a contrapartida positiva: com o demo versionado, que JÁ traz `sales_stage`
+// derivado, o filtro de estágio precisa ser utilizável. Sem esta, a suíte só provaria
+// que a tela aguenta a ausência — nunca que ela mostra o dado quando ele existe.
+(await page.$$eval('#salesStage option', (o) => o.length)) > 1
+  ? pass('com o demo versionado, o filtro de estágio é utilizável')
+  : fail('select de estágio vazio mesmo com sales_stage derivado no demo');
+
+const classPage = await browser.newPage({ viewport: { width: 1440, height: 900 } });
+await classPage.addInitScript(() => {
+  Object.defineProperty(window, 'APP_CONFIG', {
+    configurable: true,
+    set(value) { delete window.APP_CONFIG; window.APP_CONFIG = value; if (value) value.demoMode = true; },
+    get() { return undefined; },
+  });
+});
+await classPage.route('**/data/demo.json', async (route) => {
+  const response = await route.fetch();
+  const payload = await response.json();
+  const ESTAGIOS = ['em_construcao', 'em_lancamento', 'oferta'];
+  const REGULARIZACAO = ['regularizado', 'nao_regularizado', 'em_regularizacao'];
+  payload.developments = payload.developments.map((d, i) => ({
+    ...d,
+    // A primeira linha traz valor FORA do enum e `building_orientation` com espaço e
+    // caixa — é célula digitada à mão, e é assim que ela chega na prática.
+    sales_stage: i === 0 ? 'pre_lancamento' : ESTAGIOS[i % 3],
+    building_orientation: i === 0 ? ' Vertical ' : (i % 2 ? 'vertical' : 'horizontal'),
+    regularization_status: i === 0 ? 'processo_judicial' : REGULARIZACAO[i % 3],
+  }));
+  payload.listings = payload.listings.map((l, i) => ({ ...l, regularization_status: REGULARIZACAO[i % 3] }));
+  await route.fulfill({ response, json: payload });
+});
+await classPage.goto('http://localhost:8080/', { waitUntil: 'networkidle' });
+await classPage.waitForTimeout(1200);
+
+const estagios = await classPage.$$eval('#salesStage option', (o) => o.map((x) => x.textContent));
+estagios.includes('Em construção') && estagios.includes('Pre lancamento')
+  ? pass('estágio fora do enum aparece humanizado em vez de sumir')
+  : fail('opções de estágio: ' + JSON.stringify(estagios));
+const regularizacoes = await classPage.$$eval('#regularizationStatus option', (o) => o.map((x) => x.textContent));
+regularizacoes.includes('Não regularizado') && regularizacoes.includes('Processo judicial')
+  ? pass('regularização é texto livre e o valor inesperado continua filtrável')
+  : fail('opções de regularização: ' + JSON.stringify(regularizacoes));
+
+const contarVisiveis = async () => Number((await classPage.textContent('#kpiVisible')).replace(/\D/g, ''));
+const totalClass = await contarVisiveis();
+
+await classPage.selectOption('#salesStage', 'oferta');
+await classPage.waitForTimeout(400);
+const emOferta = await contarVisiveis();
+emOferta > 0 && emOferta < totalClass ? pass(`filtro de estágio reduziu ${totalClass} -> ${emOferta}`) : fail('filtro de estágio não reduziu');
+(await classPage.$$eval('#map path.marker', (ns) => ns.every((n) => n.getAttribute('class').includes('marker-development'))))
+  ? pass('filtrar por estágio esconde anúncios e âncoras') : fail('sobrou outra camada com filtro de estágio');
+await classPage.click('#clearFilters'); await classPage.waitForTimeout(400);
+
+await classPage.selectOption('#regularizationStatus', 'nao_regularizado');
+await classPage.waitForTimeout(400);
+const naoRegularizados = await contarVisiveis();
+naoRegularizados > 0 && naoRegularizados < totalClass
+  ? pass(`filtro de regularização reduziu ${totalClass} -> ${naoRegularizados}`) : fail('filtro de regularização não reduziu');
+const camadasReg = await classPage.$$eval('#map path.marker', (ns) => [...new Set(ns.map((n) => n.getAttribute('class').split(' ')[1]))]);
+camadasReg.includes('marker-listing') && camadasReg.includes('marker-development') && !camadasReg.includes('marker-anchor')
+  ? pass('regularização cobre anúncio E empreendimento, e exclui âncora')
+  : fail('camadas com filtro de regularização: ' + JSON.stringify(camadasReg));
+await classPage.click('#clearFilters'); await classPage.waitForTimeout(400);
+
+// Vertical/horizontal precisa alcançar o empreendimento, não só o anúncio — e o
+// empreendimento cuja célula veio como " Vertical " é justamente o teste do caso real.
+await classPage.selectOption('#buildingOrientation', 'vertical');
+await classPage.waitForTimeout(400);
+const devsVerticais = await classPage.$$eval('#map path.marker-development', (ns) => ns.length);
+devsVerticais > 0
+  ? pass(`filtro vertical alcança ${devsVerticais} empreendimento(s), inclusive o de célula " Vertical "`)
+  : fail('nenhum empreendimento passou no filtro vertical');
+await classPage.click('#clearFilters'); await classPage.waitForTimeout(400);
+
+// Clique por evento no <path>: clique por coordenada acerta o marcador que estiver por
+// cima, e as âncoras se sobrepõem aos empreendimentos em vários pontos.
+await classPage.evaluate(() => document.querySelector('#map path.marker-development')
+  .dispatchEvent(new MouseEvent('click', { bubbles: true })));
+await classPage.waitForTimeout(400);
+const seloEstagio = await classPage.textContent('#detailBody .detail-stage').catch(() => null);
+seloEstagio ? pass(`card do empreendimento traz o selo de estágio: "${seloEstagio}"`) : fail('selo de estágio ausente');
+const cardDev = Object.fromEntries(
+  await classPage.$$eval('#detailBody dt', (ns) => ns.map((n) => [n.textContent, n.nextElementSibling.textContent])));
+cardDev['Vertical / horizontal'] ? pass('card do empreendimento traz vertical/horizontal') : fail('vertical/horizontal ausente no empreendimento');
+cardDev['Regularização'] ? pass('card do empreendimento traz a regularização') : fail('regularização ausente no empreendimento');
+!('Estágio de comercialização' in cardDev) ? pass('estágio não duplica como linha da lista') : fail('estágio duplicado no card');
+const ressalva = await classPage.textContent('#detailBody .field-note-inline').catch(() => null);
+/não certidão oficial/i.test(ressalva || '')
+  ? pass('regularização vem com a ressalva de procedência (R3.6/R8.15)')
+  : fail('ressalva de procedência ausente: ' + ressalva);
+
+await classPage.click('#closeDetail');
+await classPage.evaluate(() => document.querySelector('#map path.marker-listing')
+  .dispatchEvent(new MouseEvent('click', { bubbles: true })));
+await classPage.waitForTimeout(400);
+const cardListing = Object.fromEntries(
+  await classPage.$$eval('#detailBody dt', (ns) => ns.map((n) => [n.textContent, n.nextElementSibling.textContent])));
+cardListing['Regularização'] ? pass('card do anúncio traz a regularização') : fail('regularização ausente no anúncio');
+cardListing['Vertical / horizontal'] ? pass('card do anúncio traz vertical/horizontal') : fail('vertical/horizontal ausente no anúncio');
+(await classPage.$$('#detailBody .detail-stage')).length === 0
+  ? pass('anúncio não recebe selo de estágio: o campo é só de empreendimento')
+  : fail('selo de estágio apareceu num anúncio');
+await classPage.close();
+
 console.log('\n== 13. Mobile 390px ==');
 await page.click('#closeDetail').catch(()=>{});
 await page.setViewportSize({ width: 390, height: 844 });

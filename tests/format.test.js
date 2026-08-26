@@ -5,6 +5,7 @@ import {
   escapeHtml, safeExternalUrl, hostnameOf, formatPropertyType, formatSpatialPrecision,
   formatBuildingOrientation, formatAnchorGroup, formatAnchorSegment, formatAnchorCategory,
   anchorColor, anchorLegendColor, anchorLegendEntries, ANCHOR_FALLBACK_COLOR,
+  formatSalesStage, formatRegularizationStatus,
 } from '../src/format.js';
 
 test('ausência vira travessão, não zero', () => {
@@ -248,4 +249,33 @@ test('anchorLegendEntries rotula a âncora sem classificação e ordena em pt-BR
   assert.equal(entries.find((e) => e.label === 'Sem classificação').color, ANCHOR_FALLBACK_COLOR);
   assert.deepEqual(anchorLegendEntries([]), []);
   assert.deepEqual(anchorLegendEntries(undefined), []);
+});
+
+// --- Classificação de imóveis (issues #30, #31, #32) -----------------------
+
+test('formatSalesStage traduz o enum fechado e não engole valor inesperado (issue #30)', () => {
+  assert.equal(formatSalesStage('em_construcao'), 'Em construção');
+  assert.equal(formatSalesStage('em_lancamento'), 'Em lançamento');
+  assert.equal(formatSalesStage('oferta'), 'Oferta');
+
+  assert.equal(formatSalesStage(''), '', 'ausência é ausência: o selo some, não vira travessão');
+  assert.equal(formatSalesStage(null), '');
+
+  // Enum fechado no contrato, planilha aberta na prática. Um estágio digitado errado
+  // precisa ficar VISÍVEL para ser corrigido, não sumir da tela.
+  assert.equal(formatSalesStage('pre_lancamento'), 'Pre lancamento');
+  assert.equal(formatSalesStage('  OFERTA '), 'Oferta');
+});
+
+test('formatRegularizationStatus não assume vocabulário fechado (issue #32)', () => {
+  assert.equal(formatRegularizationStatus('regularizado'), 'Regularizado');
+  assert.equal(formatRegularizationStatus('nao_regularizado'), 'Não regularizado');
+  assert.equal(formatRegularizationStatus('em_regularizacao'), 'Em regularização');
+  assert.equal(formatRegularizationStatus(''), '');
+
+  // O campo é TEXTO LIVRE no backend — o Apps Script não o valida contra enum nenhum.
+  // Valor fora dos três esperados vira texto legível; tratá-lo como um dos três seria
+  // afirmar sobre regularização algo que a planilha não disse (R8.16).
+  assert.equal(formatRegularizationStatus('processo_judicial'), 'Processo judicial');
+  assert.equal(formatRegularizationStatus('desconhecido'), 'Desconhecido');
 });
