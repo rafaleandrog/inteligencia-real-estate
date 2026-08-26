@@ -242,17 +242,67 @@ metaXss.texto ? pass('valor hostil permanece como texto') : fail('valor hostil s
 await metaPage.screenshot({ path: process.env.SHOT_META || 'meta.png' });
 await metaPage.close();
 
+/**
+ * Abre a página com o demo.json SEM as colunas indicadas.
+ *
+ * O caminho "sem dado" continua real — a planilha do usuário ainda não preencheu esses
+ * campos — mas não pode depender de o `data/demo.json` versionado por acaso não ter a
+ * coluna. Desde que o gerador passou a derivar `group`/`segment`/`sales_stage`, essa
+ * premissa caiu: as checagens de ausência viravam vermelhas sem nada no código de tela ter
+ * mudado. Mesma lição da R8.39 — quando a semente deixa de ser autoridade sobre "que
+ * colunas existem", todo teste que a usava como verdade muda de significado em silêncio.
+ */
+async function abrirSemColunas(porEntidade) {
+  const p = await browser.newPage({ viewport: { width: 1440, height: 900 } });
+  await p.addInitScript(() => {
+    Object.defineProperty(window, 'APP_CONFIG', {
+      configurable: true,
+      set(value) { delete window.APP_CONFIG; window.APP_CONFIG = value; if (value) value.demoMode = true; },
+      get() { return undefined; },
+    });
+  });
+  await p.route('**/data/demo.json', async (route) => {
+    const response = await route.fetch();
+    const payload = await response.json();
+    for (const [entidade, colunas] of Object.entries(porEntidade)) {
+      payload[entidade] = (payload[entidade] || []).map((linha) => {
+        const copia = { ...linha };
+        for (const coluna of colunas) delete copia[coluna];
+        return copia;
+      });
+    }
+    await route.fulfill({ response, json: payload });
+  });
+  await p.goto('http://localhost:8080/', { waitUntil: 'networkidle' });
+  await p.waitForTimeout(1200);
+  return p;
+}
+
 console.log('\n== 12d. Legenda de âncoras em dois níveis (issue #26) ==');
-// Sem `group`/`segment` na planilha — o estado de hoje — a legenda sai plana, sem
-// título de grupo, e os selects novos ficam só com "Todos".
-const legendaPlana = await page.$$eval('#anchorLegend .anchor-legend-group', (secs) =>
+// O demo.json versionado agora É gerado com as derivações do backend, então a legenda
+// agrupada aparece em modo demonstração SEM interceptar nada. É o que fecha o achado
+// "wire the derivation into demo generation": prova que a derivação do gerador chega à tela.
+const legendaDemo = await page.$$eval('#anchorLegend .anchor-legend-title', (ns) => ns.map((n) => n.textContent));
+legendaDemo.includes('Infraestrutura') && legendaDemo.includes('Comércio e serviço')
+  ? pass('modo demo sai com a legenda agrupada, sem interceptação: ' + JSON.stringify(legendaDemo))
+  : fail('demo versionado não trouxe group derivado: ' + JSON.stringify(legendaDemo));
+(await page.$$eval('#anchorGroup option', (o) => o.length)) > 1
+  ? pass('filtro de grupo utilizável em modo demo, sem interceptação')
+  : fail('select de grupo vazio no demo versionado');
+
+// E o caminho "sem group/segment" — o estado da planilha real do usuário — continua
+// coberto, agora REMOVENDO as colunas na interceptação em vez de contar com o artefato
+// versionado não as ter.
+const semGrupo = await abrirSemColunas({ anchors: ['group', 'segment'] });
+const legendaPlana = await semGrupo.$$eval('#anchorLegend .anchor-legend-group', (secs) =>
   secs.map((sec) => sec.querySelector('.anchor-legend-title')?.textContent ?? null));
 legendaPlana.length === 1 && legendaPlana[0] === null
   ? pass('sem group na planilha, a legenda continua plana')
   : fail('legenda inesperada sem group: ' + JSON.stringify(legendaPlana));
-(await page.$$eval('#anchorGroup option', (o) => o.length)) === 1
+(await semGrupo.$$eval('#anchorGroup option', (o) => o.length)) === 1
   ? pass('select de grupo fica só com "Todos" quando ninguém classificou')
   : fail('select de grupo populado sem dado');
+await semGrupo.close();
 
 // Agora COM classificação, interceptando o demo.json — o único jeito de exercitar o
 // caminho real de carregamento sem a planilha, que este ambiente não alcança.
