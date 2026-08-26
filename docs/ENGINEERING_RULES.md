@@ -397,7 +397,7 @@ Cada uma nasce de um erro que aconteceu de verdade.
   outro controle já limpou de brinde. Mesma família de R8.35, pelo lado espelhado: lá uma
   recarga apagava o que não devia, aqui uma restauração preservava o que não devia.
 
-- **R8.42** *(2026-08-25, review do Codex na PR #44)* **Tolerância que cliente e servidor
+- **R8.44** *(2026-08-25, review do Codex na PR #44)* **Tolerância que cliente e servidor
   aplicam ao mesmo dado é um número só, e ele se copia — não se estima.** O Apps Script
   aceita a distribuição etária em escala decimal quando `Math.abs(sum - 1) <= 0.02`; a tela
   convertia a escala quando `sum <= 1.01`. Entre 1,01 e 1,02 abria uma faixa em que o
@@ -409,3 +409,15 @@ Cada uma nasce de um erro que aconteceu de verdade.
   cite a origem — e, quando **não** espelhar alguma borda, escreva por que: aqui o piso
   (`sum >= 0,98`) fica de fora de propósito, porque ele descreve uma distribuição completa
   e a tela também precisa desenhar distribuição parcial.
+- **R8.46** *(2026-08-25, rebase das PRs #42-#44 na `main`)* **Guard que interroga uma fonte e
+  afirma sobre outra não é guard.** Ao renumerar uma regra durante um rebase, a numeração foi
+  conferida com `grep` no **arquivo em disco** e o commit foi declarado correto — mas o
+  `git commit --amend` tinha rodado sem nada em stage, então a árvore publicável ainda continha o
+  número duplicado enquanto a verificação passava verde. O working tree e o commit são **duas
+  fontes**, e a que importa é a que vai ser publicada. É a terceira aparição do mesmo padrão neste
+  repositório — R8.4 e R8.23 (guard que nunca dispara), R8.42 (legenda e marca liam a mesma tabela
+  com entradas diferentes) — e reaparecer depois de nomeado duas vezes é o que torna o caso forte:
+  a pergunta "o que exatamente esta verificação está lendo?" precisa ser feita toda vez, não
+  deduzida. Mecanismo: verificação de conteúdo versionado roda sobre `git show HEAD:<arquivo>`,
+  nunca sobre o arquivo em disco, e `git status --porcelain` vazio é condição de saída — sem isso,
+  "está corrigido" descreve um estado que ninguém vai receber.
