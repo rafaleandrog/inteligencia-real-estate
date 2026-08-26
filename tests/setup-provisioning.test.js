@@ -168,3 +168,85 @@ test('nenhuma coluna é provisionada sem estar declarada — a rede não tem fur
     }
   }
 });
+
+// --- provisionamento restrito à lista declarada (R8.40) --------------------------
+
+// O achado mais grave da revisão do Code.gs v2.0.0: enquanto `ensureHeaders_()` criava
+// QUALQUER cabeçalho ausente, apagar ou renomear `title` por acidente fazia o
+// "Configurar projeto" seguinte devolver uma coluna nova e vazia com o nome certo. A
+// validação parava de emitir MISSING_HEADER (o cabeçalho está lá) e
+// `validateSchemaFields_` pula célula vazia — o dado antigo ficava órfão sob o
+// cabeçalho renomeado e a tela pública perdia o campo em silêncio.
+test('cabeçalho legado apagado NÃO é recriado — a perda tem que aparecer', () => {
+  const seeded = seededSheets();
+  const headers = seeded.LISTINGS[0];
+  const removed = 'title';
+  const col = headers.indexOf(removed);
+  assert.notEqual(col, -1, 'a semente precisa ter a coluna que o teste apaga');
+
+  // Simula o operador renomeando a coluna: o cabeçalho some, o dado continua embaixo.
+  seeded.LISTINGS = seeded.LISTINGS.map((row, i) => {
+    const copy = [...row];
+    if (i === 0) copy[col] = 'titulo_renomeado_por_engano';
+    return copy;
+  });
+
+  const sandbox = createAppsScriptSandbox({ sheets: seeded, scriptProperties: {} });
+  sandbox.context.setupProject();
+
+  const after = headersOf(sandbox, 'LISTINGS');
+  assert.equal(
+    after.includes(removed),
+    false,
+    'o provisionamento recriou um cabeçalho legado ausente, mascarando a perda do dado',
+  );
+  assert.ok(after.includes('titulo_renomeado_por_engano'), 'a coluna renomeada segue lá, com o dado');
+});
+
+test('setupProject() relata o cabeçalho ausente que se recusou a criar', () => {
+  const seeded = seededSheets();
+  const col = seeded.LISTINGS[0].indexOf('address');
+  seeded.LISTINGS = seeded.LISTINGS.map((row, i) => {
+    const copy = [...row];
+    if (i === 0) copy[col] = 'endereco';
+    return copy;
+  });
+
+  const sandbox = createAppsScriptSandbox({ sheets: seeded, scriptProperties: {} });
+  const message = String(sandbox.context.setupProject());
+
+  assert.match(message, /address/, 'o relatório precisa nomear a coluna que ficou faltando');
+  assert.match(message, /NÃO CRIAD/i, 'o relatório precisa deixar claro que não foi criada');
+});
+
+// A lista do backend e a dos testes descrevem o mesmo delta. Se uma mudar sem a outra,
+// o provisionamento e a rede de proteção passam a discordar sobre o que é legítimo criar.
+test('PROVISIONABLE_COLUMNS do Code.gs bate com POST_SEED_COLUMNS dos testes', () => {
+  const sandbox = createAppsScriptSandbox({ sheets: {}, scriptProperties: {} });
+  const backend = JSON.parse(JSON.stringify(sandbox.context.PROVISIONABLE_COLUMNS));
+
+  for (const sheet of REQUIRED_SHEETS) {
+    assert.deepEqual(
+      [...(backend[sheet] || [])].sort(),
+      [...(POST_SEED_COLUMNS[sheet] || [])].sort(),
+      sheet,
+    );
+  }
+});
+
+test('uma coluna do contrato fora da lista de provisionamento não é criada', () => {
+  const sandbox = createAppsScriptSandbox({ sheets: seededSheets(), scriptProperties: {} });
+  const provisionable = new Set(
+    Object.values(JSON.parse(JSON.stringify(sandbox.context.PROVISIONABLE_COLUMNS))).flat(),
+  );
+  const before = Object.fromEntries(REQUIRED_SHEETS.map((n) => [n, headersOf(sandbox, n)]));
+
+  sandbox.context.setupProject();
+
+  for (const sheet of REQUIRED_SHEETS) {
+    for (const header of headersOf(sandbox, sheet)) {
+      if (before[sheet].includes(header)) continue;
+      assert.ok(provisionable.has(header), `${sheet}.${header} foi criada fora de PROVISIONABLE_COLUMNS`);
+    }
+  }
+});

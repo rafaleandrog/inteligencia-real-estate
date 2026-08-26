@@ -33,7 +33,7 @@
 // Constantes
 // ---------------------------------------------------------------------------
 
-var APP_VERSION = '2.0.1';
+var APP_VERSION = '2.0.2';
 
 /**
  * Protocolo da API de escrita que este script fala, exposto em `health_()`.
@@ -56,6 +56,30 @@ var OPTIONAL_SHEETS = ['PRIMARY_OFFERS', 'IVV_MONTHLY', 'IVV_REGION', 'RA_PROFIL
 
 /** Abas novas que este script cria de forma aditiva quando ainda não existem. */
 var MANAGED_EXTENSION_SHEETS = ['RA_PROFILES', 'POLYGONS'];
+
+/**
+ * Colunas que este script pode CRIAR numa aba obrigatória que já existe.
+ *
+ * Provisionar é poderoso e por isso é perigoso: `ensureHeaders_()` criar qualquer
+ * cabeçalho ausente significa que apagar ou renomear `title`, `address` ou `latitude`
+ * por acidente faz o "Configurar projeto" seguinte devolver uma coluna nova e VAZIA com
+ * o nome certo. A validação deixa de emitir MISSING_HEADER (o cabeçalho está lá) e
+ * `validateSchemaFields_` pula célula vazia — o dado antigo fica órfão sob o cabeçalho
+ * renomeado e a tela pública perde títulos, ou todas as coordenadas, em silêncio.
+ *
+ * Então o provisionamento é restrito a esta lista: exatamente o delta entre a semente de
+ * migração e o schema em vigor. Cabeçalho ausente que não esteja aqui CONTINUA ausente,
+ * para a validação reclamar dele em voz alta. A lista espelha `POST_SEED_COLUMNS` em
+ * tests/helpers/schema.mjs, e a paridade entre as duas é cobrada por teste.
+ *
+ * Abas gerenciadas (RA_PROFILES, POLYGONS) e operacionais não entram aqui: elas são
+ * criadas inteiras por este script, então não existe "coluna que o operador apagou".
+ */
+var PROVISIONABLE_COLUMNS = {
+  LISTINGS: ['regularization_status'],
+  DEVELOPMENTS: ['building_orientation', 'regularization_status', 'sales_stage'],
+  ANCHORS: ['brand_name', 'group', 'occupied_area_m2', 'segment']
+};
 
 /** Abas operacionais mantidas por este script. */
 var META_SHEET = 'APP_META';
@@ -462,6 +486,7 @@ function setupProject() {
     var created = [];
     var kept = [];
     var addedHeaders = [];
+    var blockedHeaders = [];
 
     Object.keys(OPERATIONAL_HEADERS).forEach(function (name) {
       var sheet = book.getSheetByName(name);
@@ -471,8 +496,10 @@ function setupProject() {
       } else {
         kept.push(name);
       }
-      var added = ensureHeaders_(sheet, OPERATIONAL_HEADERS[name]);
-      if (added.length) addedHeaders.push(name + ': ' + added.join(', '));
+      // Aba operacional é criada e mantida inteira por este script: não há coluna que
+      // o operador possa ter apagado por engano, então não há o que restringir.
+      var operational = ensureHeaders_(sheet, OPERATIONAL_HEADERS[name], null);
+      if (operational.added.length) addedHeaders.push(name + ': ' + operational.added.join(', '));
     });
 
     MANAGED_EXTENSION_SHEETS.forEach(function (name) {
@@ -483,15 +510,18 @@ function setupProject() {
       } else {
         kept.push(name);
       }
-      var added = ensureHeaders_(sheet, REQUIRED_HEADERS[name]);
-      if (added.length) addedHeaders.push(name + ': ' + added.join(', '));
+      // Idem: RA_PROFILES e POLYGONS nascem deste script.
+      var managed = ensureHeaders_(sheet, REQUIRED_HEADERS[name], null);
+      if (managed.added.length) addedHeaders.push(name + ': ' + managed.added.join(', '));
     });
 
     REQUIRED_SHEETS.forEach(function (name) {
       var sheet = book.getSheetByName(name);
       if (!sheet) return; // a validação registra MISSING_SHEET; não mascara criando aba vazia
-      var added = ensureHeaders_(sheet, REQUIRED_HEADERS[name]);
-      if (added.length) addedHeaders.push(name + ': ' + added.join(', '));
+      // Aqui SIM a criação é restrita: ver o comentário de PROVISIONABLE_COLUMNS.
+      var result = ensureHeaders_(sheet, REQUIRED_HEADERS[name], PROVISIONABLE_COLUMNS[name] || []);
+      if (result.added.length) addedHeaders.push(name + ': ' + result.added.join(', '));
+      if (result.blocked.length) blockedHeaders.push(name + ': ' + result.blocked.join(', '));
     });
 
     if (!props_().getProperty('DATASET_VERSION')) props_().setProperty('DATASET_VERSION', '1');
@@ -516,6 +546,13 @@ function setupProject() {
       '\nAbas preservadas: ' + (kept.length ? kept.join(', ') : 'nenhuma') +
       '\nCabeçalhos adicionados sem alterar os existentes: ' +
       (addedHeaders.length ? addedHeaders.join(' | ') : 'nenhum') +
+      (blockedHeaders.length
+        ? '\n\n⚠️ CABEÇALHOS DO CONTRATO AUSENTES E NÃO CRIADOS: ' + blockedHeaders.join(' | ') +
+          '\nEstas colunas fazem parte do contrato mas não estão na lista de provisionamento. ' +
+          'Provavelmente foram apagadas ou renomeadas. Restaure o nome original — criar uma ' +
+          'coluna vazia no lugar esconderia a perda do dado. Rode "Validar dados agora" para o ' +
+          'relatório completo.'
+        : '') +
       '\nClassificações preenchidas a partir de dados existentes: ' +
       (developmentUpdates + anchorUpdates) +
       (tokenMigration ? '\nCredencial legada movida de APP_META para Script Properties.' : '') +
@@ -527,14 +564,32 @@ function setupProject() {
 }
 
 /** Acrescenta somente cabeçalhos ausentes à direita; nunca reordena nem sobrescreve. */
-function ensureHeaders_(sheet, desiredHeaders) {
-  if (!sheet) return [];
+/**
+ * Garante os cabeçalhos de uma aba. `allowedToCreate` limita o que pode ser CRIADO:
+ * `null` libera tudo (aba gerenciada por este script), um array restringe à lista
+ * (aba obrigatória, onde criar cabeçalho não previsto mascara erro do operador).
+ * Devolve `{ added, blocked }` — `blocked` é o que faltava e NÃO foi criado, para
+ * `setupProject()` avisar em vez de deixar a omissão passar despercebida.
+ */
+function ensureHeaders_(sheet, desiredHeaders, allowedToCreate) {
+  if (!sheet) return { added: [], blocked: [] };
   var current = headersOf_(sheet);
   var index = headerIndex_(current);
-  var missing = desiredHeaders.filter(function (header) { return index[header] === undefined; });
+  var absent = desiredHeaders.filter(function (header) { return index[header] === undefined; });
+
+  var missing = absent;
+  var blocked = [];
+  if (allowedToCreate) {
+    missing = [];
+    for (var m = 0; m < absent.length; m++) {
+      if (allowedToCreate.indexOf(absent[m]) === -1) blocked.push(absent[m]);
+      else missing.push(absent[m]);
+    }
+  }
+
   if (!missing.length) {
     sheet.setFrozenRows(1);
-    return [];
+    return { added: [], blocked: blocked };
   }
 
   var startColumn = Math.max(1, sheet.getLastColumn() + 1);
@@ -550,7 +605,7 @@ function ensureHeaders_(sheet, desiredHeaders) {
     sheet.getRange(1, 1, 1, missing.length).setFontWeight('bold');
   }
   sheet.setFrozenRows(1);
-  return missing;
+  return { added: missing, blocked: blocked };
 }
 
 /** Move uma credencial legada da aba pública para Script Properties e limpa a exposição. */
@@ -565,11 +620,19 @@ function migrateLegacyAdminToken_() {
     if (!isSecretMetaKey_(key)) continue;
     var value = toText_(rows[i][1]);
     var normalized = normalizeSlug_(key);
-    var propertyName = (normalized === 'admin_token' || normalized === 'admin_token_value')
-      ? 'ADMIN_TOKEN'
-      : 'MIGRATED_' + normalized.toUpperCase();
-    if (value && !props_().getProperty(propertyName)) {
-      props_().setProperty(propertyName, value);
+    var isAdminToken = (normalized === 'admin_token' || normalized === 'admin_token_value');
+
+    // Um segredo que esteve no APP_META esteve PÚBLICO: a aba é lida pelo navegador de
+    // qualquer visitante, via GViz. Copiá-lo para a Script Property transformaria um
+    // valor já vazado em credencial válida do endpoint de escrita, e limpar a célula
+    // depois não revoga cópia que alguém já leu ou que ficou em cache. O valor é
+    // apagado e NUNCA reaproveitado — o administrador gera um token novo pelo menu.
+    if (isAdminToken && value) {
+      props_().setProperty('LEGACY_ADMIN_TOKEN_REVOKED_AT', nowISO_());
+      Logger.log('Token administrativo legado encontrado no APP_META e descartado. ' +
+        'Gere um novo em "Configurar / trocar token de administração".');
+    } else if (value && !props_().getProperty('MIGRATED_' + normalized.toUpperCase())) {
+      props_().setProperty('MIGRATED_' + normalized.toUpperCase(), value);
     }
     sheet.getRange(i + 2, 1, 1, 3)
       .setNumberFormat('@')
@@ -1490,7 +1553,7 @@ function stablePolygonId_(fileId, placemark) {
 function writePolygonsToSheet_(placemarks, sourceFileName, fileId) {
   var book = ss_();
   var sheet = book.getSheetByName('POLYGONS') || book.insertSheet('POLYGONS');
-  ensureHeaders_(sheet, REQUIRED_HEADERS.POLYGONS);
+  ensureHeaders_(sheet, REQUIRED_HEADERS.POLYGONS, null); // aba gerenciada: pode criar tudo
   var headers = headersOf_(sheet);
   var index = headerIndex_(headers);
   var existingIds = {};
@@ -1772,7 +1835,12 @@ function ensureWriteSheetSchema_(sheetName) {
   if (!sheet) {
     return { ok: false, error: { code: 'UNKNOWN_SHEET', message: 'Aba ausente na planilha: ' + sheetName } };
   }
-  var added = ensureHeaders_(sheet, REQUIRED_HEADERS[sheetName] || []);
+  // Mesma restrição do setupProject(): na escrita, provisionar cabeçalho não previsto
+  // seria ainda pior, porque acontece sem ninguém olhando o relatório.
+  var allowed = MANAGED_EXTENSION_SHEETS.indexOf(sheetName) === -1
+    ? (PROVISIONABLE_COLUMNS[sheetName] || [])
+    : null;
+  var added = ensureHeaders_(sheet, REQUIRED_HEADERS[sheetName] || [], allowed).added;
   if (added.length) {
     bumpDatasetVersion_();
     setMeta_('validation_status', 'dirty');
@@ -2000,6 +2068,8 @@ function validateWritePayload_(sheetName, action, fields) {
  * periódica passar (que hoje só recalcula LISTINGS — ver Pendências desta PR).
  */
 function applyDerivedFields_(sheetName, fields, currentRecord) {
+  applyClassificationDerivations_(sheetName, fields, currentRecord);
+
   var config = DERIVED_PRICE_M2_FIELD[sheetName];
   if (!config) return;
 
@@ -2014,6 +2084,46 @@ function applyDerivedFields_(sheetName, fields, currentRecord) {
   if (price === null || area === null) return;
 
   fields[config.target] = pricePerM2_(price, area);
+}
+
+/**
+ * Deriva `sales_stage` (DEVELOPMENTS) e `group`/`segment` (ANCHORS) no caminho de
+ * escrita, não só no `setupProject()`.
+ *
+ * Sem isto, um create pelo admin com esses campos omitidos gravava a linha com as
+ * células vazias — e a âncora nascia FORA dos filtros de grupo e segmento, invisível
+ * para quem usa a legenda. Pior no update: mudar `category` de "Mobilidade" para
+ * "Saúde" mantinha `segment: 'estacao_metro'`, uma classificação que passou a ser
+ * mentira sobre o próprio registro.
+ *
+ * Valor explicitamente informado sempre vence — a mesma regra do provisionamento e do
+ * gerador de demo. Só a célula que ficaria vazia é preenchida.
+ */
+function applyClassificationDerivations_(sheetName, fields, currentRecord) {
+  var informed = function (field) {
+    return field in fields && toText_(fields[field]) !== '';
+  };
+  // Valor de entrada de um campo: o que veio na requisição, senão o que já está na linha.
+  var incoming = function (field) {
+    if (field in fields) return fields[field];
+    return currentRecord ? currentRecord[field] : '';
+  };
+
+  if (sheetName === 'DEVELOPMENTS' && !informed('sales_stage')) {
+    var stage = inferSalesStage_(incoming('status'));
+    if (stage) fields.sales_stage = stage;
+  }
+
+  if (sheetName === 'ANCHORS') {
+    if (!informed('group')) {
+      var group = inferAnchorGroup_(incoming('category'));
+      if (group) fields.group = group;
+    }
+    if (!informed('segment')) {
+      var segment = inferAnchorSegment_(incoming('category'), incoming('subcategory'), incoming('name'));
+      if (segment) fields.segment = segment;
+    }
+  }
 }
 
 /**
@@ -2132,6 +2242,19 @@ function validateGeoJsonGeometry_(raw) {
   return { ok: true, value: serialized, geometry: canonical, position_count: positionCount.value };
 }
 
+/**
+ * `true` só para número finito ou string que representa um número. Recusa
+ * `null`, `undefined`, `''`, `'  '`, `true`/`false`, array e objeto — tudo que
+ * `Number()` converteria em 0 ou NaN sem reclamar.
+ */
+function isNumericPosition_(value) {
+  if (typeof value === 'number') return isFinite(value);
+  if (typeof value !== 'string') return false;
+  var trimmed = value.trim();
+  if (!trimmed) return false;
+  return isFinite(Number(trimmed));
+}
+
 function validateGeoJsonPolygon_(rings, positionCount) {
   if (!Array.isArray(rings) || rings.length === 0) {
     return { ok: false, message: 'Polygon deve conter ao menos um anel.' };
@@ -2148,6 +2271,14 @@ function validateGeoJsonPolygon_(rings, positionCount) {
       var position = ring[i];
       if (!Array.isArray(position) || position.length < 2) {
         return { ok: false, message: 'posição inválida; esperado [longitude, latitude].' };
+      }
+      // `Number(null)`, `Number('')` e `Number(false)` são todos 0 — e 0 passa em
+      // `isFinite` e na faixa válida. Sem esta checagem, um anel de coordenadas ausentes
+      // vira um polígono perfeitamente válido perto de [0, 0], no golfo da Guiné, e é
+      // PERSISTIDO como se fosse geografia real. Coordenada tem que ser número mesmo,
+      // ou string numérica não vazia.
+      if (!isNumericPosition_(position[0]) || !isNumericPosition_(position[1])) {
+        return { ok: false, message: 'longitude/latitude precisa ser numérica; valor vazio ou nulo não é aceito.' };
       }
       var lon = Number(position[0]);
       var lat = Number(position[1]);

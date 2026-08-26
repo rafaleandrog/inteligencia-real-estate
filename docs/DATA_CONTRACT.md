@@ -109,8 +109,9 @@ Coluna provisionada pelo Apps Script v2.0.0. Vocabulário **aberto**, com três 
 como enum fechado: travar o vocabulário antes de a planilha estar preenchida rejeitaria valor
 legítimo que ninguém previu.
 
-A decisão de visibilidade foi tomada: o campo é **público** — aparece no card de detalhe e vira
-filtro no mapa.
+A decisão de visibilidade foi tomada: o campo será **público** — card de detalhe e filtro no mapa.
+**Ainda não está na tela**: a coluna e o carregamento existem desde a sincronização com o v2.0.0, e
+a exibição entra na issue #32. Até lá o valor é lido e normalizado, mas não renderizado.
 
 #### Escrita pela área administrativa (issue #5, R4.9)
 
@@ -179,7 +180,7 @@ As três colunas foram provisionadas pelo Apps Script v2.0.0.
   `normalizeListing()` deriva de `property_type` (vocabulário fechado), aqui não há derivação
   segura: `product` e `unit_mix` são texto livre. Por isso a coluna é dedicada e preenchida à mão.
 - **`regularization_status`** (#32) — mesma semântica e mesma decisão de visibilidade de
-  LISTINGS: público, no card e no filtro.
+  LISTINGS: será público, no card e no filtro, quando a #32 for implementada.
 
 #### Escrita pela área administrativa (issue #5, R4.9)
 
@@ -337,9 +338,9 @@ do nome. Reimportar o mesmo KML **não duplica**: a importação é idempotente 
 | Campo | Tipo | Obrig. | Preenchimento | Observação |
 |---|---|---|---|---|
 | `polygon_id` | texto | **sim** | — | `POLY_` + 24 hex do SHA-256 |
-| `name` | texto | não | — | do `<name>` do Placemark |
+| `name` | texto | **sim** | — | do `<name>` do Placemark; `REQUIRED_FOR_CREATE` exige |
 | `category` | texto | não | — | de `ExtendedData`, quando houver |
-| `geometry_geojson` | texto | não | — | `Polygon` ou `MultiPolygon`, `[longitude, latitude]` |
+| `geometry_geojson` | texto | **sim** | — | `Polygon` ou `MultiPolygon`, `[longitude, latitude]`; `REQUIRED_FOR_CREATE` exige |
 | `color` | texto | não | — | cor sugerida para o preenchimento |
 | `description` | texto | não | — | do `<description>` do Placemark |
 | `properties_json` | texto | não | — | atributos livres do KML, como objeto JSON |
