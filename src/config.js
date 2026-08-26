@@ -60,6 +60,14 @@ window.APP_CONFIG = {
   raProfilesSheet: 'RA_PROFILES',
 
   /**
+   * Aba de contornos importados de KML/KMZ (issue #28). Opcional pelo mesmo motivo e
+   * com o mesmo tratamento de `raProfilesSheet`: ausência ou falha vira aviso, nunca
+   * erro (R2.5). A planilha pode legitimamente não ter nenhum polígono importado —
+   * nesse caso a camada simplesmente não aparece, sem mensagem de erro.
+   */
+  polygonsSheet: 'POLYGONS',
+
+  /**
    * Abas previstas para as próximas fases.
    *
    * A tela da V1 não lê PRIMARY_OFFERS/IVV_MONTHLY/IVV_REGION, e por isso não são

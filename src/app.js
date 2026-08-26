@@ -43,6 +43,8 @@ const dom = {
   detail: el('detail'), detailTitle: el('detailTitle'), detailBody: el('detailBody'),
   closeDetail: el('closeDetail'),
   anchorLegend: el('anchorLegend'),
+  polygonLayers: el('polygonLayers'), polygonLayerLabel: el('polygonLayerLabel'),
+  countPolygon: el('countPolygon'),
 };
 
 const state = {
@@ -54,10 +56,14 @@ const state = {
   // RA_PROFILES está ausente/indisponível — o filtro de RA continua funcionando,
   // só sem nome/população/densidade.
   raProfiles: {},
+  // Contornos importados de KML/KMZ (issue #28). Lista vazia é o estado normal de
+  // quem ainda não importou nenhum arquivo — a camada só não aparece.
+  polygons: [],
 };
 
 let map = null;
 let markerLayer = null;
+let polygonLayer = null;
 
 /** Raio do marcador por camada: anúncio é o dado principal, âncora é contexto. */
 const MARKER_RADIUS = { listing: 6, development: 7, anchor: 4 };
@@ -82,7 +88,103 @@ function initMap() {
     attribution: '&copy; colaboradores do <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener noreferrer">OpenStreetMap</a>',
   }).addTo(map);
 
+  // Duas camadas separadas, e os polígonos entram ANTES: o Leaflet empilha na ordem
+  // de adição, então um contorno criado depois cobriria os marcadores e roubaria o
+  // clique deles.
+  polygonLayer = L.layerGroup().addTo(map);
   markerLayer = L.layerGroup().addTo(map);
+}
+
+/** Cor de um contorno sem `color` na planilha. Constante, nunca regra de CSS. */
+const POLYGON_FALLBACK_COLOR = '#5b6b8c';
+
+/**
+ * Desenha a camada de contornos (issue #28).
+ *
+ * A cor vem de `fillColor`/`color` no JS, nunca de regra de classe no CSS: regra de
+ * classe vence o atributo que o Leaflet escreve no SVG, e foi assim que todas as
+ * âncoras acabaram verdes na PR #40.
+ *
+ * `geometry_geojson` só é parseado aqui — não no normalizador —, e o erro é isolado
+ * por registro: um contorno malformado some do mapa e vira aviso, sem derrubar os
+ * outros nem o carregamento (R2.6).
+ */
+function renderPolygons() {
+  if (!polygonLayer) return;
+  polygonLayer.clearLayers();
+  if (!state.filters.layers.has('polygon')) return;
+
+  for (const polygon of state.polygons) {
+    if (polygon.status && polygon.status !== 'active') continue;
+
+    let geometry = null;
+    try {
+      geometry = JSON.parse(polygon.geometry_geojson);
+    } catch (error) {
+      continue; // geometria ilegível: este contorno não é desenhado, os outros seguem
+    }
+    if (!geometry || (geometry.type !== 'Polygon' && geometry.type !== 'MultiPolygon')) continue;
+
+    const color = polygon.color || POLYGON_FALLBACK_COLOR;
+    let shape = null;
+    try {
+      shape = L.geoJSON(geometry, {
+        // `className` serve só para achar o contorno no DOM (teste e depuração): a cor
+        // continua vindo daqui, por `color`/`fillColor`. Nenhuma regra de CSS pode
+        // pintar `.polygon-shape` — regra de classe vence o atributo que o Leaflet
+        // escreve no SVG, que foi como todas as âncoras acabaram verdes na PR #40.
+        style: {
+          className: 'polygon-shape',
+          color, weight: 2, opacity: 0.9, fillColor: color, fillOpacity: 0.15,
+        },
+      });
+    } catch (error) {
+      continue; // coordenada fora de faixa faz o Leaflet lançar; mesmo tratamento
+    }
+
+    const tooltip = document.createElement('span');
+    tooltip.textContent = polygon.name || polygon.id;
+    shape.bindTooltip(tooltip, { sticky: true });
+    shape.on('click', () => openPolygonDetail(polygon));
+
+    shape.addTo(polygonLayer);
+  }
+}
+
+/**
+ * Painel de detalhe de um contorno.
+ *
+ * Tudo por `textContent`: `properties_json` vem de atributo de KML de terceiro, que é
+ * entrada não confiável tanto quanto o título de um anúncio (R4.4).
+ */
+function openPolygonDetail(polygon) {
+  const dl = document.createElement('dl');
+  dl.className = 'detail-list';
+
+  addRow(dl, 'Categoria', polygon.category);
+  addRow(dl, 'Descrição', polygon.description);
+  addRow(dl, 'Arquivo de origem', polygon.source_file);
+  addRow(dl, 'Importado em', formatDate(polygon.imported_at));
+
+  // As propriedades do KML são vocabulário aberto — nome de chave é do arquivo, não
+  // do contrato. Só o que for escalar vira linha; objeto aninhado viraria
+  // "[object Object]" e não informa nada.
+  const properties = polygon.properties || {};
+  for (const key of Object.keys(properties).sort()) {
+    const value = properties[key];
+    if (value === null || typeof value === 'object') continue;
+    addRow(dl, key, String(value));
+  }
+
+  // `selectedId` fica nulo: ele identifica um REGISTRO plotável, e o `render()` fecha
+  // o detalhe quando o id selecionado sai do filtro. Um contorno não passa pelos
+  // filtros de registro, então guardá-lo ali faria o painel fechar sozinho no
+  // primeiro render.
+  state.selectedId = null;
+  dom.detailTitle.textContent = polygon.name || polygon.id;
+  dom.detailBody.replaceChildren(dl);
+  dom.detail.hidden = false;
+  dom.closeDetail.focus();
 }
 
 /** Desenha os marcadores dos registros filtrados que têm coordenada. */
@@ -530,6 +632,7 @@ function render() {
   readFilters();
   const visible = applyFilters(state.records, state.filters);
   renderMarkers(visible);
+  renderPolygons();
   renderKpis(computeKpis(visible));
   renderRaProfile();
 
@@ -591,6 +694,20 @@ function renderAnchorLegend(records) {
 
   dom.anchorLegend.replaceChildren(frag);
   dom.anchorLegend.hidden = false;
+}
+
+/**
+ * A caixa da camada de contornos só existe quando há contorno.
+ *
+ * Uma camada permanentemente vazia na legenda é ruído: sugere que algo deveria estar
+ * ali e não está. A planilha sem nenhum KML importado é o estado normal hoje, não um
+ * defeito — então a ausência é silenciosa (R2.5).
+ */
+function showPolygonLayerControl(count) {
+  const visible = count > 0;
+  dom.polygonLayers.hidden = !visible;
+  dom.polygonLayerLabel.hidden = !visible;
+  if (visible) dom.countPolygon.textContent = formatNumber(count);
 }
 
 function populateSelect(select, values, formatter = (v) => v) {
@@ -763,6 +880,8 @@ async function load() {
 
   state.records = flattenEntities(result.entities);
   state.raProfiles = result.raProfiles || {};
+  state.polygons = result.polygons || [];
+  showPolygonLayerControl(state.polygons.length);
 
   populateSelect(dom.locality, distinctLocalities(state.records));
   populateSelect(dom.ptype, distinctPropertyTypes(state.records), formatPropertyType);

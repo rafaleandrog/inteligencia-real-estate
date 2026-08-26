@@ -10,7 +10,7 @@
 // Todas devolvem o mesmo formato:
 //   { entities, meta, source, warnings, errors }
 
-import { normalizeAll, normalizeAppMeta, appMetaConflicts, normalizeRaProfiles } from './normalize.js';
+import { normalizeAll, normalizeAppMeta, appMetaConflicts, normalizeRaProfiles, normalizePolygons } from './normalize.js';
 
 /** Entidades obrigatórias na V1. Ausência de qualquer uma é erro. */
 export const REQUIRED_ENTITIES = ['listings', 'developments', 'anchors'];
@@ -166,6 +166,7 @@ async function loadFromGviz(config) {
   // timeout curto dedicado limita o quanto uma aba opcional pendurada pode atrasar.
   const metaPromise = fetchAppMetaFromGviz(config);
   const raProfilesPromise = fetchRaProfilesFromGviz(config);
+  const polygonsPromise = fetchPolygonsFromGviz(config);
 
   const settled = await Promise.allSettled(
     entries.map(([, sheetName]) => fetchGvizSheet(config.spreadsheetId, sheetName))
@@ -184,13 +185,41 @@ async function loadFromGviz(config) {
 
   const { meta, warnings } = await metaPromise;
   const { raProfiles, warnings: raProfileWarnings } = await raProfilesPromise;
+  const { polygons, warnings: polygonWarnings } = await polygonsPromise;
   return {
     raw,
     errors,
-    warnings: [...warnings, ...raProfileWarnings],
+    warnings: [...warnings, ...raProfileWarnings, ...polygonWarnings],
     meta: { spreadsheetId: config.spreadsheetId, ...meta },
     raProfiles,
+    polygons,
   };
+}
+
+/**
+ * Lê a aba opcional `POLYGONS` (issue #28): contornos importados de KML/KMZ pelo menu
+ * do Apps Script.
+ *
+ * Mesmo tratamento de `RA_PROFILES` — promessa iniciada **antes** do lote obrigatório,
+ * teto de tempo curto e dedicado, e falha ou ausência virando **aviso, nunca erro**
+ * (R2.5). A aba estar vazia é o estado normal de quem ainda não importou nenhum
+ * arquivo; a camada só não aparece.
+ */
+async function fetchPolygonsFromGviz(config) {
+  const sheetName = config.polygonsSheet;
+  if (!sheetName) return { polygons: [], warnings: [] };
+
+  try {
+    const rows = await fetchGvizSheet(config.spreadsheetId, sheetName, {
+      timeoutMs: META_FETCH_TIMEOUT_MS,
+    });
+    return { polygons: normalizePolygons(rows), warnings: [] };
+  } catch (error) {
+    return {
+      polygons: [],
+      warnings: [`Contornos indisponíveis (${sheetName}): ${error?.message || error}`],
+    };
+  }
 }
 
 /**
@@ -276,6 +305,9 @@ async function loadFromDemo(config) {
     meta: { ...normalizeAppMeta(payload.meta), demo: payload.meta || {} },
     // Mesmo tratamento de `raw`: aba ausente no demo.json vira mapa vazio, não erro.
     raProfiles: normalizeRaProfiles(payload.ra_profiles || []),
+    // `polygons: []` é o conteúdo esperado do demo — ver o comentário em
+    // tools/build-demo.mjs. O caminho que precisa nunca quebrar é o da camada vazia.
+    polygons: normalizePolygons(payload.polygons || []),
   };
 }
 
@@ -295,6 +327,7 @@ async function loadFromAppsScript(config) {
   // caminho gviz já dá a ela e à APP_META (R2.5: aba opcional não pode empurrar a
   // tela de carregamento para além do necessário).
   const raProfilesPromise = fetchRaProfilesFromAppsScript(config);
+  const polygonsPromise = fetchPolygonsFromAppsScript(config);
 
   const settled = await Promise.allSettled(
     entries.map(async ([, sheetName]) => {
@@ -339,8 +372,26 @@ async function loadFromAppsScript(config) {
 
   const { raProfiles, warnings: raProfileWarnings } = await raProfilesPromise;
   warnings.push(...raProfileWarnings);
+  const { polygons, warnings: polygonWarnings } = await polygonsPromise;
+  warnings.push(...polygonWarnings);
 
-  return { raw, errors, warnings, meta, raProfiles };
+  return { raw, errors, warnings, meta, raProfiles, polygons };
+}
+
+/** POLYGONS pelo endpoint read-only do Web App — mesmo contrato de `fetchPolygonsFromGviz`. */
+async function fetchPolygonsFromAppsScript(config) {
+  if (!config.polygonsSheet) return { polygons: [], warnings: [] };
+
+  try {
+    const url = `${config.appsScriptUrl}?resource=dataset&name=${encodeURIComponent(config.polygonsSheet)}`;
+    const response = await fetchWithTimeout(url, { timeoutMs: META_FETCH_TIMEOUT_MS });
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    const payload = await response.json();
+    if (payload.error) throw new Error(payload.error);
+    return { polygons: normalizePolygons(payload.rows || []), warnings: [] };
+  } catch (error) {
+    return { polygons: [], warnings: [`Contornos indisponíveis: ${error?.message || error}`] };
+  }
 }
 
 /** RA_PROFILES pelo endpoint read-only do Web App — mesmo formato de resposta que as abas obrigatórias. */
@@ -403,6 +454,7 @@ export async function loadDataset(config) {
       entities: { listings: [], developments: [], anchors: [] },
       meta: {},
       raProfiles: {},
+      polygons: [],
       source: strategy,
       warnings,
       errors: [error?.message || String(error)],
@@ -439,6 +491,7 @@ export async function loadDataset(config) {
     entities,
     meta: result.meta || {},
     raProfiles: result.raProfiles || {},
+    polygons: result.polygons || [],
     source: strategy,
     warnings,
     errors,

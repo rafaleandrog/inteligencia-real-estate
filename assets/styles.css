@@ -28,6 +28,10 @@
   --primary-on-fill: #b5591c;
   --development: #7252a3;
   --anchor: #397d53;
+  /* Contornos importados de KML/KMZ (issue #28). Mantido em sincronia com
+     POLYGON_FALLBACK_COLOR em src/app.js: o mapa pinta por JS (o Leaflet exige),
+     a legenda pinta por CSS, e as duas precisam concordar. */
+  --polygon: #5b6b8c;
 
   /* Preenchimento das barras do gráfico de faixa etária (issue #35). Token próprio
      porque --accent-text existe para TEXTO sobre --bg/--panel e não para
@@ -470,6 +474,22 @@ select:focus, input[type="number"]:focus {
 .dot-development { background: var(--development); }
 .dot-anchor { background: var(--anchor); }
 
+/*
+ * Contorno é área, não ponto: o marcador da legenda é um quadrado vazado com a mesma
+ * cor de traço e o mesmo preenchimento translúcido que `renderPolygons()` aplica no
+ * mapa, para a legenda descrever o que a pessoa realmente vê.
+ *
+ * A cor NÃO é aplicada por regra de classe ao SVG do Leaflet — só aqui, ao ponto da
+ * legenda. Regra de classe vence o atributo que o Leaflet escreve, e foi assim que
+ * todas as âncoras acabaram verdes na PR #40.
+ */
+.dot-polygon {
+  border-radius: 2px;
+  background: color-mix(in srgb, var(--polygon) 15%, transparent);
+  border: 2px solid var(--polygon);
+  box-sizing: border-box;
+}
+
 .count {
   margin-left: auto;
   font-family: var(--font-mono);
@@ -486,7 +506,8 @@ select:focus, input[type="number"]:focus {
   color: var(--muted);
   margin: 0 0 6px;
 }
-.layers-group-label-anchor { margin-top: 14px; }
+.layers-group-label-anchor,
+.layers-group-label-polygon { margin-top: 14px; }
 
 /* Legenda de âncoras em dois níveis: grupo → segmento (issue #26). O título do
    grupo só existe quando a planilha classificou pelo menos uma âncora; sem isso a

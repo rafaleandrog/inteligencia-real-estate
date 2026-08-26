@@ -5,8 +5,23 @@
 
 import { isApproximateLocation } from './normalize.js';
 
-/** Camadas exibíveis no mapa, na ordem em que aparecem na interface. */
+/**
+ * Camadas de REGISTRO exibíveis no mapa, na ordem em que aparecem na interface.
+ *
+ * São exatamente os valores de `record.kind`, e é isso que `applyFilters()` e
+ * `computeKpis()` usam. Contorno não entra aqui de propósito: um polígono não é
+ * registro plotável, não tem `kind` (ver `normalizePolygon`) e não participa de KPI —
+ * incluí-lo faria `byKind` ganhar uma chave sempre zerada e `applyFilters()` procurar
+ * um `kind` que não existe.
+ */
 export const LAYERS = ['listing', 'development', 'anchor'];
+
+/**
+ * Camadas ligáveis pela caixa de seleção — os registros mais os contornos (issue #28).
+ * É o conjunto que o estado inicial dos filtros liga, para que a camada apareça
+ * marcada antes do primeiro `readFilters()`.
+ */
+export const DISPLAY_LAYERS = [...LAYERS, 'polygon'];
 
 /** Estado inicial dos filtros: tudo visível, nada restrito. */
 export function createFilterState() {
@@ -23,7 +38,7 @@ export function createFilterState() {
     regularizationStatus: '',
     anchorGroup: '',
     anchorSegment: '',
-    layers: new Set(LAYERS),
+    layers: new Set(DISPLAY_LAYERS),
   };
 }
 
