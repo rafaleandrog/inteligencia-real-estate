@@ -86,6 +86,7 @@ Chave: `listing_id`. 141 linhas no dataset atual.
 | `views_count` | inteiro | não | 2/141 | `3091` |
 | `interested_count` | inteiro | não | 2/141 | `72` |
 | `quality_flag` | enum | sim | 141/141 | `web_search_direct_item_page_indexed` |
+| `regularization_status` | texto | não | 0/141 | provisionada pelo v2.0.0; sem dado ainda |
 
 **`property_type`:** `apartamento`, `casa`, `casa_condominio`, `kitnet`, `predio`, `terreno`.
 **`coordinate_precision`:** `locality_centroid_deterministic_jitter`, `locality_centroid_jitter`.
@@ -101,14 +102,16 @@ Valor já preenchido não é sobrescrito; divergência grande vira alerta em `DA
 `apartamento`, `predio`, `kitnet` → `vertical`; `casa`, `casa_condominio`, `terreno` →
 `horizontal`. Não precisa de mudança de backend.
 
-#### `regularization_status` — preparação para classificação futura (issue #32)
+#### `regularization_status` — situação de regularização (issue #32)
 
-Coluna ainda não existe na planilha. `normalizeListing()` já lê `regularization_status`
-(`toText()`, ausência vira string vazia) para o dia em que existir. Fora de
-`REQUIRED_HEADERS.LISTINGS` de propósito, mesmo motivo de `segment` em ANCHORS (ver nota
-correspondente mais abaixo): adicionar à validação obrigatória sem a coluna existir geraria
-`MISSING_HEADER` em produção. Decisão pendente (issue #32): esse campo é exibido na tela pública
-ou só na área administrativa?
+Coluna provisionada pelo Apps Script v2.0.0. Vocabulário **aberto**, com três valores previstos —
+`regularizado`, `nao_regularizado`, `em_regularizacao` — mas tipada como `text` no servidor, e não
+como enum fechado: travar o vocabulário antes de a planilha estar preenchida rejeitaria valor
+legítimo que ninguém previu.
+
+A decisão de visibilidade foi tomada: o campo será **público** — card de detalhe e filtro no mapa.
+**Ainda não está na tela**: a coluna e o carregamento existem desde a sincronização com o v2.0.0, e
+a exibição entra na issue #32. Até lá o valor é lido e normalizado, mas não renderizado.
 
 #### Escrita pela área administrativa (issue #5, R4.9)
 
@@ -155,27 +158,29 @@ Chave: `development_id`. 22 linhas.
 | `work_progress_pct` | número | não | 6/22 | `78.88` |
 | `unit_mix` | texto | não | 10/22 | |
 | `expected_delivery` | data | não | 5/22 | |
+| `sales_stage` | enum | derivado | 0/22 | derivado de `status` por `inferSalesStage_()` |
+| `building_orientation` | enum | não | 0/22 | sem derivação segura — coluna dedicada (#31) |
+| `regularization_status` | texto | não | 0/22 | mesma semântica de LISTINGS |
 
 > **7 dos 22 empreendimentos não têm coordenada** (`spatial_usable = 0`). Eles continuam
 > existindo como registro, aparecem na contagem e na busca, e **não vão ao mapa**. Metade de uma
 > coordenada é pior que nenhuma — colocaria o ponto no lugar errado. `computeKpis` expõe isso em
 > `withoutCoord` para que o buraco fique visível em vez de silencioso.
 
-#### `sales_stage`, `building_orientation`, `regularization_status` — preparação (issues #30, #31, #32)
+#### `sales_stage`, `building_orientation`, `regularization_status` (issues #30, #31, #32)
 
-Três colunas ainda não existem na planilha. `normalizeDevelopment()` já lê os três
-(`toText()`, ausência vira string vazia/`null`) para o dia em que existirem:
+As três colunas foram provisionadas pelo Apps Script v2.0.0.
 
-- `sales_stage` (#30): estágio de comercialização. Vocabulário proposto: `em_construcao` /
-  `em_lancamento` / `oferta`.
-- `building_orientation` (#31): vertical/horizontal. Diferente de LISTINGS (derivado de
-  `property_type`, vocabulário fechado), aqui não dá para derivar com segurança de `product`/
-  `unit_mix` (texto livre) — precisa de coluna dedicada.
-- `regularization_status` (#32): mesma decisão pendente de LISTINGS sobre visibilidade pública
-  × administrativa.
-
-Todos fora de `REQUIRED_HEADERS.DEVELOPMENTS` de propósito, mesmo motivo já documentado para
-`segment` de ANCHORS.
+- **`sales_stage`** (#30) — estágio de comercialização. Enum fechado: `em_construcao`,
+  `em_lancamento`, `oferta`. É **derivado de `status`** por `inferSalesStage_()`, mas só quando a
+  célula está vazia: valor escrito à mão nunca é sobrescrito, e por isso o campo continua
+  legitimamente editável pela API de escrita (diferente de `current_price_brl_m2`, que o servidor
+  recalcula sempre e por isso fica fora do allowlist).
+- **`building_orientation`** (#31) — `vertical` ou `horizontal`. Diferente de LISTINGS, onde
+  `normalizeListing()` deriva de `property_type` (vocabulário fechado), aqui não há derivação
+  segura: `product` e `unit_mix` são texto livre. Por isso a coluna é dedicada e preenchida à mão.
+- **`regularization_status`** (#32) — mesma semântica e mesma decisão de visibilidade de
+  LISTINGS: será público, no card e no filtro, quando a #32 for implementada.
 
 #### Escrita pela área administrativa (issue #5, R4.9)
 
@@ -214,6 +219,10 @@ Chave: `place_id`. 35 linhas.
 | `last_verified_at` | data | sim | 35/35 |
 | `status` | enum | sim | 35/35 |
 | `scale_capacity` | texto | não | 8/35 |
+| `group` | enum | derivado | 0/35 | 
+| `segment` | texto | não | 0/35 | 
+| `brand_name` | texto | não | 0/35 | 
+| `occupied_area_m2` | número | não | 0/35 | 
 
 **`category`:** `escola`, `mobilidade`, `parque_equipamento_publico`, `saude`, `shopping_center`,
 `supermercado_atacarejo`, `universidade`.
@@ -221,24 +230,38 @@ Chave: `place_id`. 35 linhas.
 Diferente dos anúncios, âncoras têm coordenada **precisa** (`school_polygon_reference_point` e
 similares, `confidence_flag: high`).
 
-#### `segment` — preparação para classificação futura (issue #22)
+#### `group` e `segment` — classificação em dois eixos (issues #22, #26)
 
-`normalizeAnchor()` já lê um campo opcional `segment` (`toText(row.segment)`), pensado como uma
-classificação mais fina que `category` — por exemplo, dentro de `saude`: `hospital`, `clinica`,
-`farmacia`. **A coluna ainda não existe na planilha** e por isso, deliberadamente, **não** entra
-em `REQUIRED_HEADERS.ANCHORS` nem na tabela de colunas acima: adicioná-la à validação obrigatória
-sem a coluna existir na planilha real geraria erro `MISSING_HEADER` em produção. Quando a coluna
-for criada na planilha, com uma taxonomia definida, este bloco deve virar uma entrada normal na
-tabela acima (`Obrig. = não`) e, se for o caso, entrar em `REQUIRED_HEADERS.ANCHORS` no
-`optional-apps-script/Code.gs` — e o teste `tests/contract.test.js` vai cobrar essa consistência
-automaticamente a partir daí. Até lá, a ausência da coluna é segura: `toText()` devolve string
-vazia e o registro normaliza e aparece no mapa normalmente.
+Provisionadas pelo Apps Script v2.0.0, que também as **deriva** de `category`, `subcategory` e
+`name` quando a célula está vazia (`inferAnchorGroup_()` e `inferAnchorSegment_()`).
+
+**`group`** é enum **fechado** e separa duas famílias que estavam misturadas em `category`:
+
+| Valor | Cobre |
+|---|---|
+| `infraestrutura` | `mobilidade` e `parque_equipamento_publico` |
+| `comercio_servico` | `escola`, `saude`, `shopping_center`, `supermercado_atacarejo`, `universidade` |
+
+O caso de fronteira que a issue #26 deixou em aberto — onde entra `parque_equipamento_publico` —
+foi resolvido pelo backend a favor de `infraestrutura`.
+
+**`segment`** é mais fino que `category` e tem vocabulário **aberto**, de propósito. O backend
+infere doze valores a partir do que já existe na planilha:
+
+`escola` · `universidade` · `supermercado` · `atacado` · `hospital` · `clinica` · `laboratorio` ·
+`estacao_metro` · `estacao_trem` · `terminal_rodoviario` · `aeroporto` · `ponto_onibus`
+
+Os demais segmentos comerciais previstos — loja de departamento, material de construção, vestuário,
+livraria, cinema, móveis, artigos esportivos, academia, restaurantes, loja pet, posto de
+combustível, hotelaria — **não são inferíveis** do dado atual e entram à mão. Por isso `segment` é
+`text` no servidor e não enum: fechar o vocabulário agora rejeitaria justamente os valores que
+ainda vão ser cadastrados. Quem renderiza precisa humanizar termo desconhecido em vez de vazar o
+slug.
 
 #### `brand_name`, `occupied_area_m2` — dados comerciais (issue #39)
 
-Mesmo padrão de `segment` acima: `normalizeAnchor()` já lê `brand_name` (texto) e
-`occupied_area_m2` (número), colunas que ainda não existem na planilha, fora de
-`REQUIRED_HEADERS.ANCHORS` até existirem de fato.
+Provisionadas pelo v2.0.0, sem derivação: nome da marca/rede e área ocupada pelo estabelecimento.
+Ficam vazias até serem cadastradas.
 
 #### Escrita pela área administrativa (issue #5, R4.9)
 
@@ -261,6 +284,7 @@ vazia (R2.5). `PRIMARY_OFFERS`, `IVV_MONTHLY` e `IVV_REGION` não são lidas pel
 | `IVV_MONTHLY` | `reference_month` | 1 | Índice de Velocidade de Vendas mensal do DF |
 | `IVV_REGION` | `reference_month` + `market_region` + `bedroom_bucket` | 95 | IVV por região e faixa de quartos |
 | `RA_PROFILES` | `ra_geo_id` | 35 | Indicadores territoriais por Região Administrativa (censo + PDAD) — **lida pela tela** |
+| `POLYGONS` | `polygon_id` | 0 | Geometrias importadas de KML/KMZ — criada pelo `setupProject()` v2.0.0 |
 
 > **Divergência D2 — `IVV_REGION` tem `ivv_pct` e `ivv_pct_published`.** `ivv_pct` é alias de
 > compatibilidade consumido pelo Apps Script; `ivv_pct_published` é o valor do dataset original.
@@ -268,23 +292,109 @@ vazia (R2.5). `PRIMARY_OFFERS`, `IVV_MONTHLY` e `IVV_REGION` não são lidas pel
 
 ### RA_PROFILES — indicadores por Região Administrativa (issues #33, #34, #35)
 
-Buscada por `src/data.js` (`config.raProfilesSheet`) com o mesmo tratamento de `APP_META`: falha
-ou ausência vira aviso, nunca erro, e o filtro por RA (#33) continua funcionando com o código
-bruto de `ra_geo_id` como rótulo. `normalizeRaProfile()`/`normalizeRaProfiles()`
-(`src/normalize.js`) leem hoje só os campos abaixo — o restante das 38 colunas existe na
-planilha (indicadores PDAD de atividade econômica, escolaridade, cobertura de saúde etc.) mas
-não é consumido pela tela ainda.
+Aba **opcional** com contrato de cabeçalho: `REQUIRED_HEADERS.RA_PROFILES` existe, mas a ausência
+da aba continua sendo aviso, nunca erro (R2.5). Buscada por `src/data.js`
+(`config.raProfilesSheet`) com o mesmo tratamento de `APP_META` — falha vira aviso, e o filtro por
+RA (#33) segue funcionando com o código bruto de `ra_geo_id` como rótulo.
 
-| Campo lido | Uso |
-|---|---|
-| `ra_geo_id` | Chave, casada com `ra_geo_id` de LISTINGS/DEVELOPMENTS/ANCHORS |
-| `ra_name` | Rótulo do filtro por RA (#33) |
-| `population_total` | Nota de população ao selecionar uma RA (#34) |
-| `population_density_km2` | Nota de densidade ao selecionar uma RA (#34) |
+Chave: `ra_geo_id`. 35 linhas.
 
-**Não existem ainda** (issue #36, bloqueada): renda per capita e distribuição por faixa etária.
-Não inventar nome de coluna adiantado aqui — a issue #36 documenta a extensão quando o dado
-existir de fato na planilha.
+| Campo | Tipo | Obrig. | Preenchimento | Uso |
+|---|---|---|---|---|
+| `ra_geo_id` | texto | **sim** | 35/35 | chave, casada com `ra_geo_id` das três abas obrigatórias |
+| `ra_name` | texto | não | 35/35 | rótulo do filtro por RA (#33) |
+| `population_total` | inteiro | não | 35/35 | nota de população (#34) |
+| `population_density_km2` | número | não | 35/35 | nota de densidade (#34) |
+| `income_per_capita_brl` | número | não | 0/35 | renda per capita (#35) |
+| `population_age_0_14_pct` | número | não | 0/35 | faixa etária (#35) |
+| `population_age_15_29_pct` | número | não | 0/35 | faixa etária (#35) |
+| `population_age_30_44_pct` | número | não | 0/35 | faixa etária (#35) |
+| `population_age_45_59_pct` | número | não | 0/35 | faixa etária (#35) |
+| `population_age_60_plus_pct` | número | não | 0/35 | faixa etária (#35) |
+
+As seis últimas foram provisionadas pelo Apps Script v2.0.0. **A coluna existe; o dado pode não
+existir** — a cobertura do PDAD é esparsa e a própria semente avisa `"PDAD-A report-level seed;
+not yet all 35 RAs"`. Cada indicador só aparece na tela quando tem valor.
+
+O servidor valida semanticamente: renda não pode ser negativa, cada faixa etária fica entre 0 e
+100, e as cinco somadas precisam dar aproximadamente 100% (ou 1, em escala decimal) — divergência
+vira aviso `AGE_DISTRIBUTION_SUM` em `DATA_QUALITY`, nunca sobrescrita.
+
+> **A tabela acima não é o inventário da aba.** A planilha tem 38 colunas; estas dez são as que o
+> contrato declara e o loader lê. As demais são indicadores PDAD e censitários
+> (`avg_residents_private_occupied`, `pdad_*_pct`, `primary_work_location`, `sector_count`,
+> `coverage_note` e outros) que existem na planilha e ainda não são consumidos pela tela. Estão
+> fora desta tabela **de propósito**: documentá-los aqui os tornaria cabeçalhos exigidos por
+> `tests/contract.test.js`. Ver `migration/README.md` para o inventário completo.
+
+### POLYGONS — geometrias importadas de KML/KMZ (issues #27, #28)
+
+Aba **opcional** com contrato de cabeçalho, criada por `setupProject()` do Apps Script v2.0.0.
+Ausência continua sendo aviso, nunca erro (R2.5).
+
+Chave: `polygon_id` — hash SHA-256 estável derivado do arquivo de origem, do índice do Placemark e
+do nome. Reimportar o mesmo KML **não duplica**: a importação é idempotente por construção.
+
+| Campo | Tipo | Obrig. | Preenchimento | Observação |
+|---|---|---|---|---|
+| `polygon_id` | texto | **sim** | — | `POLY_` + 24 hex do SHA-256 |
+| `name` | texto | **sim** | — | do `<name>` do Placemark; `REQUIRED_FOR_CREATE` exige |
+| `category` | texto | não | — | de `ExtendedData`, quando houver |
+| `geometry_geojson` | texto | **sim** | — | `Polygon` ou `MultiPolygon`, `[longitude, latitude]`; `REQUIRED_FOR_CREATE` exige |
+| `color` | texto | não | — | cor sugerida para o preenchimento |
+| `description` | texto | não | — | do `<description>` do Placemark |
+| `properties_json` | texto | não | — | atributos livres do KML, como objeto JSON |
+| `source_url` | url | não | — | validada como http(s) na importação |
+| `source_file` | texto | não | — | nome do KML/KMZ de origem |
+| `imported_at` | data | não | — | preenchido pelo importador |
+| `status` | enum | não | — | `active` ou `inactive` |
+
+**A geometria é validada no servidor** antes de ser gravada: precisa ser `Polygon` ou
+`MultiPolygon`, cada anel precisa de ao menos quatro posições e três distintas, o anel precisa
+estar fechado (primeira posição igual à última), e longitude/latitude precisam estar na faixa
+válida. Ordem é sempre `[longitude, latitude]`, como manda o GeoJSON — invertida seria o Golfo da
+Guiné em vez do Distrito Federal.
+
+`normalizePolygon()` (`src/normalize.js`) **não parseia** `geometry_geojson`: mantém como texto e
+deixa o parse para quem for desenhar. Um blob malformado precisa isolar aquele polígono, não
+interromper o carregamento do dataset inteiro (R2.6).
+
+> **Texto vindo de KML de terceiro é entrada não confiável.** `name`, `description` e o conteúdo de
+> `properties_json` são escritos por quem produziu o arquivo. Vão para a tela por `textContent`,
+> nunca por `innerHTML` (R4.4). O servidor ainda prefixa `'` em valor que comece com `=`, `+`, `@`
+> ou `-letra`, para que a célula nunca vire fórmula na planilha.
+
+---
+
+## Provisionamento pós-semente (Apps Script v2.0.0)
+
+`migration/imob-intelligence-backend.xlsx` é a **semente histórica de importação**, não um espelho
+do schema: ela inicializou a planilha uma vez e não acompanha as migrações que vieram depois. As
+colunas e abas abaixo existem na planilha viva porque `setupProject()` as cria via
+`ensureHeaders_()`, de forma aditiva — sem mover, renomear nem apagar nada que já existia.
+
+`tests/contract.test.js` cobra três coisas de cada linha desta tabela: que ela esteja de fato
+**ausente** da semente, **presente** em `REQUIRED_HEADERS`, e **listada** em `POST_SEED_COLUMNS`
+(`tests/helpers/schema.mjs`). É o que impede a lista de virar esconderijo de erro de digitação — e
+o que obriga ela a encolher no dia em que alguém reexportar a planilha (R8.39).
+
+| Aba | Coluna | Origem |
+|---|---|---|
+| `LISTINGS` | `regularization_status` | issue #32 |
+| `DEVELOPMENTS` | `building_orientation` | issue #31 |
+| `DEVELOPMENTS` | `regularization_status` | issue #32 |
+| `DEVELOPMENTS` | `sales_stage` | issue #30 |
+| `ANCHORS` | `brand_name` | issue #39 |
+| `ANCHORS` | `group` | issue #26 |
+| `ANCHORS` | `occupied_area_m2` | issue #39 |
+| `ANCHORS` | `segment` | issues #22, #26 |
+| `RA_PROFILES` | `income_per_capita_brl` | issue #35 |
+| `RA_PROFILES` | `population_age_0_14_pct` | issue #35 |
+| `RA_PROFILES` | `population_age_15_29_pct` | issue #35 |
+| `RA_PROFILES` | `population_age_30_44_pct` | issue #35 |
+| `RA_PROFILES` | `population_age_45_59_pct` | issue #35 |
+| `RA_PROFILES` | `population_age_60_plus_pct` | issue #35 |
+| `POLYGONS` | *(aba inteira)* | issues #27, #28 |
 
 ---
 

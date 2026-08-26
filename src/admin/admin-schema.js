@@ -31,7 +31,25 @@ export const ENUM_VALUES = {
     'escola', 'mobilidade', 'parque_equipamento_publico', 'saude', 'shopping_center',
     'supermercado_atacarejo', 'universidade',
   ],
+  group: ['infraestrutura', 'comercio_servico'],
+  building_orientation: ['vertical', 'horizontal'],
+  sales_stage: ['em_construcao', 'em_lancamento', 'oferta'],
+  polygon_status: ['active', 'inactive'],
 };
+
+/**
+ * Abas que o Code.gs deixa escrever mas a área administrativa ainda NÃO edita.
+ *
+ * POLYGONS entrou no `WRITE_ALLOWLIST` do servidor na v2.0.0 porque a importação de
+ * KML/KMZ precisa gravar por lá. Um formulário genérico para ela seria uma caixa de
+ * texto livre pedindo GeoJSON à mão — pior que nenhum formulário, e um convite ao tipo
+ * de conteúdo que `safeCellValue_()` existe para conter. A edição de polígono é
+ * trabalho da issue #37, com desenho no mapa em vez de digitação.
+ *
+ * `tests/admin-schema.test.js` cobra que ADMIN_SHEETS ∪ DEFERRED_ADMIN_SHEETS cubra o
+ * `WRITE_ALLOWLIST` **exatamente**: a omissão fica declarada, nunca silenciosa.
+ */
+export const DEFERRED_ADMIN_SHEETS = ['POLYGONS'];
 
 /**
  * Campo derivado de preço/m² de cada aba — igual a DERIVED_PRICE_M2_FIELD em Code.gs.
@@ -74,6 +92,7 @@ export const ADMIN_FIELDS = {
     { key: 'parking_spaces', label: 'Vagas', type: 'int', required: false },
     { key: 'condo_fee_brl', label: 'Condomínio (R$)', type: 'number', required: false },
     { key: 'iptu_brl', label: 'IPTU (R$)', type: 'number', required: false },
+    { key: 'regularization_status', label: 'Regularização', type: 'text', required: false },
   ],
   DEVELOPMENTS: [
     { key: 'name', label: 'Nome', type: 'text', required: true },
@@ -99,6 +118,9 @@ export const ADMIN_FIELDS = {
     { key: 'work_progress_pct', label: 'Obra concluída (%)', type: 'number', required: false },
     { key: 'unit_mix', label: 'Mix de unidades', type: 'text', required: false },
     { key: 'expected_delivery', label: 'Entrega prevista', type: 'date', required: false },
+    { key: 'sales_stage', label: 'Estágio de comercialização', type: 'enum:sales_stage', required: false },
+    { key: 'building_orientation', label: 'Vertical / horizontal', type: 'enum:building_orientation', required: false },
+    { key: 'regularization_status', label: 'Regularização', type: 'text', required: false },
   ],
   ANCHORS: [
     { key: 'name', label: 'Nome', type: 'text', required: true },
@@ -117,6 +139,10 @@ export const ADMIN_FIELDS = {
     { key: 'address', label: 'Endereço', type: 'text', required: false },
     { key: 'neighborhood', label: 'Bairro', type: 'text', required: false },
     { key: 'scale_capacity', label: 'Capacidade/porte', type: 'text', required: false },
+    { key: 'group', label: 'Grupo', type: 'enum:group', required: false },
+    { key: 'segment', label: 'Segmento', type: 'text', required: false },
+    { key: 'brand_name', label: 'Marca', type: 'text', required: false },
+    { key: 'occupied_area_m2', label: 'Área ocupada (m²)', type: 'number', required: false },
   ],
 };
 

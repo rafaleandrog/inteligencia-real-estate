@@ -14,6 +14,8 @@
 import { readFileSync, writeFileSync, mkdirSync } from 'node:fs';
 import { dirname } from 'node:path';
 import { readXlsx } from './xlsx.mjs';
+import { deriveRow } from './derive.mjs';
+import { createAppsScriptSandbox } from '../tests/helpers/appsScriptSandbox.mjs';
 
 const MS_PER_DAY = 86400000;
 const SHEET_EPOCH_MS = Date.UTC(1899, 11, 30);
@@ -24,6 +26,29 @@ const ENTITY_BY_SHEET = {
   DEVELOPMENTS: 'developments',
   ANCHORS: 'anchors',
 };
+
+// A semente é de antes do backend v2.0.0 e não tem nenhuma das colunas que o
+// `setupProject()` provisiona (ver "Provisionamento pós-semente" em
+// docs/DATA_CONTRACT.md). Sem completar as linhas, o demo exibiria os campos novos
+// sempre ausentes e os filtros novos não seriam exercitados por ninguém.
+//
+// A lista de colunas vem do REQUIRED_HEADERS do Code.gs de verdade, executado no
+// sandbox de vm — a mesma fonte que tests/contract.test.js usa. Assim o demo acompanha
+// o contrato sozinho: uma coluna acrescentada ao backend aparece aqui na próxima
+// geração, sem ninguém precisar lembrar de editar este arquivo.
+const { context } = createAppsScriptSandbox({ sheets: {}, scriptProperties: {} });
+const REQUIRED_HEADERS = context.REQUIRED_HEADERS;
+
+/** Completa com '' toda coluna do contrato ausente na linha da semente. */
+function fillContractColumns(sheet, row) {
+  const headers = REQUIRED_HEADERS[sheet];
+  if (!headers) return row;
+  const out = { ...row };
+  for (const header of headers) {
+    if (!(header in out)) out[header] = '';
+  }
+  return out;
+}
 
 /**
  * Serial de data do Excel para ISO.
@@ -69,7 +94,10 @@ const payload = {
 const missing = [];
 for (const [sheet, entity] of Object.entries(ENTITY_BY_SHEET)) {
   if (!workbook[sheet]) { missing.push(sheet); payload[entity] = []; continue; }
-  payload[entity] = workbook[sheet].rows.map(convertDates);
+  payload[entity] = workbook[sheet].rows
+    .map(convertDates)
+    .map((row) => fillContractColumns(sheet, row))
+    .map((row) => deriveRow(sheet, row));
 }
 
 if (missing.length > 0) {
@@ -79,7 +107,16 @@ if (missing.length > 0) {
 
 // RA_PROFILES é opcional (issue #33/#34): ausente no .xlsx de origem vira lista
 // vazia, não erro — mesmo tratamento que a aplicação já dá à aba na planilha real.
-payload.ra_profiles = workbook.RA_PROFILES ? workbook.RA_PROFILES.rows.map(convertDates) : [];
+payload.ra_profiles = workbook.RA_PROFILES
+  ? workbook.RA_PROFILES.rows.map(convertDates).map((row) => fillContractColumns('RA_PROFILES', row))
+  : [];
+
+// POLYGONS fica DELIBERADAMENTE vazia. Um polígono inventado é geografia falsa dentro
+// de um artefato publicado — exatamente o que docs/DATA_CONTRACT.md passa três seções
+// proibindo — e a semente não tem nenhum. O que precisa nunca quebrar é o caminho de
+// render com a camada vazia, e é isso que o demo exercita. Os testes usam um fixture
+// explicitamente sintético em tests/fixtures/polygons.json.
+payload.polygons = [];
 
 mkdirSync(dirname(target), { recursive: true });
 writeFileSync(target, `${JSON.stringify(payload, null, 2)}\n`);
@@ -88,4 +125,5 @@ for (const [sheet, entity] of Object.entries(ENTITY_BY_SHEET)) {
   console.log(`${sheet.padEnd(15)} -> ${String(entity).padEnd(14)} ${payload[entity].length} linhas`);
 }
 console.log(`RA_PROFILES     -> ra_profiles    ${payload.ra_profiles.length} linhas`);
+console.log(`POLYGONS        -> polygons       ${payload.polygons.length} linhas (vazio por decisão — ver comentário)`);
 console.log(`\n${target} gerado.`);

@@ -330,3 +330,41 @@ Cada uma nasce de um erro que aconteceu de verdade.
   token como credencial permanente" para um modelo de sessão completo. Quando existe um padrão
   irmão já rodando, comparar com ele primeiro é mais barato que projetar do zero — e evita
   reescrever depois.
+- **R8.38** *(2026-08-25, sync do Apps Script v2.0.0)* **Concorrência otimista compara contra
+  mudança de dado feita por outra pessoa, nunca contra mudança que a própria requisição causou.**
+  A v2.0.0 passou a provisionar coluna faltante no início de cada escrita (`ensureWriteSheetSchema_`),
+  e provisionar incrementa `DATASET_VERSION`. O `expected_version` que o cliente leu antes de
+  enviar passava então a perder para um incremento gerado pela própria requisição, e **toda
+  primeira escrita administrativa depois de uma migração de schema devolvia `VERSION_CONFLICT`**
+  sem ninguém ter tocado no dado — um erro que se cura sozinho na segunda tentativa, que é o pior
+  tipo: parece intermitente e some antes de ser diagnosticado. A referência do check tem que ser
+  o estado observado no **início** da requisição, capturado antes de qualquer efeito colateral dela.
+- **R8.39** *(2026-08-25, sync do Apps Script v2.0.0)* **Quando a lista de validação também vira
+  lista de provisionamento, todo teste que usava a semente como verdade muda de significado.**
+  Enquanto `REQUIRED_HEADERS` só *exigia* cabeçalho, um erro de digitação nele produzia um
+  `MISSING_HEADER` barulhento e o teste "todo cabeçalho exigido existe na semente" bastava. Depois
+  que `ensureHeaders_()` passou a *criar* o que falta, o mesmo erro cria uma coluna chamada
+  `latitud` em silêncio — a garantia ficou mais necessária, e a semente deixou de ser a
+  autoridade sobre "que colunas existem". A resposta certa não é afrouxar o teste nem congelar a
+  semente à força: é **mover a rede** — declarar o delta explicitamente, cercá-lo de asserções que
+  o impeçam de virar esconderijo (cada entrada precisa estar mesmo ausente da semente, mesmo
+  presente no schema e mesmo documentada), e cobrar do provisionador o que antes se cobrava do
+  arquivo congelado.
+- **R8.40** *(2026-08-25, revisão do Apps Script v2.0.0)* **Provisionar cabeçalho é privilégio, e
+  privilégio precisa de lista.** Quando o `ensureHeaders_()` passou a criar toda coluna ausente, ele
+  ganhou junto o poder de **esconder um erro do operador**: apagar ou renomear `title` ou `latitude`
+  fazia o "Configurar projeto" seguinte devolver uma coluna nova e vazia com o nome certo, a
+  validação parava de emitir `MISSING_HEADER` porque o cabeçalho estava lá, e `validateSchemaFields_`
+  pula célula vazia — o dado antigo ficava órfão sob o cabeçalho renomeado e a tela pública perdia o
+  campo em silêncio. Um mecanismo que cria o que falta só é seguro quando sabe **o que tem direito
+  de criar**: a criação é restrita a uma lista declarada (`PROVISIONABLE_COLUMNS`), o que falta fora
+  dela continua faltando, e o relatório do setup **nomeia** o que se recusou a criar. Auto-reparo
+  sem lista de escopo não conserta o sistema, só apaga a evidência do estrago.
+- **R8.41** *(2026-08-25, revisão do Apps Script v2.0.0)* **Credencial que já esteve num canal
+  público está queimada; migrar não é reaproveitar.** A migração do token administrativo copiava um
+  `admin_token` que estava no `APP_META` — aba lida por qualquer visitante via GViz — para a Script
+  Property ativa, transformando um valor **já vazado** em credencial válida do endpoint de escrita.
+  Limpar a célula depois não revoga cópia que alguém já leu, nem cache de CDN, nem histórico de
+  revisão da planilha. Migração de segredo exposto **apaga e exige um novo**, registrando a
+  revogação; tratar exposição como reversível é o mesmo erro de trocar a fechadura e devolver a
+  cópia antiga da chave.

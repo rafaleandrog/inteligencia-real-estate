@@ -8,21 +8,32 @@
  * Prioridade de projeto: correção → idempotência → segurança → observabilidade →
  * simplicidade. Ver .agents/skills/imob-appscript/SKILL.md.
  *
+ * Versão 2.0.0:
+ *   - migração aditiva de classificações e indicadores previstos nas issues #26/#30/#31/#32/#35/#39;
+ *   - aba POLYGONS, importação KML/KMZ idempotente e escrita autenticada de GeoJSON;
+ *   - compatibilidade simultânea com action/sheet e resource/entity/method;
+ *   - remoção segura de credenciais legadas expostas em APP_META.
+ *
+ * Versão 2.0.1:
+ *   - concorrência otimista deixa de conflitar com o provisionamento de schema da
+ *     própria requisição (R8.17). Sem isso, a primeira escrita administrativa depois
+ *     de uma migração devolvia VERSION_CONFLICT mesmo sem ninguém ter tocado no dado.
+ *
  * Instalação:
  *   1. Extensões → Apps Script na planilha
  *   2. Cole este arquivo
  *   3. Execute setupProject() uma vez
  *   4. Execute validateAll()
  *   5. Execute installTriggers()
- *   6. Para habilitar a área administrativa (escrita), defina ADMIN_TOKEN em Script
- *      Properties — ver docs/SHEET_SETUP.md §8. Sem ele, doPost() recusa toda escrita.
+ *   6. Para habilitar a área administrativa, use o menu "Configurar / trocar token".
+ *      Sem ADMIN_TOKEN em Script Properties, doPost() recusa toda escrita.
  */
 
 // ---------------------------------------------------------------------------
 // Constantes
 // ---------------------------------------------------------------------------
 
-var APP_VERSION = '1.0.0';
+var APP_VERSION = '2.0.2';
 
 /**
  * Protocolo da API de escrita que este script fala, exposto em `health_()`.
@@ -41,7 +52,34 @@ var WRITE_API_PROTOCOL = 'token-direct-v1';
 var REQUIRED_SHEETS = ['LISTINGS', 'DEVELOPMENTS', 'ANCHORS'];
 
 /** Abas previstas para as próximas fases. Ausência é aviso, nunca erro. */
-var OPTIONAL_SHEETS = ['PRIMARY_OFFERS', 'IVV_MONTHLY', 'IVV_REGION', 'RA_PROFILES'];
+var OPTIONAL_SHEETS = ['PRIMARY_OFFERS', 'IVV_MONTHLY', 'IVV_REGION', 'RA_PROFILES', 'POLYGONS'];
+
+/** Abas novas que este script cria de forma aditiva quando ainda não existem. */
+var MANAGED_EXTENSION_SHEETS = ['RA_PROFILES', 'POLYGONS'];
+
+/**
+ * Colunas que este script pode CRIAR numa aba obrigatória que já existe.
+ *
+ * Provisionar é poderoso e por isso é perigoso: `ensureHeaders_()` criar qualquer
+ * cabeçalho ausente significa que apagar ou renomear `title`, `address` ou `latitude`
+ * por acidente faz o "Configurar projeto" seguinte devolver uma coluna nova e VAZIA com
+ * o nome certo. A validação deixa de emitir MISSING_HEADER (o cabeçalho está lá) e
+ * `validateSchemaFields_` pula célula vazia — o dado antigo fica órfão sob o cabeçalho
+ * renomeado e a tela pública perde títulos, ou todas as coordenadas, em silêncio.
+ *
+ * Então o provisionamento é restrito a esta lista: exatamente o delta entre a semente de
+ * migração e o schema em vigor. Cabeçalho ausente que não esteja aqui CONTINUA ausente,
+ * para a validação reclamar dele em voz alta. A lista espelha `POST_SEED_COLUMNS` em
+ * tests/helpers/schema.mjs, e a paridade entre as duas é cobrada por teste.
+ *
+ * Abas gerenciadas (RA_PROFILES, POLYGONS) e operacionais não entram aqui: elas são
+ * criadas inteiras por este script, então não existe "coluna que o operador apagou".
+ */
+var PROVISIONABLE_COLUMNS = {
+  LISTINGS: ['regularization_status'],
+  DEVELOPMENTS: ['building_orientation', 'regularization_status', 'sales_stage'],
+  ANCHORS: ['brand_name', 'group', 'occupied_area_m2', 'segment']
+};
 
 /** Abas operacionais mantidas por este script. */
 var META_SHEET = 'APP_META';
@@ -75,7 +113,9 @@ var ID_FIELD = {
   LISTINGS: 'listing_id',
   DEVELOPMENTS: 'development_id',
   ANCHORS: 'place_id',
-  PRIMARY_OFFERS: 'observation_id'
+  PRIMARY_OFFERS: 'observation_id',
+  RA_PROFILES: 'ra_geo_id',
+  POLYGONS: 'polygon_id'
 };
 
 /** Colunas de coordenada por aba. */
@@ -95,14 +135,8 @@ var COORD_FIELDS = {
  * normaliza todas as coordenadas para null e o mapa fica vazio. Cabecalho renomeado
  * em silencio quebra producao sem erro de compilacao.
  *
- * NAO EDITE A MAO. A lista e derivada mecanicamente da uniao entre os campos que
- * docs/DATA_CONTRACT.md marca como obrigatorios e os que src/normalize.js le de fato,
- * intersectada com as colunas que o contrato declara para cada aba — sem a intersecao,
- * coordinate_precision seria exigido em DEVELOPMENTS, que nao tem essa coluna, e a
- * validacao acusaria erro numa planilha correta.
- *
- * tests/contract.test.js recalcula a derivacao e falha se esta lista divergir, entao
- * mudanca no contrato ou no normalizador obriga a atualizar aqui na mesma PR.
+ * As colunas novas deste lote entram aqui porque setupProject() as cria antes da
+ * validação, sem mover, renomear ou apagar nenhuma coluna já existente.
  */
 var REQUIRED_HEADERS = {
   LISTINGS: [
@@ -110,20 +144,32 @@ var REQUIRED_HEADERS = {
     'condo_fee_brl', 'confidence_flag', 'coordinate_precision', 'iptu_brl', 'last_seen_at',
     'latitude', 'listing_id', 'locality', 'longitude', 'observed_at', 'parking_spaces',
     'portal', 'property_type', 'quality_flag', 'ra_geo_id', 'source_page_verified_at',
-    'source_url', 'source_url_type', 'status', 'suites', 'title', 'transaction_type'
+    'regularization_status', 'source_url', 'source_url_type', 'status', 'suites', 'title',
+    'transaction_type'
   ],
   DEVELOPMENTS: [
     'address', 'area_max_m2', 'area_min_m2', 'confidence_flag', 'coordinate_status',
     'current_price_brl', 'current_price_brl_m2', 'developer_name', 'development_id',
     'expected_delivery', 'last_verified_at', 'latitude', 'longitude', 'name', 'neighborhood',
-    'product', 'quality_flag', 'ra_geo_id', 'segment', 'source_url', 'spatial_usable',
-    'status', 'unit_mix', 'units_total', 'work_progress_pct'
+    'building_orientation', 'product', 'quality_flag', 'ra_geo_id', 'regularization_status',
+    'sales_stage', 'segment', 'source_url', 'spatial_usable', 'status', 'unit_mix',
+    'units_total', 'work_progress_pct'
   ],
   ANCHORS: [
-    'address', 'category', 'confidence_flag', 'coordinate_precision', 'coordinate_source_url',
-    'last_verified_at', 'latitude', 'longitude', 'name', 'neighborhood', 'operator_name',
-    'place_id', 'ra_geo_id', 'scale_capacity', 'source_url', 'status', 'subcategory'
+    'address', 'brand_name', 'category', 'confidence_flag', 'coordinate_precision',
+    'coordinate_source_url', 'group', 'last_verified_at', 'latitude', 'longitude', 'name',
+    'neighborhood', 'occupied_area_m2', 'operator_name', 'place_id', 'ra_geo_id',
+    'scale_capacity', 'segment', 'source_url', 'status', 'subcategory'
   ],
+  RA_PROFILES: [
+    'ra_geo_id', 'ra_name', 'population_total', 'population_density_km2',
+    'income_per_capita_brl', 'population_age_0_14_pct', 'population_age_15_29_pct',
+    'population_age_30_44_pct', 'population_age_45_59_pct', 'population_age_60_plus_pct'
+  ],
+  POLYGONS: [
+    'polygon_id', 'name', 'category', 'geometry_geojson', 'color', 'description',
+    'properties_json', 'source_url', 'source_file', 'imported_at', 'status'
+  ]
 };
 
 /** Datasets que o endpoint read-only pode servir. Allowlist — nunca aceite nome livre. */
@@ -136,6 +182,9 @@ var CHANGELOG_LIMIT = 5000;
 var PRICE_M2_TOLERANCE = 0.05;
 
 var LOCK_TIMEOUT_MS = 30000;
+var MAX_CELL_TEXT_LENGTH = 49000;
+var MAX_KML_BYTES = 10 * 1024 * 1024;
+var MAX_IMPORTED_POLYGONS = 1000;
 
 // ---------------------------------------------------------------------------
 // Escrita (admin) — R4.9
@@ -160,6 +209,9 @@ var WRITE_ALLOWLIST = {
   }),
   ANCHORS: REQUIRED_HEADERS.ANCHORS.filter(function (f) {
     return f !== 'place_id';
+  }),
+  POLYGONS: REQUIRED_HEADERS.POLYGONS.filter(function (f) {
+    return ['polygon_id', 'source_file', 'imported_at'].indexOf(f) === -1;
   })
 };
 
@@ -179,7 +231,8 @@ var REQUIRED_FOR_CREATE = {
     'name', 'category', 'subcategory', 'operator_name', 'latitude', 'longitude', 'ra_geo_id',
     'source_url', 'coordinate_source_url', 'confidence_flag', 'coordinate_precision',
     'last_verified_at', 'status'
-  ]
+  ],
+  POLYGONS: ['name', 'geometry_geojson']
 };
 
 /**
@@ -195,7 +248,11 @@ var ENUM_VALUES = {
   category: [
     'escola', 'mobilidade', 'parque_equipamento_publico', 'saude', 'shopping_center',
     'supermercado_atacarejo', 'universidade'
-  ]
+  ],
+  group: ['infraestrutura', 'comercio_servico'],
+  building_orientation: ['vertical', 'horizontal'],
+  sales_stage: ['em_construcao', 'em_lancamento', 'oferta'],
+  polygon_status: ['active', 'inactive']
 };
 
 /** Tipo de cada campo editável, por aba, para coerção e validação no servidor. */
@@ -207,23 +264,37 @@ var FIELD_SCHEMA = {
     locality: 'text', longitude: 'number', observed_at: 'date', parking_spaces: 'int',
     portal: 'text', property_type: 'enum:property_type', quality_flag: 'text',
     ra_geo_id: 'text', source_page_verified_at: 'date', source_url: 'url',
-    source_url_type: 'text', status: 'text', suites: 'int', title: 'text',
-    transaction_type: 'text'
+    regularization_status: 'text', source_url_type: 'text', status: 'text', suites: 'int',
+    title: 'text', transaction_type: 'text'
   },
   DEVELOPMENTS: {
     address: 'text', area_max_m2: 'number', area_min_m2: 'number', confidence_flag: 'text',
     coordinate_status: 'text', current_price_brl: 'number', developer_name: 'text',
     expected_delivery: 'date', last_verified_at: 'date', latitude: 'number', longitude: 'number',
-    name: 'text', neighborhood: 'text', product: 'text', quality_flag: 'text',
-    ra_geo_id: 'text', segment: 'text', source_url: 'url', spatial_usable: 'bool',
+    building_orientation: 'enum:building_orientation', name: 'text', neighborhood: 'text',
+    product: 'text', quality_flag: 'text', ra_geo_id: 'text', regularization_status: 'text',
+    sales_stage: 'enum:sales_stage', segment: 'text', source_url: 'url', spatial_usable: 'bool',
     status: 'text', unit_mix: 'text', units_total: 'int', work_progress_pct: 'number'
   },
   ANCHORS: {
-    address: 'text', category: 'enum:category', confidence_flag: 'text',
+    address: 'text', brand_name: 'text', category: 'enum:category', confidence_flag: 'text',
     coordinate_precision: 'text', coordinate_source_url: 'url', last_verified_at: 'date',
-    latitude: 'number', longitude: 'number', name: 'text', neighborhood: 'text',
-    operator_name: 'text', ra_geo_id: 'text', scale_capacity: 'text', source_url: 'url',
+    group: 'enum:group', latitude: 'number', longitude: 'number', name: 'text',
+    neighborhood: 'text', occupied_area_m2: 'number', operator_name: 'text',
+    ra_geo_id: 'text', scale_capacity: 'text', segment: 'text', source_url: 'url',
     status: 'text', subcategory: 'text'
+  },
+  RA_PROFILES: {
+    ra_geo_id: 'text', ra_name: 'text', population_total: 'int',
+    population_density_km2: 'number', income_per_capita_brl: 'number',
+    population_age_0_14_pct: 'number', population_age_15_29_pct: 'number',
+    population_age_30_44_pct: 'number', population_age_45_59_pct: 'number',
+    population_age_60_plus_pct: 'number'
+  },
+  POLYGONS: {
+    name: 'text', category: 'text', geometry_geojson: 'geojson', color: 'text',
+    description: 'text', properties_json: 'json_object', source_url: 'url',
+    status: 'enum:polygon_status'
   }
 };
 
@@ -248,6 +319,7 @@ function onOpen() {
     .addItem('Configurar projeto', 'setupProject')
     .addItem('Validar dados agora', 'validateAll')
     .addItem('Recalcular campos derivados', 'recalculateDerivedFields')
+    .addItem('Importar polígonos de KML/KMZ', 'importPolygonsFromDriveFile_UI')
     .addItem('Instalar gatilhos', 'installTriggers')
     .addItem('Atualizar metadados', 'refreshMeta')
     .addItem('Configurar / trocar token de administração', 'configureAdminToken')
@@ -323,7 +395,7 @@ function toNumber_(value) {
   if (typeof value === 'number') return isFinite(value) ? value : null;
   if (value === null || value === undefined) return null;
 
-  var s = String(value).replace(/[R$\s ]/gi, '');
+  var s = String(value).replace(/[R$\s ]/gi, '');
   if (s === '') return null;
 
   var lastComma = s.lastIndexOf(',');
@@ -370,6 +442,34 @@ function isValidUrl_(value) {
   return /^https?:\/\/[^\s]+$/i.test(s);
 }
 
+function isBlank_(value) {
+  return value === null || value === undefined || String(value).trim() === '';
+}
+
+function normalizeSlug_(value) {
+  var text = toText_(value).toLowerCase();
+  try { text = text.normalize('NFD').replace(/[\u0300-\u036f]/g, ''); } catch (err) { /* V8 antigo */ }
+  return text.replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '');
+}
+
+function isISODate_(value) {
+  if (value instanceof Date) return !isNaN(value.getTime());
+  var text = toText_(value);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(text)) return false;
+  var parts = text.split('-').map(Number);
+  var date = new Date(Date.UTC(parts[0], parts[1] - 1, parts[2]));
+  return date.getUTCFullYear() === parts[0] && date.getUTCMonth() === parts[1] - 1 &&
+    date.getUTCDate() === parts[2];
+}
+
+/** Chaves cujo valor nunca pode sair de Script Properties para a planilha pública. */
+function isSecretMetaKey_(key) {
+  var normalized = normalizeSlug_(key);
+  return normalized === 'admin_token' || normalized === 'admin_token_value' ||
+    normalized === 'api_key' || normalized === 'password' || normalized === 'secret' ||
+    /(_token_value|_password|_secret|_api_key)$/.test(normalized);
+}
+
 // ---------------------------------------------------------------------------
 // Setup
 // ---------------------------------------------------------------------------
@@ -385,40 +485,252 @@ function setupProject() {
     var book = ss_();
     var created = [];
     var kept = [];
+    var addedHeaders = [];
+    var blockedHeaders = [];
 
     Object.keys(OPERATIONAL_HEADERS).forEach(function (name) {
       var sheet = book.getSheetByName(name);
       if (!sheet) {
         sheet = book.insertSheet(name);
-        sheet.getRange(1, 1, 1, OPERATIONAL_HEADERS[name].length).setValues([OPERATIONAL_HEADERS[name]]);
-        sheet.setFrozenRows(1);
         created.push(name);
-        return;
-      }
-      // Aba existente: completa apenas cabeçalho ausente, preservando os dados.
-      if (headersOf_(sheet).join('') === '') {
-        sheet.getRange(1, 1, 1, OPERATIONAL_HEADERS[name].length).setValues([OPERATIONAL_HEADERS[name]]);
-        sheet.setFrozenRows(1);
-        created.push(name + ' (cabeçalho)');
       } else {
         kept.push(name);
       }
+      // Aba operacional é criada e mantida inteira por este script: não há coluna que
+      // o operador possa ter apagado por engano, então não há o que restringir.
+      var operational = ensureHeaders_(sheet, OPERATIONAL_HEADERS[name], null);
+      if (operational.added.length) addedHeaders.push(name + ': ' + operational.added.join(', '));
+    });
+
+    MANAGED_EXTENSION_SHEETS.forEach(function (name) {
+      var sheet = book.getSheetByName(name);
+      if (!sheet) {
+        sheet = book.insertSheet(name);
+        created.push(name);
+      } else {
+        kept.push(name);
+      }
+      // Idem: RA_PROFILES e POLYGONS nascem deste script.
+      var managed = ensureHeaders_(sheet, REQUIRED_HEADERS[name], null);
+      if (managed.added.length) addedHeaders.push(name + ': ' + managed.added.join(', '));
+    });
+
+    REQUIRED_SHEETS.forEach(function (name) {
+      var sheet = book.getSheetByName(name);
+      if (!sheet) return; // a validação registra MISSING_SHEET; não mascara criando aba vazia
+      // Aqui SIM a criação é restrita: ver o comentário de PROVISIONABLE_COLUMNS.
+      var result = ensureHeaders_(sheet, REQUIRED_HEADERS[name], PROVISIONABLE_COLUMNS[name] || []);
+      if (result.added.length) addedHeaders.push(name + ': ' + result.added.join(', '));
+      if (result.blocked.length) blockedHeaders.push(name + ': ' + result.blocked.join(', '));
     });
 
     if (!props_().getProperty('DATASET_VERSION')) props_().setProperty('DATASET_VERSION', '1');
     props_().setProperty('APP_VERSION', APP_VERSION);
 
-    var changeLogUpgraded = upgradeChangeLogHeader_();
+    var tokenMigration = migrateLegacyAdminToken_();
+    var developmentUpdates = populateDevelopmentSalesStage_();
+    var anchorUpdates = populateAnchorClassification_();
+    var datasetChanged = addedHeaders.some(function (item) {
+      return /^(LISTINGS|DEVELOPMENTS|ANCHORS|RA_PROFILES|POLYGONS):/.test(item);
+    }) || developmentUpdates > 0 || anchorUpdates > 0;
+
+    if (datasetChanged) {
+      bumpDatasetVersion_();
+      setMeta_('validation_status', 'dirty');
+      setMeta_('last_data_change_at', nowISO_());
+      clearCache();
+    }
     refreshMeta();
 
     var message = 'Abas criadas: ' + (created.length ? created.join(', ') : 'nenhuma') +
       '\nAbas preservadas: ' + (kept.length ? kept.join(', ') : 'nenhuma') +
-      (changeLogUpgraded ? '\nCHANGE_LOG: cabeçalho estendido para as colunas novas da issue #5.' : '') +
+      '\nCabeçalhos adicionados sem alterar os existentes: ' +
+      (addedHeaders.length ? addedHeaders.join(' | ') : 'nenhum') +
+      (blockedHeaders.length
+        ? '\n\n⚠️ CABEÇALHOS DO CONTRATO AUSENTES E NÃO CRIADOS: ' + blockedHeaders.join(' | ') +
+          '\nEstas colunas fazem parte do contrato mas não estão na lista de provisionamento. ' +
+          'Provavelmente foram apagadas ou renomeadas. Restaure o nome original — criar uma ' +
+          'coluna vazia no lugar esconderia a perda do dado. Rode "Validar dados agora" para o ' +
+          'relatório completo.'
+        : '') +
+      '\nClassificações preenchidas a partir de dados existentes: ' +
+      (developmentUpdates + anchorUpdates) +
+      (tokenMigration ? '\nCredencial legada movida de APP_META para Script Properties.' : '') +
       '\n\nPróximos passos: Validar dados agora, depois Instalar gatilhos.';
     Logger.log(message);
     notify_('Configuração concluída', message);
     return message;
   });
+}
+
+/** Acrescenta somente cabeçalhos ausentes à direita; nunca reordena nem sobrescreve. */
+/**
+ * Garante os cabeçalhos de uma aba. `allowedToCreate` limita o que pode ser CRIADO:
+ * `null` libera tudo (aba gerenciada por este script), um array restringe à lista
+ * (aba obrigatória, onde criar cabeçalho não previsto mascara erro do operador).
+ * Devolve `{ added, blocked }` — `blocked` é o que faltava e NÃO foi criado, para
+ * `setupProject()` avisar em vez de deixar a omissão passar despercebida.
+ */
+function ensureHeaders_(sheet, desiredHeaders, allowedToCreate) {
+  if (!sheet) return { added: [], blocked: [] };
+  var current = headersOf_(sheet);
+  var index = headerIndex_(current);
+  var absent = desiredHeaders.filter(function (header) { return index[header] === undefined; });
+
+  var missing = absent;
+  var blocked = [];
+  if (allowedToCreate) {
+    missing = [];
+    for (var m = 0; m < absent.length; m++) {
+      if (allowedToCreate.indexOf(absent[m]) === -1) blocked.push(absent[m]);
+      else missing.push(absent[m]);
+    }
+  }
+
+  if (!missing.length) {
+    sheet.setFrozenRows(1);
+    return { added: [], blocked: blocked };
+  }
+
+  var startColumn = Math.max(1, sheet.getLastColumn() + 1);
+  if (current.join('') === '' && sheet.getLastRow() <= 1) startColumn = 1;
+  sheet.getRange(1, startColumn, 1, missing.length).setValues([missing]);
+
+  if (startColumn > 1) {
+    try {
+      sheet.getRange(1, startColumn - 1, 1, 1)
+        .copyFormatToRange(sheet, startColumn, startColumn + missing.length - 1, 1, 1);
+    } catch (err) { Logger.log('Não foi possível copiar formato do cabeçalho de %s: %s', sheet.getName(), err.message); }
+  } else {
+    sheet.getRange(1, 1, 1, missing.length).setFontWeight('bold');
+  }
+  sheet.setFrozenRows(1);
+  return { added: missing, blocked: blocked };
+}
+
+/** Move uma credencial legada da aba pública para Script Properties e limpa a exposição. */
+function migrateLegacyAdminToken_() {
+  var sheet = ss_().getSheetByName(META_SHEET);
+  if (!sheet) return false;
+  var rows = dataRowsOf_(sheet);
+  var migrated = false;
+
+  for (var i = 0; i < rows.length; i++) {
+    var key = toText_(rows[i][0]);
+    if (!isSecretMetaKey_(key)) continue;
+    var value = toText_(rows[i][1]);
+    var normalized = normalizeSlug_(key);
+    var isAdminToken = (normalized === 'admin_token' || normalized === 'admin_token_value');
+
+    // Um segredo que esteve no APP_META esteve PÚBLICO: a aba é lida pelo navegador de
+    // qualquer visitante, via GViz. Copiá-lo para a Script Property transformaria um
+    // valor já vazado em credencial válida do endpoint de escrita, e limpar a célula
+    // depois não revoga cópia que alguém já leu ou que ficou em cache. O valor é
+    // apagado e NUNCA reaproveitado — o administrador gera um token novo pelo menu.
+    if (isAdminToken && value) {
+      props_().setProperty('LEGACY_ADMIN_TOKEN_REVOKED_AT', nowISO_());
+      Logger.log('Token administrativo legado encontrado no APP_META e descartado. ' +
+        'Gere um novo em "Configurar / trocar token de administração".');
+    } else if (value && !props_().getProperty('MIGRATED_' + normalized.toUpperCase())) {
+      props_().setProperty('MIGRATED_' + normalized.toUpperCase(), value);
+    }
+    sheet.getRange(i + 2, 1, 1, 3)
+      .setNumberFormat('@')
+      .setValues([['legacy_secret_migrated_at', nowISO_(), nowISO_()]]);
+    migrated = true;
+  }
+  return migrated;
+}
+
+/** Preenche sales_stage só quando vazio e quando o status existente permite inferência direta. */
+function populateDevelopmentSalesStage_() {
+  var sheet = ss_().getSheetByName('DEVELOPMENTS');
+  if (!sheet || sheet.getLastRow() < 2) return 0;
+  var headers = headersOf_(sheet);
+  var index = headerIndex_(headers);
+  if (index.status === undefined || index.sales_stage === undefined) return 0;
+  var rows = dataRowsOf_(sheet);
+  var changed = 0;
+
+  rows.forEach(function (row, i) {
+    if (!isBlank_(row[index.sales_stage])) return;
+    var stage = inferSalesStage_(row[index.status]);
+    if (!stage) return;
+    sheet.getRange(i + 2, index.sales_stage + 1).setValue(stage);
+    changed++;
+  });
+  return changed;
+}
+
+function inferSalesStage_(status) {
+  var slug = normalizeSlug_(status);
+  if (!slug) return '';
+  if (/lancamento/.test(slug)) return 'em_lancamento';
+  if (/(em_obra|em_obras|construcao|em_construcao|inicio_de_obras)/.test(slug)) return 'em_construcao';
+  if (/(oferta|pronto|estoque|entregue)/.test(slug)) return 'oferta';
+  return '';
+}
+
+/** Classifica âncoras somente por sinais explícitos já presentes em category/subcategory/name. */
+function populateAnchorClassification_() {
+  var sheet = ss_().getSheetByName('ANCHORS');
+  if (!sheet || sheet.getLastRow() < 2) return 0;
+  var headers = headersOf_(sheet);
+  var index = headerIndex_(headers);
+  if (index.group === undefined || index.segment === undefined) return 0;
+  var rows = dataRowsOf_(sheet);
+  var changed = 0;
+
+  rows.forEach(function (row, i) {
+    var category = index.category === undefined ? '' : row[index.category];
+    var subcategory = index.subcategory === undefined ? '' : row[index.subcategory];
+    var name = index.name === undefined ? '' : row[index.name];
+    if (isBlank_(row[index.group])) {
+      var group = inferAnchorGroup_(category);
+      if (group) {
+        sheet.getRange(i + 2, index.group + 1).setValue(group);
+        changed++;
+      }
+    }
+    if (isBlank_(row[index.segment])) {
+      var segment = inferAnchorSegment_(category, subcategory, name);
+      if (segment) {
+        sheet.getRange(i + 2, index.segment + 1).setValue(segment);
+        changed++;
+      }
+    }
+  });
+  return changed;
+}
+
+function inferAnchorGroup_(category) {
+  var slug = normalizeSlug_(category);
+  if (slug === 'mobilidade' || slug === 'parque_equipamento_publico') return 'infraestrutura';
+  if (['escola', 'saude', 'shopping_center', 'supermercado_atacarejo', 'universidade'].indexOf(slug) !== -1) {
+    return 'comercio_servico';
+  }
+  return '';
+}
+
+function inferAnchorSegment_(category, subcategory, name) {
+  var categorySlug = normalizeSlug_(category);
+  var detail = normalizeSlug_([subcategory, name].join(' '));
+  if (categorySlug === 'escola') return 'escola';
+  if (categorySlug === 'universidade') return 'universidade';
+  if (categorySlug === 'supermercado_atacarejo') return /atac/.test(detail) ? 'atacado' : 'supermercado';
+  if (categorySlug === 'saude') {
+    if (/hospital/.test(detail)) return 'hospital';
+    if (/laboratorio/.test(detail)) return 'laboratorio';
+    if (/clinica/.test(detail)) return 'clinica';
+  }
+  if (categorySlug === 'mobilidade') {
+    if (/metro/.test(detail)) return 'estacao_metro';
+    if (/trem/.test(detail)) return 'estacao_trem';
+    if (/rodovi/.test(detail)) return 'terminal_rodoviario';
+    if (/aeroporto/.test(detail)) return 'aeroporto';
+    if (/onibus/.test(detail)) return 'ponto_onibus';
+  }
+  return '';
 }
 
 /**
@@ -707,6 +1019,11 @@ function validateAll() {
       if (!sheet) return;
       validateSheet_(sheet, name, report);
     });
+    MANAGED_EXTENSION_SHEETS.forEach(function (name) {
+      var sheet = book.getSheetByName(name);
+      if (!sheet) return;
+      validateSheet_(sheet, name, report);
+    });
 
     writeQuality_(findings);
 
@@ -728,6 +1045,18 @@ function validateAll() {
 function validateSheet_(sheet, name, report) {
   var headers = headersOf_(sheet);
   var index = headerIndex_(headers);
+
+  var headerSeen = {};
+  headers.forEach(function (header) {
+    if (!header) return;
+    headerSeen[header] = (headerSeen[header] || 0) + 1;
+  });
+  Object.keys(headerSeen).forEach(function (header) {
+    if (headerSeen[header] > 1) {
+      report('error', name, 1, '', header, 'DUPLICATE_HEADER',
+        'Cabeçalho duplicado: ' + header + '. A leitura por objeto perderia uma das colunas.');
+    }
+  });
 
   // Todos os cabeçalhos críticos, não só o do ID.
   var required = REQUIRED_HEADERS[name] || [];
@@ -773,13 +1102,70 @@ function validateSheet_(sheet, name, report) {
       validateCoordinate_(row, index, latField, lonField, name, rowNumber, id, report);
     }
 
-    if (index.source_url !== undefined && !isValidUrl_(row[index.source_url])) {
-      report('warning', name, rowNumber, id, 'source_url', 'INVALID_URL',
-        'URL de fonte suspeita ou inválida.');
-    }
-
+    validateSchemaFields_(row, index, name, rowNumber, id, report);
     validatePrice_(row, index, name, rowNumber, id, report);
+    if (name === 'RA_PROFILES') validateRaProfile_(row, index, rowNumber, id, report);
+    if (name === 'POLYGONS') validatePolygonRow_(row, index, rowNumber, id, report);
   }
+}
+
+function validateSchemaFields_(row, index, name, rowNumber, id, report) {
+  var schema = FIELD_SCHEMA[name] || {};
+  Object.keys(schema).forEach(function (field) {
+    if (index[field] === undefined || isBlank_(row[index[field]])) return;
+    if (['asking_price_brl', 'current_price_brl', 'area_m2', 'area_min_m2', 'area_max_m2',
+      'occupied_area_m2', 'income_per_capita_brl', 'population_age_0_14_pct',
+      'population_age_15_29_pct', 'population_age_30_44_pct', 'population_age_45_59_pct',
+      'population_age_60_plus_pct'].indexOf(field) !== -1) return; // validação semântica específica abaixo
+    var result = coerceField_(schema[field], row[index[field]]);
+    if (result.ok) return;
+    var code = schema[field].indexOf('enum:') === 0 ? 'INVALID_ENUM' :
+      (schema[field] === 'geojson' ? 'INVALID_GEOMETRY' : 'INVALID_FIELD_VALUE');
+    report(schema[field] === 'url' ? 'warning' : 'error', name, rowNumber, id, field, code,
+      field + ': ' + result.message);
+  });
+}
+
+function validateRaProfile_(row, index, rowNumber, id, report) {
+  if (index.income_per_capita_brl !== undefined && !isBlank_(row[index.income_per_capita_brl])) {
+    var income = toNumber_(row[index.income_per_capita_brl]);
+    if (income === null || income < 0) {
+      report('error', 'RA_PROFILES', rowNumber, id, 'income_per_capita_brl',
+        'INVALID_INCOME', 'Renda per capita deve ser um número não negativo.');
+    }
+  }
+
+  var fields = [
+    'population_age_0_14_pct', 'population_age_15_29_pct', 'population_age_30_44_pct',
+    'population_age_45_59_pct', 'population_age_60_plus_pct'
+  ];
+  var values = [];
+  fields.forEach(function (field) {
+    if (index[field] === undefined || isBlank_(row[index[field]])) return;
+    var value = toNumber_(row[index[field]]);
+    if (value === null || value < 0 || value > 100) {
+      report('error', 'RA_PROFILES', rowNumber, id, field, 'INVALID_PERCENTAGE',
+        'Percentual deve estar entre 0 e 100.');
+      return;
+    }
+    values.push(value);
+  });
+  if (values.length === fields.length) {
+    var sum = values.reduce(function (total, value) { return total + value; }, 0);
+    var validScale = Math.abs(sum - 100) <= 2 || Math.abs(sum - 1) <= 0.02;
+    if (!validScale) {
+      report('warning', 'RA_PROFILES', rowNumber, id, fields.join(', '), 'AGE_DISTRIBUTION_SUM',
+        'As cinco faixas etárias somam ' + sum + '; esperado aproximadamente 100% (ou 1 em escala decimal).');
+    }
+  }
+}
+
+function validatePolygonRow_(row, index, rowNumber, id, report) {
+  ['name', 'geometry_geojson'].forEach(function (field) {
+    if (index[field] === undefined || !isBlank_(row[index[field]])) return;
+    report('error', 'POLYGONS', rowNumber, id, field, 'MISSING_REQUIRED_VALUE',
+      'Campo obrigatório vazio: ' + field);
+  });
 }
 
 /** Latitude e longitude: faixa, e o caso de só uma das duas preenchida. */
@@ -812,7 +1198,8 @@ function validateCoordinate_(row, index, latField, lonField, name, rowNumber, id
 /** Preço, área e coerência do preço/m² informado. */
 function validatePrice_(row, index, name, rowNumber, id, report) {
   var priceField = index.asking_price_brl !== undefined ? 'asking_price_brl' :
-    (index.price_min_brl !== undefined ? 'price_min_brl' : null);
+    (index.current_price_brl !== undefined ? 'current_price_brl' :
+      (index.price_min_brl !== undefined ? 'price_min_brl' : null));
 
   if (priceField) {
     var raw = row[index[priceField]];
@@ -825,16 +1212,18 @@ function validatePrice_(row, index, name, rowNumber, id, report) {
     }
   }
 
-  if (index.area_m2 !== undefined) {
-    var rawArea = row[index.area_m2];
+  var areaFields = ['area_m2', 'area_min_m2', 'area_max_m2', 'occupied_area_m2'];
+  areaFields.forEach(function (areaField) {
+    if (index[areaField] === undefined) return;
+    var rawArea = row[index[areaField]];
     if (String(rawArea === null || rawArea === undefined ? '' : rawArea).trim() !== '') {
       var area = toNumber_(rawArea);
       if (area === null || area <= 0) {
-        report('error', name, rowNumber, id, 'area_m2', 'NON_POSITIVE_AREA',
+        report('error', name, rowNumber, id, areaField, 'NON_POSITIVE_AREA',
           'Área não positiva ou não numérica: ' + rawArea);
       }
     }
-  }
+  });
 
   // Preço/m² informado que diverge muito do calculado: alerta, nunca sobrescrita.
   if (index.asking_price_brl !== undefined && index.area_m2 !== undefined &&
@@ -848,6 +1237,22 @@ function validatePrice_(row, index, name, rowNumber, id, report) {
         report('warning', name, rowNumber, id, 'asking_price_brl_m2', 'PRICE_M2_MISMATCH',
           'Preço/m² informado (' + Math.round(informed) + ') diverge do calculado (' +
           Math.round(expected) + ').');
+      }
+    }
+  }
+
+  if (index.current_price_brl !== undefined && index.area_min_m2 !== undefined &&
+      index.current_price_brl_m2 !== undefined) {
+    var currentPrice = toNumber_(row[index.current_price_brl]);
+    var minArea = toNumber_(row[index.area_min_m2]);
+    var currentPriceM2 = toNumber_(row[index.current_price_brl_m2]);
+    if (currentPrice !== null && minArea !== null && minArea > 0 &&
+        currentPriceM2 !== null && currentPriceM2 > 0) {
+      var currentExpected = currentPrice / minArea;
+      if (Math.abs(currentExpected - currentPriceM2) / currentPriceM2 > PRICE_M2_TOLERANCE) {
+        report('warning', name, rowNumber, id, 'current_price_brl_m2', 'PRICE_M2_MISMATCH',
+          'Preço/m² informado (' + Math.round(currentPriceM2) + ') diverge do calculado (' +
+          Math.round(currentExpected) + ').');
       }
     }
   }
@@ -874,15 +1279,21 @@ function writeQuality_(findings) {
 function setMeta_(key, value) {
   var sheet = ss_().getSheetByName(META_SHEET);
   if (!sheet) return;
+  if (isSecretMetaKey_(key)) {
+    Logger.log('Chave sensível recusada em APP_META: %s', key);
+    return;
+  }
 
   var rows = dataRowsOf_(sheet);
   for (var i = 0; i < rows.length; i++) {
     if (String(rows[i][0]).trim() === key) {
-      sheet.getRange(i + 2, 2, 1, 2).setValues([[value, nowISO_()]]);
+      sheet.getRange(i + 2, 1, 1, 3).setNumberFormat('@');
+      sheet.getRange(i + 2, 2, 1, 2).setValues([[String(value), nowISO_()]]);
       return;
     }
   }
-  sheet.appendRow([key, value, nowISO_()]);
+  sheet.appendRow([key, String(value), nowISO_()]);
+  sheet.getRange(sheet.getLastRow(), 1, 1, 3).setNumberFormat('@');
 }
 
 /** Atualiza os metadados derivados do estado atual da planilha. */
@@ -896,10 +1307,12 @@ function refreshMeta() {
   var countKey = {
     LISTINGS: 'rows_listings',
     DEVELOPMENTS: 'rows_developments',
-    ANCHORS: 'rows_anchors'
+    ANCHORS: 'rows_anchors',
+    RA_PROFILES: 'rows_ra_profiles',
+    POLYGONS: 'rows_polygons'
   };
 
-  REQUIRED_SHEETS.forEach(function (name) {
+  Object.keys(countKey).forEach(function (name) {
     var sheet = book.getSheetByName(name);
     var count = sheet ? Math.max(0, sheet.getLastRow() - 1) : 0;
     setMeta_(countKey[name], String(count));
@@ -916,6 +1329,278 @@ function clearCache() {
   );
   Logger.log('cache limpo');
   return 'Cache limpo.';
+}
+
+// ---------------------------------------------------------------------------
+// Polígonos — importação KML/KMZ e persistência idempotente
+// ---------------------------------------------------------------------------
+
+function importPolygonsFromDriveFile_UI() {
+  var ui = SpreadsheetApp.getUi();
+  var response = ui.prompt(
+    'Importar polígonos de KML/KMZ',
+    'Cole o ID ou a URL do arquivo no Google Drive. A planilha é pública: importe somente dados publicáveis.',
+    ui.ButtonSet.OK_CANCEL
+  );
+  if (response.getSelectedButton() !== ui.Button.OK) return;
+  var fileId = extractDriveFileId_(response.getResponseText());
+  if (!fileId) {
+    ui.alert('Não foi possível identificar o arquivo. Cole o ID ou uma URL /d/ID/view do Google Drive.');
+    return;
+  }
+
+  try {
+    var result = importPolygonsFromDriveFile_(fileId);
+    ui.alert(
+      'Importação concluída',
+      result.inserted + ' polígono(s) adicionado(s); ' + result.skipped +
+        ' já existente(s) preservado(s). Arquivo: ' + result.fileName,
+      ui.ButtonSet.OK
+    );
+  } catch (error) {
+    ui.alert('Falha na importação', String(error && error.message ? error.message : error), ui.ButtonSet.OK);
+  }
+}
+
+function extractDriveFileId_(input) {
+  var text = toText_(input);
+  var fromUrl = text.match(/\/d\/([A-Za-z0-9_-]{15,})/);
+  if (fromUrl) return fromUrl[1];
+  var plain = text.match(/^[A-Za-z0-9_-]{15,}$/);
+  return plain ? plain[0] : '';
+}
+
+function importPolygonsFromDriveFile_(fileId) {
+  var file = DriveApp.getFileById(fileId);
+  var fileName = file.getName();
+  var kmlText = kmlTextFromDriveFile_(file);
+  var placemarks = parseKmlPolygonPlacemarks_(kmlText);
+  if (!placemarks.length) {
+    throw new Error('Nenhum Placemark com Polygon/MultiGeometry de polígonos foi encontrado.');
+  }
+  if (placemarks.length > MAX_IMPORTED_POLYGONS) {
+    throw new Error('O arquivo contém ' + placemarks.length + ' polígonos; limite por importação: ' +
+      MAX_IMPORTED_POLYGONS + '. Divida o arquivo antes de importar.');
+  }
+
+  var result = withLock_(function () {
+    return writePolygonsToSheet_(placemarks, fileName, fileId);
+  });
+  if (!result) throw new Error('Não foi possível obter lock de escrita; tente novamente.');
+  return result;
+}
+
+function kmlTextFromDriveFile_(file) {
+  var blob = file.getBlob();
+  if (blob.getBytes().length > MAX_KML_BYTES) {
+    throw new Error('Arquivo maior que ' + Math.round(MAX_KML_BYTES / 1024 / 1024) + ' MB.');
+  }
+  var lowerName = file.getName().toLowerCase();
+  var isKmz = /\.kmz$/.test(lowerName) ||
+    blob.getContentType() === 'application/vnd.google-earth.kmz';
+  if (!isKmz) return blob.getDataAsString('UTF-8');
+
+  var parts = Utilities.unzip(blob).filter(function (part) {
+    return /\.kml$/i.test(part.getName());
+  });
+  if (!parts.length) throw new Error('KMZ sem arquivo .kml.');
+  parts.sort(function (a, b) {
+    var aDoc = /(^|\/)doc\.kml$/i.test(a.getName()) ? 0 : 1;
+    var bDoc = /(^|\/)doc\.kml$/i.test(b.getName()) ? 0 : 1;
+    return aDoc - bDoc;
+  });
+  if (parts[0].getBytes().length > MAX_KML_BYTES) {
+    throw new Error('KML descompactado maior que o limite de segurança.');
+  }
+  return parts[0].getDataAsString('UTF-8');
+}
+
+function parseKmlPolygonPlacemarks_(kmlText) {
+  var document;
+  try { document = XmlService.parse(String(kmlText).replace(/^\uFEFF/, '')); }
+  catch (err) { throw new Error('KML inválido: ' + err.message); }
+
+  var placemarkElements = collectElementsByName_(document.getRootElement(), 'Placemark', []);
+  var placemarks = [];
+  placemarkElements.forEach(function (placemark, sourceIndex) {
+    var polygonElements = collectElementsByName_(placemark, 'Polygon', []);
+    if (!polygonElements.length) return;
+
+    var polygonCoordinates = polygonElements.map(kmlPolygonElementToRings_);
+    var geometry = polygonCoordinates.length === 1
+      ? { type: 'Polygon', coordinates: polygonCoordinates[0] }
+      : { type: 'MultiPolygon', coordinates: polygonCoordinates };
+    var valid = validateGeoJsonGeometry_(geometry);
+    if (!valid.ok) {
+      throw new Error('Placemark ' + (sourceIndex + 1) + ': ' + valid.message);
+    }
+
+    var properties = extractKmlProperties_(placemark);
+    var name = directChildText_(placemark, 'name') || 'Polígono ' + (sourceIndex + 1);
+    var description = directChildText_(placemark, 'description') ||
+      propertyByAliases_(properties, ['description', 'descricao']);
+    var sourceUrl = propertyByAliases_(properties, ['source_url', 'url_fonte', 'fonte_url']);
+    if (sourceUrl && !isValidUrl_(sourceUrl)) sourceUrl = '';
+    var propertiesResult = validateJsonObject_(properties);
+    if (!propertiesResult.ok) throw new Error('Placemark ' + (sourceIndex + 1) + ': ' + propertiesResult.message);
+    [name, description].forEach(function (text) {
+      if (toText_(text).length > MAX_CELL_TEXT_LENGTH) {
+        throw new Error('Placemark ' + (sourceIndex + 1) + ': texto excede o limite da célula.');
+      }
+    });
+    placemarks.push({
+      sourceIndex: sourceIndex,
+      name: name,
+      category: propertyByAliases_(properties, ['category', 'categoria']),
+      color: propertyByAliases_(properties, ['color', 'cor']),
+      description: description,
+      sourceUrl: sourceUrl,
+      properties: properties,
+      propertiesJson: propertiesResult.value,
+      geometry: valid.geometry
+    });
+  });
+  return placemarks;
+}
+
+function collectElementsByName_(element, name, out) {
+  if (!element) return out;
+  if (element.getName && element.getName() === name) out.push(element);
+  var children = element.getChildren ? element.getChildren() : [];
+  children.forEach(function (child) { collectElementsByName_(child, name, out); });
+  return out;
+}
+
+function directChildText_(element, name) {
+  var children = element.getChildren ? element.getChildren() : [];
+  for (var i = 0; i < children.length; i++) {
+    if (children[i].getName() === name) return toText_(children[i].getText());
+  }
+  return '';
+}
+
+function firstDescendantText_(element, name) {
+  var found = collectElementsByName_(element, name, []);
+  return found.length ? toText_(found[0].getText()) : '';
+}
+
+function kmlPolygonElementToRings_(polygonElement) {
+  var outerElements = collectElementsByName_(polygonElement, 'outerBoundaryIs', []);
+  if (!outerElements.length) throw new Error('Polygon sem outerBoundaryIs.');
+  var outerCoordinates = firstDescendantText_(outerElements[0], 'coordinates');
+  if (!outerCoordinates) throw new Error('Polygon sem coordenadas externas.');
+  var rings = [coordsTextToRing_(outerCoordinates)];
+
+  collectElementsByName_(polygonElement, 'innerBoundaryIs', []).forEach(function (inner) {
+    var coordinates = firstDescendantText_(inner, 'coordinates');
+    if (coordinates) rings.push(coordsTextToRing_(coordinates));
+  });
+  return rings;
+}
+
+function coordsTextToRing_(coordsText) {
+  return toText_(coordsText).split(/\s+/).filter(Boolean).map(function (tuple) {
+    var parts = tuple.split(',');
+    return [Number(parts[0]), Number(parts[1])];
+  });
+}
+
+function extractKmlProperties_(placemark) {
+  var properties = Object.create(null);
+  collectElementsByName_(placemark, 'Data', []).forEach(function (element) {
+    var attribute = element.getAttribute('name');
+    var key = attribute ? safePropertyKey_(attribute.getValue()) : '';
+    if (key) properties[key] = firstDescendantText_(element, 'value');
+  });
+  collectElementsByName_(placemark, 'SimpleData', []).forEach(function (element) {
+    var attribute = element.getAttribute('name');
+    var key = attribute ? safePropertyKey_(attribute.getValue()) : '';
+    if (key) properties[key] = toText_(element.getText());
+  });
+  return properties;
+}
+
+function safePropertyKey_(key) {
+  var text = toText_(key).slice(0, 100);
+  if (['__proto__', 'prototype', 'constructor'].indexOf(text) !== -1) return '';
+  return text;
+}
+
+function propertyByAliases_(properties, aliases) {
+  var normalized = {};
+  Object.keys(properties || {}).forEach(function (key) { normalized[normalizeSlug_(key)] = properties[key]; });
+  for (var i = 0; i < aliases.length; i++) {
+    var value = normalized[normalizeSlug_(aliases[i])];
+    if (!isBlank_(value)) return toText_(value);
+  }
+  return '';
+}
+
+function stablePolygonId_(fileId, placemark) {
+  var seed = fileId + '|' + placemark.sourceIndex + '|' + normalizeSlug_(placemark.name);
+  var digest = Utilities.computeDigest(
+    Utilities.DigestAlgorithm.SHA_256,
+    seed,
+    Utilities.Charset.UTF_8
+  );
+  var hex = digest.map(function (byte) {
+    var value = byte < 0 ? byte + 256 : byte;
+    return ('0' + value.toString(16)).slice(-2);
+  }).join('');
+  return 'POLY_' + hex.slice(0, 24);
+}
+
+function writePolygonsToSheet_(placemarks, sourceFileName, fileId) {
+  var book = ss_();
+  var sheet = book.getSheetByName('POLYGONS') || book.insertSheet('POLYGONS');
+  ensureHeaders_(sheet, REQUIRED_HEADERS.POLYGONS, null); // aba gerenciada: pode criar tudo
+  var headers = headersOf_(sheet);
+  var index = headerIndex_(headers);
+  var existingIds = {};
+  dataRowsOf_(sheet).forEach(function (row) {
+    var id = toText_(row[index.polygon_id]);
+    if (id) existingIds[id] = true;
+  });
+
+  var rowsToAppend = [];
+  var skipped = 0;
+  var importedAt = nowISO_();
+  placemarks.forEach(function (placemark) {
+    var id = stablePolygonId_(fileId, placemark);
+    if (existingIds[id]) { skipped++; return; }
+    var row = new Array(headers.length).fill('');
+    row[index.polygon_id] = id;
+    row[index.name] = placemark.name;
+    row[index.category] = placemark.category;
+    row[index.geometry_geojson] = JSON.stringify(placemark.geometry);
+    row[index.color] = placemark.color;
+    row[index.description] = placemark.description;
+    row[index.properties_json] = placemark.propertiesJson || '{}';
+    row[index.source_url] = placemark.sourceUrl;
+    row[index.source_file] = sourceFileName;
+    row[index.imported_at] = importedAt;
+    row[index.status] = 'active';
+    rowsToAppend.push(row.map(safeCellValue_));
+    existingIds[id] = true;
+  });
+
+  if (rowsToAppend.length) {
+    sheet.getRange(sheet.getLastRow() + 1, 1, rowsToAppend.length, headers.length).setValues(rowsToAppend);
+    var version = bumpDatasetVersion_();
+    setMeta_('validation_status', 'dirty');
+    setMeta_('last_data_change_at', importedAt);
+    setMeta_('rows_polygons', String(Math.max(0, sheet.getLastRow() - 1)));
+    clearCache();
+    logWriteChange_('POLYGONS', '*', 'import', '', rowsToAppend.length + ' polígono(s)',
+      'importador KML/KMZ', 'kml-' + version, 'ok', '');
+  }
+  return { inserted: rowsToAppend.length, skipped: skipped, fileName: sourceFileName };
+}
+
+function safeCellValue_(value) {
+  if (typeof value !== 'string') return value;
+  if (/^[=+@]/.test(value) || /^-[A-Za-z]/.test(value)) return "'" + value;
+  return value;
 }
 
 // ---------------------------------------------------------------------------
@@ -975,7 +1660,7 @@ function meta_() {
 
   dataRowsOf_(sheet).forEach(function (row) {
     var key = String(row[0]).trim();
-    if (!key) return;
+    if (!key || isSecretMetaKey_(key)) return;
     rows.push({ key: key, value: row[1], updated_at: row[2] });
   });
 
@@ -1074,23 +1759,95 @@ function doPost(e) {
       return errorResponse_('UNAUTHENTICATED', 'Token ausente ou inválido.');
     }
 
-    var action = toText_(params.action);
+    var normalized = normalizeWriteRequest_(params);
+    if (!normalized.ok) {
+      var earlyError = withLock_(function () {
+        return writeError_(normalized.sheet || '', toText_(params.id), toText_(params.correlation_id),
+          params.editor, normalized.error.code, normalized.error.message);
+      });
+      return earlyError || errorResponse_(normalized.error.code, normalized.error.message, params.correlation_id);
+    }
+    params.action = normalized.action;
+    params.sheet = normalized.sheet;
+
+    var action = normalized.action;
     if (action === 'validate') return successResponse_({ valid: true }, props_().getProperty('DATASET_VERSION') || '1');
 
-    var sheetName = toText_(params.sheet);
+    var sheetName = normalized.sheet;
     if (!WRITE_ALLOWLIST[sheetName]) {
-      return errorResponse_('UNKNOWN_SHEET', 'Aba não permitida para escrita: ' + sheetName);
+      var unknownSheet = withLock_(function () {
+        return writeError_(sheetName, toText_(params.id), toText_(params.correlation_id), params.editor,
+          'UNKNOWN_SHEET', 'Aba não permitida para escrita: ' + sheetName);
+      });
+      return unknownSheet || errorResponse_('UNKNOWN_SHEET', 'Aba não permitida para escrita: ' + sheetName,
+        params.correlation_id);
     }
 
-    if (['create', 'update', 'delete'].indexOf(action) === -1) {
-      return errorResponse_('INVALID_PAYLOAD', 'action deve ser validate, create, update ou delete.');
-    }
+    var result = withLock_(function () {
+      // A versão observada ANTES de qualquer provisionamento de schema. `ensureWriteSheetSchema_`
+      // pode criar coluna e, ao criar, incrementa DATASET_VERSION — e aí o `expected_version`
+      // que o cliente leu antes de enviar perderia para um incremento causado pela própria
+      // requisição, devolvendo VERSION_CONFLICT em toda primeira escrita depois de uma
+      // migração de schema. Concorrência otimista existe para detectar mudança de DADO feita
+      // por outra pessoa, não mudança de schema provocada por mim mesmo (R8.17).
+      var versionBeforeSchema = props_().getProperty('DATASET_VERSION') || '1';
 
-    var result = withLock_(function () { return doWrite_(sheetName, action, params); });
+      var schema = ensureWriteSheetSchema_(sheetName);
+      if (!schema.ok) {
+        return writeError_(sheetName, toText_(params.id), toText_(params.correlation_id), params.editor,
+          schema.error.code, schema.error.message);
+      }
+      return doWrite_(sheetName, action, params, versionBeforeSchema);
+    });
     return result || errorResponse_('INTERNAL_ERROR', 'Não foi possível obter lock; tente novamente.');
   } catch (error) {
     return errorResponse_('INTERNAL_ERROR', String(error && error.message ? error.message : error));
   }
+}
+
+/** Aceita o contrato atual e o alias futuro resource/entity/method sem quebrar o frontend existente. */
+function normalizeWriteRequest_(params) {
+  var resource = toText_(params.resource);
+  if (resource && resource !== 'write') {
+    return { ok: false, sheet: '', error: { code: 'INVALID_PAYLOAD', message: 'resource deve ser write.' } };
+  }
+  var action = toText_(params.action || params.method).toLowerCase();
+  var sheet = toText_(params.sheet || params.entity).toUpperCase();
+  if (action === 'validate') return { ok: true, action: action, sheet: '' };
+  if (['create', 'update', 'delete'].indexOf(action) === -1) {
+    return {
+      ok: false,
+      sheet: sheet,
+      error: { code: 'INVALID_PAYLOAD', message: 'action/method deve ser validate, create, update ou delete.' }
+    };
+  }
+  if (!sheet) {
+    return { ok: false, sheet: '', error: { code: 'INVALID_PAYLOAD', message: 'sheet/entity é obrigatório.' } };
+  }
+  return { ok: true, action: action, sheet: sheet };
+}
+
+/** Garante as colunas de escrita de modo aditivo. Aba obrigatória ausente nunca é criada em silêncio. */
+function ensureWriteSheetSchema_(sheetName) {
+  var book = ss_();
+  var sheet = book.getSheetByName(sheetName);
+  if (!sheet && sheetName === 'POLYGONS') sheet = book.insertSheet('POLYGONS');
+  if (!sheet) {
+    return { ok: false, error: { code: 'UNKNOWN_SHEET', message: 'Aba ausente na planilha: ' + sheetName } };
+  }
+  // Mesma restrição do setupProject(): na escrita, provisionar cabeçalho não previsto
+  // seria ainda pior, porque acontece sem ninguém olhando o relatório.
+  var allowed = MANAGED_EXTENSION_SHEETS.indexOf(sheetName) === -1
+    ? (PROVISIONABLE_COLUMNS[sheetName] || [])
+    : null;
+  var added = ensureHeaders_(sheet, REQUIRED_HEADERS[sheetName] || [], allowed).added;
+  if (added.length) {
+    bumpDatasetVersion_();
+    setMeta_('validation_status', 'dirty');
+    setMeta_('last_data_change_at', nowISO_());
+    clearCache();
+  }
+  return { ok: true, sheet: sheet, addedHeaders: added };
 }
 
 /** Token do payload contra ADMIN_TOKEN em Script Properties. Sem token configurado, nunca autentica. */
@@ -1120,8 +1877,14 @@ function configureAdminToken() {
   return token;
 }
 
-/** Orquestra create/update/delete para uma aba já validada contra a allowlist. */
-function doWrite_(sheetName, action, params) {
+/**
+ * Orquestra create/update/delete para uma aba já validada contra a allowlist.
+ *
+ * `versionBeforeSchema` é a DATASET_VERSION lida no início da requisição, antes de
+ * `ensureWriteSheetSchema_()` poder ter incrementado por provisionar coluna nova. É
+ * contra ela que a concorrência otimista compara — ver R8.17.
+ */
+function doWrite_(sheetName, action, params, versionBeforeSchema) {
   var sheet = ss_().getSheetByName(sheetName);
   var correlationId = toText_(params.correlation_id);
   var editor = params.editor;
@@ -1134,11 +1897,17 @@ function doWrite_(sheetName, action, params) {
   var idField = ID_FIELD[sheetName];
 
   if (action === 'create') {
+    if (sheetName === 'POLYGONS') id = 'POLY_' + Utilities.getUuid().replace(/-/g, '');
     if (!id) return writeError_(sheetName, id, correlationId, editor, 'INVALID_PAYLOAD', 'id é obrigatório para create.');
 
     var validatedCreate = validateWritePayload_(sheetName, 'create', params.fields || {});
     if (!validatedCreate.ok) {
       return writeError_(sheetName, id, correlationId, editor, validatedCreate.error.code, validatedCreate.error.message);
+    }
+    if (sheetName === 'POLYGONS') {
+      if (!validatedCreate.fields.status) validatedCreate.fields.status = 'active';
+      validatedCreate.fields.imported_at = nowISO_();
+      validatedCreate.fields.source_file = '';
     }
     applyDerivedFields_(sheetName, validatedCreate.fields, null);
 
@@ -1157,7 +1926,7 @@ function doWrite_(sheetName, action, params) {
   var found = findRowById_(sheet, headers, index, idField, id);
   if (!found) return writeError_(sheetName, id, correlationId, editor, 'NOT_FOUND', 'Registro não encontrado: ' + id);
 
-  var conflict = checkVersionConflict_(params.expected_version);
+  var conflict = checkVersionConflict_(params.expected_version, versionBeforeSchema);
   if (conflict) return writeError_(sheetName, id, correlationId, editor, conflict.code, conflict.message);
 
   if (action === 'delete') {
@@ -1205,7 +1974,7 @@ function finishWrite_(sheetName, id, changes, editor, correlationId, record) {
   setMeta_('validation_status', 'dirty');
   setMeta_('last_data_change_at', nowISO_());
   clearCache();
-  return successResponse_(record, version, correlationId);
+  return successResponse_(record, version, correlationId, id);
 }
 
 /**
@@ -1216,8 +1985,12 @@ function finishWrite_(sheetName, id, changes, editor, correlationId, record) {
  * esperado numa ferramenta interna (ver plano da PR). Devolve `{code, message}` do
  * erro, ou `null` quando não há conflito — quem chama decide como responder/logar.
  */
-function checkVersionConflict_(expectedVersion) {
-  var current = props_().getProperty('DATASET_VERSION') || '1';
+function checkVersionConflict_(expectedVersion, baselineVersion) {
+  // Sem baseline explícita, a versão corrente é a referência — é o caso de qualquer
+  // chamada que não tenha passado por provisionamento de schema.
+  var current = baselineVersion === undefined || baselineVersion === null || baselineVersion === ''
+    ? (props_().getProperty('DATASET_VERSION') || '1')
+    : String(baselineVersion);
   var expected = expectedVersion === undefined || expectedVersion === null ? '' : String(expectedVersion);
 
   if (expected === '') {
@@ -1295,6 +2068,8 @@ function validateWritePayload_(sheetName, action, fields) {
  * periódica passar (que hoje só recalcula LISTINGS — ver Pendências desta PR).
  */
 function applyDerivedFields_(sheetName, fields, currentRecord) {
+  applyClassificationDerivations_(sheetName, fields, currentRecord);
+
   var config = DERIVED_PRICE_M2_FIELD[sheetName];
   if (!config) return;
 
@@ -1312,6 +2087,46 @@ function applyDerivedFields_(sheetName, fields, currentRecord) {
 }
 
 /**
+ * Deriva `sales_stage` (DEVELOPMENTS) e `group`/`segment` (ANCHORS) no caminho de
+ * escrita, não só no `setupProject()`.
+ *
+ * Sem isto, um create pelo admin com esses campos omitidos gravava a linha com as
+ * células vazias — e a âncora nascia FORA dos filtros de grupo e segmento, invisível
+ * para quem usa a legenda. Pior no update: mudar `category` de "Mobilidade" para
+ * "Saúde" mantinha `segment: 'estacao_metro'`, uma classificação que passou a ser
+ * mentira sobre o próprio registro.
+ *
+ * Valor explicitamente informado sempre vence — a mesma regra do provisionamento e do
+ * gerador de demo. Só a célula que ficaria vazia é preenchida.
+ */
+function applyClassificationDerivations_(sheetName, fields, currentRecord) {
+  var informed = function (field) {
+    return field in fields && toText_(fields[field]) !== '';
+  };
+  // Valor de entrada de um campo: o que veio na requisição, senão o que já está na linha.
+  var incoming = function (field) {
+    if (field in fields) return fields[field];
+    return currentRecord ? currentRecord[field] : '';
+  };
+
+  if (sheetName === 'DEVELOPMENTS' && !informed('sales_stage')) {
+    var stage = inferSalesStage_(incoming('status'));
+    if (stage) fields.sales_stage = stage;
+  }
+
+  if (sheetName === 'ANCHORS') {
+    if (!informed('group')) {
+      var group = inferAnchorGroup_(incoming('category'));
+      if (group) fields.group = group;
+    }
+    if (!informed('segment')) {
+      var segment = inferAnchorSegment_(incoming('category'), incoming('subcategory'), incoming('name'));
+      if (segment) fields.segment = segment;
+    }
+  }
+}
+
+/**
  * Preço por m², calculado no servidor. Espelha pricePerM2() de src/normalize.js na
  * direção "sem valor informado": aqui o valor informado nunca existe, porque o campo
  * é sempre derivado na escrita — mudou lá, muda aqui.
@@ -1323,7 +2138,13 @@ function pricePerM2_(price, area) {
 
 /** Coage e valida um valor bruto conforme o tipo declarado em FIELD_SCHEMA. */
 function coerceField_(type, raw) {
+  if (type === 'geojson') return validateGeoJsonGeometry_(raw);
+  if (type === 'json_object') return validateJsonObject_(raw);
+
   var text = toText_(raw);
+  if (text.length > MAX_CELL_TEXT_LENGTH) {
+    return { ok: false, message: 'texto excede o limite seguro de ' + MAX_CELL_TEXT_LENGTH + ' caracteres.' };
+  }
 
   if (type === 'text') return { ok: true, value: text };
 
@@ -1333,10 +2154,10 @@ function coerceField_(type, raw) {
   }
 
   if (type === 'date') {
-    if (text !== '' && !/^\d{4}-\d{2}-\d{2}$/.test(text)) {
-      return { ok: false, message: 'data deve estar em YYYY-MM-DD.' };
+    if (text !== '' && !isISODate_(raw)) {
+      return { ok: false, message: 'data deve ser uma data real em YYYY-MM-DD.' };
     }
-    return { ok: true, value: text };
+    return { ok: true, value: raw instanceof Date ? raw.toISOString().slice(0, 10) : text };
   }
 
   if (type === 'number' || type === 'int') {
@@ -1347,7 +2168,15 @@ function coerceField_(type, raw) {
   }
 
   if (type === 'bool') {
-    return { ok: true, value: toBoolean_(raw) };
+    if (typeof raw === 'boolean') return { ok: true, value: raw };
+    var boolText = text.toLowerCase();
+    if (['1', 'true', 'sim', 'yes', 'y', 'x', 'verdadeiro'].indexOf(boolText) !== -1) {
+      return { ok: true, value: true };
+    }
+    if (['0', 'false', 'nao', 'não', 'no', 'n', 'falso'].indexOf(boolText) !== -1) {
+      return { ok: true, value: false };
+    }
+    return { ok: false, message: 'não é um booleano válido.' };
   }
 
   if (type.indexOf('enum:') === 0) {
@@ -1359,6 +2188,118 @@ function coerceField_(type, raw) {
   }
 
   return { ok: true, value: text };
+}
+
+function parseJsonValue_(raw) {
+  if (raw && typeof raw === 'object') return { ok: true, value: raw };
+  var text = toText_(raw);
+  if (!text) return { ok: false, message: 'JSON vazio.' };
+  try { return { ok: true, value: JSON.parse(text) }; }
+  catch (err) { return { ok: false, message: 'JSON inválido: ' + err.message }; }
+}
+
+function validateJsonObject_(raw) {
+  if (isBlank_(raw)) return { ok: true, value: '' };
+  var parsed = parseJsonValue_(raw);
+  if (!parsed.ok) return parsed;
+  if (!parsed.value || typeof parsed.value !== 'object' || Array.isArray(parsed.value)) {
+    return { ok: false, message: 'deve ser um objeto JSON.' };
+  }
+  var serialized = JSON.stringify(parsed.value);
+  if (serialized.length > MAX_CELL_TEXT_LENGTH) {
+    return { ok: false, message: 'JSON excede o limite da célula.' };
+  }
+  return { ok: true, value: serialized };
+}
+
+/** Valida e normaliza Polygon/MultiPolygon GeoJSON; a ordem é sempre [longitude, latitude]. */
+function validateGeoJsonGeometry_(raw) {
+  var parsed = parseJsonValue_(raw);
+  if (!parsed.ok) return parsed;
+  var geometry = parsed.value;
+  if (!geometry || (geometry.type !== 'Polygon' && geometry.type !== 'MultiPolygon')) {
+    return { ok: false, message: 'geometry_geojson deve ser Polygon ou MultiPolygon.' };
+  }
+
+  var canonical = { type: geometry.type, coordinates: [] };
+  var positionCount = { value: 0 };
+  var polygons = geometry.type === 'Polygon' ? [geometry.coordinates] : geometry.coordinates;
+  if (!Array.isArray(polygons) || polygons.length === 0) {
+    return { ok: false, message: 'coordinates deve conter ao menos um polígono.' };
+  }
+
+  for (var p = 0; p < polygons.length; p++) {
+    var polygonResult = validateGeoJsonPolygon_(polygons[p], positionCount);
+    if (!polygonResult.ok) return polygonResult;
+    if (geometry.type === 'Polygon') canonical.coordinates = polygonResult.value;
+    else canonical.coordinates.push(polygonResult.value);
+  }
+
+  var serialized = JSON.stringify(canonical);
+  if (serialized.length > MAX_CELL_TEXT_LENGTH) {
+    return { ok: false, message: 'geometria excede o limite de uma célula do Google Sheets.' };
+  }
+  return { ok: true, value: serialized, geometry: canonical, position_count: positionCount.value };
+}
+
+/**
+ * `true` só para número finito ou string que representa um número. Recusa
+ * `null`, `undefined`, `''`, `'  '`, `true`/`false`, array e objeto — tudo que
+ * `Number()` converteria em 0 ou NaN sem reclamar.
+ */
+function isNumericPosition_(value) {
+  if (typeof value === 'number') return isFinite(value);
+  if (typeof value !== 'string') return false;
+  var trimmed = value.trim();
+  if (!trimmed) return false;
+  return isFinite(Number(trimmed));
+}
+
+function validateGeoJsonPolygon_(rings, positionCount) {
+  if (!Array.isArray(rings) || rings.length === 0) {
+    return { ok: false, message: 'Polygon deve conter ao menos um anel.' };
+  }
+  var out = [];
+  for (var r = 0; r < rings.length; r++) {
+    var ring = rings[r];
+    if (!Array.isArray(ring) || ring.length < 4) {
+      return { ok: false, message: 'cada anel deve conter ao menos quatro posições.' };
+    }
+    var normalizedRing = [];
+    var unique = {};
+    for (var i = 0; i < ring.length; i++) {
+      var position = ring[i];
+      if (!Array.isArray(position) || position.length < 2) {
+        return { ok: false, message: 'posição inválida; esperado [longitude, latitude].' };
+      }
+      // `Number(null)`, `Number('')` e `Number(false)` são todos 0 — e 0 passa em
+      // `isFinite` e na faixa válida. Sem esta checagem, um anel de coordenadas ausentes
+      // vira um polígono perfeitamente válido perto de [0, 0], no golfo da Guiné, e é
+      // PERSISTIDO como se fosse geografia real. Coordenada tem que ser número mesmo,
+      // ou string numérica não vazia.
+      if (!isNumericPosition_(position[0]) || !isNumericPosition_(position[1])) {
+        return { ok: false, message: 'longitude/latitude precisa ser numérica; valor vazio ou nulo não é aceito.' };
+      }
+      var lon = Number(position[0]);
+      var lat = Number(position[1]);
+      if (!isFinite(lon) || !isFinite(lat) || lon < -180 || lon > 180 || lat < -90 || lat > 90) {
+        return { ok: false, message: 'longitude/latitude fora da faixa válida.' };
+      }
+      normalizedRing.push([lon, lat]);
+      unique[lon + '|' + lat] = true;
+      positionCount.value++;
+    }
+    if (Object.keys(unique).length < 3) {
+      return { ok: false, message: 'anel precisa de ao menos três posições distintas.' };
+    }
+    var first = normalizedRing[0];
+    var last = normalizedRing[normalizedRing.length - 1];
+    if (first[0] !== last[0] || first[1] !== last[1]) {
+      return { ok: false, message: 'anel GeoJSON deve estar fechado (primeira posição igual à última).' };
+    }
+    out.push(normalizedRing);
+  }
+  return { ok: true, value: out };
 }
 
 /** Busca um registro pelo ID, nunca por posição de linha. `null` quando não encontrado. */
@@ -1394,8 +2335,8 @@ function applyCreate_(sheet, headers, idField, id, fields) {
   var row = [];
   for (var i = 0; i < headers.length; i++) {
     var header = headers[i];
-    if (header === idField) { row.push(id); continue; }
-    row.push(header in fields ? fields[header] : '');
+    if (header === idField) { row.push(safeCellValue_(id)); continue; }
+    row.push(header in fields ? safeCellValue_(fields[header]) : '');
   }
   sheet.appendRow(row);
   return rowToRecord_(headers, row);
@@ -1414,7 +2355,7 @@ function applyUpdate_(sheet, headers, rowNumber, fields) {
 
     var range = sheet.getRange(rowNumber, col + 1, 1, 1);
     var oldValue = range.getValue();
-    var newValue = fields[field];
+    var newValue = safeCellValue_(fields[field]);
     var oldText = oldValue === null || oldValue === undefined ? '' : String(oldValue);
     var newText = newValue === null || newValue === undefined ? '' : String(newValue);
     if (oldText === newText) return;
@@ -1425,9 +2366,10 @@ function applyUpdate_(sheet, headers, rowNumber, fields) {
   return changes;
 }
 
-function successResponse_(record, version, correlationId) {
+function successResponse_(record, version, correlationId, id) {
   var payload = { ok: true, record: record, dataset_version: String(version) };
   if (correlationId) payload.correlation_id = correlationId;
+  if (id) payload.id = id;
   return json_(payload, {});
 }
 

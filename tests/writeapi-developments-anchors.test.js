@@ -197,7 +197,85 @@ test('ANCHORS: update grava, versiona e audita', () => {
   });
   assert.equal(res.ok, true);
   assert.equal(res.record.name, 'Escola Modelo II');
-  assert.equal(sheets.CHANGE_LOG._rows.length, 2);
+
+  // Três mudanças, não uma: além do `name` pedido, a classificação vazia desta âncora é
+  // derivada no caminho de escrita (`category: 'escola'` -> grupo e segmento). Cada uma
+  // vira uma linha de CHANGE_LOG, mais o cabeçalho. Antes desta correção a âncora seria
+  // salva sem classificação e nasceria fora dos filtros novos.
+  assert.equal(res.record.group, 'comercio_servico');
+  assert.equal(res.record.segment, 'escola');
+  assert.equal(sheets.CHANGE_LOG._rows.length, 4);
+});
+
+// --- derivação da classificação no caminho de escrita ---------------------------
+
+test('ANCHORS: create sem group/segment deriva os dois a partir de category', () => {
+  const { context } = setup();
+  const res = write(context, {
+    action: 'create', sheet: 'ANCHORS', id: 'ANCHOR_NOVO', expected_version: '1',
+    fields: {
+      name: 'Hospital de Base', category: 'saude', subcategory: 'hospital',
+      latitude: -15.8, longitude: -47.9, status: 'active', operator_name: 'GDF',
+      ra_geo_id: 'RA2026_RA-I', source_url: 'https://example.com/f',
+      coordinate_source_url: 'https://example.com/c', confidence_flag: 'high',
+      coordinate_precision: 'rooftop', last_verified_at: '2026-08-18',
+    },
+  });
+
+  assert.equal(res.ok, true, `esperado sucesso, veio ${JSON.stringify(res.error)}`);
+  assert.equal(res.record.group, 'comercio_servico');
+  assert.equal(res.record.segment, 'hospital');
+});
+
+test('ANCHORS: classificação informada explicitamente nunca é sobrescrita', () => {
+  const { context } = setup();
+  const res = write(context, {
+    action: 'create', sheet: 'ANCHORS', id: 'ANCHOR_MANUAL', expected_version: '1',
+    fields: {
+      name: 'Estação Central', category: 'mobilidade', subcategory: 'metro',
+      latitude: -15.8, longitude: -47.9, status: 'active', operator_name: 'Metrô-DF',
+      ra_geo_id: 'RA2026_RA-I', source_url: 'https://example.com/f',
+      coordinate_source_url: 'https://example.com/c', confidence_flag: 'high',
+      coordinate_precision: 'rooftop', last_verified_at: '2026-08-18',
+      group: 'comercio_servico', segment: 'segmento_escrito_a_mao',
+    },
+  });
+
+  assert.equal(res.ok, true, `esperado sucesso, veio ${JSON.stringify(res.error)}`);
+  assert.equal(res.record.group, 'comercio_servico', 'o valor informado tinha que vencer a inferência');
+  assert.equal(res.record.segment, 'segmento_escrito_a_mao');
+});
+
+// Trocar a categoria sem retocar a classificação era o caso mais traiçoeiro: a linha
+// continuava afirmando `estacao_metro` sobre um hospital.
+test('ANCHORS: mudar category revê a classificação que estava vazia', () => {
+  const { context } = setup({
+    ANCHORS: [ANCHORS_HEADERS, anchorRow({ category: 'mobilidade', subcategory: 'metro' })],
+  });
+
+  const res = write(context, {
+    action: 'update', sheet: 'ANCHORS', id: 'ANCHOR_1', expected_version: '1',
+    fields: { category: 'saude', subcategory: 'hospital' },
+  });
+
+  assert.equal(res.ok, true, `esperado sucesso, veio ${JSON.stringify(res.error)}`);
+  assert.equal(res.record.segment, 'hospital');
+  assert.equal(res.record.group, 'comercio_servico');
+});
+
+test('DEVELOPMENTS: create sem sales_stage deriva a partir de status', () => {
+  const { context } = setup();
+  const res = write(context, {
+    action: 'create', sheet: 'DEVELOPMENTS', id: 'DEV_NOVO', expected_version: '1',
+    fields: {
+      name: 'Residencial Y', status: 'Em obras', latitude: -15.77, longitude: -47.91,
+      address: 'SQNW 110', neighborhood: 'Noroeste', confidence_flag: 'high_attributes',
+      spatial_usable: true, last_verified_at: '2026-08-18',
+    },
+  });
+
+  assert.equal(res.ok, true, `esperado sucesso, veio ${JSON.stringify(res.error)}`);
+  assert.equal(res.record.sales_stage, 'em_construcao');
 });
 
 test('ANCHORS: place_id inexistente é NOT_FOUND', () => {

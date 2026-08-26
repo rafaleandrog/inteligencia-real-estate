@@ -2,7 +2,8 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createAppsScriptSandbox } from './helpers/appsScriptSandbox.mjs';
 import {
-  ADMIN_SHEETS, ADMIN_FIELDS, ID_FIELD, ENUM_VALUES, DERIVED_PRICE_M2_FIELD, fieldKeys,
+  ADMIN_SHEETS, DEFERRED_ADMIN_SHEETS, ADMIN_FIELDS, ID_FIELD, ENUM_VALUES,
+  DERIVED_PRICE_M2_FIELD, fieldKeys,
 } from '../src/admin/admin-schema.js';
 
 // src/admin/admin-schema.js é escrito à mão porque roda no navegador e não pode
@@ -17,8 +18,32 @@ const { context } = createAppsScriptSandbox({
   scriptProperties: {},
 });
 
-test('ADMIN_SHEETS cobre exatamente as abas com WRITE_ALLOWLIST em Code.gs', () => {
-  assert.deepEqual([...ADMIN_SHEETS].sort(), Object.keys(context.WRITE_ALLOWLIST).sort());
+// O admin não precisa expor toda aba gravável, mas precisa *declarar* o que deixou de
+// fora. Uma aba nova no WRITE_ALLOWLIST do backend cai obrigatoriamente num dos dois
+// lados: ADMIN_SHEETS (tem formulário) ou DEFERRED_ADMIN_SHEETS (omissão deliberada,
+// com justificativa junto da constante). O que não pode é sumir em silêncio.
+test('ADMIN_SHEETS ∪ DEFERRED_ADMIN_SHEETS cobre exatamente o WRITE_ALLOWLIST de Code.gs', () => {
+  assert.deepEqual(
+    [...ADMIN_SHEETS, ...DEFERRED_ADMIN_SHEETS].sort(),
+    Object.keys(context.WRITE_ALLOWLIST).sort(),
+  );
+});
+
+test('nenhuma aba está ao mesmo tempo no admin e adiada', () => {
+  const overlap = ADMIN_SHEETS.filter((sheet) => DEFERRED_ADMIN_SHEETS.includes(sheet));
+  assert.deepEqual(overlap, []);
+});
+
+// ID_FIELD é o que o cliente manda como identificador do registro a atualizar. Se a
+// chave primária também estivesse no allowlist, um update poderia reescrever o próprio
+// id da linha que está editando — a checagem vale para toda aba gravável, inclusive as
+// que ainda não têm formulário.
+test('toda aba gravável tem ID_FIELD, e ele nunca é um campo gravável', () => {
+  for (const sheet of Object.keys(context.WRITE_ALLOWLIST)) {
+    const idField = context.ID_FIELD[sheet];
+    assert.ok(idField, `${sheet} não tem ID_FIELD em Code.gs`);
+    assert.equal(context.WRITE_ALLOWLIST[sheet].includes(idField), false, `${sheet}.${idField}`);
+  }
 });
 
 test('ID_FIELD do frontend concorda com ID_FIELD do Apps Script', () => {

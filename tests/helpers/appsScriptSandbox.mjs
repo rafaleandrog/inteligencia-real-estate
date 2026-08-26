@@ -14,7 +14,7 @@
 
 import vm from 'node:vm';
 import { readFileSync } from 'node:fs';
-import { randomUUID } from 'node:crypto';
+import { randomUUID, createHash } from 'node:crypto';
 
 /** Uma planilha em memória: linhas como array de arrays, primeira linha é cabeçalho. */
 export function createFakeSheet(name, rows) {
@@ -43,28 +43,65 @@ export function createFakeSheet(name, rows) {
   return sheet;
 }
 
+/**
+ * O Sheets real estende a grade sozinho: escrever em A1 de uma aba recém-criada por
+ * `insertSheet()` funciona, mesmo que a aba não tenha linha nenhuma. O mock guarda as
+ * linhas num array, então precisa crescer explicitamente — sem isto, `ensureHeaders_()`
+ * numa aba nova (o caminho de `setupProject()` criando RA_PROFILES e POLYGONS) morre
+ * com "Cannot set properties of undefined", que é bug do mock, não do Code.gs.
+ */
+function ensureRow(data, index) {
+  while (data.length <= index) data.push([]);
+  return data[index];
+}
+
 function createRange(data, row, col, numRows, numCols) {
   return {
     getValue() {
-      return data[row - 1][col - 1];
+      const cell = data[row - 1][col - 1];
+      return cell === undefined ? '' : cell;
     },
     setValue(value) {
-      data[row - 1][col - 1] = value;
+      ensureRow(data, row - 1)[col - 1] = value;
     },
     getValues() {
       const out = [];
       for (let r = 0; r < numRows; r++) {
-        out.push(data[row - 1 + r].slice(col - 1, col - 1 + numCols));
+        const source = data[row - 1 + r] || [];
+        const line = [];
+        // O Sheets real devolve célula vazia como '', nunca uma linha curta. Uma linha
+        // de dado gravada antes de `ensureHeaders_()` acrescentar colunas é justamente
+        // esse caso, e um `undefined` aqui viraria bug só no teste.
+        for (let c = 0; c < numCols; c++) {
+          const cell = source[col - 1 + c];
+          line.push(cell === undefined ? '' : cell);
+        }
+        out.push(line);
       }
       return out;
     },
     setValues(values) {
       for (let r = 0; r < numRows; r++) {
+        const line = ensureRow(data, row - 1 + r);
         for (let c = 0; c < numCols; c++) {
-          data[row - 1 + r][col - 1 + c] = values[r][c];
+          line[col - 1 + c] = values[r][c];
         }
       }
     },
+    clearContent() {
+      for (let r = 0; r < numRows; r++) {
+        for (let c = 0; c < numCols; c++) {
+          if (data[row - 1 + r]) data[row - 1 + r][col - 1 + c] = '';
+        }
+      }
+      return this;
+    },
+    // Formatação não muda valor, e nenhum teste afirma nada sobre ela — mas o Code.gs
+    // chama estes três, então precisam existir para não virar exceção disfarçada de
+    // INTERNAL_ERROR na resposta da API.
+    setNumberFormat() { return this; },
+    setFontWeight() { return this; },
+    copyFormatToRange() { return this; },
     getA1Notation: () => `R${row}C${col}`,
     getRow: () => row,
     getNumRows: () => numRows,
@@ -138,6 +175,25 @@ export function createAppsScriptSandbox({ sheets = {}, scriptProperties = {}, go
       // randomUUID() já é padrão no runtime do Node usado pelos testes; getUuid() do
       // Apps Script tem a mesma forma (RFC 4122 v4), então serve como substituto fiel.
       getUuid: () => randomUUID(),
+      DigestAlgorithm: { SHA_256: 'SHA_256' },
+      Charset: { UTF_8: 'UTF_8' },
+      /**
+       * `computeDigest` do Apps Script devolve bytes **com sinal** (-128..127), e
+       * `stablePolygonId_()` depende disso: ele reconverte para 0..255 antes de virar
+       * hex. Um mock que devolvesse bytes sem sinal geraria ids diferentes dos de
+       * produção e a idempotência da importação KML seria testada contra a coisa errada.
+       */
+      computeDigest: (_algorithm, value, _charset) => {
+        const hash = createHash('sha256').update(String(value), 'utf8').digest();
+        return [...hash].map((byte) => (byte > 127 ? byte - 256 : byte));
+      },
+      unzip: () => { throw new Error('unzip() exige um blob real; nenhum teste exercita KMZ'); },
+    },
+    DriveApp: {
+      getFileById: () => { throw new Error('DriveApp não é exercitado pelos testes'); },
+    },
+    XmlService: {
+      parse: () => { throw new Error('XmlService não é exercitado pelos testes'); },
     },
     ContentService: {
       MimeType: { JSON: 'JSON', JAVASCRIPT: 'JAVASCRIPT' },

@@ -10,3 +10,8 @@ node_modules/
 # Não versionada: seria uma terceira cópia dos mesmos dados que já estão em
 # migration/ (semente) e data/demo.json (fallback). Ver docs/ENGINEERING_RULES.md R2.4.
 migration-csv/
+
+# Screenshots gerados pelo smoke test (tools/smoke-test.mjs) — artefato local, nunca versionado.
+desktop.png
+mobile.png
+meta.png
