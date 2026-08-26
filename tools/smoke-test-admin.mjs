@@ -114,8 +114,16 @@ const tokenAuthCall = writeCalls.filter((c) => c.action === 'validate').length;
 tokenAuthCall === 0 ? pass('login (action=validate) não é contado como chamada de escrita') : fail('validate apareceu em writeCalls');
 
 console.log('\n== 2. Tabela completa, abas ==');
-const tabs = await page.locator('.admin-tab').count();
-tabs === 3 ? pass('três abas (LISTINGS/DEVELOPMENTS/ANCHORS)') : fail(`esperava 3 abas, achou ${tabs}`);
+// Quatro abas desde a issue #37: as três de tabela mais a de contornos, que abre uma
+// tela própria de desenho em vez do formulário genérico (CUSTOM_UI_ADMIN_SHEETS).
+// A asserção nomeia as abas em vez de só contar — assim uma aba que suma ou apareça
+// diz QUAL, em vez de "esperava 3, achou 4".
+const tabNames = await page.locator('.admin-tab').evaluateAll(
+  (nodes) => nodes.map((n) => n.dataset.sheet),
+);
+JSON.stringify(tabNames) === JSON.stringify(['LISTINGS', 'DEVELOPMENTS', 'ANCHORS', 'POLYGONS'])
+  ? pass('quatro abas: as três de tabela mais contornos')
+  : fail(`abas inesperadas: ${JSON.stringify(tabNames)}`);
 const rows = await page.locator('.admin-table tbody tr').count();
 rows === 3 ? pass('tabela renderiza os 3 registros da fixture') : fail(`esperava 3 linhas, achou ${rows}`);
 const headerCount = await page.locator('.admin-table thead th').count();
@@ -208,6 +216,130 @@ await page.click('#adminFormWrap button[type=submit]');
 await page.waitForTimeout(400);
 (await page.locator('#adminLogin').isVisible()) ? pass('token rotacionado força volta à tela de login')
                                                 : fail('token rotacionado não forçou novo login');
+
+console.log('\n== 9b. Desenhar e salvar contorno (issue #37) ==');
+
+// A aba de contornos não tem formulário genérico: o registro nasce do desenho. Este
+// bloco exercita o caminho inteiro — abrir a aba, clicar nos cantos, salvar — e
+// confere o PAYLOAD que sai, que é onde a inversão lat/lng e o anel aberto se
+// esconderiam sem ninguém notar até o servidor recusar.
+await page.setViewportSize({ width: 1440, height: 900 });
+await page.waitForTimeout(300);
+
+// O passo 9 deixou o formulário de edição aberto E derrubou a sessão de propósito.
+// Fechar o diálogo primeiro é obrigatório: `#adminFormDialog` cobre a página e
+// intercepta o clique no botão de entrar, que o Playwright reporta como "visível e
+// estável" enquanto tenta por 30s — o erro não menciona o modal.
+await page.keyboard.press('Escape');
+await page.waitForTimeout(200);
+if (await page.locator('#adminFormDialog').isVisible()) {
+  await page.evaluate(() => { document.getElementById('adminFormDialog').hidden = true; });
+}
+
+validToken = 'valid-token';
+await page.fill('#adminLoginToken', validToken);
+await page.click('#adminLoginForm button[type=submit]');
+await page.waitForTimeout(500);
+
+const polygonTab = page.locator('#adminSheetTabs button[data-sheet="POLYGONS"]');
+(await polygonTab.count()) === 1
+  ? pass('a aba de contornos aparece ao lado das abas de tabela')
+  : fail('aba POLYGONS ausente na barra de abas');
+
+await polygonTab.click();
+await page.waitForTimeout(600);
+
+(await page.locator('#adminPolygonSection').isVisible())
+  ? pass('a aba de contornos abre a tela de desenho, não a tabela')
+  : fail('a tela de desenho não apareceu');
+(await page.locator('#adminNewRecord').isHidden())
+  ? pass('"+ Novo registro" some — o registro nasce do desenho')
+  : fail('o botão de formulário genérico continua visível em POLYGONS');
+
+// Salvar tem que começar desabilitado: sem desenho não há o que salvar.
+(await page.locator('#polygonSave').isDisabled())
+  ? pass('salvar começa desabilitado, sem desenho')
+  : fail('salvar habilitado sem nenhum canto marcado');
+
+const mapBox = await page.locator('#polygonMap').boundingBox();
+const clickAt = async (dx, dy) => {
+  await page.mouse.click(mapBox.x + dx, mapBox.y + dy);
+  await page.waitForTimeout(180);
+};
+
+// Dois cantos ainda não formam área — o botão continua desabilitado.
+await clickAt(140, 120);
+await clickAt(280, 120);
+(await page.locator('#polygonSave').isDisabled())
+  ? pass('com dois cantos, salvar continua desabilitado')
+  : fail('salvar habilitou com dois cantos');
+
+await clickAt(280, 260);
+(await page.locator('#polygonSave').isEnabled())
+  ? pass('com três cantos, salvar habilita')
+  : fail('salvar não habilitou com três cantos');
+
+// Desfazer devolve ao estado inválido — o botão tem que voltar a desabilitar.
+await page.click('#polygonUndo');
+await page.waitForTimeout(200);
+(await page.locator('#polygonSave').isDisabled())
+  ? pass('desfazer um canto volta a desabilitar salvar')
+  : fail('salvar continuou habilitado depois de desfazer');
+await clickAt(280, 260);
+
+// Sem nome, salvar recusa antes de chegar ao servidor.
+const callsBefore = writeCalls.length;
+await page.click('#polygonSave');
+await page.waitForTimeout(300);
+writeCalls.length === callsBefore
+  ? pass('contorno sem nome não é enviado ao servidor')
+  : fail('um contorno sem nome foi enviado');
+(await page.locator('#polygonError').isVisible())
+  ? pass('a recusa por falta de nome aparece na tela')
+  : fail('nenhuma mensagem ao tentar salvar sem nome');
+
+await page.fill('#polygonName', 'Setor de teste');
+await page.click('#polygonSave');
+await page.waitForTimeout(600);
+
+const polygonCall = writeCalls.find((c) => c.sheet === 'POLYGONS');
+if (!polygonCall) {
+  fail('nenhuma chamada de escrita para POLYGONS');
+} else {
+  polygonCall.action === 'create' ? pass('o desenho vira um create') : fail('ação inesperada: ' + polygonCall.action);
+
+  let geometry = null;
+  try { geometry = JSON.parse(polygonCall.fields.geometry_geojson); } catch { /* fica null */ }
+
+  geometry?.type === 'Polygon'
+    ? pass('o payload leva um Polygon GeoJSON')
+    : fail('geometria ausente ou de tipo errado: ' + JSON.stringify(geometry));
+
+  const ring = geometry?.coordinates?.[0] || [];
+  ring.length >= 4 ? pass('o anel tem as 4 posições mínimas') : fail(`anel com ${ring.length} posições`);
+
+  const [first] = ring;
+  const last = ring[ring.length - 1];
+  (first && last && first[0] === last[0] && first[1] === last[1])
+    ? pass('o anel sai fechado')
+    : fail('anel aberto no payload');
+
+  // A checagem que pega a inversão: no GeoJSON vem [longitude, latitude], e em
+  // Brasília a longitude é ~-47 e a latitude ~-15. Se estiverem trocados, os dois
+  // números continuam plausíveis isoladamente — só a ordem denuncia.
+  const [lon, lat] = first || [];
+  (lon < -30 && lat > -30)
+    ? pass('o anel sai em [longitude, latitude], não invertido')
+    : fail(`ordem suspeita na primeira posição: [${lon}, ${lat}]`);
+
+  'polygon_id' in polygonCall.fields
+    ? fail('o cliente mandou polygon_id — quem gera é o servidor')
+    : pass('o cliente não disputa o polygon_id com o servidor');
+}
+
+(await page.locator('#polygonSave').isDisabled())
+  ? pass('depois de salvar, o desenho é limpo e salvar desabilita')
+  : fail('o desenho não foi limpo depois de salvar');
 
 console.log('\n== 10. Console e XSS ==');
 const real = consoleErrors.filter((e) => !/ERR_TUNNEL|net::/i.test(e));

@@ -8,6 +8,7 @@
 
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%23153b29'/%3E%3Cpath d='M8 21V13l8-5 8 5v8h-6v-6h-4v6z' fill='%23fff'/%3E%3C/svg%3E">
 <link rel="stylesheet" href="./assets/styles.css">
+<link rel="stylesheet" href="./assets/vendor/leaflet/leaflet.css">
 <link rel="stylesheet" href="./assets/admin.css">
 </head>
 <body class="admin-body">
@@ -60,6 +61,38 @@
 
     <div id="adminTableToolbar"></div>
 
+    <!-- Tela de desenho de contornos (issue #37). Fica fora do fluxo de tabela: a
+         aba POLYGONS não tem formulário genérico — ver CUSTOM_UI_ADMIN_SHEETS. -->
+    <section id="adminPolygonSection" class="admin-polygon" hidden aria-label="Desenhar contorno">
+      <div class="admin-polygon-form">
+        <label class="field" for="polygonName">Nome do contorno</label>
+        <input id="polygonName" type="text" autocomplete="off" placeholder="Ex.: Setor Noroeste">
+
+        <label class="field" for="polygonCategory">Categoria</label>
+        <input id="polygonCategory" type="text" autocomplete="off" placeholder="Opcional">
+
+        <label class="field" for="polygonColor">Cor</label>
+        <input id="polygonColor" type="color" value="#5b6b8c">
+
+        <label class="field" for="polygonDescription">Descrição</label>
+        <textarea id="polygonDescription" rows="2" placeholder="Opcional"></textarea>
+
+        <p class="field-note" id="polygonHint">
+          Clique no mapa para marcar cada canto do contorno. São necessários pelo
+          menos 3 cantos em posições diferentes.
+        </p>
+        <p class="admin-error-text" id="polygonError" role="alert" hidden></p>
+
+        <div class="admin-polygon-actions">
+          <button type="button" class="btn" id="polygonSave" disabled>Salvar contorno</button>
+          <button type="button" class="btn-ghost" id="polygonUndo" disabled>Desfazer canto</button>
+          <button type="button" class="btn-ghost" id="polygonClear" disabled>Limpar</button>
+        </div>
+      </div>
+
+      <div class="admin-polygon-map" id="polygonMap"></div>
+    </section>
+
     <div class="admin-table-wrap-outer">
       <div class="state" id="adminLoading" role="status">
         <div class="spinner" aria-hidden="true"></div>
@@ -86,6 +119,7 @@
 
 </main>
 
+<script src="./assets/vendor/leaflet/leaflet.js"></script>
 <script src="./src/config.js"></script>
 <script type="module" src="./src/admin/admin-app.js"></script>
 </body>

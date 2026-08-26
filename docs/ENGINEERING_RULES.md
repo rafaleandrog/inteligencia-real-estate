@@ -429,3 +429,16 @@ Cada uma nasce de um erro que aconteceu de verdade.
   deduzida. Mecanismo: verificação de conteúdo versionado roda sobre `git show HEAD:<arquivo>`,
   nunca sobre o arquivo em disco, e `git status --porcelain` vazio é condição de saída — sem isso,
   "está corrigido" descreve um estado que ninguém vai receber.
+- **R8.47** *(2026-08-26, desenho de contornos, issue #37)* **Validação no cliente que repete regra
+  do servidor precisa ser testada CONTRA o servidor, não contra a leitura que se fez dele.** O
+  desenho de polígono valida no navegador — anel fechado, 4 posições, 3 pontos distintos, faixa de
+  coordenada — para o erro aparecer em português e no lugar certo, em vez de voltar como
+  `INVALID_PAYLOAD` depois de uma ida ao Apps Script. Só que uma cópia de regra tem duas formas de
+  estar errada, e as duas são silenciosas: **mais frouxa** deixa passar o que o servidor recusa (o
+  usuário recebe erro opaco justamente onde se prometeu clareza) e **mais estrita** recusa o que o
+  servidor aceitaria (funcionalidade some sem ninguém notar, porque não há erro nenhum). Ler o
+  código do servidor e reimplementar "igual" não cobre nem uma nem outra. O que cobre é executar o
+  servidor de verdade e confrontar caso a caso — aqui, `tests/polygon-draw.test.js` roda o `Code.gs`
+  no sandbox `vm` e afirma os dois lados: **tudo que o cliente monta, o servidor aceita**, e **tudo
+  que o cliente recusa, o servidor também recusaria**. Mesmo precedente de `pricePerM2_` × `pricePerM2`
+  e das derivações de `tools/derive.mjs`.
