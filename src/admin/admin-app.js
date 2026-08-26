@@ -5,7 +5,11 @@
 // Mesmo padrão de src/app.js: `state` único, `el()` para refs DOM, regiões de
 // loading/erro dedicadas alternadas via `hidden` — nunca tela em branco (R5.6/R5.7).
 
-import { ADMIN_SHEETS, SHEET_LABELS, ID_FIELD, ADMIN_FIELDS } from './admin-schema.js';
+import {
+  ADMIN_SHEETS, CUSTOM_UI_ADMIN_SHEETS, SHEET_LABELS, ID_FIELD, ADMIN_FIELDS,
+} from './admin-schema.js';
+import { createPolygonDrawer } from './polygon-map.js';
+import { buildPolygonFields } from './polygon-draw.js';
 import { buildTable, buildForm, buildTableToolbar, columnsFor } from './admin-ui.js';
 import { filterRecords, sortRecords, paginateRecords } from './admin-table.js';
 import {
@@ -29,7 +33,16 @@ const dom = {
   formError: el('adminFormError'),
   statusBar: el('adminStatus'),
   deploymentWarning: el('adminDeploymentWarning'),
+  polygonSection: el('adminPolygonSection'), polygonMap: el('polygonMap'),
+  polygonName: el('polygonName'), polygonCategory: el('polygonCategory'),
+  polygonColor: el('polygonColor'), polygonDescription: el('polygonDescription'),
+  polygonError: el('polygonError'), polygonSave: el('polygonSave'),
+  polygonUndo: el('polygonUndo'), polygonClear: el('polygonClear'),
+  tableWrapOuter: document.querySelector('.admin-table-wrap-outer'),
 };
+
+/** Instância do desenho, criada só quando a aba de contornos é aberta pela 1ª vez. */
+let polygonDrawer = null;
 
 const state = {
   sheet: ADMIN_SHEETS[0],
@@ -185,7 +198,9 @@ function loginErrorMessage(err) {
 function bindSheetTabs() {
   if (!dom.sheetTabs) return;
   dom.sheetTabs.replaceChildren();
-  for (const sheet of ADMIN_SHEETS) {
+  // As abas de tela própria (CUSTOM_UI_ADMIN_SHEETS) aparecem ao lado das de tabela:
+  // para quem usa, é só "mais uma aba de dados". O que muda é o que ela abre.
+  for (const sheet of [...ADMIN_SHEETS, ...CUSTOM_UI_ADMIN_SHEETS]) {
     const btn = document.createElement('button');
     btn.type = 'button';
     btn.className = 'admin-tab';
@@ -198,7 +213,8 @@ function bindSheetTabs() {
       [...dom.sheetTabs.children].forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.sheet === sheet)));
       showStatus(''); // status da aba anterior não faz sentido na nova aba
       resetTableState();
-      loadSheet(sheet);
+      if (CUSTOM_UI_ADMIN_SHEETS.includes(sheet)) showPolygonScreen();
+      else { hidePolygonScreen(); loadSheet(sheet); }
     });
     dom.sheetTabs.append(btn);
   }
@@ -266,6 +282,112 @@ function renderTable() {
     sortField: state.sortField,
     sortDirection: state.sortDirection,
   }));
+}
+
+// --- Tela de contornos (issue #37) ----------------------------------------------
+
+function showPolygonScreen() {
+  if (!dom.polygonSection) return;
+  dom.polygonSection.hidden = false;
+  if (dom.tableWrapOuter) dom.tableWrapOuter.hidden = true;
+  if (dom.tableToolbarWrap) dom.tableToolbarWrap.hidden = true;
+  // "+ Novo registro" é o botão do formulário genérico; aqui o novo registro nasce do
+  // desenho, e um botão que abre um formulário vazio de POLYGONS seria justamente a
+  // caixa de GeoJSON à mão que CUSTOM_UI_ADMIN_SHEETS existe para evitar.
+  if (dom.newRecordBtn) dom.newRecordBtn.hidden = true;
+
+  if (!polygonDrawer) {
+    polygonDrawer = createPolygonDrawer(dom.polygonMap, {
+      center: CONFIG.defaultCenter,
+      zoom: CONFIG.defaultZoom,
+      onChange: onPolygonChange,
+    });
+    dom.polygonUndo?.addEventListener('click', () => polygonDrawer.undo());
+    dom.polygonClear?.addEventListener('click', () => { polygonDrawer.clear(); setPolygonError(null); });
+    dom.polygonSave?.addEventListener('click', savePolygon);
+    dom.polygonColor?.addEventListener('input', () => polygonDrawer.setColor(dom.polygonColor.value));
+  }
+  // O Leaflet mede o container na criação. Como a seção estava `hidden`, ele mediu
+  // zero e o mapa nasceria em branco — daí o refresh depois de exibir.
+  polygonDrawer.refresh();
+}
+
+function hidePolygonScreen() {
+  if (dom.polygonSection) dom.polygonSection.hidden = true;
+  if (dom.tableWrapOuter) dom.tableWrapOuter.hidden = false;
+  if (dom.tableToolbarWrap) dom.tableToolbarWrap.hidden = false;
+  if (dom.newRecordBtn) dom.newRecordBtn.hidden = false;
+}
+
+function setPolygonError(message) {
+  if (!dom.polygonError) return;
+  dom.polygonError.textContent = message || '';
+  dom.polygonError.hidden = !message;
+}
+
+function onPolygonChange(change) {
+  // Clicar no primeiro canto com o desenho já válido é o gesto de "fechar aqui".
+  if (change?.requestSave) { savePolygon(); return; }
+
+  const { count = 0, valid = false, message = null } = change || {};
+  if (dom.polygonSave) dom.polygonSave.disabled = !valid;
+  if (dom.polygonUndo) dom.polygonUndo.disabled = count === 0;
+  if (dom.polygonClear) dom.polygonClear.disabled = count === 0;
+  setPolygonError(message);
+}
+
+async function savePolygon() {
+  if (!polygonDrawer) return;
+
+  const name = dom.polygonName ? dom.polygonName.value.trim() : '';
+  if (!name) {
+    setPolygonError('Dê um nome ao contorno antes de salvar.');
+    dom.polygonName?.focus();
+    return;
+  }
+
+  const fields = buildPolygonFields({
+    name,
+    category: dom.polygonCategory?.value,
+    color: dom.polygonColor?.value,
+    description: dom.polygonDescription?.value,
+    latlngs: polygonDrawer.latlngs(),
+  });
+  if (!fields) {
+    // A mensagem exata já veio do `onChange`; aqui só garantimos que o botão não
+    // salve um desenho que deixou de ser válido entre o último clique e o clique
+    // no botão.
+    setPolygonError('O desenho não forma um contorno válido.');
+    return;
+  }
+
+  if (dom.polygonSave) dom.polygonSave.disabled = true;
+  setPolygonError(null);
+  showStatus('Salvando contorno…');
+
+  try {
+    // `id` vai vazio de propósito: para POLYGONS quem gera o `polygon_id` é o
+    // servidor (`doWrite_` em Code.gs). Mandar um daqui seria o cliente disputando
+    // a autoria de um campo que não é dele.
+    const result = await createRecord(CONFIG.appsScriptUrl, {
+      sheet: 'POLYGONS',
+      id: '',
+      fields,
+      editor: editorName(),
+      correlationId: newCorrelationId(),
+    });
+
+    showStatus(`Contorno "${name}" salvo (${result.record?.polygon_id || 'id gerado'}).`, 'success');
+    polygonDrawer.clear();
+    if (dom.polygonName) dom.polygonName.value = '';
+    if (dom.polygonDescription) dom.polygonDescription.value = '';
+  } catch (error) {
+    // O servidor revalida a geometria; se ele recusar mesmo assim, a mensagem dele é
+    // a que vale — nunca um "erro ao salvar" genérico por cima de um diagnóstico bom.
+    setPolygonError(error?.message || 'Não foi possível salvar o contorno.');
+    showStatus('');
+    if (dom.polygonSave) dom.polygonSave.disabled = false;
+  }
 }
 
 function setLoading(isLoading) {

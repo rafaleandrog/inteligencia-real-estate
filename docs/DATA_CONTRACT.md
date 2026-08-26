@@ -355,6 +355,13 @@ estar fechado (primeira posição igual à última), e longitude/latitude precis
 válida. Ordem é sempre `[longitude, latitude]`, como manda o GeoJSON — invertida seria o Golfo da
 Guiné em vez do Distrito Federal.
 
+Contornos entram na planilha por dois caminhos: a **importação de KML/KMZ** pelo menu do Apps
+Script, e o **desenho no mapa** dentro da área administrativa (issue #37). No desenho, o cliente
+monta a geometria em `src/admin/polygon-draw.js` — invertendo para `[longitude, latitude]` e
+fechando o anel — e valida com as mesmas regras do servidor antes de enviar, para o erro sair em
+português; o servidor revalida de qualquer forma. `polygon_id`, `imported_at` e `source_file` são
+sempre do servidor: o cliente não os envia.
+
 A camada é renderizada por `renderPolygons()` (`src/app.js`, issue #28): caixa própria na
 legenda, que **só aparece quando há contorno** — planilha sem nenhum KML importado é o estado
 normal, não defeito. `geometry_geojson` é parseado **ali**, por registro e com erro isolado: um

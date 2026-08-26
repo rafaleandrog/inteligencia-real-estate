@@ -15,6 +15,7 @@ export const SHEET_LABELS = {
   LISTINGS: 'Anúncios secundários',
   DEVELOPMENTS: 'Empreendimentos',
   ANCHORS: 'Âncoras',
+  POLYGONS: 'Contornos',
 };
 
 /** Coluna que identifica o registro em cada aba — igual a ID_FIELD em Code.gs. */
@@ -38,18 +39,24 @@ export const ENUM_VALUES = {
 };
 
 /**
- * Abas que o Code.gs deixa escrever mas a área administrativa ainda NÃO edita.
+ * Abas graváveis que têm tela PRÓPRIA em vez do formulário genérico de tabela.
  *
- * POLYGONS entrou no `WRITE_ALLOWLIST` do servidor na v2.0.0 porque a importação de
- * KML/KMZ precisa gravar por lá. Um formulário genérico para ela seria uma caixa de
- * texto livre pedindo GeoJSON à mão — pior que nenhum formulário, e um convite ao tipo
- * de conteúdo que `safeCellValue_()` existe para conter. A edição de polígono é
- * trabalho da issue #37, com desenho no mapa em vez de digitação.
+ * POLYGONS é a única, e continua fora de `ADMIN_SHEETS` de propósito. Um formulário
+ * genérico para ela seria uma caixa de texto livre pedindo GeoJSON à mão — pior que
+ * nenhum formulário, e um convite ao tipo de conteúdo que `safeCellValue_()` existe
+ * para conter. A issue #37 resolveu isso com **desenho no mapa**: a pessoa clica nos
+ * cantos, o cliente monta a geometria (`src/admin/polygon-draw.js`) e o servidor
+ * valida de novo.
  *
- * `tests/admin-schema.test.js` cobra que ADMIN_SHEETS ∪ DEFERRED_ADMIN_SHEETS cubra o
- * `WRITE_ALLOWLIST` **exatamente**: a omissão fica declarada, nunca silenciosa.
+ * Até a #37 esta lista se chamava `DEFERRED_ADMIN_SHEETS` e significava "gravável mas
+ * sem interface". O nome mudou porque o fato mudou: POLYGONS agora TEM interface, só
+ * não a genérica. Manter o nome antigo faria a constante mentir.
+ *
+ * `tests/admin-schema.test.js` cobra que ADMIN_SHEETS ∪ CUSTOM_UI_ADMIN_SHEETS cubra o
+ * `WRITE_ALLOWLIST` **exatamente**, sem sobreposição: aba gravável nova cai
+ * obrigatoriamente de um dos dois lados, nunca some em silêncio.
  */
-export const DEFERRED_ADMIN_SHEETS = ['POLYGONS'];
+export const CUSTOM_UI_ADMIN_SHEETS = ['POLYGONS'];
 
 /**
  * Campo derivado de preço/m² de cada aba — igual a DERIVED_PRICE_M2_FIELD em Code.gs.

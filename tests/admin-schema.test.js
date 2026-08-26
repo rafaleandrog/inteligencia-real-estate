@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createAppsScriptSandbox } from './helpers/appsScriptSandbox.mjs';
 import {
-  ADMIN_SHEETS, DEFERRED_ADMIN_SHEETS, ADMIN_FIELDS, ID_FIELD, ENUM_VALUES,
+  ADMIN_SHEETS, CUSTOM_UI_ADMIN_SHEETS, ADMIN_FIELDS, ID_FIELD, ENUM_VALUES,
   DERIVED_PRICE_M2_FIELD, fieldKeys,
 } from '../src/admin/admin-schema.js';
 
@@ -18,19 +18,18 @@ const { context } = createAppsScriptSandbox({
   scriptProperties: {},
 });
 
-// O admin não precisa expor toda aba gravável, mas precisa *declarar* o que deixou de
-// fora. Uma aba nova no WRITE_ALLOWLIST do backend cai obrigatoriamente num dos dois
-// lados: ADMIN_SHEETS (tem formulário) ou DEFERRED_ADMIN_SHEETS (omissão deliberada,
-// com justificativa junto da constante). O que não pode é sumir em silêncio.
-test('ADMIN_SHEETS ∪ DEFERRED_ADMIN_SHEETS cobre exatamente o WRITE_ALLOWLIST de Code.gs', () => {
+// Toda aba gravável precisa estar *declarada* de um dos dois lados: ADMIN_SHEETS (tem
+// o formulário genérico de tabela) ou CUSTOM_UI_ADMIN_SHEETS (tem tela própria, com a
+// justificativa junto da constante). O que não pode é sumir em silêncio.
+test('ADMIN_SHEETS ∪ CUSTOM_UI_ADMIN_SHEETS cobre exatamente o WRITE_ALLOWLIST de Code.gs', () => {
   assert.deepEqual(
-    [...ADMIN_SHEETS, ...DEFERRED_ADMIN_SHEETS].sort(),
+    [...ADMIN_SHEETS, ...CUSTOM_UI_ADMIN_SHEETS].sort(),
     Object.keys(context.WRITE_ALLOWLIST).sort(),
   );
 });
 
-test('nenhuma aba está ao mesmo tempo no admin e adiada', () => {
-  const overlap = ADMIN_SHEETS.filter((sheet) => DEFERRED_ADMIN_SHEETS.includes(sheet));
+test('nenhuma aba tem ao mesmo tempo formulário genérico e tela própria', () => {
+  const overlap = ADMIN_SHEETS.filter((sheet) => CUSTOM_UI_ADMIN_SHEETS.includes(sheet));
   assert.deepEqual(overlap, []);
 });
 

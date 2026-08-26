@@ -232,3 +232,71 @@
   .admin-toolbar { flex-direction: column; align-items: stretch; }
   .admin-editor-field { margin-left: 0; }
 }
+
+/* --- Tela de desenho de contornos (issue #37) ------------------------------- */
+
+/*
+ * Formulário à esquerda, mapa à direita: quem desenha precisa ver os dois ao mesmo
+ * tempo — o nome do contorno e a área que está marcando. Empilhar em telas estreitas,
+ * com o mapa por último, mantém os campos alcançáveis sem rolagem lateral (R10).
+ */
+.admin-polygon {
+  display: grid;
+  grid-template-columns: minmax(260px, 320px) 1fr;
+  gap: 16px;
+  align-items: start;
+}
+
+.admin-polygon-form {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 14px;
+}
+
+.admin-polygon-form input[type="color"] {
+  width: 100%;
+  height: 34px;
+  padding: 2px;
+}
+
+.admin-polygon-form textarea {
+  font: inherit;
+  padding: 7px 9px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel);
+  color: var(--ink);
+  resize: vertical;
+}
+
+.admin-polygon-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+/* Altura fixa: o mapa é irmão de um formulário que cresce, e sem altura própria o
+   container do Leaflet nasceria com zero e o mapa ficaria invisível. */
+.admin-polygon-map {
+  height: min(70vh, 560px);
+  min-height: 320px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  overflow: hidden;
+}
+
+/* O rascunho tem a cor escolhida no formulário, aplicada por JS. Nenhuma regra pinta
+   `.polygon-draft` nem `.polygon-vertex` — regra de classe vence o atributo que o
+   Leaflet escreve no SVG (R8.31, R8.45), e o desenho passaria a ignorar a cor. */
+.polygon-draft { cursor: pointer; }
+.polygon-vertex { cursor: pointer; }
+
+@media (max-width: 900px) {
+  .admin-polygon { grid-template-columns: 1fr; }
+  .admin-polygon-map { height: 50vh; }
+}
