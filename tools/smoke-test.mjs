@@ -424,14 +424,29 @@ cardAnchor['Área ocupada'] === '2.450 m²' ? pass('card de âncora mostra a Ár
 await anchorPage.close();
 
 console.log('\n== 12e. Estágio, vertical/horizontal e regularização (issues #30, #31, #32) ==');
-// Sem as colunas na planilha, os dois selects novos ficam só com a opção "todos" e o
-// card do empreendimento não ganha selo nem linha vazia.
-(await page.$$eval('#salesStage option', (o) => o.length)) === 1
+// `sales_stage` é DERIVADO pelo gerador do demo, então o artefato versionado já o traz:
+// checar a ausência sobre a `page` compartilhada mediria a coisa errada. A ausência é
+// injetada, como na 12d. `regularization_status` não tem derivação e continua vazio no
+// demo — mas é lido pela mesma fonte de propósito, para as duas asserções não
+// dependerem de qual coluna por acaso está preenchida hoje (R8.39).
+const semClassificacao = await abrirSemColunas({
+  developments: ['sales_stage', 'regularization_status'],
+  listings: ['regularization_status'],
+});
+(await semClassificacao.$$eval('#salesStage option', (o) => o.length)) === 1
   ? pass('sem sales_stage, o select de estágio fica só com "Todos"')
   : fail('select de estágio populado sem dado');
-(await page.$$eval('#regularizationStatus option', (o) => o.length)) === 1
+(await semClassificacao.$$eval('#regularizationStatus option', (o) => o.length)) === 1
   ? pass('sem regularization_status, o select de regularização fica só com "Todas"')
   : fail('select de regularização populado sem dado');
+await semClassificacao.close();
+
+// E a contrapartida positiva: com o demo versionado, que JÁ traz `sales_stage`
+// derivado, o filtro de estágio precisa ser utilizável. Sem esta, a suíte só provaria
+// que a tela aguenta a ausência — nunca que ela mostra o dado quando ele existe.
+(await page.$$eval('#salesStage option', (o) => o.length)) > 1
+  ? pass('com o demo versionado, o filtro de estágio é utilizável')
+  : fail('select de estágio vazio mesmo com sales_stage derivado no demo');
 
 const classPage = await browser.newPage({ viewport: { width: 1440, height: 900 } });
 await classPage.addInitScript(() => {
