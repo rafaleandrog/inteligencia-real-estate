@@ -29,6 +29,12 @@
   --development: #7252a3;
   --anchor: #397d53;
 
+  /* Preenchimento das barras do gráfico de faixa etária (issue #35). Token próprio
+     porque --accent-text existe para TEXTO sobre --bg/--panel e não para
+     preenchimento sólido; misturar os dois usos faria um ajuste de contraste de
+     texto mexer no gráfico sem ninguém perceber. */
+  --chart-bar: #24563d;
+
   --shadow: 0 10px 30px #13251a14;
   --radius: 10px;
 
@@ -56,6 +62,7 @@
     --muted: #8fa196;
     --line: #29332c;
     --accent-text: #57b57e;
+    --chart-bar: #57b57e;
     --shadow: 0 10px 30px #00000066;
   }
 }
@@ -324,6 +331,76 @@ h1, h2 { margin: 0; font-size: 1rem; }
 
 /* A mesma nota, quando aparece dentro do card de detalhe em vez do painel de filtros. */
 .field-note-inline { margin: -6px 0 16px; }
+
+/* Indicadores da RA selecionada (issues #34, #35) ------------------------- */
+
+.ra-profile {
+  margin: 8px 0 14px;
+  padding: 10px 0 2px;
+  border-top: 1px solid var(--line);
+}
+.ra-profile[hidden] { display: none; }
+
+.ra-stats { list-style: none; margin: 0; padding: 0; }
+.ra-stats li {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  font-size: 12px;
+  line-height: 1.5;
+}
+.ra-stat-label { color: var(--muted); }
+.ra-stat-value {
+  margin-left: auto;
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  color: var(--ink);
+}
+
+.ra-ages { margin: 10px 0 0; }
+.ra-ages figcaption {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: .06em;
+  color: var(--muted);
+  margin-bottom: 6px;
+}
+.ra-ages ul { list-style: none; margin: 0; padding: 0; }
+.ra-ages li {
+  display: grid;
+  /* Rótulo e valor com largura fixa para as barras começarem e terminarem alinhadas:
+     trilha elástica no meio é o que deixa cinco comprimentos comparáveis de relance. */
+  grid-template-columns: 3.6em 1fr 3.4em;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  line-height: 1.9;
+}
+.ra-age-label { color: var(--muted); white-space: nowrap; }
+.ra-age-track {
+  height: 6px;
+  border-radius: 3px;
+  background: var(--line);
+  overflow: hidden;
+}
+.ra-age-bar {
+  display: block;
+  height: 100%;
+  border-radius: 3px;
+  background: var(--chart-bar);
+}
+.ra-age-value {
+  text-align: right;
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  color: var(--ink);
+}
+.ra-ages-note {
+  margin: 6px 0 0;
+  font-size: 11px;
+  line-height: 1.4;
+  color: var(--muted);
+}
 
 select, input[type="number"] {
   width: 100%;

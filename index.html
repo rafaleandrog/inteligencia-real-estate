@@ -95,7 +95,10 @@
 
       <label class="field" for="raFilter">Região Administrativa</label>
       <select id="raFilter"><option value="">Todas</option></select>
-      <p class="field-note" id="raProfileNote" hidden></p>
+      <!-- Indicadores da RA selecionada (issues #34, #35): população, densidade, renda
+           per capita e distribuição por faixa etária. Preenchido por src/app.js e
+           escondido enquanto não houver RA selecionada ou dado publicado para ela. -->
+      <div class="ra-profile" id="raProfile" hidden></div>
 
       <label class="field" for="ptype">Tipo de imóvel</label>
       <select id="ptype"><option value="">Todos</option></select>

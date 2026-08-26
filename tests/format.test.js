@@ -5,7 +5,7 @@ import {
   escapeHtml, safeExternalUrl, hostnameOf, formatPropertyType, formatSpatialPrecision,
   formatBuildingOrientation, formatAnchorGroup, formatAnchorSegment, formatAnchorCategory,
   anchorColor, anchorLegendColor, anchorLegendEntries, ANCHOR_FALLBACK_COLOR,
-  formatSalesStage, formatRegularizationStatus,
+  formatSalesStage, formatRegularizationStatus, formatPercent, raAgeBands,
 } from '../src/format.js';
 
 test('ausência vira travessão, não zero', () => {
@@ -278,4 +278,129 @@ test('formatRegularizationStatus não assume vocabulário fechado (issue #32)', 
   // afirmar sobre regularização algo que a planilha não disse (R8.16).
   assert.equal(formatRegularizationStatus('processo_judicial'), 'Processo judicial');
   assert.equal(formatRegularizationStatus('desconhecido'), 'Desconhecido');
+});
+
+// --- Indicadores por RA (issue #35) ---------------------------------------
+
+const perfil = (over = {}) => ({
+  ra_geo_id: 'RA2026_RA-I', ra_name: 'PLANO PILOTO',
+  population_total: 198697, population_density_km2: 454.47,
+  income_per_capita_brl: null,
+  population_age_0_14_pct: null, population_age_15_29_pct: null,
+  population_age_30_44_pct: null, population_age_45_59_pct: null,
+  population_age_60_plus_pct: null,
+  ...over,
+});
+
+const FAIXAS_CHEIAS = {
+  population_age_0_14_pct: 18.2, population_age_15_29_pct: 21.4,
+  population_age_30_44_pct: 24.1, population_age_45_59_pct: 19.6,
+  population_age_60_plus_pct: 16.7,
+};
+
+test('formatPercent usa vírgula decimal e não confunde ausência com zero', () => {
+  assert.equal(formatPercent(18.24), '18,2%');
+  assert.equal(formatPercent(0), '0,0%');
+  assert.equal(formatPercent(100), '100,0%');
+  assert.equal(formatPercent(null), '—');
+  assert.equal(formatPercent(undefined), '—');
+  assert.equal(formatPercent(NaN), '—');
+});
+
+test('raAgeBands mantém a ordem da pirâmide etária, não a alfabética (issue #35)', () => {
+  const { bands, total, scaledFromDecimal } = raAgeBands(perfil(FAIXAS_CHEIAS));
+  assert.deepEqual(bands.map((b) => b.label), ['0–14', '15–29', '30–44', '45–59', '60+']);
+  assert.equal(scaledFromDecimal, false);
+  assert.equal(Math.round(total), 100);
+});
+
+test('raAgeBands omite faixa sem valor em vez de desenhar barra de zero', () => {
+  // Barra de zero AFIRMA que ninguém naquela RA tem entre 0 e 14 anos. A cobertura do
+  // PDAD é esparsa: "não publicado" e "zero" são estados diferentes (R8.25).
+  const { bands, total } = raAgeBands(perfil({
+    population_age_0_14_pct: 18.2, population_age_60_plus_pct: 16.7,
+  }));
+  assert.deepEqual(bands.map((b) => b.label), ['0–14', '60+']);
+  assert.equal(Math.round(total * 10) / 10, 34.9, 'o total declara que a composição está incompleta');
+});
+
+test('raAgeBands devolve vazio quando não há distribuição nenhuma', () => {
+  assert.deepEqual(raAgeBands(perfil()), { bands: [], total: null, scaledFromDecimal: false });
+  assert.deepEqual(raAgeBands(null), { bands: [], total: null, scaledFromDecimal: false });
+  assert.deepEqual(raAgeBands(undefined), { bands: [], total: null, scaledFromDecimal: false });
+});
+
+test('raAgeBands converte a escala decimal que o contrato admite (issue #35)', () => {
+  // docs/DATA_CONTRACT.md aceita "aproximadamente 100%, ou 1, em escala decimal".
+  // Sem converter, 0,182 viraria uma barra invisível numa régua de porcento.
+  const { bands, total, scaledFromDecimal } = raAgeBands(perfil({
+    population_age_0_14_pct: 0.182, population_age_15_29_pct: 0.214,
+    population_age_30_44_pct: 0.241, population_age_45_59_pct: 0.196,
+    population_age_60_plus_pct: 0.167,
+  }));
+  assert.equal(scaledFromDecimal, true);
+  assert.equal(Math.round(bands[0].pct * 10) / 10, 18.2);
+  assert.equal(Math.round(total), 100);
+});
+
+test('raAgeBands não converte quando a escala é ambígua', () => {
+  // Uma faixa só, com valor 0,9: pode ser 0,9% ou 90%. Multiplicar seria inventar.
+  const uma = raAgeBands(perfil({ population_age_0_14_pct: 0.9 }));
+  assert.equal(uma.scaledFromDecimal, false);
+  assert.equal(uma.bands[0].pct, 0.9);
+
+  // Distribuição em porcento não satisfaz "todas ≤ 1", então nunca é convertida.
+  const cheia = raAgeBands(perfil(FAIXAS_CHEIAS));
+  assert.equal(cheia.scaledFromDecimal, false);
+
+  // Mistura de escalas também não converte: nem toda faixa fica em 0–1.
+  const mista = raAgeBands(perfil({
+    population_age_0_14_pct: 0.18, population_age_15_29_pct: 21.4,
+  }));
+  assert.equal(mista.scaledFromDecimal, false);
+});
+
+test('raAgeBands usa o MESMO teto de escala decimal que o servidor (P2 do Codex na PR #44)', () => {
+  // `validateRaProfile_()` no Apps Script aceita `Math.abs(sum - 1) <= 0.02`. Cortando
+  // em 1,01, esta soma de 1,019 passava na validação do backend e saía da tela como
+  // "0,2%" em vez de "20,0%" — toda faixa subestimada em 100×.
+  const limite = raAgeBands(perfil({
+    population_age_0_14_pct: 0.20, population_age_15_29_pct: 0.20,
+    population_age_30_44_pct: 0.20, population_age_45_59_pct: 0.20,
+    population_age_60_plus_pct: 0.219,
+  }));
+  assert.equal(limite.scaledFromDecimal, true);
+  assert.equal(Math.round(limite.bands[0].pct * 10) / 10, 20);
+  assert.equal(Math.round(limite.total * 10) / 10, 101.9);
+
+  // Acima do teto do servidor continua sem converter: aí a planilha está fora do que
+  // o contrato chama de "aproximadamente 1", e adivinhar seria pior que não mexer.
+  const acima = raAgeBands(perfil({
+    population_age_0_14_pct: 0.30, population_age_15_29_pct: 0.30,
+    population_age_30_44_pct: 0.45,
+  }));
+  assert.equal(acima.scaledFromDecimal, false);
+});
+
+test('raAgeBands converte distribuição decimal PARCIAL, que soma bem abaixo de 1', () => {
+  // O piso do servidor (`sum >= 0,98`) descreve uma distribuição completa. Aqui ela
+  // pode estar parcial: duas faixas decimais somando 0,35 são escala decimal legítima
+  // e precisam virar 18,2% e 16,7%, não 0,2% e 0,2%. Quem denuncia a composição
+  // incompleta é o `total`, não a escala.
+  const { bands, total, scaledFromDecimal } = raAgeBands(perfil({
+    population_age_0_14_pct: 0.182, population_age_60_plus_pct: 0.167,
+  }));
+  assert.equal(scaledFromDecimal, true);
+  assert.equal(Math.round(bands[0].pct * 10) / 10, 18.2);
+  assert.equal(Math.round(total * 10) / 10, 34.9);
+});
+
+test('raAgeBands ignora valor não numérico sem quebrar', () => {
+  const { bands } = raAgeBands(perfil({
+    population_age_0_14_pct: 18.2,
+    population_age_15_29_pct: NaN,
+    population_age_30_44_pct: Infinity,
+    population_age_45_59_pct: undefined,
+  }));
+  assert.deepEqual(bands.map((b) => b.label), ['0–14']);
 });
