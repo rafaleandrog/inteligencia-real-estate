@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import {
   median, applyFilters, matchesFilters, computeKpis, createFilterState,
   distinctLocalities, distinctPropertyTypes, distinctRegions, normalizeSearchText, LAYERS,
+  distinctAnchorGroups, distinctAnchorSegments, anchorLegendGroups,
 } from '../src/filters.js';
 
 /** Registro de teste com os campos que os filtros examinam. */
@@ -151,4 +152,134 @@ test('filtro vertical/horizontal exclui registro sem a classificação quando at
 test('applyFilters tolera entrada ausente', () => {
   assert.deepEqual(applyFilters(undefined, createFilterState()), []);
   assert.equal(matchesFilters(null, createFilterState()), false);
+});
+
+// --- Âncoras: grupo e segmento (issue #26) ---------------------------------
+
+/** Âncora de teste. `group`/`segment` vazios são o estado da planilha antes do backend. */
+const anchor = (over = {}) => rec({
+  kind: 'anchor', property_type: '', price: null, price_m2: null, bedrooms: null,
+  category: '', subcategory: '', group: '', segment: '', ...over,
+});
+
+test('filtro de grupo de âncora restringe à camada de âncoras (issue #26)', () => {
+  const state = { ...createFilterState(), anchorGroup: 'infraestrutura' };
+  assert.equal(matchesFilters(anchor({ group: 'infraestrutura' }), state), true);
+  assert.equal(matchesFilters(anchor({ group: 'comercio_servico' }), state), false);
+  assert.equal(matchesFilters(anchor({ group: '' }), state), false, 'âncora sem grupo some com o filtro ativo');
+
+  // Anúncio e empreendimento não têm grupo: filtrar por grupo esconde essas camadas,
+  // mesma regra do filtro de tipo de imóvel.
+  assert.equal(matchesFilters(rec({ kind: 'listing' }), state), false);
+  assert.equal(matchesFilters(rec({ kind: 'development' }), state), false);
+});
+
+test('filtro de segmento de âncora não pega o `segment` de empreendimento (issue #26)', () => {
+  // DEVELOPMENTS também tem uma coluna `segment` — "alto padrão" — com significado
+  // completamente diferente. Sem a checagem de `kind` antes da comparação, filtrar
+  // âncoras por segmento traria empreendimentos junto.
+  const state = { ...createFilterState(), anchorSegment: 'alto padrão' };
+  assert.equal(matchesFilters(rec({ kind: 'development', segment: 'alto padrão' }), state), false);
+
+  const escolas = { ...createFilterState(), anchorSegment: 'escola' };
+  assert.equal(matchesFilters(anchor({ segment: 'escola' }), escolas), true);
+  assert.equal(matchesFilters(anchor({ segment: 'universidade' }), escolas), false);
+  assert.equal(matchesFilters(anchor({ segment: '' }), escolas), false);
+});
+
+test('grupo e segmento se combinam por E, não por OU', () => {
+  const state = { ...createFilterState(), anchorGroup: 'infraestrutura', anchorSegment: 'estacao_metro' };
+  assert.equal(matchesFilters(anchor({ group: 'infraestrutura', segment: 'estacao_metro' }), state), true);
+  assert.equal(matchesFilters(anchor({ group: 'infraestrutura', segment: 'aeroporto' }), state), false);
+  assert.equal(matchesFilters(anchor({ group: 'comercio_servico', segment: 'estacao_metro' }), state), false);
+});
+
+test('sem grupo/segmento preenchidos, os filtros novos não escondem nada (issue #26)', () => {
+  // É o estado real da planilha até o backend derivar as colunas: o filtro existe,
+  // está vazio, e portanto não restringe (R2.5 — coluna futura vazia não derruba nada).
+  const records = [anchor(), rec({ kind: 'listing' }), rec({ kind: 'development' })];
+  assert.equal(applyFilters(records, createFilterState()).length, 3);
+});
+
+test('distinctAnchorGroups põe o enum na ordem da interface e ignora âncora sem grupo', () => {
+  const records = [
+    anchor({ group: 'comercio_servico' }), anchor({ group: 'infraestrutura' }),
+    anchor({ group: 'comercio_servico' }), anchor({ group: '' }),
+    rec({ kind: 'listing', group: 'infraestrutura' }),
+  ];
+  // `infraestrutura` antes de `comercio_servico`: é a ordem do enum, não a alfabética.
+  assert.deepEqual(distinctAnchorGroups(records), ['infraestrutura', 'comercio_servico']);
+  assert.deepEqual(distinctAnchorGroups([]), []);
+
+  // Valor fora do enum não é descartado — aparece depois dos conhecidos.
+  assert.deepEqual(
+    distinctAnchorGroups([anchor({ group: 'lazer_urbano' }), anchor({ group: 'infraestrutura' })]),
+    ['infraestrutura', 'lazer_urbano'],
+  );
+});
+
+test('distinctAnchorSegments restringe ao grupo escolhido (issue #26)', () => {
+  const records = [
+    anchor({ group: 'infraestrutura', segment: 'estacao_metro' }),
+    anchor({ group: 'infraestrutura', segment: 'aeroporto' }),
+    anchor({ group: 'comercio_servico', segment: 'escola' }),
+    anchor({ group: 'comercio_servico', segment: 'escola' }),
+    anchor({ group: 'comercio_servico', segment: '' }),
+    rec({ kind: 'development', segment: 'alto padrão' }),
+  ];
+
+  assert.deepEqual(distinctAnchorSegments(records), ['aeroporto', 'escola', 'estacao_metro'],
+    'sem grupo informado, todos os segmentos de âncora — e nenhum de empreendimento');
+  assert.deepEqual(distinctAnchorSegments(records, 'infraestrutura'), ['aeroporto', 'estacao_metro']);
+  assert.deepEqual(distinctAnchorSegments(records, 'comercio_servico'), ['escola']);
+  assert.deepEqual(distinctAnchorSegments(records, 'grupo_que_nao_existe'), []);
+});
+
+test('anchorLegendGroups monta a legenda em dois níveis e deixa o não classificado por último', () => {
+  const records = [
+    anchor({ group: 'comercio_servico', segment: 'escola' }),
+    anchor({ group: 'comercio_servico', segment: 'escola' }),
+    anchor({ group: 'infraestrutura', segment: 'estacao_metro' }),
+    anchor({ group: '', category: 'saude' }),
+    rec({ kind: 'listing' }),
+  ];
+  const groups = anchorLegendGroups(records);
+
+  assert.deepEqual(groups.map((g) => g.group), ['infraestrutura', 'comercio_servico', ''],
+    'enum na ordem da interface; "sem grupo" no fim, porque é ausência de classe');
+
+  const comercio = groups.find((g) => g.group === 'comercio_servico');
+  assert.deepEqual(comercio.entries, [{ segment: 'escola', category: '', count: 2 }],
+    'entradas iguais são agrupadas, não repetidas');
+
+  // Sem segmento, a entrada guarda a categoria — que é o que colore o marcador hoje.
+  const semGrupo = groups.find((g) => g.group === '');
+  assert.deepEqual(semGrupo.entries, [{ segment: '', category: 'saude', count: 1 }]);
+});
+
+test('anchorLegendGroups não esconde a âncora sem nenhuma classificação', () => {
+  // Ela ESTÁ no mapa, com o verde padrão. Omiti-la da legenda deixaria um ponto
+  // visível sem explicação (R5.7).
+  const groups = anchorLegendGroups([anchor(), anchor()]);
+  assert.deepEqual(groups, [{ group: '', entries: [{ segment: '', category: '', count: 2 }] }]);
+
+  // Sem âncora nenhuma, legenda vazia — quem renderiza esconde a seção inteira.
+  assert.deepEqual(anchorLegendGroups([rec({ kind: 'listing' })]), []);
+  assert.deepEqual(anchorLegendGroups(undefined), []);
+});
+
+test('anchorLegendGroups preserva o par (segment, category) inteiro', () => {
+  // REGRESSÃO REPRODUZIDA NO NAVEGADOR antes da correção: guardando só o `segment`,
+  // uma âncora `segment: "food_hall"` + `category: "escola"` saía âmbar no mapa (a cor
+  // cai para a categoria quando o segmento é desconhecido) e verde na legenda. Guardar
+  // o par inteiro é o que permite a `anchorLegendEntries` resolver a MESMA cor dos
+  // dois lados — ver o teste correspondente em tests/format.test.js.
+  const groups = anchorLegendGroups([
+    anchor({ group: 'comercio_servico', segment: 'food_hall', category: 'escola' }),
+    anchor({ group: 'comercio_servico', segment: 'hospital', category: 'saude' }),
+  ]);
+  assert.deepEqual(groups[0].entries, [
+    { segment: 'food_hall', category: 'escola', count: 1 },
+    { segment: 'hospital', category: 'saude', count: 1 },
+  ]);
 });

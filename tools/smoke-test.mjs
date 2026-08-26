@@ -242,6 +242,187 @@ metaXss.texto ? pass('valor hostil permanece como texto') : fail('valor hostil s
 await metaPage.screenshot({ path: process.env.SHOT_META || 'meta.png' });
 await metaPage.close();
 
+/**
+ * Abre a página com o demo.json SEM as colunas indicadas.
+ *
+ * O caminho "sem dado" continua real — a planilha do usuário ainda não preencheu esses
+ * campos — mas não pode depender de o `data/demo.json` versionado por acaso não ter a
+ * coluna. Desde que o gerador passou a derivar `group`/`segment`/`sales_stage`, essa
+ * premissa caiu: as checagens de ausência viravam vermelhas sem nada no código de tela ter
+ * mudado. Mesma lição da R8.39 — quando a semente deixa de ser autoridade sobre "que
+ * colunas existem", todo teste que a usava como verdade muda de significado em silêncio.
+ */
+async function abrirSemColunas(porEntidade) {
+  const p = await browser.newPage({ viewport: { width: 1440, height: 900 } });
+  await p.addInitScript(() => {
+    Object.defineProperty(window, 'APP_CONFIG', {
+      configurable: true,
+      set(value) { delete window.APP_CONFIG; window.APP_CONFIG = value; if (value) value.demoMode = true; },
+      get() { return undefined; },
+    });
+  });
+  await p.route('**/data/demo.json', async (route) => {
+    const response = await route.fetch();
+    const payload = await response.json();
+    for (const [entidade, colunas] of Object.entries(porEntidade)) {
+      payload[entidade] = (payload[entidade] || []).map((linha) => {
+        const copia = { ...linha };
+        for (const coluna of colunas) delete copia[coluna];
+        return copia;
+      });
+    }
+    await route.fulfill({ response, json: payload });
+  });
+  await p.goto('http://localhost:8080/', { waitUntil: 'networkidle' });
+  await p.waitForTimeout(1200);
+  return p;
+}
+
+console.log('\n== 12d. Legenda de âncoras em dois níveis (issue #26) ==');
+// O demo.json versionado agora É gerado com as derivações do backend, então a legenda
+// agrupada aparece em modo demonstração SEM interceptar nada. É o que fecha o achado
+// "wire the derivation into demo generation": prova que a derivação do gerador chega à tela.
+const legendaDemo = await page.$$eval('#anchorLegend .anchor-legend-title', (ns) => ns.map((n) => n.textContent));
+legendaDemo.includes('Infraestrutura') && legendaDemo.includes('Comércio e serviço')
+  ? pass('modo demo sai com a legenda agrupada, sem interceptação: ' + JSON.stringify(legendaDemo))
+  : fail('demo versionado não trouxe group derivado: ' + JSON.stringify(legendaDemo));
+(await page.$$eval('#anchorGroup option', (o) => o.length)) > 1
+  ? pass('filtro de grupo utilizável em modo demo, sem interceptação')
+  : fail('select de grupo vazio no demo versionado');
+
+// E o caminho "sem group/segment" — o estado da planilha real do usuário — continua
+// coberto, agora REMOVENDO as colunas na interceptação em vez de contar com o artefato
+// versionado não as ter.
+const semGrupo = await abrirSemColunas({ anchors: ['group', 'segment'] });
+const legendaPlana = await semGrupo.$$eval('#anchorLegend .anchor-legend-group', (secs) =>
+  secs.map((sec) => sec.querySelector('.anchor-legend-title')?.textContent ?? null));
+legendaPlana.length === 1 && legendaPlana[0] === null
+  ? pass('sem group na planilha, a legenda continua plana')
+  : fail('legenda inesperada sem group: ' + JSON.stringify(legendaPlana));
+(await semGrupo.$$eval('#anchorGroup option', (o) => o.length)) === 1
+  ? pass('select de grupo fica só com "Todos" quando ninguém classificou')
+  : fail('select de grupo populado sem dado');
+await semGrupo.close();
+
+// Agora COM classificação, interceptando o demo.json — o único jeito de exercitar o
+// caminho real de carregamento sem a planilha, que este ambiente não alcança.
+const SEGMENTOS = {
+  escola: ['comercio_servico', 'escola'],
+  universidade: ['comercio_servico', 'universidade'],
+  saude: ['comercio_servico', 'hospital'],
+  supermercado_atacarejo: ['comercio_servico', 'supermercado'],
+  shopping_center: ['comercio_servico', 'department_store'],
+  mobilidade: ['infraestrutura', 'estacao_metro'],
+  parque_equipamento_publico: ['infraestrutura', ''],
+};
+
+const anchorPage = await browser.newPage({ viewport: { width: 1440, height: 900 } });
+await anchorPage.addInitScript(() => {
+  Object.defineProperty(window, 'APP_CONFIG', {
+    configurable: true,
+    set(value) { delete window.APP_CONFIG; window.APP_CONFIG = value; if (value) value.demoMode = true; },
+    get() { return undefined; },
+  });
+});
+await anchorPage.route('**/data/demo.json', async (route) => {
+  const response = await route.fetch();
+  const payload = await response.json();
+  payload.anchors = payload.anchors.map((a, i) => {
+    // A primeira recebe um segmento FORA do vocabulário do backend, com categoria
+    // conhecida: é o caso que fazia legenda e mapa divergirem (a cor cai do segmento
+    // desconhecido para a categoria, e a legenda precisa cair junto).
+    if (i === 0) return { ...a, group: 'comercio_servico', segment: 'food_hall', brand_name: 'Marca <img src=x onerror=alert(1)>', occupied_area_m2: '2450' };
+    if (i === 1) return { ...a, group: '', segment: '' }; // fica sem classificação
+    const [group, segment] = SEGMENTOS[a.category] || ['', ''];
+    return { ...a, group, segment };
+  });
+  await route.fulfill({ response, json: payload });
+});
+await anchorPage.goto('http://localhost:8080/', { waitUntil: 'networkidle' });
+await anchorPage.waitForTimeout(1200);
+
+const legenda = await anchorPage.$$eval('#anchorLegend .anchor-legend-group', (secs) =>
+  secs.map((sec) => ({
+    titulo: sec.querySelector('.anchor-legend-title')?.textContent ?? null,
+    itens: [...sec.querySelectorAll('li')].map((li) => ({
+      rotulo: li.textContent.trim(), cor: li.querySelector('.dot').style.background,
+    })),
+  })));
+const titulos = legenda.map((sec) => sec.titulo);
+JSON.stringify(titulos) === JSON.stringify(['Infraestrutura', 'Comércio e serviço', 'Sem classificação'])
+  ? pass('legenda separa Infraestrutura de Comércio e serviço, com o não classificado no fim')
+  : fail('títulos de grupo inesperados: ' + JSON.stringify(titulos));
+
+legenda.some((sec) => sec.itens.some((i) => i.rotulo === 'Food hall'))
+  ? pass('segmento fora do vocabulário vira rótulo legível, não slug cru')
+  : fail('segmento desconhecido não apareceu humanizado na legenda');
+
+// Legenda e mapa precisam usar EXATAMENTE o mesmo conjunto de cores. Cor na legenda
+// que nenhum marcador usa (ou o contrário) é a legenda mentindo sobre o mapa.
+const paraHex = (rgb) => '#' + rgb.match(/\d+/g).map((v) => Number(v).toString(16).padStart(2, '0')).join('');
+const coresMapa = [...new Set(await anchorPage.$$eval('#map path.marker-anchor', (ns) => ns.map((n) => n.getAttribute('fill'))))].sort();
+const coresLegenda = [...new Set(legenda.flatMap((sec) => sec.itens.map((i) => paraHex(i.cor))))].sort();
+coresMapa.length > 1 ? pass(`âncoras usam ${coresMapa.length} cores distintas no mapa`) : fail('todas as âncoras na mesma cor');
+JSON.stringify(coresMapa) === JSON.stringify(coresLegenda)
+  ? pass('legenda e mapa usam o mesmo conjunto de cores')
+  : fail(`legenda e mapa divergem\n    mapa:    ${coresMapa}\n    legenda: ${coresLegenda}`);
+
+const totalAnchor = Number((await anchorPage.textContent('#kpiVisible')).replace(/\D/g, ''));
+await anchorPage.selectOption('#anchorGroup', 'infraestrutura');
+await anchorPage.waitForTimeout(400);
+const soInfra = Number((await anchorPage.textContent('#kpiVisible')).replace(/\D/g, ''));
+soInfra > 0 && soInfra < totalAnchor ? pass(`filtro de grupo reduziu ${totalAnchor} -> ${soInfra}`) : fail('filtro de grupo não reduziu');
+
+const segmentosDoGrupo = await anchorPage.$$eval('#anchorSegment option', (o) => o.map((x) => x.textContent));
+segmentosDoGrupo.includes('Estação de metrô') && !segmentosDoGrupo.includes('Escola')
+  ? pass('select de segmento fica restrito ao grupo escolhido')
+  : fail('segmentos fora do grupo: ' + JSON.stringify(segmentosDoGrupo));
+
+await anchorPage.selectOption('#anchorSegment', 'estacao_metro');
+await anchorPage.waitForTimeout(400);
+const soMetro = Number((await anchorPage.textContent('#kpiVisible')).replace(/\D/g, ''));
+soMetro > 0 && soMetro <= soInfra ? pass(`filtro de segmento reduziu ${soInfra} -> ${soMetro}`) : fail('filtro de segmento não reduziu');
+(await anchorPage.$$eval('#map path.marker', (ns) => ns.every((n) => n.getAttribute('class').includes('marker-anchor'))))
+  ? pass('filtrar âncora por grupo/segmento esconde as outras camadas')
+  : fail('sobrou anúncio ou empreendimento com filtro de âncora ativo');
+
+await anchorPage.selectOption('#anchorGroup', 'comercio_servico');
+await anchorPage.waitForTimeout(400);
+(await anchorPage.inputValue('#anchorSegment')) === ''
+  ? pass('trocar de grupo zera segmento incompatível, sem filtro invisível ativo')
+  : fail('segmento incompatível sobreviveu à troca de grupo');
+await anchorPage.click('#clearFilters'); await anchorPage.waitForTimeout(400);
+
+// P1 do review do Codex na PR #42: escolher SÓ o segmento, sem tocar no grupo, e
+// limpar. Com a lista completa o segmento continua presente, e a rotina que repopula
+// o select o restaurava — "Limpar filtros" não limpava (R8.43).
+await anchorPage.selectOption('#anchorSegment', 'estacao_metro');
+await anchorPage.waitForTimeout(400);
+const comSegmento = Number((await anchorPage.textContent('#kpiVisible')).replace(/\D/g, ''));
+comSegmento < totalAnchor ? pass(`só o segmento já filtra (${totalAnchor} -> ${comSegmento})`) : fail('segmento sozinho não filtrou');
+await anchorPage.click('#clearFilters'); await anchorPage.waitForTimeout(400);
+(await anchorPage.inputValue('#anchorSegment')) === ''
+  ? pass('"Limpar filtros" zera o segmento escolhido sem grupo')
+  : fail('segmento sobreviveu a "Limpar filtros"');
+Number((await anchorPage.textContent('#kpiVisible')).replace(/\D/g, '')) === totalAnchor
+  ? pass('"Limpar filtros" devolve o conjunto completo')
+  : fail('conjunto não voltou ao total depois de limpar');
+
+// Card de âncora: os campos novos aparecem, e `brand_name` hostil continua texto (R4.4).
+await anchorPage.selectOption('#anchorSegment', 'food_hall');
+await anchorPage.waitForTimeout(400);
+await anchorPage.locator('#map path.marker-anchor').first().click({ force: true });
+await anchorPage.waitForTimeout(400);
+const cardAnchor = Object.fromEntries(
+  await anchorPage.$$eval('#detailBody dt', (ns) => ns.map((n) => [n.textContent, n.nextElementSibling.textContent])));
+cardAnchor['Grupo'] === 'Comércio e serviço' ? pass('card de âncora mostra o Grupo') : fail('Grupo no card: ' + cardAnchor['Grupo']);
+cardAnchor['Segmento'] === 'Food hall' ? pass('card de âncora mostra o Segmento humanizado') : fail('Segmento no card: ' + cardAnchor['Segmento']);
+cardAnchor['Área ocupada'] === '2.450 m²' ? pass('card de âncora mostra a Área ocupada (issue #39)') : fail('Área ocupada: ' + cardAnchor['Área ocupada']);
+(cardAnchor['Marca'] || '').includes('<img') ? pass('brand_name hostil permanece texto no card') : fail('Marca no card: ' + cardAnchor['Marca']);
+(await anchorPage.$$('#detailBody img, #detailBody *[onerror]')).length === 0
+  ? pass('nenhum markup injetado por brand_name (R4.4)') : fail('markup injetado via brand_name!');
+await anchorPage.close();
+
 console.log('\n== 13. Mobile 390px ==');
 await page.click('#closeDetail').catch(()=>{});
 await page.setViewportSize({ width: 390, height: 844 });

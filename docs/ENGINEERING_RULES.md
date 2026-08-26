@@ -368,3 +368,31 @@ Cada uma nasce de um erro que aconteceu de verdade.
   revisão da planilha. Migração de segredo exposto **apaga e exige um novo**, registrando a
   revogação; tratar exposição como reversível é o mesmo erro de trocar a fechadura e devolver a
   cópia antiga da chave.
+
+- **R8.42** *(2026-08-25, verificação em navegador da PR da issue #26)* **Legenda e marca
+  precisam resolver a cor pela MESMA função, com a MESMA entrada — não pela mesma tabela.**
+  A cor da âncora cai numa cadeia (`segment` → `category` → verde padrão), mas o modelo da
+  legenda guardava só o campo mais fino: uma âncora `segment: "food_hall"` +
+  `category: "escola"` saía âmbar no mapa (o segmento desconhecido cedia lugar à categoria)
+  e verde na legenda (que só via o segmento). As duas usavam a mesma tabela de cores e ainda
+  assim divergiam, porque **a entrada era diferente**. Nenhum teste unitário pegou: cada lado,
+  sozinho, estava certo. Só apareceu ao comparar, no navegador, o conjunto de `fill` dos
+  marcadores com o conjunto de cores da legenda — que virou uma checagem fixa do smoke test.
+  Regra geral: quando duas telas descrevem o mesmo dado, o teste é a **igualdade entre elas**,
+  não a correção de cada uma isolada. E o corolário de projeto: quem tem cadeia de fallback
+  transporta o registro inteiro até o ponto que resolve a cadeia, em vez de achatar antes.
+
+- **R8.43** *(2026-08-25, review do Codex na PR #42)* **"Limpar" não delega a limpeza a uma
+  rotina cujo trabalho é preservar.** `populateAnchorSegments()` existe para repopular o
+  select de segmento quando o grupo muda, **preservando** a seleção se ela ainda fizer
+  sentido — e `clearFilters()` chamava exatamente essa função para "zerar" o campo. Com a
+  lista completa (grupo vazio), o segmento escolhido está sempre presente, então ele era
+  sempre restaurado: **"Limpar filtros" não limpava**, e o mapa continuava filtrado com
+  todos os controles aparentando estar vazios — o pior tipo de filtro invisível, porque a
+  própria interface afirma que não há filtro. Escapou de duas verificações em navegador
+  porque as duas escolhiam o grupo antes do segmento, e a troca de grupo já zerava o campo
+  por outro caminho. Duas lições: uma função de restauração e uma de reset são operações
+  **opostas**, e compartilhá-las exige que a intenção viaje junto (aqui, `keepSelection`);
+  e teste de "limpar" começa pelo estado que só o próprio controle produz, não pelo que
+  outro controle já limpou de brinde. Mesma família de R8.35, pelo lado espelhado: lá uma
+  recarga apagava o que não devia, aqui uma restauração preservava o que não devia.

@@ -10,13 +10,14 @@
 import { loadDataset, flattenEntities } from './data.js';
 import { isApproximateLocation, appMetaRows } from './normalize.js';
 import {
-  applyFilters, computeKpis, createFilterState, distinctLocalities,
-  distinctPropertyTypes, distinctRegions, LAYERS,
+  anchorLegendGroups, applyFilters, computeKpis, createFilterState, distinctAnchorGroups,
+  distinctAnchorSegments, distinctLocalities, distinctPropertyTypes, distinctRegions, LAYERS,
 } from './filters.js';
 import {
   formatBRL, formatBRLCompact, formatM2, formatNumber, formatPriceM2, formatDate,
   formatPropertyType, formatSpatialPrecision, formatBuildingOrientation, safeExternalUrl,
-  hostnameOf,
+  hostnameOf, anchorColor, anchorLegendEntries, formatAnchorCategory, formatAnchorGroup,
+  formatAnchorSegment,
 } from './format.js';
 
 const CONFIG = window.APP_CONFIG || {};
@@ -27,6 +28,7 @@ const dom = {
   search: el('search'), locality: el('locality'), ptype: el('ptype'),
   raFilter: el('raFilter'), raProfileNote: el('raProfileNote'),
   buildingOrientation: el('buildingOrientation'),
+  anchorGroup: el('anchorGroup'), anchorSegment: el('anchorSegment'),
   priceMin: el('priceMin'), priceMax: el('priceMax'), beds: el('beds'),
   clearFilters: el('clearFilters'), layers: el('layersSection'),
   kpiVisible: el('kpiVisible'), kpiMedian: el('kpiMedian'), kpiNote: el('kpiNote'),
@@ -37,7 +39,7 @@ const dom = {
   datasetMetaSummary: el('datasetMetaSummary'),
   detail: el('detail'), detailTitle: el('detailTitle'), detailBody: el('detailBody'),
   closeDetail: el('closeDetail'),
-  anchorCategories: el('anchorCategories'),
+  anchorLegend: el('anchorLegend'),
 };
 
 const state = {
@@ -62,61 +64,6 @@ const LAYER_LABEL = {
   development: 'Empreendimento',
   anchor: 'Âncora',
 };
-
-/**
- * Cor por categoria de âncora (vocabulário fechado, `docs/DATA_CONTRACT.md`), para
- * diferenciar visualmente escola, saúde, shopping etc. no mapa em vez de um único
- * verde para todo ponto comercial. Prepara o terreno para a classificação por
- * segmento (mais fina que categoria) que virá do backend depois (issue #22).
- */
-const ANCHOR_CATEGORY_LABELS = {
-  escola: 'Escola',
-  mobilidade: 'Mobilidade',
-  parque_equipamento_publico: 'Parque / equipamento público',
-  saude: 'Saúde',
-  shopping_center: 'Shopping center',
-  supermercado_atacarejo: 'Supermercado / atacarejo',
-  universidade: 'Universidade',
-};
-
-const ANCHOR_CATEGORY_COLORS = {
-  escola: '#c9862c',
-  mobilidade: '#3e7cb1',
-  parque_equipamento_publico: '#4f9d5b',
-  saude: '#b1473e',
-  shopping_center: '#8a4fae',
-  supermercado_atacarejo: '#2c9aa3',
-  universidade: '#8a7a2c',
-};
-
-/**
- * Verde padrão de âncora sem categoria reconhecida. Precisa bater com `--anchor`
- * em `assets/styles.css` — não dá para referenciar a variável CSS aqui porque o
- * Leaflet escreve `fill` como atributo de apresentação SVG (`setAttribute`), que
- * uma regra de folha de estilo (`.marker-anchor { fill: ... }`) sempre vence,
- * mesmo vindo de JS. Por isso essa regra de CSS foi removida (review do PR #40:
- * antes disso, TODA âncora saía verde, porque a regra da classe sobrepunha
- * silenciosamente qualquer `fillColor` passado ao marcador) e a cor — inclusive a
- * de fallback — passa a vir sempre daqui.
- */
-const ANCHOR_FALLBACK_COLOR = '#397d53';
-
-/** Cor de preenchimento de uma âncora: por categoria quando reconhecida, senão o fallback. */
-function anchorCategoryColor(record) {
-  if (record.kind !== 'anchor') return null;
-  const key = String(record.category || '').trim().toLowerCase();
-  return ANCHOR_CATEGORY_COLORS[key] || ANCHOR_FALLBACK_COLOR;
-}
-
-/** Rótulo humano de uma categoria de âncora; categoria fora do vocabulário conhecido
- * ainda vira texto legível, nunca o código cru (mesma lógica de formatPropertyType). */
-function anchorCategoryLabel(category) {
-  const key = String(category || '').trim().toLowerCase();
-  if (!key) return 'Sem categoria';
-  if (ANCHOR_CATEGORY_LABELS[key]) return ANCHOR_CATEGORY_LABELS[key];
-  const spaced = key.replace(/_/g, ' ');
-  return spaced.charAt(0).toUpperCase() + spaced.slice(1);
-}
 
 // --- Mapa -----------------------------------------------------------------
 
@@ -143,7 +90,7 @@ function renderMarkers(records) {
   for (const record of records) {
     if (!record.coord) continue; // sem coordenada o registro existe, mas não é mapeável
 
-    const categoryColor = anchorCategoryColor(record);
+    const fillColor = anchorColor(record);
     const marker = L.circleMarker([record.coord.lat, record.coord.lon], {
       radius: MARKER_RADIUS[record.kind] || 6,
       className: `marker marker-${record.kind}`,
@@ -152,8 +99,9 @@ function renderMarkers(records) {
       fillOpacity: 0.9,
       // listing/development continuam pegando a cor de `assets/styles.css`
       // (`.marker-listing`/`.marker-development`); âncora sempre recebe `fillColor`
-      // explícito (categoria ou fallback) — ver nota de `ANCHOR_FALLBACK_COLOR`.
-      ...(categoryColor ? { fillColor: categoryColor } : {}),
+      // explícito (segmento → categoria → verde padrão) — ver a nota de
+      // `ANCHOR_FALLBACK_COLOR` em src/format.js.
+      ...(fillColor ? { fillColor } : {}),
     });
 
     // O tooltip recebe um ELEMENTO, nunca uma string. O Leaflet faz
@@ -297,10 +245,14 @@ function buildDetailBody(record) {
     addRow(dl, 'Entrega prevista', record.expected_delivery);
     addRow(dl, 'Verificado em', formatDate(record.observed_at));
   } else {
-    addRow(dl, 'Categoria', record.category ? anchorCategoryLabel(record.category) : '');
+    // Classificação em dois eixos (issue #26) primeiro, `category`/`subcategory`
+    // depois: o vocabulário novo é o que a legenda e o mapa usam, o antigo continua
+    // visível enquanto a planilha ainda o carrega. `addRow` omite o que estiver vazio,
+    // então uma âncora sem grupo/segmento mostra exatamente o que mostrava antes.
+    addRow(dl, 'Grupo', formatAnchorGroup(record.group));
+    addRow(dl, 'Segmento', formatAnchorSegment(record.segment));
+    addRow(dl, 'Categoria', formatAnchorCategory(record.category));
     addRow(dl, 'Subcategoria', record.subcategory);
-    addRow(dl, 'Segmento', record.segment);
-    // Vazios até o backend publicar as colunas (issue #39).
     addRow(dl, 'Marca', record.brand_name);
     addRow(dl, 'Área ocupada', formatM2(record.occupied_area_m2));
     addRow(dl, 'Operador', record.operator_name);
@@ -368,6 +320,8 @@ function readFilters() {
   state.filters.ra = dom.raFilter.value;
   state.filters.propertyType = dom.ptype.value;
   state.filters.buildingOrientation = dom.buildingOrientation.value;
+  state.filters.anchorGroup = dom.anchorGroup.value;
+  state.filters.anchorSegment = dom.anchorSegment.value;
   state.filters.priceMin = numberFieldValue(dom.priceMin);
   state.filters.priceMax = numberFieldValue(dom.priceMax);
 
@@ -442,33 +396,59 @@ function render() {
 }
 
 /**
- * Legenda das categorias de âncora presentes no dataset carregado, com a cor usada
- * no mapa para cada uma. Calculada uma vez no carregamento (as categorias existentes
- * não mudam com os filtros de busca) — issue #22.
+ * Legenda das âncoras em dois níveis (issue #26): o grupo (`Infraestrutura` ×
+ * `Comércio e serviço`) e, dentro dele, o segmento que dá a cor ao marcador.
+ *
+ * Calculada uma vez no carregamento — a classificação existente não muda com os
+ * filtros de busca, e recalculá-la a cada tecla faria a legenda piscar. Por isso ela
+ * NÃO exibe contagem: um número aqui seria confundido com o de "Camadas", que é o que
+ * sobrou dos filtros (mesma armadilha de R8.26).
+ *
+ * Enquanto nenhuma âncora tiver `group` — o estado da planilha antes de o backend
+ * derivar a coluna — a legenda sai plana, sem título de grupo, exatamente como antes.
  */
-function renderAnchorCategoryLegend(records) {
-  const categories = new Set();
-  for (const record of records) {
-    if (record.kind === 'anchor' && record.category) categories.add(record.category);
-  }
-
-  if (categories.size === 0) {
-    dom.anchorCategories.hidden = true;
-    dom.anchorCategories.replaceChildren();
+function renderAnchorLegend(records) {
+  const groups = anchorLegendGroups(records);
+  if (groups.length === 0) {
+    dom.anchorLegend.hidden = true;
+    dom.anchorLegend.replaceChildren();
     return;
   }
 
+  // Um grupo só, e vazio, significa "ninguém classificou nada": título nenhum é mais
+  // honesto que um "Sem classificação" cobrindo a legenda inteira.
+  const showTitles = groups.some((g) => g.group !== '');
+
   const frag = document.createDocumentFragment();
-  for (const category of [...categories].sort()) {
-    const li = document.createElement('li');
-    const dot = document.createElement('span');
-    dot.className = 'dot';
-    dot.style.background = ANCHOR_CATEGORY_COLORS[category.toLowerCase()] || 'var(--anchor)';
-    li.append(dot, document.createTextNode(anchorCategoryLabel(category)));
-    frag.append(li);
+  for (const { group, entries } of groups) {
+    const section = document.createElement('div');
+    section.className = 'anchor-legend-group';
+
+    if (showTitles) {
+      const title = document.createElement('p');
+      title.className = 'anchor-legend-title';
+      title.textContent = group ? formatAnchorGroup(group) : 'Sem classificação';
+      section.append(title);
+    }
+
+    const list = document.createElement('ul');
+    list.className = 'anchor-categories';
+
+    for (const entry of anchorLegendEntries(entries)) {
+      const li = document.createElement('li');
+      const dot = document.createElement('span');
+      dot.className = 'dot';
+      dot.style.background = entry.color;
+      li.append(dot, document.createTextNode(entry.label));
+      list.append(li);
+    }
+
+    section.append(list);
+    frag.append(section);
   }
-  dom.anchorCategories.replaceChildren(frag);
-  dom.anchorCategories.hidden = false;
+
+  dom.anchorLegend.replaceChildren(frag);
+  dom.anchorLegend.hidden = false;
 }
 
 function populateSelect(select, values, formatter = (v) => v) {
@@ -482,12 +462,34 @@ function populateSelect(select, values, formatter = (v) => v) {
   }
 }
 
+/**
+ * Repopula o select de segmento com os segmentos do grupo escolhido (issue #26).
+ *
+ * Sem isso, escolher "Infraestrutura" e "Escola" ao mesmo tempo devolveria conjunto
+ * vazio sem explicar por quê. A seleção atual é preservada quando ainda existe no
+ * novo grupo, e zerada quando não — deixá-la valendo escondida no estado seria um
+ * filtro ativo invisível.
+ *
+ * `keepSelection: false` é para quem está LIMPANDO. Preservar a seleção é o trabalho
+ * desta função, então "limpar filtros" não pode delegar a limpeza a ela sem dizer que
+ * agora o trabalho é o oposto: com a lista completa, o segmento escolhido sempre
+ * continua presente e sempre era restaurado (P1 do review do Codex na PR #42, R8.43).
+ */
+function populateAnchorSegments(group, { keepSelection = true } = {}) {
+  const previous = keepSelection ? dom.anchorSegment.value : '';
+  const segments = distinctAnchorSegments(state.records, group);
+  populateSelect(dom.anchorSegment, segments, formatAnchorSegment);
+  dom.anchorSegment.value = segments.includes(previous) ? previous : '';
+}
+
 function clearFilters() {
   dom.search.value = '';
   dom.locality.value = '';
   dom.raFilter.value = '';
   dom.ptype.value = '';
   dom.buildingOrientation.value = '';
+  dom.anchorGroup.value = '';
+  populateAnchorSegments('', { keepSelection: false });
   dom.priceMin.value = '';
   dom.priceMax.value = '';
   dom.beds.value = '';
@@ -625,7 +627,9 @@ async function load() {
     distinctRegions(state.records),
     (id) => state.raProfiles[id]?.ra_name || id,
   );
-  renderAnchorCategoryLegend(state.records);
+  populateSelect(dom.anchorGroup, distinctAnchorGroups(state.records), formatAnchorGroup);
+  populateAnchorSegments('');
+  renderAnchorLegend(state.records);
 
   showWarnings([...result.warnings, ...result.errors]);
   render();
@@ -643,9 +647,16 @@ function bindEvents() {
   for (const node of [dom.search, dom.priceMin, dom.priceMax]) {
     node.addEventListener('input', render);
   }
-  for (const node of [dom.locality, dom.raFilter, dom.ptype, dom.buildingOrientation, dom.beds]) {
+  for (const node of [dom.locality, dom.raFilter, dom.ptype, dom.buildingOrientation,
+    dom.anchorSegment, dom.beds]) {
     node.addEventListener('change', render);
   }
+  // O grupo restringe a lista de segmentos antes de renderizar, então tem handler
+  // próprio em vez de entrar na lista acima.
+  dom.anchorGroup.addEventListener('change', () => {
+    populateAnchorSegments(dom.anchorGroup.value);
+    render();
+  });
   dom.layers.addEventListener('change', render);
   dom.clearFilters.addEventListener('click', clearFilters);
   dom.closeDetail.addEventListener('click', closeDetail);

@@ -408,13 +408,30 @@ select:focus, input[type="number"]:focus {
 }
 .layers-group-label-anchor { margin-top: 14px; }
 
-.anchor-categories {
-  list-style: none;
+/* Legenda de âncoras em dois níveis: grupo → segmento (issue #26). O título do
+   grupo só existe quando a planilha classificou pelo menos uma âncora; sem isso a
+   legenda continua plana, como antes. */
+.anchor-legend {
   margin: 8px 0 0;
   padding: 8px 0 0;
   border-top: 1px solid var(--line);
 }
-.anchor-categories[hidden] { display: none; }
+.anchor-legend[hidden] { display: none; }
+.anchor-legend-group + .anchor-legend-group { margin-top: 10px; }
+
+.anchor-legend-title {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: .06em;
+  color: var(--muted);
+  margin: 0 0 5px;
+}
+
+.anchor-categories {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
 .anchor-categories li {
   display: flex;
   align-items: center;
