@@ -410,6 +410,33 @@ export function normalizeRaProfile(row) {
     population_age_30_44_pct: toNumber(row.population_age_30_44_pct),
     population_age_45_59_pct: toNumber(row.population_age_45_59_pct),
     population_age_60_plus_pct: toNumber(row.population_age_60_plus_pct),
+
+    // Provisionadas pelo Apps Script v2.2.1 (issue #50). `ra_code`, `ra_number` e
+    // `area_km2` vêm do limite oficial do GeoPortal; o resto é perfil PDAD, que pode
+    // estar vazio numa RA recém-criada — daí `profile_status`/`quality_flag`, que
+    // distinguem "não publicado" de "zero".
+    ra_code: toText(row.ra_code),
+    ra_number: toInteger(row.ra_number),
+    area_km2: toNumber(row.area_km2),
+    average_age: toNumber(row.average_age),
+    female_pct: toNumber(row.female_pct),
+    male_pct: toNumber(row.male_pct),
+    households_total: toInteger(row.households_total),
+    avg_household_size: toNumber(row.avg_household_size),
+    dominant_dwelling_type: toText(row.dominant_dwelling_type),
+    dominant_dwelling_type_pct: toNumber(row.dominant_dwelling_type_pct),
+    dominant_tenure: toText(row.dominant_tenure),
+    dominant_tenure_pct: toNumber(row.dominant_tenure_pct),
+    deed_registered_pct: toNumber(row.deed_registered_pct),
+    profile_reference_year: toText(row.profile_reference_year),
+    profile_status: toText(row.profile_status),
+    profile_source_url: toText(row.profile_source_url),
+    geometry_source_url: toText(row.geometry_source_url),
+    created_after_pdad_2024: toText(row.created_after_pdad_2024),
+    predecessor_ra: toText(row.predecessor_ra),
+    legal_reference: toText(row.legal_reference),
+    quality_flag: toText(row.quality_flag),
+    notes: toText(row.notes),
   };
 }
 
@@ -445,17 +472,68 @@ export function toJsonObject(value) {
  */
 export function normalizePolygon(row) {
   return {
+    // --- identidade -------------------------------------------------------
     id: toText(row.polygon_id),
     name: toText(row.name),
     category: toText(row.category),
-    geometry_geojson: toText(row.geometry_geojson),
+    subcategory: toText(row.subcategory),
+    entity_type: toText(row.entity_type),
+    entity_id: toText(row.entity_id),
+    geometry_role: toText(row.geometry_role),
+    ra_geo_id: toText(row.ra_geo_id),
+
+    // --- camada -----------------------------------------------------------
+    layer_group: toText(row.layer_group),
+
+    // --- cartografia ------------------------------------------------------
     color: toText(row.color),
+    fill_color: toText(row.fill_color),
+    stroke_color: toText(row.stroke_color),
+    fill_opacity: toNumber(row.fill_opacity),
+    stroke_width: toNumber(row.stroke_width),
+    z_index: toNumber(row.z_index),
+    centroid_latitude: toNumber(row.centroid_latitude),
+    centroid_longitude: toNumber(row.centroid_longitude),
+    area_m2: toNumber(row.area_m2),
+    area_ha: toNumber(row.area_ha),
+    perimeter_m: toNumber(row.perimeter_m),
+
+    // --- procedência ------------------------------------------------------
     description: toText(row.description),
     properties: toJsonObject(row.properties_json),
     source_url: toText(row.source_url),
     source_file: toText(row.source_file),
+    source_system: toText(row.source_system),
+    source_layer_name: toText(row.source_layer_name),
+    source_feature_id: toText(row.source_feature_id),
+    source_crs: toText(row.source_crs),
+    source_page_verified_at: toDateISO(row.source_page_verified_at),
+    confidence_flag: toText(row.confidence_flag),
+    quality_flag: toText(row.quality_flag),
+    geometry_hash: toText(row.geometry_hash),
+    geometry_valid_from: toDateISO(row.geometry_valid_from),
+    geometry_valid_to: toDateISO(row.geometry_valid_to),
+    last_synced_at: toDateISO(row.last_synced_at),
     imported_at: toDateISO(row.imported_at),
     status: toText(row.status),
+
+    // --- geometria --------------------------------------------------------
+    // Os dois campos de geometria ficam como TEXTO CRU, sem JSON.parse. Um blob
+    // malformado numa linha derrubaria o carregamento de todas as camadas se fosse
+    // parseado aqui; o parse acontece no render, por registro, isolado (R2.6).
+    geometry_type: toText(row.geometry_type),
+    geometry_geojson: toText(row.geometry_geojson),
+    source_geometry_type: toText(row.source_geometry_type),
+    display_buffer_m: toNumber(row.display_buffer_m),
+    /**
+     * Geometria ORIGINAL, preservada como procedência — e **nunca desenhada**.
+     *
+     * Para uma rodovia ela é a LineString do eixo oficial do DER, que o mapa não sabe
+     * desenhar como área: quem vai ao mapa é sempre `geometry_geojson`, o corredor com
+     * buffer já validado como Polygon/MultiPolygon. Desenhar esta aqui por engano
+     * mostraria uma geometria de tipo diferente do que a camada espera.
+     */
+    source_geometry_geojson: toText(row.source_geometry_geojson),
   };
 }
 

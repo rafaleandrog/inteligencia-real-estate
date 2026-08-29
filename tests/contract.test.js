@@ -4,7 +4,8 @@ import { readFileSync } from 'node:fs';
 import { readXlsx } from '../tools/xlsx.mjs';
 import { createAppsScriptSandbox } from './helpers/appsScriptSandbox.mjs';
 import {
-  SHEETS, REQUIRED_SHEETS, OPTIONAL_SCHEMA_SHEETS, POST_SEED_COLUMNS, POST_SEED_SHEETS,
+  SHEETS, SCHEMA_SHEETS, BACKEND_SCHEMA_SHEETS, REQUIRED_SHEETS, OPTIONAL_SCHEMA_SHEETS,
+  POST_SEED_COLUMNS, POST_SEED_SHEETS,
   expectedRequiredHeaders, declaredRequiredHeaders, contractColumns, postSeedFromContract,
 } from './helpers/schema.mjs';
 
@@ -29,7 +30,7 @@ test('REQUIRED_HEADERS cobre exatamente o que contrato e normalizadores exigem',
   const expected = expectedRequiredHeaders(normalizeSrc, contractMd);
   const declared = declaredRequiredHeaders();
 
-  assert.deepEqual(Object.keys(declared).sort(), [...SHEETS].sort(),
+  assert.deepEqual(Object.keys(declared).sort(), [...SCHEMA_SHEETS].sort(),
     'toda aba com contrato de cabeçalho precisa estar declarada, e nenhuma além');
 
   for (const sheet of SHEETS) {
@@ -40,6 +41,48 @@ test('REQUIRED_HEADERS cobre exatamente o que contrato e normalizadores exigem',
     const sobrando = declared[sheet].filter((f) => !expected[sheet].includes(f));
     assert.deepEqual(sobrando, [],
       `${sheet}: declarado sem que contrato ou normalizador precisem`);
+  }
+});
+
+test('aba com schema só no backend é cobrada pelo que dá para cobrar sem cliente', () => {
+  // ROAD_SEGMENTS, ROAD_SEGMENT_ALIASES e TRAFFIC_DAILY_TEST têm REQUIRED_HEADERS mas
+  // ainda não têm normalizador — a camada de tráfego no cliente é trabalho separado.
+  // Sem este teste elas ficariam num limbo: declaradas no Code.gs e verificadas por
+  // ninguém. As asserções abaixo são o que sobra quando não há normalizador para
+  // cruzar, e nenhuma delas deve ser afrouxada para acomodar uma aba nova — o caminho
+  // certo é a aba ganhar normalizador e migrar para OPTIONAL_SCHEMA_SHEETS.
+  const { context } = createAppsScriptSandbox();
+  const declared = declaredRequiredHeaders();
+  const configSrc = read('../src/config.js');
+
+  for (const sheet of BACKEND_SCHEMA_SHEETS) {
+    assert.ok(declared[sheet] && declared[sheet].length > 0, `${sheet} sem cabeçalhos declarados`);
+
+    const idField = context.ID_FIELD[sheet];
+    assert.ok(idField, `${sheet} sem ID_FIELD`);
+    assert.ok(declared[sheet].includes(idField), `${sheet}: ID_FIELD fora de REQUIRED_HEADERS`);
+
+    // Opcional e gerenciada: `setupProject()` a cria inteira, e a ausência dela é aviso.
+    assert.ok(context.OPTIONAL_SHEETS.includes(sheet), `${sheet} precisa ser opcional`);
+    assert.ok(context.MANAGED_EXTENSION_SHEETS.includes(sheet), `${sheet} precisa ser gerenciada`);
+    assert.ok(!context.REQUIRED_SHEETS.includes(sheet), `${sheet} não pode ser obrigatória`);
+
+    // Nenhuma delas é gravável pela API de escrita — não há tela administrativa para elas.
+    assert.ok(!context.WRITE_ALLOWLIST[sheet], `${sheet} não pode estar em WRITE_ALLOWLIST`);
+
+    // E nenhuma entra no caminho de erro fatal do loader. Estar em `src/config.js` como
+    // aba própria (`roadSegmentsSheet` etc.) é esperado — o que não pode é entrar no
+    // bloco `sheets:`, que é o único cuja ausência derruba a aplicação (R2.5).
+    const fatalBlock = configSrc.slice(
+      configSrc.indexOf('sheets: {'),
+      configSrc.indexOf('}', configSrc.indexOf('sheets: {')),
+    );
+    assert.ok(!fatalBlock.includes(sheet),
+      `${sheet} é opcional e não pode entrar em config.sheets, que é o caminho de erro fatal`);
+
+    // Toda aba servida pelo endpoint read-only precisa estar na allowlist, senão o
+    // `dataset_()` recusa e o carregamento reporta sucesso com dado sempre vazio.
+    assert.ok(context.ALLOWED_DATASETS.includes(sheet), `${sheet} fora de ALLOWED_DATASETS`);
   }
 });
 

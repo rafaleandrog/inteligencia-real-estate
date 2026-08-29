@@ -442,6 +442,24 @@ Cada uma nasce de um erro que aconteceu de verdade.
   no sandbox `vm` e afirma os dois lados: **tudo que o cliente monta, o servidor aceita**, e **tudo
   que o cliente recusa, o servidor também recusaria**. Mesmo precedente de `pricePerM2_` × `pricePerM2`
   e das derivações de `tools/derive.mjs`.
+- **R8.48** *(2026-08-29, fusão do Apps Script v2.2.0 com a v2.0.2, issue #50)* **Uma versão do
+  backend construída a partir do ancestral errado regride correções sem gerar conflito nem erro.**
+  O `Code.gs` não é mesclado por ferramenta: ele é **colado inteiro** no editor do Apps Script e
+  colado inteiro de volta no repositório. Quando a versão que volta foi escrita a partir de um
+  ancestral mais antigo do que a que está versionada, o `git diff` mostra um arquivo grande cheio
+  de funcionalidade nova — e, no meio dele, funções que voltaram a ser o que eram antes de uma
+  correção. Não há conflito para revisar, não há teste que falhe se a correção não tinha teste, e
+  o arquivo continua rodando. Aqui a v2.2.0 nasceu da v2.0.0 e regredia quatro correções da
+  v2.0.2, **duas delas de segurança e de integridade de dado, já valendo em produção**: um
+  `admin_token` que esteve no `APP_META` — aba que qualquer visitante lê por GViz — voltava a ser
+  promovido a credencial válida do endpoint de escrita, e um anel de coordenadas ausentes voltava
+  a ser aceito como polígono válido perto de `[0, 0]`. Mecanismo, em três partes: (1) o número da
+  versão colada **não é prova de ancestralidade** — antes de colar, compare **função a função**
+  contra a versão do repositório, não arquivo contra arquivo; (2) toda correção de comportamento
+  no `Code.gs` nasce com teste no sandbox `vm`, porque teste é a única parte da correção que uma
+  colagem por cima não consegue apagar em silêncio; (3) a fusão que resolve é de **três vias** e o
+  resultado ganha versão nova (aqui, 2.2.1), para que o número deixe de mentir sobre o que o
+  arquivo contém.
 - **R8.53** *(2026-08-29, motor de agregação do IVV, issue #57)* **Quando a operação de agregação
   depende da natureza do dado, a natureza é DADO declarado — e o que não foi declarado é recusado,
   não presumido.** No IVV_MONTHLY convivem fluxo (`sales_units`), estoque (`offers_units`), preço

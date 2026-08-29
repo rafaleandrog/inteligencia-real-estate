@@ -94,6 +94,38 @@ conteúdo. Reimportar o mesmo arquivo **atualiza** as linhas em vez de duplicá-
 Anel aberto, com menos de 4 posições ou com menos de 3 pontos distintos é rejeitado com erro
 legível — a geometria não entra pela metade.
 
+## 6.2 Sincronizar Regiões Administrativas (v2.2.1)
+
+Menu **Imob Intelligence → Sincronizar Regiões Administrativas**. Busca o limite oficial de cada RA
+no GeoPortal/SEDUH, grava uma linha em `POLYGONS` com `layer_group = 'administrative_regions'` e
+completa `RA_PROFILES` com código, número e área oficiais. O perfil PDAD **não é sobrescrito**: a
+sincronização só preenche o que a camada oficial sabe.
+
+Uma RA cuja geometria não cabe numa célula do Sheets é pedida de novo ao GeoPortal já simplificada,
+duas vezes, antes de a RA ser descartada com aviso. Geometria nunca é truncada — truncada, deixaria
+de ser um polígono válido sem parecer inválida.
+
+Ao fim, um KMZ com todas as RAs é criado no Drive e o link fica em `APP_META`
+(`ra_geometry_kmz_url`).
+
+## 6.3 Sincronizar trechos rodoviários DER (v2.2.1)
+
+Menu **Imob Intelligence → Sincronizar trechos rodoviários DER**. Pergunta o buffer visual por lado
+(padrão 8 m) e, para cada código de trecho presente em `TRAFFIC_DAILY_TEST`, busca o **eixo** oficial
+na camada do DER/DF.
+
+O DER publica o eixo, que é uma linha; o mapa desenha área. Então o corredor visual é derivado do
+eixo por buffer e vai para `geometry_geojson`, enquanto o eixo original fica em
+`source_geometry_geojson` como procedência. A rodovia entra em `POLYGONS` com
+`layer_group = 'road_network'` — **não existe camada de rodovia separada**.
+
+A sincronização também mantém `ROAD_SEGMENTS` (cadastro do trecho), `ROAD_SEGMENT_ALIASES` (ponte
+entre o código da fonte de tráfego e o `road_segment_id`) e carimba `road_segment_id` em cada linha
+de `TRAFFIC_DAILY_TEST`.
+
+Nos dois casos, mudar a geometria oficial gera uma linha **nova** em `POLYGONS`: a anterior fica
+`status = 'inactive'` com `geometry_valid_to` preenchido, nunca apagada.
+
 ## 7. Valide antes de publicar
 
 - IDs únicos.

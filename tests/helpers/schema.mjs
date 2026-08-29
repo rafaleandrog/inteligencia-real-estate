@@ -24,6 +24,26 @@ export const OPTIONAL_SCHEMA_SHEETS = ['RA_PROFILES', 'POLYGONS'];
 export const SHEETS = [...REQUIRED_SHEETS, ...OPTIONAL_SCHEMA_SHEETS];
 
 /**
+ * Abas com contrato de cabeçalho **só no backend** (Apps Script v2.2.1, issue #50).
+ *
+ * Elas existem em `REQUIRED_HEADERS` porque a sincronização rodoviária as cria e as
+ * preenche, mas ainda não têm normalizador em `src/normalize.js` — a camada de tráfego
+ * no cliente é trabalho separado. Ficam fora de `SHEETS` porque as travas de
+ * `tests/contract.test.js` que valem para `SHEETS` (contrato ↔ normalizador ↔ semente)
+ * exigem justamente o normalizador que ainda não existe.
+ *
+ * Isto **não é uma exceção permanente**: no dia em que a aba ganhar normalizador, ela
+ * migra para `OPTIONAL_SCHEMA_SHEETS` e passa a ser cobrada como todas as outras. Até
+ * lá, `tests/contract.test.js` cobra delas o que dá para cobrar sem cliente: cabeçalho
+ * não vazio, chave primária declarada, aba opcional e gerenciada, e ausência de qualquer
+ * caminho de erro fatal.
+ */
+export const BACKEND_SCHEMA_SHEETS = ['ROAD_SEGMENTS', 'ROAD_SEGMENT_ALIASES', 'TRAFFIC_DAILY_TEST'];
+
+/** Domínio completo de `REQUIRED_HEADERS` no Code.gs. */
+export const SCHEMA_SHEETS = [...SHEETS, ...BACKEND_SCHEMA_SHEETS];
+
+/**
  * O delta entre a semente congelada e o schema em vigor.
  *
  * `migration/imob-intelligence-backend.xlsx` é um bootstrap histórico de uma vez só
@@ -48,11 +68,37 @@ export const POST_SEED_COLUMNS = {
     'population_age_30_44_pct',
     'population_age_45_59_pct',
     'population_age_60_plus_pct',
+    // Issue #50: as três primeiras vêm do limite oficial do GeoPortal; o resto é perfil
+    // PDAD que a sincronização deixa preparado mesmo quando ainda não há dado publicado.
+    'ra_code',
+    'ra_number',
+    'area_km2',
+    'average_age',
+    'female_pct',
+    'male_pct',
+    'households_total',
+    'avg_household_size',
+    'dominant_dwelling_type',
+    'dominant_dwelling_type_pct',
+    'dominant_tenure',
+    'dominant_tenure_pct',
+    'deed_registered_pct',
+    'profile_reference_year',
+    'profile_status',
+    'profile_source_url',
+    'geometry_source_url',
+    'created_after_pdad_2024',
+    'predecessor_ra',
+    'legal_reference',
+    'quality_flag',
+    'notes',
   ],
 };
 
 /** Abas inteiras que só existem depois de `setupProject()`. */
-export const POST_SEED_SHEETS = ['POLYGONS'];
+export const POST_SEED_SHEETS = [
+  'POLYGONS', 'ROAD_SEGMENTS', 'ROAD_SEGMENT_ALIASES', 'TRAFFIC_DAILY_TEST',
+];
 
 /**
  * Lê a tabela "Provisionamento pós-semente" do contrato, no mesmo formato que
