@@ -442,3 +442,28 @@ Cada uma nasce de um erro que aconteceu de verdade.
   no sandbox `vm` e afirma os dois lados: **tudo que o cliente monta, o servidor aceita**, e **tudo
   que o cliente recusa, o servidor também recusaria**. Mesmo precedente de `pricePerM2_` × `pricePerM2`
   e das derivações de `tools/derive.mjs`.
+- **R8.53** *(2026-08-29, motor de agregação do IVV, issue #57)* **Quando a operação de agregação
+  depende da natureza do dado, a natureza é DADO declarado — e o que não foi declarado é recusado,
+  não presumido.** No IVV_MONTHLY convivem fluxo (`sales_units`), estoque (`offers_units`), preço
+  (`asking_price_brl_m2`) e taxa (`ivv_pct`), e cada família tem uma operação diferente: soma,
+  média do período, razão ponderada `SUM(valor)/SUM(área)`, razão ponderada de fluxo sobre estoque.
+  Somar doze meses de `offers_units` devolve **doze vezes o estoque real** — e esse é o pior tipo de
+  defeito desta base, porque o resultado é plausível, chega formatado à tela e não tem sintoma:
+  nenhum erro no console, nenhuma tela branca, nenhum `null`. A defesa não é revisar `if`s
+  espalhados, é `src/ivv/metrics.js`: uma entrada por coluna, com `kind` de vocabulário fechado, e
+  um motor que **lê a classificação em vez de decidir**. Da declaração vem o teste que importa —
+  toda coluna do dataset precisa de entrada no registro, e coluna nova do backend quebra o teste em
+  vez de cair num `SUM` por omissão (mesma família de R8.40: mecanismo que age sozinho precisa de
+  lista de escopo). Corolário: `kind` novo sem operação definida no motor **lança**, não vira soma
+  pelo `default` do `switch`.
+- **R8.54** *(2026-08-29, motor de agregação do IVV, issue #57)* **Campo de recálculo do backend
+  sinaliza divergência; ele nunca substitui o valor publicado.** `ivv_pct` convive com
+  `ivv_calc_pct` e `ivv_diff_pp`, e existe uma tentação óbvia de "corrigir" o publicado pelo
+  recalculado quando os dois discordam — que troca um número auditável, que alguém publicou e
+  assina, por um número que a tela inventou sozinha. A regra é a inversa: o publicado prevalece
+  sempre, a divergência vira **aviso nomeado** com mês, coluna e os dois valores, e a decisão volta
+  para quem edita a planilha. Vale igual para o acumulado: quando `*_ytd` existe e o período é
+  janeiro→mês do mesmo ano, lê-se o campo pronto em vez de recalcular, e a soma dos meses serve
+  só para conferir. E vale para escala: `ivv_pct` em fração decimal (`0.057` = 5,7%) contra a
+  escala de RA_PROFILES (`54` = 54%) — valor fora da faixa esperada é **sinalizado onde aparece**,
+  nunca convertido em silêncio pelo motor (R5.7, R8.44).
