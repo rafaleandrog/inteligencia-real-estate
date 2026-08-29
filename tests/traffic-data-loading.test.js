@@ -58,19 +58,19 @@ test('loadDataset (gviz) encadeia TRAFFIC_DAILY_TEST → ROAD_SEGMENTS → POLYG
       [{ polygon_id: 'POLY-9', category: 'road_network', geometry_geojson: '{"type":"LineString","coordinates":[[-47.9,-15.8],[-47.8,-15.7]]}' }]
     ),
     ROAD_SEGMENTS: table(
-      ['road_segment_id', 'name', 'current_polygon_id'],
-      [{ road_segment_id: 'RS-1', name: 'DF-001', current_polygon_id: 'POLY-9' }]
+      ['road_segment_id', 'road_name', 'current_polygon_id'],
+      [{ road_segment_id: 'RS-1', road_name: 'DF-001', current_polygon_id: 'POLY-9' }]
     ),
     ROAD_SEGMENT_ALIASES: table(
       ['road_segment_id', 'source_segment_code'],
       [{ road_segment_id: 'RS-1', source_segment_code: 'DER-001' }]
     ),
     TRAFFIC_DAILY_TEST: table(
-      ['road_segment_id', 'source_segment_code', 'date', 'sentido', 'intervalos_15min_observados'],
+      ['road_segment_id', 'trecho', 'dia', 'sentido', 'intervalos_15min_observados', 'fluxo_total'],
       [
-        { road_segment_id: 'RS-1', date: '2026-04-01', sentido: 'crescente', intervalos_15min_observados: 96 },
-        // linha "antiga": sem road_segment_id, só o código externo — precisa resolver via alias.
-        { road_segment_id: '', source_segment_code: 'DER-001', date: '2026-04-02', sentido: 'decrescente', intervalos_15min_observados: 90 },
+        { road_segment_id: 'RS-1', dia: '2026-04-01', sentido: 'crescente', intervalos_15min_observados: 96, fluxo_total: 12000 },
+        // linha "antiga": sem road_segment_id, só o código externo (trecho) — precisa resolver via alias.
+        { road_segment_id: '', trecho: 'DER-001', dia: '2026-04-02', sentido: 'decrescente', intervalos_15min_observados: 90, fluxo_total: 9500 },
       ]
     ),
   };
