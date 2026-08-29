@@ -92,3 +92,31 @@ test('averageFlow com lista vazia devolve null, não zero', () => {
   assert.equal(result.average, null);
   assert.equal(result.daysUsed, 0);
 });
+
+test('averageFlow: dia parcial puxa a média para baixo, e partialDaysUsed denuncia', () => {
+  // Dois dias completos com o mesmo fluxo total (1000) e um terceiro dia parcial
+  // (90/96 intervalos) com o MESMO fluxo total, cujo total só é menor porque foi
+  // medido por menos tempo, não porque teve menos tráfego.
+  const onlyComplete = [
+    { flow: 1000, intervalsObserved: 96 },
+    { flow: 1000, intervalsObserved: 96 },
+  ];
+  const withPartial = [
+    { flow: 1000, intervalsObserved: 96 },
+    { flow: 1000, intervalsObserved: 96 },
+    { flow: 700, intervalsObserved: 90 }, // dia parcial: total menor por medição incompleta
+  ];
+
+  const baseline = averageFlow(onlyComplete);
+  const biased = averageFlow(withPartial);
+
+  assert.equal(baseline.average, 1000);
+  assert.ok(
+    biased.average < baseline.average,
+    'entrar com um dia parcial de total menor derruba a média simples, como documentado'
+  );
+  assert.equal(biased.partialDaysUsed, 1, 'partialDaysUsed denuncia a presença do dia parcial');
+
+  // completeDaysAverage ignora o dia parcial e recupera o valor sem o viés de cobertura.
+  assert.equal(biased.completeDaysAverage, 1000);
+});

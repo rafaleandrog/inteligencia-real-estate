@@ -64,18 +64,48 @@ export function classifyDayCoverage(intervalsObserved) {
  * Nunca preenche intervalo ausente com zero: um dia sem `flow` numérico é
  * excluído da média, não tratado como fluxo zero.
  *
+ * VIÉS DELIBERADO — leia antes de "consertar":
+ *
+ *   Isto é `sum(flow) / count(dias)`, a média aritmética simples dos totais diários.
+ *   Um dia parcial (ex.: 90/96 intervalos, ~93,75% do tempo observado) tem um total
+ *   naturalmente menor que um dia completo pelo simples fato de ter sido medido por
+ *   menos tempo — não porque teve menos tráfego. Entrar na média sem ajuste **enviesa
+ *   o resultado para baixo**, e o viés cresce com a proporção de dias parciais no
+ *   conjunto (`partialDaysUsed / daysUsed`).
+ *
+ *   A correção óbvia — dividir cada total pela cobertura do dia antes de somar, para
+ *   "escalar" um dia parcial ao que ele teria sido num dia inteiro — NÃO é feita
+ *   aqui, de propósito: isso estimaria o tráfego não observado, ou seja, inventaria
+ *   dado. A issue #64 proíbe exatamente isso ("nunca preencha intervalo ausente").
+ *   Entre um número levemente enviesado e um número parcialmente inventado, fica o
+ *   enviesado — mas declarado.
+ *
+ *   Isto também mantém paridade deliberada com `trafficSummaryByCode_()` no `Code.gs`
+ *   do backend, que calcula `avgDailyFlow = sum / rows` da mesma forma, sem ajuste de
+ *   cobertura. Divergir em silêncio seria pior que o viés: o painel mostraria um
+ *   número diferente do que a própria planilha reporta para o mesmo trecho. A decisão
+ *   é acompanhar o backend e declarar a limitação, não corrigir por conta própria.
+ *
+ *   `partialDaysUsed` no retorno é o sinal de alerta: quem consome este número (ex.:
+ *   um gráfico) deve mostrá-lo junto, para que "média enviesada para baixo" não vire
+ *   "média" sem qualificação nenhuma.
+ *
  * @param {Array<{flow: number, intervalsObserved: number}>} days
- * @returns {{average: number|null, daysUsed: number, partialDaysUsed: number, daysExcluded: number}}
+ * @returns {{average: number|null, daysUsed: number, partialDaysUsed: number, daysExcluded: number, completeDaysAverage: number|null}}
  */
 export function averageFlow(days) {
   if (!Array.isArray(days) || days.length === 0) {
-    return { average: null, daysUsed: 0, partialDaysUsed: 0, daysExcluded: 0 };
+    return {
+      average: null, daysUsed: 0, partialDaysUsed: 0, daysExcluded: 0, completeDaysAverage: null,
+    };
   }
 
   let sum = 0;
   let daysUsed = 0;
   let partialDaysUsed = 0;
   let daysExcluded = 0;
+  let completeSum = 0;
+  let completeDaysUsed = 0;
 
   for (const day of days) {
     const flow = day && day.flow;
@@ -90,7 +120,12 @@ export function averageFlow(days) {
     }
     sum += flow;
     daysUsed += 1;
-    if (classified.status === 'partial') partialDaysUsed += 1;
+    if (classified.status === 'partial') {
+      partialDaysUsed += 1;
+    } else {
+      completeSum += flow;
+      completeDaysUsed += 1;
+    }
   }
 
   return {
@@ -98,5 +133,9 @@ export function averageFlow(days) {
     daysUsed,
     partialDaysUsed,
     daysExcluded,
+    // Valor adicional, só sobre dias completos — sem viés de cobertura, mas sobre uma
+    // amostra menor. Não substitui `average` (que segue a paridade com o backend);
+    // existe para quem precisar de um número sem o viés descrito acima.
+    completeDaysAverage: completeDaysUsed > 0 ? completeSum / completeDaysUsed : null,
   };
 }
