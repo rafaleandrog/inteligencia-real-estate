@@ -467,3 +467,35 @@ Cada uma nasce de um erro que aconteceu de verdade.
   só para conferir. E vale para escala: `ivv_pct` em fração decimal (`0.057` = 5,7%) contra a
   escala de RA_PROFILES (`54` = 54%) — valor fora da faixa esperada é **sinalizado onde aparece**,
   nunca convertido em silêncio pelo motor (R5.7, R8.44).
+
+- **R8.58** *(2026-08-29, cobertura de tráfego, issue #64)* **Campo de terceiro certo na maioria
+  dos registros e absurdo numa minoria é mais perigoso que campo ausente — quando é derivável de
+  outra coluna confiável, derive, não leia.** `TRAFFIC_DAILY_TEST.cobertura_dia_pct` tem um bug de
+  locale/separador decimal em 9 dos 100 registros: nos dias completos `intervalos = 96` e
+  `cobertura = 1` (correto), mas num dia parcial real `intervalos_15min_observados = 90` grava
+  `cobertura_dia_pct = 9375` — deveria ser `0,9375`. Um campo ausente ou zerado falha visivelmente
+  e é pego na primeira olhada; este passa em qualquer revisão superficial porque "funciona" em 91%
+  dos casos, e só denuncia o bug quando alguém confere justamente um dos 9 dias parciais.
+  `src/traffic/coverage.js` nunca lê `cobertura_dia_pct` — deriva a cobertura sempre de
+  `intervalos_15min_observados / 96`, que é contagem bruta sem locale e confiável nos 100
+  registros. Quando o backend corrigir o locale, a troca do cálculo local pelo campo é de uma
+  linha, mas só depois do dado corrigido ser conferido registro a registro — não por confiança
+  (mesma disciplina da R8.4: guard e decisão se provam contra o cenário de falha real, não contra
+  a leitura otimista dele).
+
+- **R8.59** *(2026-08-29, review do Codex na PR #65)* **Guard que normaliza entrada fora de faixa
+  em vez de recusá-la apaga a evidência de que o dado estava corrompido.** Dois achados do Codex na
+  mesma PR são essa mesma lição por dois caminhos. **Caminho 1:** `classifyDayCoverage` usava
+  `Math.min(intervalsObserved, 96)` para "limitar" a contagem — o que significa que
+  `classifyDayCoverage(9375)` devolvia `status: 'complete'`, cobertura `1` e nenhum `qualityFlag`.
+  9375 é justamente o valor real de `cobertura_dia_pct` no exemplo corrompido da R8.58: um módulo
+  construído para **isolar** esse bug engoliria exatamente ele, em silêncio, se alguém passasse o
+  campo errado por engano. A correção é recusar (`null`/`unknown`), nunca clampar, qualquer
+  contagem fora de `[0, 96]`. **Caminho 2:** `intervalsObserved = 0` era classificado como
+  `partial` com cobertura `0`, o que fazia `averageFlow` tratar um dia sem nenhuma medição como uma
+  medição válida de valor baixo — `{flow:1000, intervalos:96}` + `{flow:0, intervalos:0}` dava
+  média `500` com `daysUsed: 2`, quando o segundo dia não tinha dado nenhum para contribuir.
+  Cobertura zero é ausência, não amostra; por isso vira `unknown` e é excluído. Em ambos os casos, o
+  bug estava em fazer o valor "caber" (por `Math.min` ou por aceitar `0` como medição) em vez de
+  perguntar se ele fazia sentido primeiro — normalizar sem validar é a forma mais barata de destruir
+  o próprio sinal que o guard existe para preservar.
