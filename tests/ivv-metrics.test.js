@@ -6,7 +6,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { readSheet } from './helpers/xlsxSheet.mjs';
+import { readXlsx } from '../tools/xlsx.mjs';
 import {
   IVV_METRICS, METRIC_BY_KEY, METRIC_KEYS, METRIC_KINDS, COLUMN_ROLES,
   IVV_METADATA_COLUMNS, LEGACY_COLUMN_ALIASES, IVV_PCT_SCALE,
@@ -31,10 +31,14 @@ test('toda coluna do dataset tem classificação declarada — nenhuma cai em SU
 });
 
 test('a semente .xlsx é lida de verdade e toda coluna dela também está classificada', () => {
-  // Interroga o arquivo versionado, não uma lista copiada à mão (R8.46).
-  const seed = readSheet(new URL('../migration/imob-intelligence-backend.xlsx', import.meta.url),
-    'IVV_MONTHLY');
-  assert.ok(seed.headers.length >= 18, 'a semente deveria ter os cabeçalhos de IVV_MONTHLY');
+  // Interroga o arquivo versionado, não uma lista copiada à mão (R8.46). O leitor é o
+  // `tools/xlsx.mjs` que tests/contract.test.js já usa — uma segunda implementação de
+  // leitura do mesmo arquivo seria uma segunda coisa para divergir.
+  const workbook = readXlsx(readFileSync(
+    new URL('../migration/imob-intelligence-backend.xlsx', import.meta.url),
+  ));
+  const seed = workbook.IVV_MONTHLY;
+  assert.ok(seed && seed.headers.length >= 18, 'a semente deveria ter os cabeçalhos de IVV_MONTHLY');
   const undeclared = seed.headers.filter((column) => !isDeclaredColumn(column));
   assert.deepEqual(
     undeclared, [],
