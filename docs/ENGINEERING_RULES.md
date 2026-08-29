@@ -468,6 +468,29 @@ Cada uma nasce de um erro que aconteceu de verdade.
   escala de RA_PROFILES (`54` = 54%) — valor fora da faixa esperada é **sinalizado onde aparece**,
   nunca convertido em silêncio pelo motor (R5.7, R8.44).
 
+- **R8.55** *(2026-08-29, revisão cruzada da PR #66, issue #68)* **Razão entre duas séries se
+  pareia por período; somar cada lado por conta própria é uma razão entre conjuntos diferentes.**
+  `weightedRatio` somava numerador e denominador independentemente, então um mês com
+  `offers_units` e sem `sales_units` entrava no denominador e ficava fora do numerador: o IVV do
+  período saía **7,9% mais baixo**, plausível, formatado e sem nenhum aviso. O erro não aparece em
+  dado completo — só quando um lado falta —, e por isso atravessou 339 testes verdes: todos os
+  cenários exercitavam meses completos. Um mês só entra na razão quando os **dois** componentes
+  existem, mês com um lado só é excluído da razão **inteira** e vai nomeado para `warnings`
+  (R5.7), e mês sem nenhum dos dois é ausência de dado, não descarte de pareamento — misturar as
+  duas coisas enche a tela de aviso e esconde o que importa. Corolário de teste: cobertura de
+  agregação precisa de um caso com **buraco assimétrico**, porque é o único que separa a razão
+  pareada da não pareada.
+- **R8.56** *(2026-08-29, revisão cruzada da PR #66, issue #68)* **Princípio declarado que só um
+  ramo do `switch` implementa é um princípio que não existe.** "Publicado vence recalculado" foi
+  escrito na PR, na regra R8.54 e no comentário do registro — e `preferYtd` só era passado para
+  `aggregateFluxo`. `aggregatePreco` e `aggregateTaxa` não recebiam o parâmetro nem o
+  consultavam, então o IVV acumulado publicado pelo backend era **sempre** descartado em favor do
+  recálculo, silenciosamente e a poucos centésimos de distância do valor certo (0,058 contra
+  0,05795…) — perto demais para alguém desconfiar olhando. Quando uma política vale para todas as
+  naturezas, ela mora numa função só, chamada por todos os ramos (`publishedYtd`), não replicada
+  em cada um: replicação por ramo é onde a política se perde sem deixar rastro. E o teste que
+  fecha isso não é "a agregação devolve um número", é **`origin` ser o esperado** — asserção sobre
+  a proveniência, não sobre o valor, porque os dois valores são plausíveis e só um é o publicado.
 - **R8.58** *(2026-08-29, cobertura de tráfego, issue #64)* **Campo de terceiro certo na maioria
   dos registros e absurdo numa minoria é mais perigoso que campo ausente — quando é derivável de
   outra coluna confiável, derive, não leia.** `TRAFFIC_DAILY_TEST.cobertura_dia_pct` tem um bug de

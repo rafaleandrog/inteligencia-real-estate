@@ -107,12 +107,6 @@ function seriesOf(prepared, key) {
   return values;
 }
 
-function sumOf(prepared, key) {
-  const values = seriesOf(prepared, key);
-  if (values.length === 0) return null;
-  return values.reduce((acc, item) => acc + item.value, 0);
-}
-
 /**
  * O período vai de janeiro até um mês do MESMO ano — única situação em que os campos
  * `*_ytd_*` do backend descrevem exatamente o recorte pedido.
@@ -175,23 +169,24 @@ function aggregateFluxo(metric, prepared, result, { preferYtd }) {
   const values = seriesOf(prepared, metric.key);
   result.monthsWithData = values.length;
 
-  if (preferYtd && metric.ytdColumn && prepared.length > 1 && isYearToDate(prepared)) {
-    const last = prepared[prepared.length - 1];
-    const ytd = numberAt(last, metric.ytdColumn);
-    if (ytd !== null) {
-      result.value = ytd;
-      result.origin = VALUE_ORIGINS.YTD_BACKEND;
-      const sum = values.reduce((acc, item) => acc + item.value, 0);
-      if (values.length === prepared.length && relativeDiff(ytd, sum) > DIVERGENCE_TOLERANCE) {
-        result.warnings.push(warning(
-          'DIVERGENCIA_YTD', metric.key,
-          `${metric.label}: acumulado do backend (${ytd}) diverge da soma dos meses (${sum}). `
-          + 'O acumulado publicado prevalece.',
-          { ytd, sum },
-        ));
-      }
-      return result;
+  const ytd = publishedYtd(metric, prepared, preferYtd);
+  if (ytd !== null) {
+    result.value = ytd;
+    result.origin = VALUE_ORIGINS.YTD_BACKEND;
+    // O acumulado publicado descreve o período inteiro por definição, inclusive um mês que
+    // não veio na aba. Reportar aqui a contagem de meses com dado local descreveria o
+    // recálculo que NÃO foi usado.
+    result.monthsWithData = prepared.length;
+    const sum = values.reduce((acc, item) => acc + item.value, 0);
+    if (values.length === prepared.length && relativeDiff(ytd, sum) > DIVERGENCE_TOLERANCE) {
+      result.warnings.push(warning(
+        'DIVERGENCIA_YTD', metric.key,
+        `${metric.label}: acumulado do backend (${ytd}) diverge da soma dos meses (${sum}). `
+        + 'O acumulado publicado prevalece.',
+        { ytd, sum },
+      ));
     }
+    return result;
   }
 
   if (values.length === 0) return result;
@@ -224,17 +219,82 @@ function aggregateEstoque(metric, prepared, result) {
   return result;
 }
 
-function weightedRatio(metric, prepared) {
-  const numerator = sumOf(prepared, metric.numerator);
-  const denominator = sumOf(prepared, metric.denominator);
-  if (numerator === null || denominator === null || denominator === 0) return null;
-  return (numerator * (metric.numeratorScale ?? 1)) / denominator;
+/**
+ * Razão ponderada do período, PAREADA POR MÊS.
+ *
+ * Somar cada lado por conta própria produz uma razão entre conjuntos de meses diferentes: um
+ * mês com `offers_units` e sem `sales_units` entrava só no denominador e empurrava a taxa para
+ * baixo. O resultado é plausível, formatado e errado — o mesmo modo de falha que este módulo
+ * existe para impedir, só que por dentro dele.
+ *
+ * Um mês só entra na razão quando os DOIS componentes existem. Mês com um lado só é excluído
+ * da razão inteira, não de metade dela, e vai nomeado para `warnings` (R5.7). Mês sem nenhum
+ * dos dois não é descarte de pareamento — é ausência de dado, e já aparece em `monthsWithData`.
+ *
+ * @returns {{value: number|null, months: number, incomplete: {month: string, missing: string}[]}}
+ */
+function pairedRatio(metric, prepared) {
+  let numerator = 0;
+  let denominator = 0;
+  let months = 0;
+  const incomplete = [];
+
+  for (const item of prepared) {
+    const num = numberAt(item, metric.numerator);
+    const den = numberAt(item, metric.denominator);
+    if (num !== null && den !== null) {
+      numerator += num;
+      denominator += den;
+      months += 1;
+      continue;
+    }
+    if (num === null && den === null) continue;
+    incomplete.push({
+      month: item.month,
+      missing: num === null ? metric.numerator : metric.denominator,
+    });
+  }
+
+  if (months === 0 || denominator === 0) return { value: null, months, incomplete };
+  return {
+    value: (numerator * (metric.numeratorScale ?? 1)) / denominator,
+    months,
+    incomplete,
+  };
 }
 
-function aggregatePreco(metric, prepared, result) {
+/** Avisa, nomeando mês e coluna, cada mês que ficou de fora da razão por pareamento incompleto. */
+function warnIncompletePairs(metric, result, incomplete) {
+  for (const item of incomplete) {
+    result.warnings.push(warning(
+      'PAREAMENTO_INCOMPLETO', metric.key,
+      `${metric.label}: ${item.month} ficou fora da razão ponderada do período porque `
+      + `\`${item.missing}\` não tem valor. Entrar com um lado só distorceria a razão sem `
+      + 'aparecer na tela.',
+      { month: item.month, missing: item.missing },
+    ));
+  }
+}
+
+/**
+ * Acumulado publicado pelo backend, quando ele descreve exatamente o período pedido.
+ *
+ * Mesma guarda para toda natureza de métrica: coluna declarada, mais de um mês, e período
+ * janeiro→mês do mesmo ano. Vale para fluxo, taxa e preço — o princípio "publicado vence
+ * recalculado" não muda com o `kind` (R8.54). `preco` só passa a usá-lo quando o registro
+ * declarar `ytdColumn` para a métrica; até lá a chamada é inerte, e é assim de propósito:
+ * o caminho já existe no dia em que a coluna for confirmada na planilha.
+ */
+function publishedYtd(metric, prepared, preferYtd) {
+  if (!preferYtd || !metric.ytdColumn || prepared.length <= 1 || !isYearToDate(prepared)) return null;
+  return numberAt(prepared[prepared.length - 1], metric.ytdColumn);
+}
+
+function aggregatePreco(metric, prepared, result, { preferYtd }) {
   const published = seriesOf(prepared, metric.key);
   result.monthsWithData = published.length;
-  const ratio = weightedRatio(metric, prepared);
+  const paired = pairedRatio(metric, prepared);
+  const ratio = paired.value;
 
   if (prepared.length === 1) {
     // Mês único: o valor publicado é o valor do mês. Não se recalcula o que o backend validou.
@@ -254,24 +314,45 @@ function aggregatePreco(metric, prepared, result) {
     if (ratio !== null) {
       result.value = ratio;
       result.origin = VALUE_ORIGINS.RAZAO_PONDERADA;
+      result.monthsWithData = paired.months;
+    }
+    warnIncompletePairs(metric, result, paired.incomplete);
+    return result;
+  }
+
+  warnIncompletePairs(metric, result, paired.incomplete);
+
+  const ytd = publishedYtd(metric, prepared, preferYtd);
+  if (ytd !== null) {
+    result.value = ytd;
+    result.origin = VALUE_ORIGINS.YTD_BACKEND;
+    result.monthsWithData = prepared.length;
+    if (ratio !== null && relativeDiff(ytd, ratio) > DIVERGENCE_TOLERANCE) {
+      result.warnings.push(warning(
+        'DIVERGENCIA_YTD', metric.key,
+        `${metric.label}: acumulado do backend (${ytd}) diverge da razão ponderada de `
+        + `${paired.months} mês(es) pareado(s) (${ratio}). O acumulado publicado prevalece.`,
+        { ytd, ratio, pairedMonths: paired.months },
+      ));
     }
     return result;
   }
 
   if (ratio === null) {
     // Sem área para ponderar não existe preço do período. Cair na média simples produziria
-    // um número plausível e metodologicamente errado — exatamente o que esta PR evita (R5.7).
+    // um número plausível e metodologicamente errado — exatamente o que este módulo evita (R5.7).
     result.warnings.push(warning(
       'SEM_PONDERADOR', metric.key,
-      `${metric.label}: sem \`${metric.denominator}\` no período; a média simples das razões `
-      + 'mensais NÃO é uma alternativa válida.',
+      `${metric.label}: nenhum mês do período tem o par \`${metric.numerator}\`/`
+      + `\`${metric.denominator}\` utilizável (ausente, ou denominador zero); a média simples `
+      + 'das razões mensais NÃO é uma alternativa válida.',
     ));
     return result;
   }
   result.value = ratio;
   result.origin = VALUE_ORIGINS.RAZAO_PONDERADA;
-  // O que sustenta o número é o ponderador, não o preço publicado: é ele que se conta.
-  result.monthsWithData = seriesOf(prepared, metric.denominator).length;
+  // O que sustenta o número são os meses PAREADOS, não os meses com preço publicado.
+  result.monthsWithData = paired.months;
   return result;
 }
 
@@ -289,7 +370,7 @@ function checkIvvScale(metric, prepared, result) {
   }
 }
 
-function aggregateTaxa(metric, prepared, result) {
+function aggregateTaxa(metric, prepared, result, { preferYtd }) {
   const published = seriesOf(prepared, metric.key);
   result.monthsWithData = published.length;
   checkIvvScale(metric, prepared, result);
@@ -301,29 +382,58 @@ function aggregateTaxa(metric, prepared, result) {
       result.origin = VALUE_ORIGINS.PUBLICADO;
       return result;
     }
-    const single = weightedRatio(metric, prepared);
-    if (single !== null) {
-      result.value = single;
+    const single = pairedRatio(metric, prepared);
+    if (single.value !== null) {
+      result.value = single.value;
       result.origin = VALUE_ORIGINS.RAZAO_PONDERADA;
+      result.monthsWithData = single.months;
     }
+    warnIncompletePairs(metric, result, single.incomplete);
     return result;
   }
 
   // Período: razão ponderada vendas/oferta — equivale à média das taxas mensais ponderada
   // pelo estoque de cada mês. A média aritmética das taxas daria peso igual a um mês de
   // 200 unidades e a um de 6.000.
-  const ratio = weightedRatio(metric, prepared);
-  if (ratio === null) {
+  const paired = pairedRatio(metric, prepared);
+  warnIncompletePairs(metric, result, paired.incomplete);
+
+  // Publicado vence recalculado, e isso não muda com o `kind`: se o backend publica o IVV
+  // acumulado do ano e o período é exatamente janeiro→mês do mesmo ano, é esse valor que a
+  // tela mostra. Recalcular por cima do publicado seria trocar um número que alguém assina
+  // por um que a tela inventou (R8.54).
+  const ytd = publishedYtd(metric, prepared, preferYtd);
+  if (ytd !== null) {
+    result.value = ytd;
+    result.origin = VALUE_ORIGINS.YTD_BACKEND;
+    result.monthsWithData = prepared.length;
+    // A comparação continua acontecendo mesmo com mês incompleto — é ela que pega o caso de
+    // uma coluna de acumulado existente e zerada, que sem confronto viraria "0%" na tela com
+    // cara de número publicado. O aviso diz sobre quantos meses a razão foi feita, para a
+    // divergência não ser lida como erro do backend quando a causa é buraco no dado.
+    if (paired.value !== null && relativeDiff(ytd, paired.value) > DIVERGENCE_TOLERANCE) {
+      result.warnings.push(warning(
+        'DIVERGENCIA_YTD', metric.key,
+        `${metric.label}: acumulado do backend (${ytd}) diverge da razão ponderada de `
+        + `${paired.months} mês(es) pareado(s) (${paired.value}). O acumulado publicado prevalece.`,
+        { ytd, ratio: paired.value, pairedMonths: paired.months },
+      ));
+    }
+    return result;
+  }
+
+  if (paired.value === null) {
     result.warnings.push(warning(
       'SEM_PONDERADOR', metric.key,
-      `${metric.label}: sem \`${metric.numerator}\`/\`${metric.denominator}\` no período; `
-      + 'a média aritmética das taxas mensais NÃO é uma alternativa válida.',
+      `${metric.label}: nenhum mês do período tem o par \`${metric.numerator}\`/`
+      + `\`${metric.denominator}\` utilizável (ausente, ou denominador zero); a média aritmética `
+      + 'das taxas mensais NÃO é uma alternativa válida.',
     ));
     return result;
   }
-  result.value = ratio;
+  result.value = paired.value;
   result.origin = VALUE_ORIGINS.RAZAO_PONDERADA;
-  result.monthsWithData = seriesOf(prepared, metric.denominator).length;
+  result.monthsWithData = paired.months;
   return result;
 }
 
@@ -365,9 +475,9 @@ export function aggregateMetric(rows, key, options = {}) {
       return aggregateEstoque(metric, prepared, result);
     case METRIC_KINDS.PRECO:
       checkPublishedAgainstDerived(metric, prepared, result);
-      return aggregatePreco(metric, prepared, result);
+      return aggregatePreco(metric, prepared, result, { preferYtd });
     case METRIC_KINDS.TAXA:
-      return aggregateTaxa(metric, prepared, result);
+      return aggregateTaxa(metric, prepared, result, { preferYtd });
     case METRIC_KINDS.NAO_SOMAVEL: {
       if (prepared.length > 1) throw refuseNaoSomavel(metric, prepared);
       const value = numberAt(prepared[0], metric.key);

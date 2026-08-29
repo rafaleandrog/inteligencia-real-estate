@@ -192,7 +192,9 @@ test('acumulado do backend prevalece, mas divergência com a soma vira aviso', (
 });
 
 test('ivv_pct do período é razão ponderada, não média aritmética das taxas', () => {
-  const result = aggregatePeriod(year2024);
+  // `preferYtd: false` isola a propriedade sob teste: com o atalho ligado, um ano civil
+  // completo devolve o acumulado publicado pelo backend — coberto no teste seguinte.
+  const result = aggregatePeriod(year2024, { preferYtd: false });
   const ivv = result.values.ivv_pct;
   const sales = year2024.reduce((acc, row) => acc + row.sales_units, 0);
   const offers = year2024.reduce((acc, row) => acc + row.offers_units, 0);
@@ -335,4 +337,165 @@ test('aggregateMetric aceita tanto linhas cruas quanto o resultado de prepareRow
     aggregateMetric(cruas, 'offers_units').value,
     aggregateMetric(preparadas, 'offers_units').value,
   );
+});
+
+// ---------------------------------------------------------------------------
+// Issue #68 — dois defeitos que passaram por 339 testes verdes.
+//
+// Nenhum dos testes acima exercitava (a) um ano civil completo com a coluna de acumulado
+// publicada, nem (b) um mês com só um lado da razão presente. Os dois defeitos produziam
+// número plausível, formatado e errado — sem exceção, sem aviso, sem sintoma.
+// ---------------------------------------------------------------------------
+
+test('#68 · ano civil completo devolve o IVV acumulado publicado, não o recálculo', () => {
+  const result = aggregateMetric(year2024, 'ivv_pct');
+  assert.equal(result.origin, VALUE_ORIGINS.YTD_BACKEND,
+    'publicado vence recalculado também para `taxa`, não só para `fluxo`');
+  assert.equal(result.value, year2024[11].ivv_ytd_pct);
+
+  // E o recálculo continua acessível, explicitamente.
+  const recalculado = aggregateMetric(year2024, 'ivv_pct', { preferYtd: false });
+  assert.equal(recalculado.origin, VALUE_ORIGINS.RAZAO_PONDERADA);
+  const sales = year2024.reduce((acc, row) => acc + row.sales_units, 0);
+  const offers = year2024.reduce((acc, row) => acc + row.offers_units, 0);
+  close(recalculado.value, sales / offers, 1e-12);
+
+  // O defeito era invisível justamente porque os dois números são próximos: 0,058 contra
+  // 0,05795…. Nada na tela denunciaria a troca.
+  assert.notEqual(result.value, recalculado.value);
+});
+
+test('#68 · janeiro→junho também usa o acumulado publicado do IVV', () => {
+  const janJun = year2024.slice(0, 6);
+  const result = aggregateMetric(janJun, 'ivv_pct');
+  assert.equal(result.origin, VALUE_ORIGINS.YTD_BACKEND);
+  assert.equal(result.value, janJun[5].ivv_ytd_pct);
+});
+
+test('#68 · período que não é acumulado do ano continua recalculando o IVV', () => {
+  for (const recorte of [year2024.slice(2, 8), rows.slice(6, 18), [year2024[0]]]) {
+    const result = aggregateMetric(recorte, 'ivv_pct');
+    assert.notEqual(result.origin, VALUE_ORIGINS.YTD_BACKEND,
+      `${recorte[0].reference_month}..${recorte[recorte.length - 1].reference_month}`);
+  }
+});
+
+test('#68 · acumulado do IVV prevalece sobre a razão, mas a divergência é sinalizada', () => {
+  const adulterado = year2024.map((row) => ({ ...row }));
+  adulterado[11].ivv_ytd_pct = 0.2; // muito acima da razão real (~0,058)
+  const result = aggregateMetric(adulterado, 'ivv_pct');
+  assert.equal(result.value, 0.2, 'o publicado nunca é substituído (R8.54)');
+  assert.equal(result.origin, VALUE_ORIGINS.YTD_BACKEND);
+  const aviso = result.warnings.find((item) => item.code === 'DIVERGENCIA_YTD');
+  assert.ok(aviso, 'divergência entre acumulado e razão precisa ser sinalizada');
+  assert.match(aviso.message, /prevalece/);
+});
+
+test('#68 · mês com só um lado da razão sai da razão INTEIRA, não de metade dela', () => {
+  // fev tem `offers_units` e não tem `sales_units`: antes, o mês entrava no denominador e
+  // ficava fora do numerador, e a taxa saía 7,9% mais baixa sem nenhum aviso.
+  const furado = year2024.map((row, index) => (
+    index === 1 ? { ...row, sales_units: null } : row
+  ));
+  const result = aggregateMetric(furado, 'ivv_pct', { preferYtd: false });
+
+  const pareados = furado.filter((row) => row.sales_units !== null && row.offers_units !== null);
+  const esperado = pareados.reduce((acc, row) => acc + row.sales_units, 0)
+    / pareados.reduce((acc, row) => acc + row.offers_units, 0);
+  close(result.value, esperado, 1e-12);
+  assert.equal(result.monthsWithData, 11, 'só os meses pareados sustentam a razão');
+
+  const aviso = result.warnings.find((item) => item.code === 'PAREAMENTO_INCOMPLETO');
+  assert.ok(aviso, 'descarte silencioso é o que a R5.7 proíbe');
+  assert.equal(aviso.detail.month, '2024-02');
+  assert.equal(aviso.detail.missing, 'sales_units');
+  assert.match(aviso.message, /2024-02/);
+  assert.match(aviso.message, /sales_units/);
+
+  // O tamanho do estrago que o pareamento evita: a razão não pareada erra ~8%.
+  const naoPareado = furado.reduce((acc, row) => acc + (row.sales_units || 0), 0)
+    / furado.reduce((acc, row) => acc + row.offers_units, 0);
+  assert.ok(Math.abs(naoPareado / esperado - 1) > 0.05,
+    'o cenário precisa produzir erro grande o bastante para o teste ter valor');
+});
+
+test('#68 · o pareamento vale para as duas métricas de preço, dos dois lados da razão', () => {
+  const casos = [
+    { metric: 'asking_price_brl_m2', faltando: 'vgo_brl_million' },
+    { metric: 'asking_price_brl_m2', faltando: 'offer_area_m2' },
+    { metric: 'sale_price_brl_m2', faltando: 'vgv_brl_million' },
+    { metric: 'sale_price_brl_m2', faltando: 'sold_area_m2' },
+  ];
+  for (const { metric, faltando } of casos) {
+    const furado = year2024.map((row, index) => (
+      index === 4 ? { ...row, [faltando]: null } : row
+    ));
+    const result = aggregateMetric(furado, metric);
+    const info = METRIC_BY_KEY[metric];
+    const pareados = furado.filter(
+      (row) => row[info.numerator] !== null && row[info.denominator] !== null,
+    );
+    const esperado = (pareados.reduce((acc, row) => acc + row[info.numerator], 0) * 1e6)
+      / pareados.reduce((acc, row) => acc + row[info.denominator], 0);
+    close(result.value, esperado, 1e-6);
+    assert.equal(result.monthsWithData, 11, `${metric} sem ${faltando}`);
+    const aviso = result.warnings.find((item) => item.code === 'PAREAMENTO_INCOMPLETO');
+    assert.ok(aviso, `${metric} sem ${faltando}: mês descartado precisa aparecer`);
+    assert.equal(aviso.detail.month, '2024-05');
+    assert.equal(aviso.detail.missing, faltando);
+  }
+});
+
+test('#68 · mês sem NENHUM dos dois lados é ausência de dado, não descarte de pareamento', () => {
+  // A distinção importa: um mês vazio já aparece em `monthsWithData`, e avisar sobre ele
+  // encheria a tela de ruído justamente onde o aviso precisa ser lido.
+  const vazio = year2024.map((row, index) => (
+    index === 3 ? { ...row, sales_units: null, offers_units: null } : row
+  ));
+  const result = aggregateMetric(vazio, 'ivv_pct', { preferYtd: false });
+  assert.equal(result.warnings.filter((item) => item.code === 'PAREAMENTO_INCOMPLETO').length, 0);
+  assert.equal(result.monthsWithData, 11);
+  assert.ok(result.value > 0);
+});
+
+test('#68 · nenhum mês pareado devolve null com aviso, nunca média simples', () => {
+  const semPar = [
+    { reference_date: '2025-01-01', sales_units: 100, ivv_pct: 0.05 },
+    { reference_date: '2025-02-01', offers_units: 5000, ivv_pct: 0.06 },
+  ];
+  const result = aggregateMetric(semPar, 'ivv_pct');
+  assert.equal(result.value, null);
+  assert.equal(result.origin, VALUE_ORIGINS.INDISPONIVEL);
+  assert.ok(result.warnings.some((item) => item.code === 'SEM_PONDERADOR'));
+  assert.equal(result.warnings.filter((item) => item.code === 'PAREAMENTO_INCOMPLETO').length, 2);
+});
+
+test('#68 · o preço ainda não tem coluna de acumulado publicada, e o caminho fica declarado', () => {
+  // `asking_price_brl_m2` não declara `ytdColumn` no registro: o atalho é inerte hoje e passa
+  // a valer no dia em que a coluna for confirmada na planilha, sem mudar o motor.
+  assert.equal(METRIC_BY_KEY.asking_price_brl_m2.ytdColumn, undefined);
+  assert.equal(aggregateMetric(year2024, 'asking_price_brl_m2').origin,
+    VALUE_ORIGINS.RAZAO_PONDERADA);
+});
+
+test('#68 · coluna de acumulado existente e ZERADA não vira "0%" com cara de publicado', () => {
+  // O caminho mais perigoso que o atalho YTD abre: a coluna existe, o backend ainda não a
+  // preencheu, e o publicado passa a valer 0. O valor continua prevalecendo — publicado é
+  // publicado — mas a divergência contra a razão precisa aparecer, senão a tela afirma que
+  // o mercado vendeu zero com toda a formatação de um número correto.
+  const zerado = year2024.map((row) => ({ ...row }));
+  zerado[11].ivv_ytd_pct = 0;
+  const result = aggregateMetric(zerado, 'ivv_pct');
+  assert.equal(result.value, 0);
+  assert.equal(result.origin, VALUE_ORIGINS.YTD_BACKEND);
+  const aviso = result.warnings.find((item) => item.code === 'DIVERGENCIA_YTD');
+  assert.ok(aviso, 'acumulado zerado precisa ser confrontado com a razão');
+  assert.equal(aviso.detail.pairedMonths, 12);
+});
+
+test('#68 · no caminho do acumulado, monthsWithData descreve o período, não o recálculo', () => {
+  const result = aggregateMetric(year2024, 'ivv_pct');
+  assert.equal(result.origin, VALUE_ORIGINS.YTD_BACKEND);
+  assert.equal(result.monthsWithData, 12);
+  assert.equal(result.monthsInPeriod, 12);
 });
