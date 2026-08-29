@@ -68,6 +68,30 @@ window.APP_CONFIG = {
   polygonsSheet: 'POLYGONS',
 
   /**
+   * Três abas do backend v2.2.0 para tráfego em rodovias-corredor (issue #62, bloco
+   * C). Opcionais pelo mesmo motivo de `raProfilesSheet`/`polygonsSheet`: falha ou
+   * ausência de qualquer uma vira aviso, nunca erro (R2.5) — o mapa e o dashboard
+   * continuam funcionando sem o painel de tráfego.
+   *
+   *   ROAD_SEGMENTS         identidade permanente do trecho — NÃO é a geometria.
+   *   ROAD_SEGMENT_ALIASES  ponte entre código externo do DER (`source_segment_code`)
+   *                         e o `road_segment_id` permanente, para que a renumeração
+   *                         de um trecho na fonte não quebre a série histórica.
+   *   TRAFFIC_DAILY_TEST    série temporal (fluxo diário por sentido). Nunca duplica
+   *                         geometria — a geometria já existe em `polygonsSheet`,
+   *                         referenciada por `ROAD_SEGMENTS.current_polygon_id`.
+   *
+   * Estado atual do piloto: 5 trechos, 5 aliases, 100 registros diários (5 trechos ×
+   * 20 dias de abril/2026). `road_sync_synced_count = 0` — nenhum trecho tem
+   * geometria sincronizada ainda, então `current_polygon_id` não resolve para nenhum
+   * `POLYGONS.polygon_id` real por enquanto; isso não impede o trecho de carregar,
+   * só não tem onde ser desenhado (ver src/traffic/link.js).
+   */
+  roadSegmentsSheet: 'ROAD_SEGMENTS',
+  roadSegmentAliasesSheet: 'ROAD_SEGMENT_ALIASES',
+  trafficDailySheet: 'TRAFFIC_DAILY_TEST',
+
+  /**
    * Abas previstas para as próximas fases.
    *
    * A tela da V1 não lê PRIMARY_OFFERS/IVV_MONTHLY/IVV_REGION, e por isso não são

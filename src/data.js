@@ -11,9 +11,16 @@
 //   { entities, meta, source, warnings, errors }
 
 import { normalizeAll, normalizeAppMeta, appMetaConflicts, normalizeRaProfiles, normalizePolygons } from './normalize.js';
+import {
+  normalizeRoadSegments, normalizeRoadSegmentAliases, normalizeTrafficDailyRecords,
+} from './traffic/normalize.js';
+import { linkTrafficDataset } from './traffic/link.js';
 
 /** Entidades obrigatórias na V1. Ausência de qualquer uma é erro. */
 export const REQUIRED_ENTITIES = ['listings', 'developments', 'anchors'];
+
+/** Formato de `traffic` quando as três abas de tráfego não carregaram — nunca `undefined`. */
+const EMPTY_TRAFFIC = { bySegmentId: new Map(), orphaned: [], unmatchedSegmentIds: [] };
 
 /** Timeout de rede. Sem isso, uma planilha inacessível deixa a página em "carregando" para sempre. */
 const FETCH_TIMEOUT_MS = 20000;
@@ -167,6 +174,7 @@ async function loadFromGviz(config) {
   const metaPromise = fetchAppMetaFromGviz(config);
   const raProfilesPromise = fetchRaProfilesFromGviz(config);
   const polygonsPromise = fetchPolygonsFromGviz(config);
+  const trafficPromise = fetchTrafficSheetsFromGviz(config);
 
   const settled = await Promise.allSettled(
     entries.map(([, sheetName]) => fetchGvizSheet(config.spreadsheetId, sheetName))
@@ -186,13 +194,16 @@ async function loadFromGviz(config) {
   const { meta, warnings } = await metaPromise;
   const { raProfiles, warnings: raProfileWarnings } = await raProfilesPromise;
   const { polygons, warnings: polygonWarnings } = await polygonsPromise;
+  const { segments, aliases, trafficRecords, warnings: trafficWarnings } = await trafficPromise;
+  const traffic = linkTrafficDataset(segments, polygons, trafficRecords, aliases);
   return {
     raw,
     errors,
-    warnings: [...warnings, ...raProfileWarnings, ...polygonWarnings],
+    warnings: [...warnings, ...raProfileWarnings, ...polygonWarnings, ...trafficWarnings],
     meta: { spreadsheetId: config.spreadsheetId, ...meta },
     raProfiles,
     polygons,
+    traffic,
   };
 }
 
@@ -220,6 +231,59 @@ async function fetchPolygonsFromGviz(config) {
       warnings: [`Contornos indisponíveis (${sheetName}): ${error?.message || error}`],
     };
   }
+}
+
+/**
+ * Lê as três abas opcionais de tráfego do backend v2.2.0 (issue #62, bloco C):
+ * `ROAD_SEGMENTS`, `ROAD_SEGMENT_ALIASES` e `TRAFFIC_DAILY_TEST`.
+ *
+ * Mesmo tratamento das outras abas opcionais: cada uma é buscada com `allSettled`
+ * independente das outras, teto de tempo curto e dedicado, e falha ou ausência vira
+ * **aviso, nunca erro** (R2.5) — o mapa e o dashboard continuam funcionando sem o
+ * painel de tráfego. Uma aba fora do ar não derruba as outras duas: por exemplo,
+ * `ROAD_SEGMENT_ALIASES` inacessível ainda deixa `ROAD_SEGMENTS` e
+ * `TRAFFIC_DAILY_TEST` utilizáveis para os registros que já trazem `road_segment_id`
+ * direto (sem precisar de alias).
+ *
+ * Devolve os três conjuntos normalizados, mas SEM ligá-los — a ligação
+ * (`linkTrafficDataset`) espera pela mesma `polygons` que as outras estratégias já
+ * buscam separadamente, e por isso acontece em `loadFromGviz`/`loadFromAppsScript`,
+ * depois que as duas promessas convergem.
+ */
+async function fetchTrafficSheetsFromGviz(config) {
+  const jobs = [
+    ['segments', config.roadSegmentsSheet],
+    ['aliases', config.roadSegmentAliasesSheet],
+    ['traffic', config.trafficDailySheet],
+  ];
+
+  const settled = await Promise.allSettled(
+    jobs.map(([, sheetName]) => (
+      sheetName
+        ? fetchGvizSheet(config.spreadsheetId, sheetName, { timeoutMs: META_FETCH_TIMEOUT_MS })
+        : Promise.resolve(null)
+    ))
+  );
+
+  const warnings = [];
+  const rowsByJob = {};
+  settled.forEach((result, i) => {
+    const [key, sheetName] = jobs[i];
+    if (!sheetName) { rowsByJob[key] = []; return; }
+    if (result.status === 'fulfilled') {
+      rowsByJob[key] = result.value || [];
+    } else {
+      rowsByJob[key] = [];
+      warnings.push(`Tráfego (${sheetName}) indisponível: ${result.reason?.message || result.reason}`);
+    }
+  });
+
+  return {
+    segments: normalizeRoadSegments(rowsByJob.segments).records,
+    aliases: normalizeRoadSegmentAliases(rowsByJob.aliases).records,
+    trafficRecords: normalizeTrafficDailyRecords(rowsByJob.traffic).records,
+    warnings,
+  };
 }
 
 /**
@@ -308,6 +372,14 @@ async function loadFromDemo(config) {
     // `polygons: []` é o conteúdo esperado do demo — ver o comentário em
     // tools/build-demo.mjs. O caminho que precisa nunca quebrar é o da camada vazia.
     polygons: normalizePolygons(payload.polygons || []),
+    // Mesmo tratamento: o demo.json de hoje não traz nenhuma das três chaves de
+    // tráfego, e o caminho que precisa funcionar é o de painel vazio, não erro.
+    traffic: linkTrafficDataset(
+      normalizeRoadSegments(payload.road_segments || []).records,
+      normalizePolygons(payload.polygons || []),
+      normalizeTrafficDailyRecords(payload.traffic_daily || []).records,
+      normalizeRoadSegmentAliases(payload.road_segment_aliases || []).records
+    ),
   };
 }
 
@@ -328,6 +400,7 @@ async function loadFromAppsScript(config) {
   // tela de carregamento para além do necessário).
   const raProfilesPromise = fetchRaProfilesFromAppsScript(config);
   const polygonsPromise = fetchPolygonsFromAppsScript(config);
+  const trafficPromise = fetchTrafficSheetsFromAppsScript(config);
 
   const settled = await Promise.allSettled(
     entries.map(async ([, sheetName]) => {
@@ -374,8 +447,52 @@ async function loadFromAppsScript(config) {
   warnings.push(...raProfileWarnings);
   const { polygons, warnings: polygonWarnings } = await polygonsPromise;
   warnings.push(...polygonWarnings);
+  const {
+    segments, aliases, trafficRecords, warnings: trafficWarnings,
+  } = await trafficPromise;
+  warnings.push(...trafficWarnings);
+  const traffic = linkTrafficDataset(segments, polygons, trafficRecords, aliases);
 
-  return { raw, errors, warnings, meta, raProfiles, polygons };
+  return {
+    raw, errors, warnings, meta, raProfiles, polygons, traffic,
+  };
+}
+
+/**
+ * As três abas de tráfego pelo endpoint read-only do Web App — mesmo contrato de
+ * `fetchTrafficSheetsFromGviz`, sem ligar ao polygons ainda (ver comentário lá).
+ */
+async function fetchTrafficSheetsFromAppsScript(config) {
+  const jobs = [
+    ['segments', config.roadSegmentsSheet],
+    ['aliases', config.roadSegmentAliasesSheet],
+    ['traffic', config.trafficDailySheet],
+  ];
+
+  const warnings = [];
+  const rowsByJob = {};
+
+  await Promise.all(jobs.map(async ([key, sheetName]) => {
+    if (!sheetName) { rowsByJob[key] = []; return; }
+    try {
+      const url = `${config.appsScriptUrl}?resource=dataset&name=${encodeURIComponent(sheetName)}`;
+      const response = await fetchWithTimeout(url, { timeoutMs: META_FETCH_TIMEOUT_MS });
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      const payload = await response.json();
+      if (payload.error) throw new Error(payload.error);
+      rowsByJob[key] = payload.rows || [];
+    } catch (error) {
+      rowsByJob[key] = [];
+      warnings.push(`Tráfego (${sheetName}) indisponível: ${error?.message || error}`);
+    }
+  }));
+
+  return {
+    segments: normalizeRoadSegments(rowsByJob.segments).records,
+    aliases: normalizeRoadSegmentAliases(rowsByJob.aliases).records,
+    trafficRecords: normalizeTrafficDailyRecords(rowsByJob.traffic).records,
+    warnings,
+  };
 }
 
 /** POLYGONS pelo endpoint read-only do Web App — mesmo contrato de `fetchPolygonsFromGviz`. */
@@ -455,6 +572,7 @@ export async function loadDataset(config) {
       meta: {},
       raProfiles: {},
       polygons: [],
+      traffic: EMPTY_TRAFFIC,
       source: strategy,
       warnings,
       errors: [error?.message || String(error)],
@@ -492,6 +610,7 @@ export async function loadDataset(config) {
     meta: result.meta || {},
     raProfiles: result.raProfiles || {},
     polygons: result.polygons || [],
+    traffic: result.traffic || EMPTY_TRAFFIC,
     source: strategy,
     warnings,
     errors,
