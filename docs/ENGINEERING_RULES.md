@@ -457,3 +457,20 @@ Cada uma nasce de um erro que aconteceu de verdade.
   linha, mas só depois do dado corrigido ser conferido registro a registro — não por confiança
   (mesma disciplina da R8.4: guard e decisão se provam contra o cenário de falha real, não contra
   a leitura otimista dele).
+
+- **R8.59** *(2026-08-29, review do Codex na PR #65)* **Guard que normaliza entrada fora de faixa
+  em vez de recusá-la apaga a evidência de que o dado estava corrompido.** Dois achados do Codex na
+  mesma PR são essa mesma lição por dois caminhos. **Caminho 1:** `classifyDayCoverage` usava
+  `Math.min(intervalsObserved, 96)` para "limitar" a contagem — o que significa que
+  `classifyDayCoverage(9375)` devolvia `status: 'complete'`, cobertura `1` e nenhum `qualityFlag`.
+  9375 é justamente o valor real de `cobertura_dia_pct` no exemplo corrompido da R8.58: um módulo
+  construído para **isolar** esse bug engoliria exatamente ele, em silêncio, se alguém passasse o
+  campo errado por engano. A correção é recusar (`null`/`unknown`), nunca clampar, qualquer
+  contagem fora de `[0, 96]`. **Caminho 2:** `intervalsObserved = 0` era classificado como
+  `partial` com cobertura `0`, o que fazia `averageFlow` tratar um dia sem nenhuma medição como uma
+  medição válida de valor baixo — `{flow:1000, intervalos:96}` + `{flow:0, intervalos:0}` dava
+  média `500` com `daysUsed: 2`, quando o segundo dia não tinha dado nenhum para contribuir.
+  Cobertura zero é ausência, não amostra; por isso vira `unknown` e é excluído. Em ambos os casos, o
+  bug estava em fazer o valor "caber" (por `Math.min` ou por aceitar `0` como medição) em vez de
+  perguntar se ele fazia sentido primeiro — normalizar sem validar é a forma mais barata de destruir
+  o próprio sinal que o guard existe para preservar.

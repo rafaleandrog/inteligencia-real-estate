@@ -32,30 +32,46 @@ export const INTERVALS_PER_DAY = 96;
 /**
  * Cobertura real do dia, derivada de `intervalos_15min_observados`.
  * Ignora `cobertura_dia_pct` — ver nota de topo do arquivo.
+ *
+ * Contagem fora de `[0, 96]` é dado corrompido, não um valor "quase certo" a ser
+ * arredondado para dentro da faixa — ver R8.59. Passar `9375` aqui por engano (o
+ * próprio `cobertura_dia_pct` defeituoso, no lugar de `intervalos_15min_observados`)
+ * tinha, antes desta função existir, todo o potencial de virar silenciosamente um dia
+ * "completo" se o valor fosse apenas limitado a 96 (`Math.min`) em vez de recusado —
+ * exatamente o bug que este módulo existe para isolar. Por isso o valor acima do
+ * máximo devolve `null` (inválido), nunca um número clampado.
  * @param {number} intervalsObserved
  * @returns {number|null} fração entre 0 e 1, ou null se o valor for inválido
  */
 export function dailyCoverage(intervalsObserved) {
-  if (!Number.isFinite(intervalsObserved) || intervalsObserved < 0) return null;
-  return Math.min(intervalsObserved, INTERVALS_PER_DAY) / INTERVALS_PER_DAY;
+  if (!Number.isFinite(intervalsObserved)) return null;
+  if (intervalsObserved < 0 || intervalsObserved > INTERVALS_PER_DAY) return null;
+  return intervalsObserved / INTERVALS_PER_DAY;
 }
 
 /**
- * Classifica um dia de tráfego como completo ou parcial, a partir da
+ * Classifica um dia de tráfego como completo, parcial ou desconhecido, a partir da
  * contagem bruta de intervalos observados. Nunca lê `cobertura_dia_pct`.
+ *
+ * Dois casos viram `unknown` (R8.59, guard que normaliza dado corrompido apaga a
+ * evidência de que ele estava corrompido):
+ *   - contagem fora de `[0, 96]` (dado corrompido — `dailyCoverage` já recusa);
+ *   - contagem exatamente `0`: zero intervalos observados é **ausência de medição**,
+ *     não um dia parcial legítimo com cobertura 0%. Um dia assim não tem fluxo
+ *     confiável nenhum para relatar, e por isso `averageFlow` precisa excluí-lo — se
+ *     ficasse marcado `partial`, entraria na média como se fosse uma medição válida.
  * @param {number} intervalsObserved
  * @returns {{status: 'complete'|'partial'|'unknown', coverage: number|null, intervalsObserved: number|null, qualityFlag: string|null}}
  */
 export function classifyDayCoverage(intervalsObserved) {
   const coverage = dailyCoverage(intervalsObserved);
-  if (coverage === null) {
+  if (coverage === null || intervalsObserved === 0) {
     return { status: 'unknown', coverage: null, intervalsObserved: null, qualityFlag: 'no_coverage_data' };
   }
-  const observed = Math.min(intervalsObserved, INTERVALS_PER_DAY);
-  if (observed >= INTERVALS_PER_DAY) {
-    return { status: 'complete', coverage, intervalsObserved: observed, qualityFlag: null };
+  if (intervalsObserved >= INTERVALS_PER_DAY) {
+    return { status: 'complete', coverage, intervalsObserved, qualityFlag: null };
   }
-  return { status: 'partial', coverage, intervalsObserved: observed, qualityFlag: 'partial_intervals' };
+  return { status: 'partial', coverage, intervalsObserved, qualityFlag: 'partial_intervals' };
 }
 
 /**

@@ -55,11 +55,28 @@ test('intervalos inválidos ou ausentes não viram cobertura zero', () => {
   }
 });
 
-test('intervalos acima do máximo são limitados a 96, não geram cobertura > 1', () => {
-  assert.equal(dailyCoverage(120), 1);
-  const day = classifyDayCoverage(120);
-  assert.equal(day.status, 'complete');
-  assert.equal(day.intervalsObserved, 96);
+test('intervalos acima do máximo são dado corrompido — recusados, nunca clampados (R8.59)', () => {
+  // Achado real do Codex na PR #65: Math.min(120, 96) transformaria contagem inválida
+  // em dia "completo" silencioso. O teste crítico é o valor 9375 — o próprio
+  // cobertura_dia_pct defeituoso (ver DECISÃO no topo do arquivo), passado por engano
+  // no lugar de intervalos_15min_observados. Se isso virasse "completo" em vez de
+  // "unknown", o módulo construído para isolar o bug de locale o engoliria de volta.
+  for (const corrupted of [97, 120, 9375]) {
+    assert.equal(dailyCoverage(corrupted), null, `${corrupted} não é uma contagem válida de intervalos`);
+    const day = classifyDayCoverage(corrupted);
+    assert.equal(day.status, 'unknown', `${corrupted} deve virar unknown, nunca "complete" por clamping`);
+    assert.equal(day.qualityFlag, 'no_coverage_data');
+  }
+});
+
+test('zero intervalos observados é ausência de medição, não dia parcial com cobertura 0%', () => {
+  // Achado real do Codex: {flow:1000, intervalsObserved:96} + {flow:0, intervalsObserved:0}
+  // não pode virar média 500 com daysUsed:2 — o segundo dia não tem medição nenhuma.
+  assert.equal(dailyCoverage(0), 0, 'matematicamente 0/96 = 0, mas classifyDayCoverage não trata isso como medição válida');
+  const day = classifyDayCoverage(0);
+  assert.equal(day.status, 'unknown');
+  assert.equal(day.coverage, null);
+  assert.equal(day.qualityFlag, 'no_coverage_data');
 });
 
 test('averageFlow declara quantos dias usou e quantos eram parciais', () => {
@@ -91,6 +108,18 @@ test('averageFlow com lista vazia devolve null, não zero', () => {
   const result = averageFlow([]);
   assert.equal(result.average, null);
   assert.equal(result.daysUsed, 0);
+});
+
+test('averageFlow: dia com zero intervalos não entra como medição válida (achado real do Codex)', () => {
+  // {flow:1000, intervalsObserved:96} + {flow:0, intervalsObserved:0} não pode dar
+  // média 500 com daysUsed:2 — o segundo dia não tem medição nenhuma, é ausência.
+  const result = averageFlow([
+    { flow: 1000, intervalsObserved: 96 },
+    { flow: 0, intervalsObserved: 0 },
+  ]);
+  assert.equal(result.average, 1000, 'dia sem nenhum intervalo observado não derruba a média para 500');
+  assert.equal(result.daysUsed, 1);
+  assert.equal(result.daysExcluded, 1);
 });
 
 test('averageFlow: dia parcial puxa a média para baixo, e partialDaysUsed denuncia', () => {
