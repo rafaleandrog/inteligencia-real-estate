@@ -170,6 +170,9 @@ export function createAppsScriptSandbox({ sheets = {}, scriptProperties = {}, go
     },
     Session: {
       getActiveUser: () => ({ getEmail: () => googleEmail || '' }),
+      // O Code.gs sempre usa `Session.getScriptTimeZone() || 'America/Sao_Paulo'`; devolver
+      // 'UTC' mantém `formatDate` acima determinístico.
+      getScriptTimeZone: () => 'UTC',
     },
     Utilities: {
       // randomUUID() já é padrão no runtime do Node usado pelos testes; getUuid() do
@@ -188,9 +191,44 @@ export function createAppsScriptSandbox({ sheets = {}, scriptProperties = {}, go
         return [...hash].map((byte) => (byte > 127 ? byte - 256 : byte));
       },
       unzip: () => { throw new Error('unzip() exige um blob real; nenhum teste exercita KMZ'); },
+      // As duas sincronizações da v2.2.x montam um KMZ no Drive. Blob e zip reais não
+      // existem aqui, e um mock complacente faria um teste "passar" exercitando nada —
+      // então lançam, e quem quiser testar a montagem do KMZ precisa mockar de propósito.
+      newBlob: () => { throw new Error('newBlob() exige um blob real; nenhum teste exercita KMZ'); },
+      zip: () => { throw new Error('zip() exige blobs reais; nenhum teste exercita KMZ'); },
+      /**
+       * `formatDate` é puro (nem rede, nem Drive), e `sheetDateText_()` depende dele para
+       * converter a célula Date de TRAFFIC_DAILY_TEST em `yyyy-MM-dd`. Implementado de
+       * verdade, com os tokens que o Code.gs usa, em UTC — o fuso do sandbox é fixo, e é
+       * a data que o teste afirma, não o fuso.
+       */
+      formatDate: (date, _timeZone, format) => {
+        const pad = (n, width = 2) => String(n).padStart(width, '0');
+        const parts = {
+          yyyy: String(date.getUTCFullYear()),
+          MM: pad(date.getUTCMonth() + 1),
+          dd: pad(date.getUTCDate()),
+          HH: pad(date.getUTCHours()),
+          mm: pad(date.getUTCMinutes()),
+          ss: pad(date.getUTCSeconds()),
+        };
+        return String(format).replace(/yyyy|MM|dd|HH|mm|ss/g, (token) => parts[token]);
+      },
+    },
+    /**
+     * As duas sincronizações da v2.2.x são as PRIMEIRAS funções deste arquivo que fazem
+     * rede. O mock lança em vez de devolver payload vazio: um teste que chegasse aqui
+     * sem querer passaria a depender de um GeoPortal simulado silenciosamente, e um dia
+     * o mesmo teste rodaria contra a rede de verdade sem ninguém perceber.
+     */
+    UrlFetchApp: {
+      fetch: (url) => {
+        throw new Error(`UrlFetchApp.fetch() não é permitido em teste (tentou ${url})`);
+      },
     },
     DriveApp: {
       getFileById: () => { throw new Error('DriveApp não é exercitado pelos testes'); },
+      createFile: () => { throw new Error('DriveApp.createFile() não é permitido em teste'); },
     },
     XmlService: {
       parse: () => { throw new Error('XmlService não é exercitado pelos testes'); },

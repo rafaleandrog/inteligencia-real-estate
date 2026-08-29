@@ -19,6 +19,22 @@
  *     própria requisição (R8.17). Sem isso, a primeira escrita administrativa depois
  *     de uma migração devolvia VERSION_CONFLICT mesmo sem ninguém ter tocado no dado.
  *
+ * Versão 2.0.2:
+ *   - provisionamento de cabeçalho restrito a PROVISIONABLE_COLUMNS (R8.40);
+ *   - coordenada nula/vazia deixa de virar 0 e de ser persistida como geografia real;
+ *   - token administrativo já exposto em APP_META é REVOGADO, nunca repromovido (R8.41);
+ *   - `applyClassificationDerivations_()` deriva group/segment/sales_stage na escrita.
+ *
+ * Versão 2.2.1 (fusão de três vias — issue #50):
+ *   - traz da v2.2.0 o contrato POLYGONS A:AP (42 colunas), RA_PROFILES expandida, as
+ *     abas ROAD_SEGMENTS / ROAD_SEGMENT_ALIASES / TRAFFIC_DAILY_TEST, a sincronização
+ *     das Regiões Administrativas (GeoPortal/SEDUH) e a sincronização rodoviária DER/DF;
+ *   - PRESERVA as quatro correções da v2.0.2, que a v2.2.0 regredia por ter sido
+ *     construída a partir da v2.0.0 (R8.48). Toda chamada de `ensureHeaders_()` usa a
+ *     assinatura de três argumentos; `checkVersionConflict_()` continua recebendo
+ *     `baselineVersion`; `isNumericPosition_()` continua guardando o anel de coordenadas;
+ *     `migrateLegacyAdminToken_()` continua revogando o token legado.
+ *
  * Instalação:
  *   1. Extensões → Apps Script na planilha
  *   2. Cole este arquivo
@@ -33,7 +49,7 @@
 // Constantes
 // ---------------------------------------------------------------------------
 
-var APP_VERSION = '2.0.2';
+var APP_VERSION = '2.2.1';
 
 /**
  * Protocolo da API de escrita que este script fala, exposto em `health_()`.
@@ -51,23 +67,24 @@ var WRITE_API_PROTOCOL = 'token-direct-v1';
 /** Abas obrigatórias da V1. Ausência é erro crítico. */
 var REQUIRED_SHEETS = ['LISTINGS', 'DEVELOPMENTS', 'ANCHORS'];
 
-/**
- * Abas previstas para as próximas fases. Ausência é aviso, nunca erro.
- *
- * ROAD_SEGMENTS/ROAD_SEGMENT_ALIASES/TRAFFIC_DAILY_TEST já existem na v2.2.0 real (a
- * que roda na planilha). Este arquivo do repositório estava desatualizado (v2.0.2) e
- * não as listava — com dataSource: 'appsscript', dataset_() as recusava e
- * loadDataset() reportava sucesso com `traffic` sempre vazio, sem erro nenhum (achado
- * do Codex na PR #67). A v2.2.1 completa (issue #50) vai substituir este arquivo
- * inteiro; esta é só a linha necessária para o allowlist bater com o backend real.
- */
+/** Abas previstas para as próximas fases. Ausência é aviso, nunca erro. */
 var OPTIONAL_SHEETS = [
   'PRIMARY_OFFERS', 'IVV_MONTHLY', 'IVV_REGION', 'RA_PROFILES', 'POLYGONS',
-  'ROAD_SEGMENTS', 'ROAD_SEGMENT_ALIASES', 'TRAFFIC_DAILY_TEST',
+  'ROAD_SEGMENTS', 'ROAD_SEGMENT_ALIASES', 'TRAFFIC_DAILY_TEST'
 ];
 
-/** Abas novas que este script cria de forma aditiva quando ainda não existem. */
-var MANAGED_EXTENSION_SHEETS = ['RA_PROFILES', 'POLYGONS'];
+/**
+ * Abas novas que este script cria de forma aditiva quando ainda não existem.
+ *
+ * Aba gerenciada nasce inteira daqui, então `ensureHeaders_()` recebe `null` como
+ * `allowedToCreate` para ela: não existe "coluna que o operador apagou por engano" numa
+ * aba que nenhuma pessoa provisionou à mão. É por isso que as 42 colunas de POLYGONS e as
+ * três abas rodoviárias NÃO precisam de entrada em `PROVISIONABLE_COLUMNS` — a restrição
+ * de R8.40 vale para as abas obrigatórias, que vieram da semente de migração.
+ */
+var MANAGED_EXTENSION_SHEETS = [
+  'RA_PROFILES', 'POLYGONS', 'ROAD_SEGMENTS', 'ROAD_SEGMENT_ALIASES', 'TRAFFIC_DAILY_TEST'
+];
 
 /**
  * Colunas que este script pode CRIAR numa aba obrigatória que já existe.
@@ -127,7 +144,10 @@ var ID_FIELD = {
   ANCHORS: 'place_id',
   PRIMARY_OFFERS: 'observation_id',
   RA_PROFILES: 'ra_geo_id',
-  POLYGONS: 'polygon_id'
+  POLYGONS: 'polygon_id',
+  ROAD_SEGMENTS: 'road_segment_id',
+  ROAD_SEGMENT_ALIASES: 'alias_id',
+  TRAFFIC_DAILY_TEST: 'traffic_daily_id'
 };
 
 /** Colunas de coordenada por aba. */
@@ -176,11 +196,49 @@ var REQUIRED_HEADERS = {
   RA_PROFILES: [
     'ra_geo_id', 'ra_name', 'population_total', 'population_density_km2',
     'income_per_capita_brl', 'population_age_0_14_pct', 'population_age_15_29_pct',
-    'population_age_30_44_pct', 'population_age_45_59_pct', 'population_age_60_plus_pct'
+    'population_age_30_44_pct', 'population_age_45_59_pct', 'population_age_60_plus_pct',
+    'ra_code', 'ra_number', 'area_km2', 'average_age', 'female_pct', 'male_pct',
+    'households_total', 'avg_household_size', 'dominant_dwelling_type',
+    'dominant_dwelling_type_pct', 'dominant_tenure', 'dominant_tenure_pct',
+    'deed_registered_pct', 'profile_reference_year', 'profile_status', 'profile_source_url',
+    'geometry_source_url', 'created_after_pdad_2024', 'predecessor_ra', 'legal_reference',
+    'quality_flag', 'notes'
   ],
+  /**
+   * POLYGONS A:AP — 42 colunas, em cinco grupos: identidade da entidade, camada,
+   * cartografia, procedência e geometria. Ver docs/DATA_CONTRACT.md.
+   *
+   * `source_geometry_geojson` guarda a geometria ORIGINAL (que pode ser LineString,
+   * no caso de rodovia) e nunca é desenhada: quem vai ao mapa é sempre
+   * `geometry_geojson`, já validada como Polygon/MultiPolygon.
+   */
   POLYGONS: [
     'polygon_id', 'name', 'category', 'geometry_geojson', 'color', 'description',
-    'properties_json', 'source_url', 'source_file', 'imported_at', 'status'
+    'properties_json', 'source_url', 'source_file', 'imported_at', 'status',
+    'layer_group', 'subcategory', 'ra_geo_id', 'centroid_latitude', 'centroid_longitude',
+    'area_m2', 'area_ha', 'perimeter_m', 'fill_color', 'stroke_color', 'fill_opacity',
+    'stroke_width', 'z_index', 'source_page_verified_at', 'confidence_flag', 'quality_flag',
+    'entity_type', 'entity_id', 'geometry_type', 'geometry_role', 'source_geometry_type',
+    'display_buffer_m', 'source_system', 'source_layer_name', 'source_feature_id', 'source_crs',
+    'geometry_hash', 'geometry_valid_from', 'geometry_valid_to', 'last_synced_at',
+    'source_geometry_geojson'
+  ],
+  ROAD_SEGMENTS: [
+    'road_segment_id', 'current_polygon_id', 'source_segment_code', 'road_name', 'road_code',
+    'segment_type', 'jurisdiction', 'administration', 'length_m', 'source_system',
+    'source_layer_name', 'source_feature_id', 'source_crs', 'valid_from', 'valid_to',
+    'is_current', 'properties_json', 'confidence_flag', 'quality_flag', 'last_synced_at'
+  ],
+  ROAD_SEGMENT_ALIASES: [
+    'alias_id', 'road_segment_id', 'source_segment_code', 'source_system', 'valid_from', 'valid_to',
+    'match_method', 'match_confidence', 'source_file', 'notes', 'imported_at'
+  ],
+  TRAFFIC_DAILY_TEST: [
+    'traffic_daily_id', 'trecho', 'sentido', 'dia', 'fluxo_total', 'carro', 'moto', 'onibus',
+    'caminhao', 'medio', 'indefinido', 'intervalos_15min_observados', 'cobertura_dia_pct',
+    'pico_15min_fluxo', 'pico_15min_intervalo', 'soma_classes', 'divergencia_total_classes',
+    'quality_flag', 'imported_at', 'road_segment_id', 'source_file', 'source_total_policy',
+    'traffic_schema_version', 'profile_total_15m_json', 'profile_classes_15m_json'
   ]
 };
 
@@ -197,6 +255,25 @@ var LOCK_TIMEOUT_MS = 30000;
 var MAX_CELL_TEXT_LENGTH = 49000;
 var MAX_KML_BYTES = 10 * 1024 * 1024;
 var MAX_IMPORTED_POLYGONS = 1000;
+
+/** Teto de códigos de trecho por sincronização rodoviária — uma chamada HTTP por código. */
+var MAX_ROAD_SYNC_CODES = 200;
+
+/** Buffer visual padrão, por lado, do corredor rodoviário derivado do eixo oficial. */
+var DEFAULT_ROAD_DISPLAY_BUFFER_M = 8;
+
+/** Camada oficial do eixo do trecho rodoviário (DER/DF), via ArcGIS REST. */
+var DER_ROAD_LAYER_URL = 'https://www.geoservicos.ide.df.gov.br/arcgis/rest/services/Publico/SISTEMA_VIARIO/MapServer/9';
+
+/** Camada oficial dos limites das Regiões Administrativas (GeoPortal/SEDUH). */
+var RA_BOUNDARY_LAYER_URL = 'https://www.geoservicos.ide.df.gov.br/arcgis/rest/services/Publico/LIMITES/FeatureServer/1';
+
+/**
+ * Teto de caracteres da geometria de uma RA numa célula. Fica abaixo de
+ * MAX_CELL_TEXT_LENGTH de propósito: acima disso a sincronização pede ao GeoPortal uma
+ * geometria simplificada em vez de truncar — geometria truncada seria polígono inválido.
+ */
+var RA_SYNC_MAX_CELL_CHARS = 48000;
 
 // ---------------------------------------------------------------------------
 // Escrita (admin) — R4.9
@@ -222,9 +299,22 @@ var WRITE_ALLOWLIST = {
   ANCHORS: REQUIRED_HEADERS.ANCHORS.filter(function (f) {
     return f !== 'place_id';
   }),
-  POLYGONS: REQUIRED_HEADERS.POLYGONS.filter(function (f) {
-    return ['polygon_id', 'source_file', 'imported_at'].indexOf(f) === -1;
-  })
+  /**
+   * POLYGONS não deriva de REQUIRED_HEADERS por subtração desde a v2.2.1: das 42 colunas,
+   * onze são calculadas ou carimbadas pelo servidor (métricas geométricas, hash,
+   * procedência do sync) e aceitar qualquer uma como entrada deixaria o cliente
+   * contradizer a geometria que ele mesmo enviou. A lista é explícita para que
+   * acrescentar coluna ao contrato NÃO a torne gravável por acidente.
+   */
+  POLYGONS: [
+    'name', 'category', 'geometry_geojson', 'color', 'description', 'properties_json',
+    'source_url', 'status', 'layer_group', 'subcategory', 'ra_geo_id', 'fill_color',
+    'stroke_color', 'fill_opacity', 'stroke_width', 'z_index', 'confidence_flag',
+    'quality_flag', 'entity_type', 'entity_id', 'geometry_type', 'geometry_role',
+    'source_geometry_type', 'display_buffer_m', 'source_system', 'source_layer_name',
+    'source_feature_id', 'source_crs', 'geometry_valid_from', 'geometry_valid_to',
+    'source_geometry_geojson'
+  ]
 };
 
 /** Campos que docs/DATA_CONTRACT.md marca como obrigatórios (Obrig. = sim), por aba. */
@@ -306,7 +396,35 @@ var FIELD_SCHEMA = {
   POLYGONS: {
     name: 'text', category: 'text', geometry_geojson: 'geojson', color: 'text',
     description: 'text', properties_json: 'json_object', source_url: 'url',
-    status: 'enum:polygon_status'
+    status: 'enum:polygon_status', layer_group: 'text', subcategory: 'text', ra_geo_id: 'text',
+    fill_color: 'text', stroke_color: 'text', fill_opacity: 'number', stroke_width: 'number',
+    z_index: 'number', confidence_flag: 'text', quality_flag: 'text', entity_type: 'text',
+    entity_id: 'text', geometry_type: 'text', geometry_role: 'text', source_geometry_type: 'text',
+    display_buffer_m: 'number', source_system: 'text', source_layer_name: 'text',
+    source_feature_id: 'text', source_crs: 'text', geometry_valid_from: 'text',
+    geometry_valid_to: 'text', source_geometry_geojson: 'geojson_source'
+  },
+  ROAD_SEGMENTS: {
+    road_segment_id: 'text', current_polygon_id: 'text', source_segment_code: 'text',
+    road_name: 'text', road_code: 'text', segment_type: 'text', jurisdiction: 'text',
+    administration: 'text', length_m: 'number', source_system: 'text', source_layer_name: 'text',
+    source_feature_id: 'text', source_crs: 'text', valid_from: 'text', valid_to: 'text',
+    is_current: 'bool', properties_json: 'json_object', confidence_flag: 'text',
+    quality_flag: 'text', last_synced_at: 'text'
+  },
+  ROAD_SEGMENT_ALIASES: {
+    alias_id: 'text', road_segment_id: 'text', source_segment_code: 'text', source_system: 'text',
+    valid_from: 'text', valid_to: 'text', match_method: 'text', match_confidence: 'text',
+    source_file: 'text', notes: 'text', imported_at: 'text'
+  },
+  TRAFFIC_DAILY_TEST: {
+    traffic_daily_id: 'text', trecho: 'text', sentido: 'text', dia: 'date', fluxo_total: 'number',
+    carro: 'number', moto: 'number', onibus: 'number', caminhao: 'number', medio: 'number',
+    indefinido: 'number', intervalos_15min_observados: 'int', cobertura_dia_pct: 'number',
+    pico_15min_fluxo: 'number', pico_15min_intervalo: 'text', soma_classes: 'number',
+    divergencia_total_classes: 'number', quality_flag: 'text', imported_at: 'text',
+    road_segment_id: 'text', source_file: 'text', source_total_policy: 'text',
+    traffic_schema_version: 'text'
   }
 };
 
@@ -332,6 +450,8 @@ function onOpen() {
     .addItem('Validar dados agora', 'validateAll')
     .addItem('Recalcular campos derivados', 'recalculateDerivedFields')
     .addItem('Importar polígonos de KML/KMZ', 'importPolygonsFromDriveFile_UI')
+    .addItem('Sincronizar Regiões Administrativas', 'syncAdministrativeRegions_UI')
+    .addItem('Sincronizar trechos rodoviários DER', 'syncRoadSegmentsFromTraffic_UI')
     .addItem('Instalar gatilhos', 'installTriggers')
     .addItem('Atualizar metadados', 'refreshMeta')
     .addItem('Configurar / trocar token de administração', 'configureAdminToken')
@@ -474,6 +594,52 @@ function isISODate_(value) {
     date.getUTCDate() === parts[2];
 }
 
+/** SHA-256 de um valor, em hex minúsculo. */
+function sha256Hex_(value) {
+  var digest = Utilities.computeDigest(
+    Utilities.DigestAlgorithm.SHA_256,
+    String(value === null || value === undefined ? '' : value),
+    Utilities.Charset.UTF_8
+  );
+  // computeDigest devolve bytes COM sinal (-128..127); reconverter para 0..255 antes do hex.
+  return digest.map(function (byte) {
+    var n = byte < 0 ? byte + 256 : byte;
+    return ('0' + n.toString(16)).slice(-2);
+  }).join('');
+}
+
+/**
+ * Texto de terceiro reduzido a texto puro antes de virar célula.
+ *
+ * As duas sincronizações trazem strings de APIs externas (nome de RA, nome de rodovia,
+ * jurisdição) direto para a planilha, que é lida pelo navegador de qualquer visitante.
+ * Marcação vinda de fora não tem por que sobreviver até o cliente — a defesa no render
+ * continua valendo, esta é a segunda camada, na entrada.
+ */
+function sanitizePlainText_(value) {
+  var text = toText_(value);
+  if (!text) return '';
+  text = text.replace(/<script[\s\S]*?<\/script>/gi, ' ')
+    .replace(/<style[\s\S]*?<\/style>/gi, ' ')
+    .replace(/<iframe[\s\S]*?<\/iframe>/gi, ' ')
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/&nbsp;/gi, ' ')
+    .replace(/&amp;/gi, '&')
+    .replace(/&lt;/gi, '<')
+    .replace(/&gt;/gi, '>')
+    .replace(/&quot;/gi, '"')
+    .replace(/&#39;/gi, "'")
+    .replace(/\s+/g, ' ')
+    .trim();
+  return text.slice(0, MAX_CELL_TEXT_LENGTH);
+}
+
+/** `ROADSEG_` + código do trecho normalizado. Devolve '' quando não há código. */
+function canonicalRoadSegmentId_(code) {
+  var clean = toText_(code).toUpperCase().replace(/[^A-Z0-9]+/g, '_').replace(/^_+|_+$/g, '');
+  return clean ? 'ROADSEG_' + clean : '';
+}
+
 /** Chaves cujo valor nunca pode sair de Script Properties para a planilha pública. */
 function isSecretMetaKey_(key) {
   var normalized = normalizeSlug_(key);
@@ -539,11 +705,18 @@ function setupProject() {
     if (!props_().getProperty('DATASET_VERSION')) props_().setProperty('DATASET_VERSION', '1');
     props_().setProperty('APP_VERSION', APP_VERSION);
 
+    // Publica em APP_META o estado do schema de POLYGONS, para o cliente e o operador
+    // saberem se a planilha já roda o contrato de 42 colunas ou ainda o de 11.
+    setMeta_('polygon_schema_version', '2.1');
+    setMeta_('pending_appscript_polygon_schema_sync', 'false');
+    setMeta_('appscript_target_version', APP_VERSION);
+    if (!getMeta_('road_sync_status')) setMeta_('road_sync_status', 'ready_manual_sync');
+
     var tokenMigration = migrateLegacyAdminToken_();
     var developmentUpdates = populateDevelopmentSalesStage_();
     var anchorUpdates = populateAnchorClassification_();
     var datasetChanged = addedHeaders.some(function (item) {
-      return /^(LISTINGS|DEVELOPMENTS|ANCHORS|RA_PROFILES|POLYGONS):/.test(item);
+      return /^(LISTINGS|DEVELOPMENTS|ANCHORS|RA_PROFILES|POLYGONS|ROAD_SEGMENTS|ROAD_SEGMENT_ALIASES|TRAFFIC_DAILY_TEST):/.test(item);
     }) || developmentUpdates > 0 || anchorUpdates > 0;
 
     if (datasetChanged) {
@@ -1308,6 +1481,17 @@ function setMeta_(key, value) {
   sheet.getRange(sheet.getLastRow(), 1, 1, 3).setNumberFormat('@');
 }
 
+/** Lê uma chave de APP_META. Devolve '' quando ausente. */
+function getMeta_(key) {
+  var sheet = ss_().getSheetByName(META_SHEET);
+  if (!sheet) return '';
+  var rows = dataRowsOf_(sheet);
+  for (var i = 0; i < rows.length; i++) {
+    if (String(rows[i][0]).trim() === key) return toText_(rows[i][1]);
+  }
+  return '';
+}
+
 /** Atualiza os metadados derivados do estado atual da planilha. */
 function refreshMeta() {
   var book = ss_();
@@ -1321,7 +1505,10 @@ function refreshMeta() {
     DEVELOPMENTS: 'rows_developments',
     ANCHORS: 'rows_anchors',
     RA_PROFILES: 'rows_ra_profiles',
-    POLYGONS: 'rows_polygons'
+    POLYGONS: 'rows_polygons',
+    ROAD_SEGMENTS: 'rows_road_segments',
+    ROAD_SEGMENT_ALIASES: 'rows_road_segment_aliases',
+    TRAFFIC_DAILY_TEST: 'rows_traffic_daily_test'
   };
 
   Object.keys(countKey).forEach(function (name) {
@@ -1550,16 +1737,7 @@ function propertyByAliases_(properties, aliases) {
 
 function stablePolygonId_(fileId, placemark) {
   var seed = fileId + '|' + placemark.sourceIndex + '|' + normalizeSlug_(placemark.name);
-  var digest = Utilities.computeDigest(
-    Utilities.DigestAlgorithm.SHA_256,
-    seed,
-    Utilities.Charset.UTF_8
-  );
-  var hex = digest.map(function (byte) {
-    var value = byte < 0 ? byte + 256 : byte;
-    return ('0' + value.toString(16)).slice(-2);
-  }).join('');
-  return 'POLY_' + hex.slice(0, 24);
+  return 'POLY_' + sha256Hex_(seed).slice(0, 24);
 }
 
 function writePolygonsToSheet_(placemarks, sourceFileName, fileId) {
@@ -1580,18 +1758,52 @@ function writePolygonsToSheet_(placemarks, sourceFileName, fileId) {
   placemarks.forEach(function (placemark) {
     var id = stablePolygonId_(fileId, placemark);
     if (existingIds[id]) { skipped++; return; }
+    var geometryJson = JSON.stringify(placemark.geometry);
+    var metrics = polygonMetricsApprox_(placemark.geometry);
+    var fillColor = placemark.color || '#4C8BF5';
+    // Uma coluna nova do contrato A:AP nunca é escrita "às cegas": só quando existe no
+    // cabeçalho. Planilha ainda no schema de 11 colunas continua importando sem quebrar.
+    var values = {
+      polygon_id: id,
+      name: placemark.name,
+      category: placemark.category,
+      geometry_geojson: geometryJson,
+      color: placemark.color,
+      description: placemark.description,
+      properties_json: placemark.propertiesJson || '{}',
+      source_url: placemark.sourceUrl,
+      source_file: sourceFileName,
+      imported_at: importedAt,
+      status: 'active',
+      layer_group: 'poligonais_importadas',
+      subcategory: 'kml_kmz',
+      centroid_latitude: metrics.centroid_latitude,
+      centroid_longitude: metrics.centroid_longitude,
+      area_m2: metrics.area_m2,
+      area_ha: metrics.area_ha,
+      perimeter_m: metrics.perimeter_m,
+      fill_color: fillColor,
+      confidence_flag: 'high_geometry_from_source_file',
+      quality_flag: 'valid_geometry',
+      entity_type: 'custom_area',
+      entity_id: 'AREA_' + normalizeSlug_(placemark.name) + '_' + id.slice(-8),
+      geometry_type: placemark.geometry.type,
+      geometry_role: 'boundary',
+      source_geometry_type: placemark.geometry.type,
+      source_system: 'user_upload',
+      source_layer_name: sourceFileName,
+      source_feature_id: String(placemark.sourceIndex),
+      source_crs: 'EPSG:4326',
+      geometry_hash: sha256Hex_(geometryJson),
+      last_synced_at: importedAt,
+      source_geometry_geojson: geometryJson
+    };
     var row = new Array(headers.length).fill('');
-    row[index.polygon_id] = id;
-    row[index.name] = placemark.name;
-    row[index.category] = placemark.category;
-    row[index.geometry_geojson] = JSON.stringify(placemark.geometry);
-    row[index.color] = placemark.color;
-    row[index.description] = placemark.description;
-    row[index.properties_json] = placemark.propertiesJson || '{}';
-    row[index.source_url] = placemark.sourceUrl;
-    row[index.source_file] = sourceFileName;
-    row[index.imported_at] = importedAt;
-    row[index.status] = 'active';
+    Object.keys(values).forEach(function (field) {
+      if (index[field] === undefined) return;
+      var value = values[field];
+      row[index[field]] = value === null || value === undefined ? '' : value;
+    });
     rowsToAppend.push(row.map(safeCellValue_));
     existingIds[id] = true;
   });
@@ -1613,6 +1825,1034 @@ function safeCellValue_(value) {
   if (typeof value !== 'string') return value;
   if (/^[=+@]/.test(value) || /^-[A-Za-z]/.test(value)) return "'" + value;
   return value;
+}
+
+// ---------------------------------------------------------------------------
+// Regiões Administrativas — sincronização com o GeoPortal/SEDUH
+// ---------------------------------------------------------------------------
+//
+// Traz o limite oficial de cada RA para POLYGONS e completa RA_PROFILES com o que a
+// camada oficial sabe (código, número, área). O PERFIL continua canônico em
+// RA_PROFILES: POLYGONS.properties_json recebe apenas um snapshot enxuto, para o mapa
+// não precisar de um segundo fetch só para montar o cartão da RA.
+
+function syncAdministrativeRegions_UI() {
+  var ui = SpreadsheetApp.getUi();
+  try {
+    var result = syncAdministrativeRegions_();
+    var message = result.synced + ' RA(s) sincronizada(s) em POLYGONS.';
+    if (result.failed) message += '\nFalhas: ' + result.failed + '.';
+    if (result.kmzUrl) message += '\nKMZ criado no Drive: ' + result.kmzUrl;
+    message += '\n\nAs propriedades continuam canônicas em RA_PROFILES e um snapshot enxuto foi copiado para POLYGONS.properties_json.';
+    ui.alert('Regiões Administrativas', message, ui.ButtonSet.OK);
+  } catch (error) {
+    ui.alert('Falha na sincronização das RAs', String(error && error.message ? error.message : error), ui.ButtonSet.OK);
+  }
+}
+
+function syncAdministrativeRegions_() {
+  var collection = fetchAdministrativeRegionsGeoJson_();
+  var features = collection.features || [];
+  if (!features.length) throw new Error('GeoPortal não retornou Regiões Administrativas.');
+
+  var colors = fetchAdministrativeRegionColors_();
+  var prepared = [];
+  var failed = 0;
+
+  features.forEach(function (feature) {
+    try {
+      var attrs = feature.properties || {};
+      var raNumber = toNumber_(attrs.ra_cira);
+      if (raNumber === null) raNumber = raNumberFromCode_(attrs.ra_codigo);
+      if (raNumber === null || raNumber <= 0) throw new Error('ra_cira/ra_codigo ausente ou inválido.');
+      var raGeoId = 'RA_' + ('0' + Math.round(raNumber)).slice(-2);
+      var raName = titleCaseRaName_(sanitizePlainText_(attrs.ra_nome || attrs.ra_codigo || raGeoId));
+      var geometry = feature.geometry;
+      var validation = validateGeoJsonGeometry_(geometry);
+      if (!validation.ok) throw new Error('geometria inválida: ' + validation.message);
+      var geometryJson = JSON.stringify(validation.geometry);
+
+      // Célula do Sheets tem teto. Acima dele a saída NÃO é truncar (geometria truncada é
+      // polígono inválido gravado como se fosse válido), é pedir ao GeoPortal a mesma
+      // feição com tolerância de simplificação maior, duas vezes, e desistir da RA se
+      // ainda assim não couber.
+      if (geometryJson.length > RA_SYNC_MAX_CELL_CHARS) {
+        var simplified = fetchAdministrativeRegionFeature_(attrs.objectid, 0.00001);
+        if (!simplified || !simplified.geometry) throw new Error('geometria excede limite da célula e simplificação falhou.');
+        validation = validateGeoJsonGeometry_(simplified.geometry);
+        if (!validation.ok) throw new Error('geometria simplificada inválida: ' + validation.message);
+        geometryJson = JSON.stringify(validation.geometry);
+      }
+      if (geometryJson.length > RA_SYNC_MAX_CELL_CHARS) {
+        var simplified2 = fetchAdministrativeRegionFeature_(attrs.objectid, 0.00003);
+        if (!simplified2 || !simplified2.geometry) throw new Error('geometria continua acima do limite da célula.');
+        validation = validateGeoJsonGeometry_(simplified2.geometry);
+        if (!validation.ok) throw new Error('segunda simplificação inválida: ' + validation.message);
+        geometryJson = JSON.stringify(validation.geometry);
+      }
+      if (geometryJson.length > RA_SYNC_MAX_CELL_CHARS) throw new Error('geometria excede 48 mil caracteres mesmo após simplificação.');
+
+      prepared.push({
+        ra_geo_id: raGeoId,
+        ra_number: Math.round(raNumber),
+        ra_code: sanitizePlainText_(attrs.ra_codigo),
+        ra_name: raName,
+        ra_area_km2: toNumber_(attrs.ra_areakm2),
+        ra_path: sanitizePlainText_(attrs.ra_path),
+        source_feature_id: toText_(attrs.objectid),
+        geometry: validation.geometry,
+        geometry_json: geometryJson,
+        geometry_hash: sha256Hex_(geometryJson),
+        fill_color: colors[normalizeSlug_(attrs.ra_nome)] || '#8AA6B8',
+        synced_at: nowISO_()
+      });
+    } catch (error) {
+      // Uma RA que falha não pode derrubar as outras 34: conta como falha e segue.
+      failed++;
+      Logger.log('RA sync falhou: %s', error && error.message ? error.message : error);
+    }
+  });
+
+  if (!prepared.length) throw new Error('Nenhuma RA pôde ser preparada para sincronização.');
+
+  var kmz = createAdministrativeRegionsKmz_(prepared);
+  var result = withLock_(function () {
+    ensureAdministrativeRegionSchemas_();
+    var synced = 0;
+    prepared.forEach(function (ra) {
+      updateRaProfileFromGeometry_(ra);
+      upsertAdministrativeRegionPolygon_(ra, kmz);
+      synced++;
+    });
+    setMeta_('ra_geometry_sync_status', failed ? 'synced_with_warnings' : 'synced');
+    setMeta_('ra_geometry_sync_last_synced_at', nowISO_());
+    setMeta_('ra_geometry_sync_count', String(synced));
+    setMeta_('ra_geometry_sync_failed_count', String(failed));
+    setMeta_('ra_geometry_kmz_file_id', kmz.fileId || '');
+    setMeta_('ra_geometry_kmz_url', kmz.url || '');
+    setMeta_('validation_status', 'dirty');
+    setMeta_('last_data_change_at', nowISO_());
+    var version = bumpDatasetVersion_();
+    clearCache();
+    refreshMeta();
+    logWriteChange_('POLYGONS', '*', 'ra_geometry_sync', '', synced + ' RA(s)',
+      'sincronizador GeoPortal/SEDUH', 'ra-geoportal-' + version, 'ok', failed ? failed + ' falha(s)' : '');
+    return { synced: synced, failed: failed, kmzUrl: kmz.url || '' };
+  });
+  if (!result) throw new Error('Não foi possível obter lock de escrita.');
+  return result;
+}
+
+/** RA_PROFILES e POLYGONS são abas gerenciadas: `null` libera a criação de qualquer coluna. */
+function ensureAdministrativeRegionSchemas_() {
+  var book = ss_();
+  ['RA_PROFILES', 'POLYGONS'].forEach(function (name) {
+    var sheet = book.getSheetByName(name) || book.insertSheet(name);
+    ensureHeaders_(sheet, REQUIRED_HEADERS[name], null);
+  });
+}
+
+function fetchAdministrativeRegionsGeoJson_() {
+  var params = {
+    where: '1=1',
+    outFields: 'objectid,ra_cira,ra_codigo,ra_nome,ra_path,ra_areakm2',
+    returnGeometry: 'true',
+    returnTrueCurves: 'false',
+    outSR: '4326',
+    geometryPrecision: '6',
+    f: 'geojson'
+  };
+  var url = RA_BOUNDARY_LAYER_URL + '/query?' + encodeQueryParams_(params);
+  var response = UrlFetchApp.fetch(url, { muteHttpExceptions: true, followRedirects: true });
+  if (response.getResponseCode() !== 200) throw new Error('HTTP ' + response.getResponseCode() + ' ao consultar limites das RAs.');
+  var payload = JSON.parse(response.getContentText('UTF-8'));
+  if (payload.error) throw new Error('GeoPortal: ' + (payload.error.message || JSON.stringify(payload.error)));
+  return payload;
+}
+
+function fetchAdministrativeRegionFeature_(objectId, maxOffset) {
+  if (isBlank_(objectId)) return null;
+  var params = {
+    where: 'objectid=' + Number(objectId),
+    outFields: 'objectid,ra_cira,ra_codigo,ra_nome,ra_path,ra_areakm2',
+    returnGeometry: 'true',
+    returnTrueCurves: 'false',
+    outSR: '4326',
+    geometryPrecision: '6',
+    maxAllowableOffset: String(maxOffset),
+    f: 'geojson'
+  };
+  var response = UrlFetchApp.fetch(RA_BOUNDARY_LAYER_URL + '/query?' + encodeQueryParams_(params), {
+    muteHttpExceptions: true,
+    followRedirects: true
+  });
+  if (response.getResponseCode() !== 200) return null;
+  var payload = JSON.parse(response.getContentText('UTF-8'));
+  return payload && payload.features && payload.features.length ? payload.features[0] : null;
+}
+
+/** Cores oficiais do renderer da camada. Indisponibilidade é aceitável: há cor padrão. */
+function fetchAdministrativeRegionColors_() {
+  var out = {};
+  try {
+    var response = UrlFetchApp.fetch(RA_BOUNDARY_LAYER_URL + '?f=json', {
+      muteHttpExceptions: true,
+      followRedirects: true
+    });
+    if (response.getResponseCode() !== 200) return out;
+    var payload = JSON.parse(response.getContentText('UTF-8'));
+    var infos = payload && payload.drawingInfo && payload.drawingInfo.renderer
+      ? (payload.drawingInfo.renderer.uniqueValueInfos || []) : [];
+    infos.forEach(function (info) {
+      var rgba = info && info.symbol ? info.symbol.color : null;
+      if (!rgba || rgba.length < 3) return;
+      out[normalizeSlug_(info.value || info.label)] = rgbToHex_(rgba[0], rgba[1], rgba[2]);
+    });
+  } catch (error) {
+    Logger.log('Cores oficiais das RAs indisponíveis: %s', error && error.message);
+  }
+  return out;
+}
+
+function encodeQueryParams_(params) {
+  return Object.keys(params).map(function (key) {
+    return encodeURIComponent(key) + '=' + encodeURIComponent(params[key]);
+  }).join('&');
+}
+
+function rgbToHex_(r, g, b) {
+  function h(v) { return ('0' + Math.max(0, Math.min(255, Number(v) || 0)).toString(16)).slice(-2); }
+  return '#' + h(r) + h(g) + h(b);
+}
+
+/**
+ * "RA-XXIII" -> 23. Devolve null quando o código não é um romano VÁLIDO.
+ *
+ * A soma-e-subtração ingênua não basta: ela devolve um número perfeitamente plausível
+ * para um romano malformado — `IIII` vira 4 e `IXX` vira 19 — e esse número vira
+ * `ra_geo_id`, ou seja, uma RA ERRADA gravada em silêncio. O round-trip é o que
+ * distingue "li corretamente" de "consegui somar alguma coisa": só aceita o código cuja
+ * forma canônica é exatamente o que veio.
+ */
+function raNumberFromCode_(code) {
+  var text = toText_(code).toUpperCase();
+  var roman = text.replace(/^RA[-\s]*/i, '').trim();
+  if (!roman) return null;
+  var map = { I: 1, V: 5, X: 10, L: 50, C: 100 };
+  var total = 0;
+  var prev = 0;
+  for (var i = roman.length - 1; i >= 0; i--) {
+    var v = map[roman.charAt(i)] || 0;
+    if (!v) return null;
+    if (v < prev) total -= v; else { total += v; prev = v; }
+  }
+  if (!total || total < 1) return null;
+  return numberToRoman_(total) === roman ? total : null;
+}
+
+/** Forma canônica de um inteiro positivo em algarismos romanos. */
+function numberToRoman_(value) {
+  var table = [
+    [100, 'C'], [90, 'XC'], [50, 'L'], [40, 'XL'],
+    [10, 'X'], [9, 'IX'], [5, 'V'], [4, 'IV'], [1, 'I']
+  ];
+  var n = Math.round(value);
+  var out = '';
+  for (var i = 0; i < table.length && n > 0; i++) {
+    while (n >= table[i][0]) { out += table[i][1]; n -= table[i][0]; }
+  }
+  return out;
+}
+
+function titleCaseRaName_(name) {
+  var text = toText_(name).toLocaleLowerCase();
+  var keepLower = { 'de': true, 'da': true, 'do': true, 'das': true, 'dos': true, 'e': true };
+  return text.split(/\s+/).map(function (part, i) {
+    if (i > 0 && keepLower[part]) return part;
+    return part ? part.charAt(0).toLocaleUpperCase() + part.slice(1) : part;
+  }).join(' ')
+    .replace(/Scia/g, 'SCIA')
+    .replace(/Sia/g, 'SIA');
+}
+
+/**
+ * Completa RA_PROFILES com o que a camada oficial sabe. NÃO toca em indicador de perfil:
+ * o PDAD é a fonte daquilo e sobrescrevê-lo aqui apagaria dado melhor com dado pior.
+ */
+function updateRaProfileFromGeometry_(ra) {
+  var sheet = ss_().getSheetByName('RA_PROFILES');
+  var headers = headersOf_(sheet);
+  var index = headerIndex_(headers);
+  var found = findRowById_(sheet, headers, index, 'ra_geo_id', ra.ra_geo_id);
+  var existing = found ? found.record : {};
+  var population = toNumber_(existing.population_total);
+  var areaKm2 = ra.ra_area_km2;
+  var fields = {
+    ra_geo_id: ra.ra_geo_id,
+    ra_name: ra.ra_name,
+    ra_code: ra.ra_code,
+    ra_number: ra.ra_number,
+    geometry_source_url: RA_BOUNDARY_LAYER_URL
+  };
+  // Valor que não dá para calcular NÃO vira célula vazia: `applyUpdate_` grava tudo que
+  // recebe, então mandar '' aqui APAGARIA uma densidade que já estava na planilha só
+  // porque a camada oficial não trouxe a área nesta execução. Ausência de dado novo é
+  // ausência de escrita, não escrita de ausência.
+  if (areaKm2 !== null) fields.area_km2 = areaKm2;
+  if (population !== null && areaKm2 !== null && areaKm2 > 0) {
+    fields.population_density_km2 = population / areaKm2;
+  }
+  if (found) applyUpdate_(sheet, headers, found.rowNumber, fields);
+  else {
+    // RA que existe no limite oficial mas ainda não tem perfil PDAD nasce marcada como
+    // tal, para a tela distinguir "sem dado publicado" de "dado igual a zero".
+    fields.profile_status = 'official_geometry_only_profile_pending';
+    fields.quality_flag = 'official_geometry_profile_not_loaded';
+    applyCreate_(sheet, headers, 'ra_geo_id', ra.ra_geo_id, fields);
+  }
+}
+
+function profileSnapshotForRa_(raGeoId) {
+  var sheet = ss_().getSheetByName('RA_PROFILES');
+  if (!sheet) return {};
+  var headers = headersOf_(sheet);
+  var index = headerIndex_(headers);
+  var found = findRowById_(sheet, headers, index, 'ra_geo_id', raGeoId);
+  if (!found) return {};
+  var r = found.record;
+  return {
+    population_total: r.population_total || '',
+    population_density_km2: r.population_density_km2 || '',
+    income_per_capita_brl: r.income_per_capita_brl || '',
+    average_age: r.average_age || '',
+    female_pct: r.female_pct || '',
+    male_pct: r.male_pct || '',
+    households_total: r.households_total || '',
+    avg_household_size: r.avg_household_size || '',
+    dominant_dwelling_type: r.dominant_dwelling_type || '',
+    dominant_dwelling_type_pct: r.dominant_dwelling_type_pct || '',
+    dominant_tenure: r.dominant_tenure || '',
+    dominant_tenure_pct: r.dominant_tenure_pct || '',
+    deed_registered_pct: r.deed_registered_pct || '',
+    profile_reference_year: r.profile_reference_year || '',
+    profile_status: r.profile_status || '',
+    quality_flag: r.quality_flag || ''
+  };
+}
+
+function buildRaDescription_(ra, profile) {
+  var parts = ['Região Administrativa ' + ra.ra_code + ' — ' + ra.ra_name + '.'];
+  if (!isBlank_(profile.population_total)) parts.push('População: ' + profile.population_total + '.');
+  if (!isBlank_(profile.households_total)) parts.push('Domicílios: ' + profile.households_total + '.');
+  if (!isBlank_(profile.avg_household_size)) parts.push('Moradores/domicílio: ' + profile.avg_household_size + '.');
+  if (!isBlank_(profile.average_age)) parts.push('Idade média: ' + profile.average_age + ' anos.');
+  if (!isBlank_(profile.income_per_capita_brl)) parts.push('Renda per capita: R$ ' + profile.income_per_capita_brl + '.');
+  if (!isBlank_(profile.dominant_dwelling_type)) parts.push('Tipologia residencial dominante: ' + profile.dominant_dwelling_type + '.');
+  if (!isBlank_(profile.dominant_tenure)) parts.push('Ocupação dominante: ' + profile.dominant_tenure + '.');
+  return parts.join(' ');
+}
+
+/**
+ * Grava (ou atualiza) a linha de POLYGONS da RA.
+ *
+ * O `polygon_id` embute o hash da geometria: mudou o limite oficial, é uma linha NOVA, e
+ * a anterior é marcada `inactive` com `geometry_valid_to` preenchido em vez de apagada.
+ * Histórico de fronteira administrativa é dado, não lixo.
+ */
+function upsertAdministrativeRegionPolygon_(ra, kmz) {
+  var sheet = ss_().getSheetByName('POLYGONS');
+  var headers = headersOf_(sheet);
+  var index = headerIndex_(headers);
+  var polygonId = 'POLY_RA_' + ('0' + ra.ra_number).slice(-2) + '_' + ra.geometry_hash.slice(0, 12);
+  var found = findRowById_(sheet, headers, index, 'polygon_id', polygonId);
+  var today = ra.synced_at.slice(0, 10);
+  var metrics = polygonMetricsApprox_(ra.geometry);
+  var profile = profileSnapshotForRa_(ra.ra_geo_id);
+  var properties = {
+    ra_geo_id: ra.ra_geo_id,
+    ra_code: ra.ra_code,
+    ra_number: ra.ra_number,
+    ra_name: ra.ra_name,
+    official_area_km2: ra.ra_area_km2,
+    official_path: ra.ra_path,
+    profile: profile
+  };
+  var values = {
+    polygon_id: polygonId,
+    name: ra.ra_name,
+    category: 'poligonal',
+    geometry_geojson: ra.geometry_json,
+    color: ra.fill_color,
+    description: buildRaDescription_(ra, profile),
+    properties_json: JSON.stringify(properties),
+    source_url: RA_BOUNDARY_LAYER_URL,
+    source_file: kmz && kmz.name ? kmz.name : '',
+    imported_at: ra.synced_at,
+    status: 'active',
+    layer_group: 'administrative_regions',
+    subcategory: 'regiao_administrativa',
+    ra_geo_id: ra.ra_geo_id,
+    centroid_latitude: metrics.centroid_latitude,
+    centroid_longitude: metrics.centroid_longitude,
+    // A área oficial vence a calculada: a projeção local aqui é aproximação, a do
+    // GeoPortal é a medida publicada.
+    area_m2: ra.ra_area_km2 !== null ? ra.ra_area_km2 * 1000000 : metrics.area_m2,
+    area_ha: ra.ra_area_km2 !== null ? ra.ra_area_km2 * 100 : metrics.area_ha,
+    perimeter_m: metrics.perimeter_m,
+    fill_color: ra.fill_color,
+    stroke_color: '#6E6E6E',
+    fill_opacity: 0.28,
+    stroke_width: 1.2,
+    z_index: '',
+    source_page_verified_at: today,
+    confidence_flag: 'high_official_geoportal_geometry',
+    quality_flag: ra.geometry_json.length > 45000 ? 'official_boundary_simplified_for_sheet' : 'official_boundary_geoportal',
+    entity_type: 'administrative_region',
+    entity_id: ra.ra_geo_id,
+    geometry_type: ra.geometry.type,
+    geometry_role: 'boundary',
+    source_geometry_type: ra.geometry.type,
+    display_buffer_m: '',
+    source_system: 'GeoPortal_SEDUH_DF',
+    source_layer_name: 'Regiões Administrativas',
+    source_feature_id: ra.source_feature_id,
+    source_crs: 'EPSG:4326',
+    geometry_hash: ra.geometry_hash,
+    geometry_valid_from: today,
+    geometry_valid_to: '',
+    last_synced_at: ra.synced_at,
+    source_geometry_geojson: ra.geometry_json
+  };
+
+  if (!found) {
+    supersedePolygonsOfEntity_(sheet, index, ra.ra_geo_id, today);
+    applyCreate_(sheet, headers, 'polygon_id', polygonId, values);
+  } else {
+    applyUpdate_(sheet, headers, found.rowNumber, values);
+  }
+}
+
+/**
+ * Marca como `inactive` as linhas ativas de POLYGONS da mesma entidade e fecha a
+ * vigência delas. Nada é apagado — a versão anterior da fronteira continua auditável.
+ */
+function supersedePolygonsOfEntity_(sheet, index, entityId, today) {
+  if (index.entity_id === undefined) return;
+  dataRowsOf_(sheet).forEach(function (row, i) {
+    if (toText_(row[index.entity_id]) !== entityId) return;
+    if (index.status !== undefined && toText_(row[index.status]) === 'active') {
+      sheet.getRange(i + 2, index.status + 1).setValue('inactive');
+    }
+    if (index.geometry_valid_to !== undefined && isBlank_(row[index.geometry_valid_to])) {
+      sheet.getRange(i + 2, index.geometry_valid_to + 1).setValue(today);
+    }
+  });
+}
+
+function createAdministrativeRegionsKmz_(regions) {
+  var kml = ['<?xml version="1.0" encoding="UTF-8"?>',
+    '<kml xmlns="http://www.opengis.net/kml/2.2"><Document><name>Regioes Administrativas DF</name>'];
+  regions.forEach(function (ra) {
+    kml.push('<Placemark><name>' + xmlEscape_(ra.ra_name) + '</name><description>' +
+      xmlEscape_(ra.ra_code + ' | ' + ra.ra_geo_id) + '</description>' + geoJsonToKmlGeometry_(ra.geometry) + '</Placemark>');
+  });
+  kml.push('</Document></kml>');
+  var kmlBlob = Utilities.newBlob(kml.join(''), 'application/vnd.google-earth.kml+xml', 'Regioes_Administrativas_DF.kml');
+  var kmzName = 'Regioes_Administrativas_DF_' + Utilities.formatDate(new Date(), Session.getScriptTimeZone() || 'America/Sao_Paulo', 'yyyyMMdd_HHmmss') + '.kmz';
+  var kmzBlob = Utilities.zip([kmlBlob], kmzName);
+  var file = DriveApp.createFile(kmzBlob);
+  return { fileId: file.getId(), url: file.getUrl(), name: file.getName() };
+}
+
+function geoJsonToKmlGeometry_(geometry) {
+  if (!geometry) return '';
+  if (geometry.type === 'Polygon') return polygonCoordinatesToKml_(geometry.coordinates);
+  if (geometry.type === 'MultiPolygon') {
+    return '<MultiGeometry>' + geometry.coordinates.map(function (poly) {
+      return polygonCoordinatesToKml_(poly);
+    }).join('') + '</MultiGeometry>';
+  }
+  return '';
+}
+
+function polygonCoordinatesToKml_(coordinates) {
+  if (!coordinates || !coordinates.length) return '';
+  var outer = coordinates[0] || [];
+  var xml = '<Polygon><outerBoundaryIs><LinearRing><coordinates>' + kmlCoordinateString_(outer) +
+    '</coordinates></LinearRing></outerBoundaryIs>';
+  for (var i = 1; i < coordinates.length; i++) {
+    xml += '<innerBoundaryIs><LinearRing><coordinates>' + kmlCoordinateString_(coordinates[i]) +
+      '</coordinates></LinearRing></innerBoundaryIs>';
+  }
+  return xml + '</Polygon>';
+}
+
+function kmlCoordinateString_(ring) {
+  return (ring || []).map(function (p) { return Number(p[0]) + ',' + Number(p[1]) + ',0'; }).join(' ');
+}
+
+function xmlEscape_(value) {
+  return toText_(value).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;').replace(/'/g, '&apos;');
+}
+
+// ---------------------------------------------------------------------------
+// Rodovias — sincronização com o eixo oficial do DER/DF
+// ---------------------------------------------------------------------------
+//
+// O DER publica o EIXO do trecho, que é linha. O mapa desenha área, então o corredor
+// visual é derivado do eixo por um buffer de alguns metros por lado — e o eixo original
+// fica guardado em `source_geometry_geojson`. A rodovia entra em POLYGONS como qualquer
+// outro contorno, com `layer_group: 'road_network'`: não existe "camada de rodovia"
+// separada, existe um grupo de camada dentro de POLYGONS.
+
+function syncRoadSegmentsFromTraffic_UI() {
+  var ui = SpreadsheetApp.getUi();
+  var response = ui.prompt(
+    'Sincronizar trechos rodoviários DER',
+    'Informe o buffer visual por lado, em metros. O padrão é ' + DEFAULT_ROAD_DISPLAY_BUFFER_M + ' m. A linha oficial é preservada separadamente.',
+    ui.ButtonSet.OK_CANCEL
+  );
+  if (response.getSelectedButton() !== ui.Button.OK) return;
+  var text = toText_(response.getResponseText());
+  var bufferM = text ? toNumber_(text) : DEFAULT_ROAD_DISPLAY_BUFFER_M;
+  if (bufferM === null || bufferM <= 0 || bufferM > 100) {
+    ui.alert('Buffer inválido. Use um valor maior que 0 e menor ou igual a 100 m.');
+    return;
+  }
+  try {
+    var result = syncRoadSegmentsFromTraffic_(bufferM);
+    ui.alert(
+      'Sincronização concluída',
+      result.synced + ' trecho(s) sincronizado(s); ' + result.skipped + ' sem feição oficial; ' +
+        result.failed + ' falha(s). Buffer visual: ' + bufferM + ' m por lado.',
+      ui.ButtonSet.OK
+    );
+  } catch (error) {
+    ui.alert('Falha na sincronização', String(error && error.message ? error.message : error), ui.ButtonSet.OK);
+  }
+}
+
+function syncRoadSegmentsFromTraffic_(bufferM) {
+  var codes = roadCodesFromTraffic_();
+  if (!codes.length) throw new Error('TRAFFIC_DAILY_TEST não contém códigos de trecho.');
+  if (codes.length > MAX_ROAD_SYNC_CODES) {
+    throw new Error('Há ' + codes.length + ' códigos. Limite por sincronização: ' + MAX_ROAD_SYNC_CODES + '.');
+  }
+
+  var fetched = [];
+  var skipped = 0;
+  var failed = 0;
+  codes.forEach(function (code) {
+    try {
+      var record = fetchDerRoadByCode_(code, bufferM);
+      if (record) fetched.push(record);
+      else skipped++;
+    } catch (error) {
+      failed++;
+      Logger.log('DER sync %s falhou: %s', code, error && error.message);
+    }
+  });
+
+  var result = withLock_(function () {
+    ensureRoadSchemas_();
+    var trafficSummary = trafficSummaryByCode_();
+    var synced = 0;
+    fetched.forEach(function (road) {
+      road.trafficSummary = trafficSummary[road.source_segment_code] || null;
+      upsertRoadSegment_(road);
+      upsertRoadAlias_(road);
+      upsertRoadPolygon_(road, bufferM);
+      synced++;
+    });
+    relateTrafficRowsToRoadSegments_();
+    setMeta_('road_sync_status', synced ? ((skipped || failed) ? 'synced_with_warnings' : 'synced') : 'no_official_matches');
+    setMeta_('road_sync_last_synced_at', nowISO_());
+    setMeta_('road_sync_buffer_m', String(bufferM));
+    setMeta_('road_sync_synced_count', String(synced));
+    setMeta_('road_sync_skipped_count', String(skipped));
+    setMeta_('road_sync_failed_count', String(failed));
+    if (synced) {
+      var version = bumpDatasetVersion_();
+      setMeta_('validation_status', 'dirty');
+      setMeta_('last_data_change_at', nowISO_());
+      refreshMeta();
+      clearCache();
+      logWriteChange_('POLYGONS', '*', 'der_road_sync', '', synced + ' trecho(s)',
+        'sincronizador DER', 'der-road-' + version, 'ok', '');
+    }
+    return { synced: synced, skipped: skipped, failed: failed };
+  });
+  if (!result) throw new Error('Não foi possível obter lock de escrita.');
+  return result;
+}
+
+/** As quatro abas envolvidas são gerenciadas: `null` libera a criação de qualquer coluna. */
+function ensureRoadSchemas_() {
+  var book = ss_();
+  ['POLYGONS', 'ROAD_SEGMENTS', 'ROAD_SEGMENT_ALIASES', 'TRAFFIC_DAILY_TEST'].forEach(function (name) {
+    var sheet = book.getSheetByName(name) || book.insertSheet(name);
+    ensureHeaders_(sheet, REQUIRED_HEADERS[name], null);
+  });
+}
+
+function roadCodesFromTraffic_() {
+  var sheet = ss_().getSheetByName('TRAFFIC_DAILY_TEST');
+  if (!sheet || sheet.getLastRow() < 2) return [];
+  var headers = headersOf_(sheet);
+  var index = headerIndex_(headers);
+  if (index.trecho === undefined) return [];
+  var seen = {};
+  dataRowsOf_(sheet).forEach(function (row) {
+    var code = toText_(row[index.trecho]).toUpperCase();
+    if (code) seen[code] = true;
+  });
+  return Object.keys(seen).sort();
+}
+
+function fetchDerRoadByCode_(code, bufferM) {
+  var fields = [
+    'objectid', 'id', 'nome', 'sigla', 'codtrechorodov', 'geometriaaproximada',
+    'tipotrechorod', 'jurisdicao', 'administracao', 'concessionaria', 'revestimento',
+    'operacional', 'situacaofisica', 'canteirodivisorio', 'nrpistas', 'nrfaixas', 'trafego',
+    'limitevelocidade', 'trechoemperimetrourbano', 'acostamento', 'tipopavimentacao',
+    'st_length_geometry_'
+  ];
+  // Aspas simples são o terminador do literal SQL do ArcGIS: dobrar é o que impede um
+  // código de trecho vindo da planilha de virar cláusula `where` de outra pessoa.
+  var safeCode = String(code).replace(/'/g, "''");
+  var params = {
+    where: "codtrechorodov='" + safeCode + "'",
+    outFields: fields.join(','),
+    returnGeometry: 'true',
+    returnTrueCurves: 'false',
+    outSR: '4326',
+    f: 'json'
+  };
+  var response = UrlFetchApp.fetch(DER_ROAD_LAYER_URL + '/query?' + encodeQueryParams_(params), {
+    muteHttpExceptions: true,
+    followRedirects: true
+  });
+  if (response.getResponseCode() !== 200) {
+    throw new Error('HTTP ' + response.getResponseCode() + ' ao consultar DER.');
+  }
+  var payload = JSON.parse(response.getContentText('UTF-8'));
+  if (payload.error) throw new Error('ArcGIS: ' + (payload.error.message || JSON.stringify(payload.error)));
+  var features = payload.features || [];
+  if (!features.length) return null;
+
+  var paths = [];
+  var objectIds = [];
+  features.forEach(function (feature) {
+    var geometry = feature.geometry || {};
+    (geometry.paths || []).forEach(function (path) { if (path && path.length >= 2) paths.push(path); });
+    var attrs = feature.attributes || {};
+    if (!isBlank_(attrs.objectid)) objectIds.push(String(attrs.objectid));
+  });
+  if (!paths.length) return null;
+
+  var sourceGeometry = paths.length === 1
+    ? { type: 'LineString', coordinates: paths[0] }
+    : { type: 'MultiLineString', coordinates: paths };
+  var sourceValidation = validateGeoJsonSourceGeometry_(sourceGeometry);
+  if (!sourceValidation.ok) throw new Error('Eixo inválido para ' + code + ': ' + sourceValidation.message);
+  sourceGeometry = sourceValidation.geometry;
+
+  var displayGeometry = bufferLineGeometry_(sourceGeometry, bufferM);
+  var validation = validateGeoJsonGeometry_(displayGeometry);
+  if (!validation.ok) throw new Error('Buffer inválido para ' + code + ': ' + validation.message);
+
+  var attrs0 = features[0].attributes || {};
+  var sourceJson = JSON.stringify(sourceGeometry);
+  var displayJson = JSON.stringify(validation.geometry);
+  return {
+    road_segment_id: canonicalRoadSegmentId_(code),
+    source_segment_code: code,
+    road_name: sanitizePlainText_(attrs0.nome),
+    road_code: sanitizePlainText_(attrs0.sigla),
+    segment_type: sanitizePlainText_(attrs0.tipotrechorod),
+    jurisdiction: sanitizePlainText_(attrs0.jurisdicao),
+    administration: sanitizePlainText_(attrs0.administracao),
+    length_m: lineGeometryLengthM_(sourceGeometry),
+    source_feature_id: objectIds.join(','),
+    source_geometry: sourceGeometry,
+    source_geometry_json: sourceJson,
+    display_geometry: validation.geometry,
+    display_geometry_json: displayJson,
+    geometry_hash: sha256Hex_(sourceJson),
+    attributes: attrs0,
+    feature_count: features.length,
+    synced_at: nowISO_()
+  };
+}
+
+/**
+ * Corredor visual a partir do eixo: desloca cada vértice para os dois lados da normal e
+ * fecha o anel. Não é um buffer geodésico de verdade (não arredonda ponta nem resolve
+ * auto-interseção); é uma faixa de alguns metros para a linha ficar clicável no mapa. A
+ * geometria oficial não é substituída — fica em `source_geometry_geojson`.
+ */
+function bufferLineGeometry_(geometry, halfWidthM) {
+  var lines = geometry.type === 'LineString' ? [geometry.coordinates] : geometry.coordinates;
+  var polygons = [];
+  lines.forEach(function (line) {
+    var ring = bufferOneLine_(line, halfWidthM);
+    if (ring && ring.length >= 4) polygons.push([ring]);
+  });
+  if (!polygons.length) throw new Error('Nenhuma linha válida para buffer.');
+  return polygons.length === 1
+    ? { type: 'Polygon', coordinates: polygons[0] }
+    : { type: 'MultiPolygon', coordinates: polygons };
+}
+
+function bufferOneLine_(line, halfWidthM) {
+  if (!line || line.length < 2) return null;
+  var R = 6378137;
+  var lon0 = 0;
+  var lat0 = 0;
+  line.forEach(function (p) { lon0 += Number(p[0]); lat0 += Number(p[1]); });
+  lon0 /= line.length;
+  lat0 /= line.length;
+  var lat0Rad = lat0 * Math.PI / 180;
+
+  function toXY(p) {
+    return {
+      x: R * (Number(p[0]) - lon0) * Math.PI / 180 * Math.cos(lat0Rad),
+      y: R * (Number(p[1]) - lat0) * Math.PI / 180
+    };
+  }
+  function toLonLat(p) {
+    return [
+      lon0 + (p.x / (R * Math.cos(lat0Rad))) * 180 / Math.PI,
+      lat0 + (p.y / R) * 180 / Math.PI
+    ];
+  }
+  function segmentNormal(a, b) {
+    var dx = b.x - a.x;
+    var dy = b.y - a.y;
+    var len = Math.sqrt(dx * dx + dy * dy);
+    if (!len) return { x: 0, y: 0 };
+    return { x: -dy / len, y: dx / len };
+  }
+
+  var pts = line.map(toXY);
+  var segNormals = [];
+  for (var i = 0; i < pts.length - 1; i++) segNormals.push(segmentNormal(pts[i], pts[i + 1]));
+  var left = [];
+  var right = [];
+  for (var j = 0; j < pts.length; j++) {
+    var normal;
+    var scale = halfWidthM;
+    if (j === 0) normal = segNormals[0];
+    else if (j === pts.length - 1) normal = segNormals[segNormals.length - 1];
+    else {
+      var n1 = segNormals[j - 1];
+      var n2 = segNormals[j];
+      var sx = n1.x + n2.x;
+      var sy = n1.y + n2.y;
+      var sl = Math.sqrt(sx * sx + sy * sy);
+      if (sl < 0.000001) normal = n2;
+      else {
+        normal = { x: sx / sl, y: sy / sl };
+        // Curva fechada estica a mitra; o teto de 3x evita a ponta infinita clássica.
+        var dot = Math.abs(normal.x * n2.x + normal.y * n2.y);
+        if (dot > 0.25) scale = Math.min(halfWidthM / dot, halfWidthM * 3);
+      }
+    }
+    left.push(toLonLat({ x: pts[j].x + normal.x * scale, y: pts[j].y + normal.y * scale }));
+    right.push(toLonLat({ x: pts[j].x - normal.x * scale, y: pts[j].y - normal.y * scale }));
+  }
+  var ring = left.concat(right.reverse());
+  ring.push([ring[0][0], ring[0][1]]);
+  return ring;
+}
+
+function lineGeometryLengthM_(geometry) {
+  var lines = geometry.type === 'LineString' ? [geometry.coordinates] : geometry.coordinates;
+  var total = 0;
+  lines.forEach(function (line) {
+    for (var i = 1; i < line.length; i++) total += haversineM_(line[i - 1], line[i]);
+  });
+  return total;
+}
+
+function haversineM_(a, b) {
+  var R = 6371008.8;
+  var lat1 = Number(a[1]) * Math.PI / 180;
+  var lat2 = Number(b[1]) * Math.PI / 180;
+  var dLat = lat2 - lat1;
+  var dLon = (Number(b[0]) - Number(a[0])) * Math.PI / 180;
+  var h = Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+    Math.cos(lat1) * Math.cos(lat2) * Math.sin(dLon / 2) * Math.sin(dLon / 2);
+  return 2 * R * Math.asin(Math.min(1, Math.sqrt(h)));
+}
+
+/**
+ * Área, perímetro e centroide aproximados, por projeção plana local em torno do próprio
+ * anel. Serve para ordenar e rotular no mapa; não substitui medida oficial — quando o
+ * GeoPortal publica a área da RA, é ela que vai para `area_m2`.
+ *
+ * Três limitações que a saída NÃO denuncia sozinha, porque o número sai com a ordem de
+ * grandeza certa nos três casos:
+ *   1. só o anel EXTERNO entra na conta — polígono com buraco tem a área superestimada;
+ *   2. o centroide é a média dos vértices, não o centroide de área, então em forma de L
+ *      ele pode cair fora do próprio polígono;
+ *   3. o perímetro ignora os anéis internos.
+ * Por isso estes campos são de apoio visual, e `docs/DATA_CONTRACT.md` os marca como
+ * aproximados. Medida que alguém vá citar tem que vir da fonte oficial.
+ */
+function polygonMetricsApprox_(geometry) {
+  var polygons = geometry.type === 'Polygon' ? [geometry.coordinates] : geometry.coordinates;
+  var area = 0;
+  var perimeter = 0;
+  var lonWeighted = 0;
+  var latWeighted = 0;
+  var points = 0;
+  polygons.forEach(function (poly) {
+    if (!poly || !poly.length) return;
+    var ring = poly[0];
+    if (!ring || ring.length < 4) return;
+    var lon0 = 0;
+    var lat0 = 0;
+    ring.forEach(function (p) { lon0 += Number(p[0]); lat0 += Number(p[1]); });
+    lon0 /= ring.length;
+    lat0 /= ring.length;
+    var R = 6378137;
+    var cosLat = Math.cos(lat0 * Math.PI / 180);
+    var xy = ring.map(function (p) {
+      return {
+        x: R * (Number(p[0]) - lon0) * Math.PI / 180 * cosLat,
+        y: R * (Number(p[1]) - lat0) * Math.PI / 180
+      };
+    });
+    var signed = 0;
+    for (var i = 1; i < xy.length; i++) {
+      signed += xy[i - 1].x * xy[i].y - xy[i].x * xy[i - 1].y;
+      perimeter += Math.sqrt(Math.pow(xy[i].x - xy[i - 1].x, 2) + Math.pow(xy[i].y - xy[i - 1].y, 2));
+    }
+    area += Math.abs(signed) / 2;
+    ring.forEach(function (p) { lonWeighted += Number(p[0]); latWeighted += Number(p[1]); points++; });
+  });
+  return {
+    area_m2: area,
+    area_ha: area / 10000,
+    perimeter_m: perimeter,
+    centroid_longitude: points ? lonWeighted / points : null,
+    centroid_latitude: points ? latWeighted / points : null
+  };
+}
+
+function trafficSummaryByCode_() {
+  var sheet = ss_().getSheetByName('TRAFFIC_DAILY_TEST');
+  if (!sheet || sheet.getLastRow() < 2) return {};
+  var headers = headersOf_(sheet);
+  var index = headerIndex_(headers);
+  if (index.trecho === undefined) return {};
+  var out = {};
+  dataRowsOf_(sheet).forEach(function (row) {
+    var code = toText_(row[index.trecho]).toUpperCase();
+    if (!code) return;
+    if (!out[code]) out[code] = { rows: 0, rowsWithFlow: 0, sum: 0, minDate: '', maxDate: '', latestFlow: null };
+    var obj = out[code];
+    obj.rows++;
+    var flow = index.fluxo_total === undefined ? null : toNumber_(row[index.fluxo_total]);
+    // Linha sem fluxo NÃO entra no denominador da média. Dividir a soma pelo total de
+    // linhas devolveria uma média menor e perfeitamente plausível — o tipo de número que
+    // ninguém questiona porque tem a ordem de grandeza certa.
+    if (flow !== null) { obj.sum += flow; obj.rowsWithFlow++; }
+    var date = index.dia === undefined ? '' : sheetDateText_(row[index.dia]);
+    if (date && (!obj.minDate || date < obj.minDate)) obj.minDate = date;
+    if (date && (!obj.maxDate || date > obj.maxDate)) {
+      obj.maxDate = date;
+      obj.latestFlow = flow;
+    }
+  });
+  Object.keys(out).forEach(function (code) {
+    out[code].avgDailyFlow = out[code].rowsWithFlow ? out[code].sum / out[code].rowsWithFlow : null;
+  });
+  return out;
+}
+
+function sheetDateText_(value) {
+  if (value instanceof Date && !isNaN(value.getTime())) {
+    return Utilities.formatDate(value, Session.getScriptTimeZone() || 'America/Sao_Paulo', 'yyyy-MM-dd');
+  }
+  var text = toText_(value);
+  return /^\d{4}-\d{2}-\d{2}$/.test(text) ? text : '';
+}
+
+function upsertRoadSegment_(road) {
+  var sheet = ss_().getSheetByName('ROAD_SEGMENTS');
+  var headers = headersOf_(sheet);
+  var index = headerIndex_(headers);
+  var found = findRowById_(sheet, headers, index, 'road_segment_id', road.road_segment_id);
+  var attrs = road.attributes || {};
+  var props = {
+    source_segment_code: road.source_segment_code,
+    concessionaria: sanitizePlainText_(attrs.concessionaria),
+    revestimento: sanitizePlainText_(attrs.revestimento),
+    operacional: sanitizePlainText_(attrs.operacional),
+    situacaofisica: sanitizePlainText_(attrs.situacaofisica),
+    canteirodivisorio: sanitizePlainText_(attrs.canteirodivisorio),
+    nrpistas: attrs.nrpistas === null || attrs.nrpistas === undefined ? '' : attrs.nrpistas,
+    nrfaixas: attrs.nrfaixas === null || attrs.nrfaixas === undefined ? '' : attrs.nrfaixas,
+    trafego: sanitizePlainText_(attrs.trafego),
+    limitevelocidade: attrs.limitevelocidade === null || attrs.limitevelocidade === undefined ? '' : attrs.limitevelocidade,
+    trechoemperimetrourbano: sanitizePlainText_(attrs.trechoemperimetrourbano),
+    acostamento: sanitizePlainText_(attrs.acostamento),
+    tipopavimentacao: sanitizePlainText_(attrs.tipopavimentacao),
+    geometriaaproximada: sanitizePlainText_(attrs.geometriaaproximada),
+    feature_count: road.feature_count,
+    traffic_summary: road.trafficSummary || null
+  };
+  var values = {
+    road_segment_id: road.road_segment_id,
+    current_polygon_id: roadPolygonId_(road),
+    source_segment_code: road.source_segment_code,
+    road_name: road.road_name,
+    road_code: road.road_code,
+    segment_type: road.segment_type,
+    jurisdiction: road.jurisdiction,
+    administration: road.administration,
+    length_m: road.length_m,
+    source_system: 'DER_DF',
+    source_layer_name: 'Eixo do Trecho Rodoviário',
+    source_feature_id: road.source_feature_id,
+    source_crs: 'EPSG:4326',
+    valid_from: '',
+    valid_to: '',
+    is_current: true,
+    properties_json: JSON.stringify(props),
+    confidence_flag: 'high_official_der_geometry',
+    quality_flag: 'official_centerline_synced',
+    last_synced_at: road.synced_at
+  };
+  if (found) applyUpdate_(sheet, headers, found.rowNumber, values);
+  else applyCreate_(sheet, headers, 'road_segment_id', road.road_segment_id, values);
+}
+
+function upsertRoadAlias_(road) {
+  var sheet = ss_().getSheetByName('ROAD_SEGMENT_ALIASES');
+  var headers = headersOf_(sheet);
+  var index = headerIndex_(headers);
+  var aliasId = 'ALIAS_DER_' + road.source_segment_code.toUpperCase().replace(/[^A-Z0-9]+/g, '_');
+  var found = findRowById_(sheet, headers, index, 'alias_id', aliasId);
+  var values = {
+    alias_id: aliasId,
+    road_segment_id: road.road_segment_id,
+    source_segment_code: road.source_segment_code,
+    source_system: 'DER_DF',
+    valid_from: '',
+    valid_to: '',
+    match_method: 'official_code',
+    match_confidence: 'high',
+    source_file: 'ArcGIS REST - Eixo do Trecho Rodoviário',
+    notes: 'Relação direta por codtrechorodov.',
+    imported_at: road.synced_at
+  };
+  if (found) applyUpdate_(sheet, headers, found.rowNumber, values);
+  else applyCreate_(sheet, headers, 'alias_id', aliasId, values);
+}
+
+function roadPolygonId_(road) {
+  return 'POLY_ROAD_' + road.source_segment_code.toUpperCase().replace(/[^A-Z0-9]+/g, '_') + '_' + road.geometry_hash.slice(0, 12);
+}
+
+function upsertRoadPolygon_(road, bufferM) {
+  var sheet = ss_().getSheetByName('POLYGONS');
+  var headers = headersOf_(sheet);
+  var index = headerIndex_(headers);
+  var polygonId = roadPolygonId_(road);
+  var found = findRowById_(sheet, headers, index, 'polygon_id', polygonId);
+  var today = road.synced_at.slice(0, 10);
+  var metrics = polygonMetricsApprox_(road.display_geometry);
+  var summary = road.trafficSummary || {};
+  var properties = {
+    road_segment_id: road.road_segment_id,
+    source_segment_code: road.source_segment_code,
+    road_name: road.road_name,
+    road_code: road.road_code,
+    segment_type: road.segment_type,
+    jurisdiction: road.jurisdiction,
+    administration: road.administration,
+    traffic_relation_dataset: 'TRAFFIC_DAILY_TEST',
+    traffic_daily_rows: summary.rows || 0,
+    traffic_date_min: summary.minDate || '',
+    traffic_date_max: summary.maxDate || '',
+    traffic_avg_daily_flow: summary.avgDailyFlow === undefined ? null : summary.avgDailyFlow,
+    traffic_latest_daily_flow: summary.latestFlow === undefined ? null : summary.latestFlow,
+    display_buffer_m_each_side: bufferM,
+    native_source_crs: 'EPSG:31983'
+  };
+
+  var values = {
+    polygon_id: polygonId,
+    name: (road.road_code || road.road_name || road.source_segment_code) + ' · ' + road.source_segment_code,
+    category: 'poligonal',
+    geometry_geojson: road.display_geometry_json,
+    color: '#53606B',
+    description: 'Trecho rodoviário DER/DF. Corredor visual derivado do eixo oficial com buffer de ' + bufferM + ' m por lado.',
+    properties_json: JSON.stringify(properties),
+    source_url: DER_ROAD_LAYER_URL,
+    source_file: '',
+    imported_at: road.synced_at,
+    status: 'active',
+    layer_group: 'road_network',
+    subcategory: 'rodovia_der',
+    ra_geo_id: '',
+    centroid_latitude: metrics.centroid_latitude,
+    centroid_longitude: metrics.centroid_longitude,
+    area_m2: metrics.area_m2,
+    area_ha: metrics.area_ha,
+    perimeter_m: metrics.perimeter_m,
+    fill_color: '#53606B',
+    stroke_color: '#374151',
+    fill_opacity: 0.35,
+    stroke_width: 1.5,
+    z_index: '',
+    source_page_verified_at: today,
+    confidence_flag: 'high_official_der_geometry',
+    quality_flag: 'display_buffer_from_official_centerline',
+    entity_type: 'road_segment',
+    entity_id: road.road_segment_id,
+    geometry_type: road.display_geometry.type,
+    geometry_role: 'display_corridor',
+    source_geometry_type: road.source_geometry.type,
+    display_buffer_m: bufferM,
+    source_system: 'DER_DF',
+    source_layer_name: 'Eixo do Trecho Rodoviário',
+    source_feature_id: road.source_feature_id,
+    source_crs: 'EPSG:4326',
+    geometry_hash: road.geometry_hash,
+    geometry_valid_from: today,
+    geometry_valid_to: '',
+    last_synced_at: road.synced_at,
+    source_geometry_geojson: road.source_geometry_json
+  };
+
+  if (!found) {
+    supersedePolygonsOfEntity_(sheet, index, road.road_segment_id, today);
+    applyCreate_(sheet, headers, 'polygon_id', polygonId, values);
+  } else {
+    applyUpdate_(sheet, headers, found.rowNumber, values);
+  }
+}
+
+/** Carimba `road_segment_id` em cada linha de TRAFFIC_DAILY_TEST a partir de `trecho`. */
+function relateTrafficRowsToRoadSegments_() {
+  var sheet = ss_().getSheetByName('TRAFFIC_DAILY_TEST');
+  if (!sheet || sheet.getLastRow() < 2) return 0;
+  ensureHeaders_(sheet, REQUIRED_HEADERS.TRAFFIC_DAILY_TEST, null);
+  var headers = headersOf_(sheet);
+  var index = headerIndex_(headers);
+  if (index.trecho === undefined || index.road_segment_id === undefined) return 0;
+  var rows = dataRowsOf_(sheet);
+  if (!rows.length) return 0;
+  var values = rows.map(function (row) {
+    return [canonicalRoadSegmentId_(row[index.trecho])];
+  });
+  sheet.getRange(2, index.road_segment_id + 1, values.length, 1).setValues(values);
+  return values.length;
 }
 
 // ---------------------------------------------------------------------------
@@ -2151,6 +3391,9 @@ function pricePerM2_(price, area) {
 /** Coage e valida um valor bruto conforme o tipo declarado em FIELD_SCHEMA. */
 function coerceField_(type, raw) {
   if (type === 'geojson') return validateGeoJsonGeometry_(raw);
+  // A geometria-FONTE pode ser linha (eixo rodoviário do DER). Ela é preservada como
+  // procedência e nunca desenhada — quem vai ao mapa é `geometry_geojson`.
+  if (type === 'geojson_source') return validateGeoJsonSourceGeometry_(raw);
   if (type === 'json_object') return validateJsonObject_(raw);
 
   var text = toText_(raw);
@@ -2252,6 +3495,58 @@ function validateGeoJsonGeometry_(raw) {
     return { ok: false, message: 'geometria excede o limite de uma célula do Google Sheets.' };
   }
   return { ok: true, value: serialized, geometry: canonical, position_count: positionCount.value };
+}
+
+/**
+ * Valida a geometria-FONTE, que pode ser linha.
+ *
+ * Existe separada de `validateGeoJsonGeometry_` porque as duas respondem perguntas
+ * diferentes: aquela valida o que vai ser DESENHADO (sempre área fechada), esta valida o
+ * que é guardado como PROCEDÊNCIA. O eixo rodoviário do DER é LineString e continua
+ * sendo linha na coluna `source_geometry_geojson` — o polígono no mapa é o corredor com
+ * buffer, derivado dela. Aceitar linha em `geometry_geojson` seria desenhar uma
+ * geometria que o cliente não sabe desenhar; recusá-la aqui perderia a origem oficial.
+ */
+function validateGeoJsonSourceGeometry_(raw) {
+  var parsed = parseJsonValue_(raw);
+  if (!parsed.ok) return parsed;
+  var geometry = parsed.value;
+  if (!geometry || ['Polygon', 'MultiPolygon', 'LineString', 'MultiLineString'].indexOf(geometry.type) === -1) {
+    return { ok: false, message: 'geometria-fonte deve ser Polygon, MultiPolygon, LineString ou MultiLineString.' };
+  }
+  if (geometry.type === 'Polygon' || geometry.type === 'MultiPolygon') return validateGeoJsonGeometry_(geometry);
+
+  var lines = geometry.type === 'LineString' ? [geometry.coordinates] : geometry.coordinates;
+  if (!Array.isArray(lines) || !lines.length) return { ok: false, message: 'linha sem coordenadas.' };
+  var out = [];
+  for (var l = 0; l < lines.length; l++) {
+    var line = lines[l];
+    if (!Array.isArray(line) || line.length < 2) return { ok: false, message: 'cada linha precisa de ao menos duas posições.' };
+    var normalized = [];
+    for (var i = 0; i < line.length; i++) {
+      var pos = line[i];
+      if (!Array.isArray(pos) || pos.length < 2) return { ok: false, message: 'posição inválida; esperado [longitude, latitude].' };
+      // Mesma guarda de `validateGeoJsonPolygon_`: `Number(null)` e `Number('')` são 0, e
+      // 0 passa em isFinite e na faixa válida. Sem isto uma linha de coordenadas ausentes
+      // vira geografia real no golfo da Guiné, agora pela porta da geometria-fonte.
+      if (!isNumericPosition_(pos[0]) || !isNumericPosition_(pos[1])) {
+        return { ok: false, message: 'longitude/latitude precisa ser numérica; valor vazio ou nulo não é aceito.' };
+      }
+      var lon = Number(pos[0]);
+      var lat = Number(pos[1]);
+      if (!isFinite(lon) || !isFinite(lat) || lon < -180 || lon > 180 || lat < -90 || lat > 90) {
+        return { ok: false, message: 'longitude/latitude fora da faixa válida.' };
+      }
+      normalized.push([lon, lat]);
+    }
+    out.push(normalized);
+  }
+  var canonical = geometry.type === 'LineString'
+    ? { type: 'LineString', coordinates: out[0] }
+    : { type: 'MultiLineString', coordinates: out };
+  var serialized = JSON.stringify(canonical);
+  if (serialized.length > MAX_CELL_TEXT_LENGTH) return { ok: false, message: 'geometria-fonte excede o limite da célula.' };
+  return { ok: true, value: serialized, geometry: canonical };
 }
 
 /**

@@ -284,7 +284,10 @@ vazia (R2.5). `PRIMARY_OFFERS`, `IVV_MONTHLY` e `IVV_REGION` não são lidas pel
 | `IVV_MONTHLY` | `reference_month` | 1 | Índice de Velocidade de Vendas mensal do DF |
 | `IVV_REGION` | `reference_month` + `market_region` + `bedroom_bucket` | 95 | IVV por região e faixa de quartos |
 | `RA_PROFILES` | `ra_geo_id` | 35 | Indicadores territoriais por Região Administrativa (censo + PDAD) — **lida pela tela** |
-| `POLYGONS` | `polygon_id` | 0 | Geometrias importadas de KML/KMZ — criada pelo `setupProject()` v2.0.0 |
+| `POLYGONS` | `polygon_id` | 0 | Contornos: KML/KMZ, Regiões Administrativas e rodovias — criada pelo `setupProject()` v2.0.0, ampliada para A:AP na v2.2.1 |
+| `ROAD_SEGMENTS` | `road_segment_id` | 0 | Trecho rodoviário oficial do DER/DF — criada pelo `setupProject()` v2.2.1 |
+| `ROAD_SEGMENT_ALIASES` | `alias_id` | 0 | Ponte entre o código de trecho da fonte de tráfego e o `road_segment_id` |
+| `TRAFFIC_DAILY_TEST` | `traffic_daily_id` | 0 | Contagem diária de tráfego por trecho |
 
 > **Divergência D2 — `IVV_REGION` tem `ivv_pct` e `ivv_pct_published`.** `ivv_pct` é alias de
 > compatibilidade consumido pelo Apps Script; `ivv_pct_published` é o valor do dataset original.
@@ -311,8 +314,38 @@ Chave: `ra_geo_id`. 35 linhas.
 | `population_age_30_44_pct` | número | não | 0/35 | faixa etária (#35) |
 | `population_age_45_59_pct` | número | não | 0/35 | faixa etária (#35) |
 | `population_age_60_plus_pct` | número | não | 0/35 | faixa etária (#35) |
+| `ra_code` | texto | não | sync | código romano oficial (`RA-XXIII`), do GeoPortal/SEDUH |
+| `ra_number` | inteiro | não | sync | número da RA, do GeoPortal/SEDUH |
+| `area_km2` | número | não | sync | área oficial publicada, do GeoPortal/SEDUH |
+| `average_age` | número | não | 0/35 | idade média (PDAD) |
+| `female_pct` | número | não | 0/35 | composição por sexo (PDAD) |
+| `male_pct` | número | não | 0/35 | composição por sexo (PDAD) |
+| `households_total` | inteiro | não | 0/35 | domicílios (PDAD) |
+| `avg_household_size` | número | não | 0/35 | moradores por domicílio (PDAD) |
+| `dominant_dwelling_type` | texto | não | 0/35 | tipologia residencial dominante (PDAD) |
+| `dominant_dwelling_type_pct` | número | não | 0/35 | participação da tipologia dominante (PDAD) |
+| `dominant_tenure` | texto | não | 0/35 | forma de ocupação dominante (PDAD) |
+| `dominant_tenure_pct` | número | não | 0/35 | participação da ocupação dominante (PDAD) |
+| `deed_registered_pct` | número | não | 0/35 | escritura registrada (PDAD) |
+| `profile_reference_year` | texto | não | 0/35 | ano de referência do perfil |
+| `profile_status` | texto | não | sync | `official_geometry_only_profile_pending` quando só há geometria |
+| `profile_source_url` | url | não | 0/35 | fonte do perfil |
+| `geometry_source_url` | url | não | sync | camada do GeoPortal de onde veio o limite |
+| `created_after_pdad_2024` | texto | não | 0/35 | RA criada depois do PDAD 2024 não tem perfil |
+| `predecessor_ra` | texto | não | 0/35 | RA de origem, quando desmembrada |
+| `legal_reference` | texto | não | 0/35 | norma de criação |
+| `quality_flag` | texto | não | sync | `official_geometry_profile_not_loaded` quando o perfil falta |
+| `notes` | texto | não | 0/35 | observação livre |
 
-As seis últimas foram provisionadas pelo Apps Script v2.0.0. **A coluna existe; o dado pode não
+**`sync` na coluna "Preenchimento"** quer dizer preenchido pela sincronização das Regiões
+Administrativas (menu do Apps Script, v2.2.1), não pela semente nem pelo PDAD.
+
+Uma RA que existe no limite oficial mas ainda não tem perfil PDAD nasce com
+`profile_status = 'official_geometry_only_profile_pending'` e
+`quality_flag = 'official_geometry_profile_not_loaded'`. A distinção importa: **"não publicado"
+não é "zero"**, e a tela precisa omitir o indicador em vez de mostrar zero.
+
+As seis primeiras faixas/renda foram provisionadas pelo Apps Script v2.0.0. **A coluna existe; o dado pode não
 existir** — a cobertura do PDAD é esparsa e a própria semente avisa `"PDAD-A report-level seed;
 not yet all 35 RAs"`. Cada indicador só aparece na tela quando tem valor.
 
@@ -320,34 +353,120 @@ O servidor valida semanticamente: renda não pode ser negativa, cada faixa etár
 100, e as cinco somadas precisam dar aproximadamente 100% (ou 1, em escala decimal) — divergência
 vira aviso `AGE_DISTRIBUTION_SUM` em `DATA_QUALITY`, nunca sobrescrita.
 
-> **A tabela acima não é o inventário da aba.** A planilha tem 38 colunas; estas dez são as que o
-> contrato declara e o loader lê. As demais são indicadores PDAD e censitários
+> **A tabela acima não é o inventário da aba.** A planilha tem 38 colunas da semente mais as
+> provisionadas depois; estas 32 são as que o contrato declara e o loader lê. As demais são indicadores PDAD e censitários
 > (`avg_residents_private_occupied`, `pdad_*_pct`, `primary_work_location`, `sector_count`,
 > `coverage_note` e outros) que existem na planilha e ainda não são consumidos pela tela. Estão
 > fora desta tabela **de propósito**: documentá-los aqui os tornaria cabeçalhos exigidos por
 > `tests/contract.test.js`. Ver `migration/README.md` para o inventário completo.
 
-### POLYGONS — geometrias importadas de KML/KMZ (issues #27, #28)
+### POLYGONS — camada única de contornos, A:AP (issues #27, #28, #50)
 
-Aba **opcional** com contrato de cabeçalho, criada por `setupProject()` do Apps Script v2.0.0.
-Ausência continua sendo aviso, nunca erro (R2.5).
+Aba **opcional** com contrato de cabeçalho, criada por `setupProject()`. Ausência continua sendo
+aviso, nunca erro (R2.5).
 
-Chave: `polygon_id` — hash SHA-256 estável derivado do arquivo de origem, do índice do Placemark e
-do nome. Reimportar o mesmo KML **não duplica**: a importação é idempotente por construção.
+**Esta é a única aba de geometria da aplicação.** Contorno importado de KML, Região Administrativa
+sincronizada do GeoPortal e trecho rodoviário do DER moram todos aqui — o que os separa é
+`layer_group`, não uma aba nova. Em particular, **rodovia não é camada nova**: é uma linha de
+POLYGONS com `layer_group = 'road_network'`.
+
+Chave: `polygon_id`. Para KML/KMZ, hash SHA-256 estável derivado do arquivo de origem, do índice do
+Placemark e do nome — reimportar o mesmo arquivo **não duplica**. Para as sincronizações, o id
+embute o hash da geometria: mudou o limite oficial, é uma linha NOVA, e a anterior fica `inactive`
+com `geometry_valid_to` preenchido, nunca apagada.
+
+As 42 colunas, em cinco grupos:
+
+**Identidade**
 
 | Campo | Tipo | Obrig. | Preenchimento | Observação |
 |---|---|---|---|---|
-| `polygon_id` | texto | **sim** | — | `POLY_` + 24 hex do SHA-256 |
-| `name` | texto | **sim** | — | do `<name>` do Placemark; `REQUIRED_FOR_CREATE` exige |
-| `category` | texto | não | — | de `ExtendedData`, quando houver |
-| `geometry_geojson` | texto | **sim** | — | `Polygon` ou `MultiPolygon`, `[longitude, latitude]`; `REQUIRED_FOR_CREATE` exige |
-| `color` | texto | não | — | cor sugerida para o preenchimento |
-| `description` | texto | não | — | do `<description>` do Placemark |
-| `properties_json` | texto | não | — | atributos livres do KML, como objeto JSON |
-| `source_url` | url | não | — | validada como http(s) na importação |
+| `polygon_id` | texto | **sim** | — | chave |
+| `name` | texto | **sim** | — | `REQUIRED_FOR_CREATE` exige |
+| `category` | texto | não | — | `poligonal` nas sincronizações |
+| `subcategory` | texto | não | — | `regiao_administrativa`, `rodovia_der`, `kml_kmz` |
+| `entity_type` | texto | não | — | `administrative_region`, `road_segment`, `custom_area` |
+| `entity_id` | texto | não | — | id da entidade do mundo real; é por ele que uma versão anterior é superada |
+| `geometry_role` | texto | não | — | `boundary` (RA e KML) ou `display_corridor` (rodovia) |
+| `ra_geo_id` | texto | não | — | RA a que o contorno pertence, quando aplicável |
+
+**Camada**
+
+| Campo | Tipo | Obrig. | Preenchimento | Observação |
+|---|---|---|---|---|
+| `layer_group` | texto | não | — | `administrative_regions`, `road_network`, `poligonais_importadas` |
+
+**Cartografia** — o estilo é declarado pelo backend; o cliente não inventa cor.
+
+| Campo | Tipo | Obrig. | Preenchimento | Observação |
+|---|---|---|---|---|
+| `color` | texto | não | — | cor histórica, mantida por compatibilidade |
+| `fill_color` | texto | não | — | preenchimento |
+| `stroke_color` | texto | não | — | contorno |
+| `fill_opacity` | número | não | — | 0 a 1 |
+| `stroke_width` | número | não | — | espessura em px |
+| `z_index` | número | não | — | ordem de empilhamento; vazio deixa a decisão ao cliente |
+| `centroid_latitude` | número | não | — | média dos vértices — em forma de L pode cair fora do polígono |
+| `centroid_longitude` | número | não | — | idem |
+| `area_m2` | número | não | — | oficial quando publicada; senão **aproximada e sem descontar buracos** |
+| `area_ha` | número | não | — | idem |
+| `perimeter_m` | número | não | — | aproximado, só do anel externo |
+
+> **Os três campos métricos são de apoio visual, não medida.** Quando não há valor oficial,
+> `polygonMetricsApprox_()` calcula por projeção plana local: só o anel externo entra na conta
+> (polígono com buraco fica com a área superestimada), o centroide é a média dos vértices e não o
+> centroide de área, e o perímetro ignora os anéis internos. Nos três casos o número sai com a
+> ordem de grandeza certa, que é justamente o que impede alguém de desconfiar dele — medida que
+> vá ser citada tem que vir da fonte oficial. Coberto por `tests/appsscript-v221-merge.test.js`.
+
+**Procedência**
+
+| Campo | Tipo | Obrig. | Preenchimento | Observação |
+|---|---|---|---|---|
+| `description` | texto | não | — | do `<description>` do Placemark ou montada pela sincronização |
+| `properties_json` | texto | não | — | atributos livres, como objeto JSON |
+| `source_url` | url | não | — | validada como http(s) |
 | `source_file` | texto | não | — | nome do KML/KMZ de origem |
+| `source_system` | texto | não | — | `user_upload`, `GeoPortal_SEDUH_DF`, `DER_DF` |
+| `source_layer_name` | texto | não | — | camada de origem |
+| `source_feature_id` | texto | não | — | id da feição na fonte |
+| `source_crs` | texto | não | — | sempre `EPSG:4326` na planilha |
+| `source_page_verified_at` | data | não | — | data da verificação da fonte |
+| `confidence_flag` | texto | não | — | confiança na geometria |
+| `quality_flag` | texto | não | — | ex.: `official_boundary_simplified_for_sheet` |
+| `geometry_hash` | texto | não | — | SHA-256 da geometria; é o que detecta mudança de limite |
+| `geometry_valid_from` | data | não | — | início da vigência |
+| `geometry_valid_to` | data | não | — | fim da vigência; vazio = vigente |
+| `last_synced_at` | data | não | — | última sincronização |
 | `imported_at` | data | não | — | preenchido pelo importador |
 | `status` | enum | não | — | `active` ou `inactive` |
+
+**Geometria**
+
+| Campo | Tipo | Obrig. | Preenchimento | Observação |
+|---|---|---|---|---|
+| `geometry_type` | texto | não | — | tipo da geometria desenhada |
+| `geometry_geojson` | texto | **sim** | — | `Polygon` ou `MultiPolygon`, `[longitude, latitude]`; **é esta que vai ao mapa** |
+| `source_geometry_type` | texto | não | — | tipo da geometria original |
+| `display_buffer_m` | número | não | — | buffer por lado usado para derivar o corredor rodoviário |
+| `source_geometry_geojson` | texto | não | — | geometria ORIGINAL; ver abaixo |
+
+#### `source_geometry_geojson` é lido e nunca desenhado
+
+O DER publica o **eixo** do trecho rodoviário, que é `LineString`. O mapa desenha área, então o
+corredor visual é derivado do eixo por um buffer de alguns metros por lado — e é esse polígono que
+vai para `geometry_geojson`. O eixo original fica em `source_geometry_geojson`, como procedência.
+
+Por isso os dois campos têm validadores diferentes no servidor: `geometry_geojson` aceita só
+`Polygon`/`MultiPolygon` (`validateGeoJsonGeometry_`), enquanto `source_geometry_geojson` aceita
+também `LineString`/`MultiLineString` (`validateGeoJsonSourceGeometry_`, tipo `geojson_source` em
+`FIELD_SCHEMA`).
+
+No cliente, os dois atravessam `normalizePolygon()` como **texto cru, sem `JSON.parse`** — parsear
+no normalizador transformaria um blob malformado numa linha em exceção no carregamento de todas as
+camadas. O parse acontece no render, por registro, isolado (R2.6). E **desenhar
+`source_geometry_geojson` é erro**: para rodovia ela é de um tipo que a camada de contorno não sabe
+desenhar.
 
 **A geometria é validada no servidor** antes de ser gravada: precisa ser `Polygon` ou
 `MultiPolygon`, cada anel precisa de ao menos quatro posições e três distintas, o anel precisa
@@ -355,8 +474,9 @@ estar fechado (primeira posição igual à última), e longitude/latitude precis
 válida. Ordem é sempre `[longitude, latitude]`, como manda o GeoJSON — invertida seria o Golfo da
 Guiné em vez do Distrito Federal.
 
-Contornos entram na planilha por dois caminhos: a **importação de KML/KMZ** pelo menu do Apps
-Script, e o **desenho no mapa** dentro da área administrativa (issue #37). No desenho, o cliente
+Contornos entram na planilha por três caminhos: a **importação de KML/KMZ** pelo menu do Apps
+Script, as duas **sincronizações oficiais** (Regiões Administrativas e rodovias DER, também pelo
+menu), e o **desenho no mapa** dentro da área administrativa (issue #37). No desenho, o cliente
 monta a geometria em `src/admin/polygon-draw.js` — invertendo para `[longitude, latitude]` e
 fechando o anel — e valida com as mesmas regras do servidor antes de enviar, para o erro sair em
 português; o servidor revalida de qualquer forma. `polygon_id`, `imported_at` e `source_file` são
@@ -380,7 +500,96 @@ interromper o carregamento do dataset inteiro (R2.6).
 
 ---
 
-## Provisionamento pós-semente (Apps Script v2.0.0)
+## Abas rodoviárias e de tráfego (Apps Script v2.2.1, issue #50)
+
+Três abas **opcionais** criadas por `setupProject()` a partir da v2.2.1. Elas têm contrato de
+cabeçalho em `REQUIRED_HEADERS` e schema de tipos em `FIELD_SCHEMA`, mas **não têm normalizador no
+cliente ainda** e **não estão em `WRITE_ALLOWLIST`**: nenhuma delas é gravável pela API de escrita.
+São preenchidas pela sincronização rodoviária do menu e pela importação de tráfego.
+
+A rodovia que aparece no mapa **não vem daqui**: vem de `POLYGONS`, com
+`layer_group = 'road_network'`. Estas abas guardam o cadastro do trecho e a contagem; `POLYGONS`
+guarda a geometria desenhável.
+
+### ROAD_SEGMENTS — cadastro do trecho rodoviário
+
+Chave: `road_segment_id`, canônico `ROADSEG_<código do trecho normalizado>`.
+
+| Campo | Tipo | Obrig. | Observação |
+|---|---|---|---|
+| `road_segment_id` | texto | **sim** | chave |
+| `current_polygon_id` | texto | não | aponta para a linha vigente em `POLYGONS` |
+| `source_segment_code` | texto | não | `codtrechorodov` do DER |
+| `road_name` | texto | não | nome da rodovia |
+| `road_code` | texto | não | sigla (ex.: `DF-075`) |
+| `segment_type` | texto | não | tipo do trecho |
+| `jurisdiction` | texto | não | jurisdição |
+| `administration` | texto | não | administração |
+| `length_m` | número | não | comprimento do eixo, por haversine |
+| `source_system` | texto | não | `DER_DF` |
+| `source_layer_name` | texto | não | camada de origem |
+| `source_feature_id` | texto | não | ids das feições, separados por vírgula |
+| `source_crs` | texto | não | `EPSG:4326` na planilha (nativo `EPSG:31983`) |
+| `valid_from` / `valid_to` | texto | não | vigência |
+| `is_current` | booleano | não | trecho vigente |
+| `properties_json` | texto | não | atributos do DER e resumo de tráfego |
+| `confidence_flag` | texto | não | confiança na geometria |
+| `quality_flag` | texto | não | qualidade |
+| `last_synced_at` | texto | não | última sincronização |
+
+### ROAD_SEGMENT_ALIASES — ponte entre códigos
+
+Chave: `alias_id`. Existe porque o código do trecho na fonte de tráfego e o do DER podem divergir
+ao longo do tempo; sem uma tabela de ponte, uma renomeação de código quebraria a relação em
+silêncio.
+
+| Campo | Tipo | Obrig. | Observação |
+|---|---|---|---|
+| `alias_id` | texto | **sim** | chave |
+| `road_segment_id` | texto | não | trecho de destino |
+| `source_segment_code` | texto | não | código na fonte |
+| `source_system` | texto | não | sistema de origem |
+| `valid_from` / `valid_to` | texto | não | vigência do apelido |
+| `match_method` | texto | não | `official_code` quando a relação é direta |
+| `match_confidence` | texto | não | confiança da relação |
+| `source_file` | texto | não | arquivo/serviço de origem |
+| `notes` | texto | não | observação |
+| `imported_at` | texto | não | carimbo de importação |
+
+### TRAFFIC_DAILY_TEST — contagem diária por trecho
+
+Chave: `traffic_daily_id`. `trecho` é o código bruto da fonte; `road_segment_id` é carimbado pela
+sincronização rodoviária a partir dele.
+
+| Campo | Tipo | Obrig. | Observação |
+|---|---|---|---|
+| `traffic_daily_id` | texto | **sim** | chave |
+| `trecho` | texto | não | código do trecho na fonte |
+| `sentido` | texto | não | sentido da via |
+| `dia` | data | não | dia da contagem |
+| `fluxo_total` | número | não | fluxo total do dia |
+| `carro` / `moto` / `onibus` / `caminhao` / `medio` / `indefinido` | número | não | fluxo por classe |
+| `intervalos_15min_observados` | inteiro | não | intervalos com observação |
+| `cobertura_dia_pct` | número | não | cobertura do dia |
+| `pico_15min_fluxo` | número | não | pico de 15 minutos |
+| `pico_15min_intervalo` | texto | não | intervalo do pico |
+| `soma_classes` | número | não | soma das classes |
+| `divergencia_total_classes` | número | não | diferença entre total e soma das classes |
+| `quality_flag` | texto | não | qualidade |
+| `imported_at` | texto | não | carimbo de importação |
+| `road_segment_id` | texto | não | preenchido pela sincronização rodoviária |
+| `source_file` | texto | não | arquivo de origem |
+| `source_total_policy` | texto | não | política usada para o total |
+| `traffic_schema_version` | texto | não | versão do schema da fonte |
+| `profile_total_15m_json` | texto | não | perfil de 15 em 15 minutos, total |
+| `profile_classes_15m_json` | texto | não | perfil de 15 em 15 minutos, por classe |
+
+> Os nomes de coluna destas três abas estão em português porque vieram assim da fonte de tráfego.
+> Renomeá-los seria mudança de contrato sem ganho — o resto do schema segue em inglês.
+
+---
+
+## Provisionamento pós-semente (Apps Script v2.0.0 e v2.2.1)
 
 `migration/imob-intelligence-backend.xlsx` é a **semente histórica de importação**, não um espelho
 do schema: ela inicializou a planilha uma vez e não acompanha as migrações que vieram depois. As
@@ -408,7 +617,32 @@ o que obriga ela a encolher no dia em que alguém reexportar a planilha (R8.39).
 | `RA_PROFILES` | `population_age_30_44_pct` | issue #35 |
 | `RA_PROFILES` | `population_age_45_59_pct` | issue #35 |
 | `RA_PROFILES` | `population_age_60_plus_pct` | issue #35 |
+| `RA_PROFILES` | `ra_code` | issue #50 |
+| `RA_PROFILES` | `ra_number` | issue #50 |
+| `RA_PROFILES` | `area_km2` | issue #50 |
+| `RA_PROFILES` | `average_age` | issue #50 |
+| `RA_PROFILES` | `female_pct` | issue #50 |
+| `RA_PROFILES` | `male_pct` | issue #50 |
+| `RA_PROFILES` | `households_total` | issue #50 |
+| `RA_PROFILES` | `avg_household_size` | issue #50 |
+| `RA_PROFILES` | `dominant_dwelling_type` | issue #50 |
+| `RA_PROFILES` | `dominant_dwelling_type_pct` | issue #50 |
+| `RA_PROFILES` | `dominant_tenure` | issue #50 |
+| `RA_PROFILES` | `dominant_tenure_pct` | issue #50 |
+| `RA_PROFILES` | `deed_registered_pct` | issue #50 |
+| `RA_PROFILES` | `profile_reference_year` | issue #50 |
+| `RA_PROFILES` | `profile_status` | issue #50 |
+| `RA_PROFILES` | `profile_source_url` | issue #50 |
+| `RA_PROFILES` | `geometry_source_url` | issue #50 |
+| `RA_PROFILES` | `created_after_pdad_2024` | issue #50 |
+| `RA_PROFILES` | `predecessor_ra` | issue #50 |
+| `RA_PROFILES` | `legal_reference` | issue #50 |
+| `RA_PROFILES` | `quality_flag` | issue #50 |
+| `RA_PROFILES` | `notes` | issue #50 |
 | `POLYGONS` | *(aba inteira)* | issues #27, #28 |
+| `ROAD_SEGMENTS` | *(aba inteira)* | issue #50 |
+| `ROAD_SEGMENT_ALIASES` | *(aba inteira)* | issue #50 |
+| `TRAFFIC_DAILY_TEST` | *(aba inteira)* | issue #50 |
 
 ---
 
