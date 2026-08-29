@@ -51,8 +51,20 @@ var WRITE_API_PROTOCOL = 'token-direct-v1';
 /** Abas obrigatórias da V1. Ausência é erro crítico. */
 var REQUIRED_SHEETS = ['LISTINGS', 'DEVELOPMENTS', 'ANCHORS'];
 
-/** Abas previstas para as próximas fases. Ausência é aviso, nunca erro. */
-var OPTIONAL_SHEETS = ['PRIMARY_OFFERS', 'IVV_MONTHLY', 'IVV_REGION', 'RA_PROFILES', 'POLYGONS'];
+/**
+ * Abas previstas para as próximas fases. Ausência é aviso, nunca erro.
+ *
+ * ROAD_SEGMENTS/ROAD_SEGMENT_ALIASES/TRAFFIC_DAILY_TEST já existem na v2.2.0 real (a
+ * que roda na planilha). Este arquivo do repositório estava desatualizado (v2.0.2) e
+ * não as listava — com dataSource: 'appsscript', dataset_() as recusava e
+ * loadDataset() reportava sucesso com `traffic` sempre vazio, sem erro nenhum (achado
+ * do Codex na PR #67). A v2.2.1 completa (issue #50) vai substituir este arquivo
+ * inteiro; esta é só a linha necessária para o allowlist bater com o backend real.
+ */
+var OPTIONAL_SHEETS = [
+  'PRIMARY_OFFERS', 'IVV_MONTHLY', 'IVV_REGION', 'RA_PROFILES', 'POLYGONS',
+  'ROAD_SEGMENTS', 'ROAD_SEGMENT_ALIASES', 'TRAFFIC_DAILY_TEST',
+];
 
 /** Abas novas que este script cria de forma aditiva quando ainda não existem. */
 var MANAGED_EXTENSION_SHEETS = ['RA_PROFILES', 'POLYGONS'];
