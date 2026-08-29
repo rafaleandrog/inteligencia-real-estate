@@ -442,3 +442,18 @@ Cada uma nasce de um erro que aconteceu de verdade.
   no sandbox `vm` e afirma os dois lados: **tudo que o cliente monta, o servidor aceita**, e **tudo
   que o cliente recusa, o servidor também recusaria**. Mesmo precedente de `pricePerM2_` × `pricePerM2`
   e das derivações de `tools/derive.mjs`.
+
+- **R8.58** *(2026-08-29, cobertura de tráfego, issue #64)* **Campo de terceiro certo na maioria
+  dos registros e absurdo numa minoria é mais perigoso que campo ausente — quando é derivável de
+  outra coluna confiável, derive, não leia.** `TRAFFIC_DAILY_TEST.cobertura_dia_pct` tem um bug de
+  locale/separador decimal em 9 dos 100 registros: nos dias completos `intervalos = 96` e
+  `cobertura = 1` (correto), mas num dia parcial real `intervalos_15min_observados = 90` grava
+  `cobertura_dia_pct = 9375` — deveria ser `0,9375`. Um campo ausente ou zerado falha visivelmente
+  e é pego na primeira olhada; este passa em qualquer revisão superficial porque "funciona" em 91%
+  dos casos, e só denuncia o bug quando alguém confere justamente um dos 9 dias parciais.
+  `src/traffic/coverage.js` nunca lê `cobertura_dia_pct` — deriva a cobertura sempre de
+  `intervalos_15min_observados / 96`, que é contagem bruta sem locale e confiável nos 100
+  registros. Quando o backend corrigir o locale, a troca do cálculo local pelo campo é de uma
+  linha, mas só depois do dado corrigido ser conferido registro a registro — não por confiança
+  (mesma disciplina da R8.4: guard e decisão se provam contra o cenário de falha real, não contra
+  a leitura otimista dele).
