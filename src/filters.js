@@ -4,6 +4,10 @@
 // toca o DOM nem a rede — é a camada que os testes cobrem de verdade.
 
 import { isApproximateLocation } from './normalize.js';
+import {
+  polygonLayerGroup, polygonEntityType, formatLayerGroup, formatEntityType,
+  comparePolygonDrawOrder,
+} from './format.js';
 
 /**
  * Camadas de REGISTRO exibíveis no mapa, na ordem em que aparecem na interface.
@@ -39,7 +43,91 @@ export function createFilterState() {
     anchorGroup: '',
     anchorSegment: '',
     layers: new Set(DISPLAY_LAYERS),
+    /**
+     * Grupos e tipos de contorno ligados (issue #51).
+     *
+     * `null` significa "ainda não há legenda montada, mostre tudo" — é o estado entre o
+     * primeiro `render()` e o carregamento dos contornos. Um `Set` vazio significa outra
+     * coisa: o operador desligou tudo. Confundir os dois faria a camada inteira sumir no
+     * primeiro quadro e só voltar depois de alguém clicar.
+     */
+    polygonGroups: null,
+    polygonTypes: null,
   };
+}
+
+/**
+ * Chave de um tipo dentro do seu grupo.
+ *
+ * Composta e não só o `entity_type` porque o vocabulário é aberto dos dois lados: nada
+ * impede dois grupos de usarem o mesmo nome de tipo, e aí desligar "Trecho rodoviário"
+ * num grupo apagaria o do outro.
+ */
+export function polygonTypeKey(group, type) {
+  return `${group}\u0000${type}`;
+}
+
+/**
+ * Contornos agrupados para a legenda de dois níveis (issue #51).
+ *
+ * Vocabulário **aberto**: os grupos e tipos saem do dado, não de uma lista no código —
+ * um `layer_group` novo aparece sozinho. A ordem é a de desenho (ver
+ * `comparePolygonDrawOrder`), para que a legenda leia de baixo para cima na mesma ordem
+ * em que o mapa empilha, em vez de alfabética, que não corresponde a nada visível.
+ *
+ * Contorno inativo não entra: ele também não é desenhado, e contá-lo na legenda
+ * prometeria algo que o mapa não mostra (mesma armadilha de R8.26).
+ */
+export function groupPolygonsForLegend(polygons) {
+  const groups = new Map();
+
+  for (const polygon of polygons || []) {
+    if (!polygon) continue;
+    if (polygon.status && polygon.status !== 'active') continue;
+
+    const group = polygonLayerGroup(polygon);
+    const type = polygonEntityType(polygon);
+    if (!groups.has(group)) {
+      groups.set(group, { key: group, label: formatLayerGroup(group), count: 0, types: new Map(), first: polygon });
+    }
+    const entry = groups.get(group);
+    entry.count += 1;
+    const typeKey = polygonTypeKey(group, type);
+    if (!entry.types.has(typeKey)) {
+      entry.types.set(typeKey, { key: typeKey, type, label: formatEntityType(type), count: 0, first: polygon });
+    }
+    entry.types.get(typeKey).count += 1;
+  }
+
+  return [...groups.values()]
+    .sort((a, b) => comparePolygonDrawOrder(a.first, b.first))
+    .map((entry) => ({
+      key: entry.key,
+      label: entry.label,
+      count: entry.count,
+      sample: entry.first,
+      types: [...entry.types.values()].sort((a, b) => a.label.localeCompare(b.label, 'pt-BR')),
+    }));
+}
+
+/**
+ * Um contorno passa pelos filtros de camada?
+ *
+ * `null` em `polygonGroups`/`polygonTypes` é "sem legenda montada ainda", e nesse estado
+ * tudo passa — ver o comentário em `createFilterState()`.
+ */
+export function polygonPassesLayerFilters(polygon, filters) {
+  if (!polygon) return false;
+  if (polygon.status && polygon.status !== 'active') return false;
+  if (!filters.layers.has('polygon')) return false;
+
+  const group = polygonLayerGroup(polygon);
+  if (filters.polygonGroups && !filters.polygonGroups.has(group)) return false;
+
+  const typeKey = polygonTypeKey(group, polygonEntityType(polygon));
+  if (filters.polygonTypes && !filters.polygonTypes.has(typeKey)) return false;
+
+  return true;
 }
 
 /**

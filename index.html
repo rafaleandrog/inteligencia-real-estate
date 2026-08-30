@@ -86,12 +86,18 @@
            partir das âncoras carregadas — issue #26. -->
       <div class="anchor-legend" id="anchorLegend" hidden></div>
 
+      <!-- Legenda de contornos em dois níveis: grupo (Regiões administrativas ×
+           Malha rodoviária × …) e, dentro dele, o tipo de entidade. Preenchida por
+           src/app.js a partir dos contornos carregados, com vocabulário ABERTO — um
+           layer_group novo no backend aparece aqui sozinho (issue #51). A caixa
+           "Todos os contornos" continua sendo o interruptor mestre da camada. -->
       <p class="layers-group-label layers-group-label-polygon" id="polygonLayerLabel" hidden>Contornos</p>
-      <ul class="layers" id="polygonLayers" hidden>
+      <ul class="layers" id="polygonMasterLayer" hidden>
         <li><label><input type="checkbox" data-layer="polygon" checked>
-          <span class="dot dot-polygon"></span> Contornos importados
+          <span class="dot dot-polygon"></span> Todos os contornos
           <span class="count" id="countPolygon">0</span></label></li>
       </ul>
+      <div class="polygon-legend" id="polygonLayers" hidden></div>
     </section>
 
     <section class="field-group">

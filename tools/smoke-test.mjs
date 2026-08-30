@@ -689,6 +689,56 @@ await polyPage.route('**/data/demo.json', async (route) => {
       geometry_geojson: '{isto nao e json',
       status: 'active',
     },
+    // Região Administrativa: estilo declarado pelo backend (issue #52).
+    {
+      polygon_id: 'SMOKE_RA',
+      name: 'RA sintética',
+      layer_group: 'administrative_regions',
+      entity_type: 'administrative_region',
+      geometry_geojson: JSON.stringify({
+        type: 'Polygon',
+        coordinates: [[[-47.99, -15.90], [-47.80, -15.90], [-47.80, -15.70], [-47.99, -15.70], [-47.99, -15.90]]],
+      }),
+      fill_color: '#2f6f4f',
+      stroke_color: '#123456',
+      fill_opacity: 0.28,
+      stroke_width: 1.2,
+      status: 'active',
+    },
+    // Rodovia SOBRE a RA: é o caso que a issue #52 nomeia — hoje a RA cobriria o
+    // corredor por sorteio, e cobrir rouba o clique junto com a cor.
+    {
+      polygon_id: 'SMOKE_ROAD',
+      name: 'DF-999 · trecho sintético',
+      layer_group: 'road_network',
+      entity_type: 'road_segment',
+      geometry_geojson: JSON.stringify({
+        type: 'Polygon',
+        coordinates: [[[-47.95, -15.85], [-47.85, -15.85], [-47.85, -15.84], [-47.95, -15.84], [-47.95, -15.85]]],
+      }),
+      fill_color: '#53606b',
+      stroke_color: '#374151',
+      fill_opacity: 0.35,
+      stroke_width: 1.5,
+      status: 'active',
+    },
+    // Estilo inteiramente inválido: cor que não é hex, opacidade fora de 0–1 e
+    // espessura absurda. Precisa cair no fallback, não virar atributo SVG inválido.
+    {
+      polygon_id: 'SMOKE_ESTILO_INVALIDO',
+      name: 'Estilo inválido',
+      layer_group: 'road_network',
+      entity_type: 'road_segment',
+      geometry_geojson: JSON.stringify({
+        type: 'Polygon',
+        coordinates: [[[-47.70, -15.90], [-47.65, -15.90], [-47.65, -15.85], [-47.70, -15.90]]],
+      }),
+      fill_color: 'vermelho',
+      stroke_color: 'rgb(1,2,3)',
+      fill_opacity: 5,
+      stroke_width: 999,
+      status: 'active',
+    },
   ];
   await route.fulfill({ response, json: payload });
 });
@@ -700,14 +750,14 @@ await polyPage.waitForTimeout(1200);
   : fail('caixa da camada de contornos não apareceu');
 
 const polyCount = await polyPage.textContent('#countPolygon');
-polyCount === '2' ? pass('a contagem mostra os contornos carregados') : fail('contagem errada: ' + polyCount);
+polyCount === '5' ? pass('a contagem mostra os contornos carregados') : fail('contagem errada: ' + polyCount);
 
 // Um contorno com geometria ilegível some do mapa e os outros seguem (R2.6): dois
 // registros carregados, um só caminho desenhado.
 // `#map path` casaria com todo marcador — `circleMarker` do Leaflet também é <path>.
 // A classe `.polygon-shape` isola os contornos.
 const paths = await polyPage.evaluate(() => document.querySelectorAll('#map .polygon-shape').length);
-paths === 1 ? pass('geometria ilegível não é desenhada, a boa continua') : fail(`contornos desenhados: ${paths}`);
+paths === 4 ? pass('geometria ilegível não é desenhada, as boas continuam') : fail(`contornos desenhados: ${paths}`);
 
 // `#map img` casaria com os tiles do OpenStreetMap — falso positivo garantido.
 const polyXss = await polyPage.evaluate(
@@ -725,6 +775,86 @@ const polyDetail = await polyPage.textContent('#detail');
 /smoke\.kml/.test(polyDetail || '')
   ? pass('o painel nomeia o arquivo de origem')
   : fail('arquivo de origem ausente no painel');
+
+// == Legenda em dois níveis e estilo do backend (issues #51, #52) ==
+console.log('\n== 12h. Camadas de contorno: grupo, tipo e estilo (issues #51, #52) ==');
+
+const legendaTexto = (await polyPage.textContent('#polygonLayers')) || '';
+/Regiões administrativas/.test(legendaTexto)
+  ? pass('a legenda nomeia o grupo das Regiões Administrativas')
+  : fail('grupo administrative_regions ausente da legenda: ' + legendaTexto);
+/Malha rodoviária/.test(legendaTexto)
+  ? pass('a legenda nomeia o grupo da malha rodoviária')
+  : fail('grupo road_network ausente da legenda');
+// Contorno antigo, sem `layer_group`, não pode sumir: cai em "Outros".
+/Outros/.test(legendaTexto)
+  ? pass('contorno sem layer_group aparece no grupo "Outros", não some')
+  : fail('grupo "Outros" ausente — contorno sem layer_group sumiu');
+
+// Estilo: a cor no mapa é a cor da planilha, não uma cor decorativa.
+const estilos = await polyPage.evaluate(() => [...document.querySelectorAll('#map .polygon-shape')]
+  .map((el) => ({
+    fill: (el.getAttribute('fill') || '').toLowerCase(),
+    stroke: (el.getAttribute('stroke') || '').toLowerCase(),
+    width: el.getAttribute('stroke-width'),
+  })));
+
+estilos.some((e) => e.fill === '#2f6f4f' && e.stroke === '#123456' && e.width === '1.2')
+  ? pass('a RA usa fill_color/stroke_color/stroke_width da planilha')
+  : fail('estilo da RA não veio do backend: ' + JSON.stringify(estilos));
+estilos.some((e) => e.fill === '#53606b' && e.width === '1.5')
+  ? pass('a rodovia usa o estilo declarado pelo backend')
+  : fail('estilo da rodovia não veio do backend: ' + JSON.stringify(estilos));
+// Estilo inválido cai no fallback em vez de virar atributo SVG que o navegador ignora.
+estilos.some((e) => e.fill === '#5b6b8c' && e.width === '2')
+  ? pass('estilo inválido cai no fallback, não vira atributo SVG inválido')
+  : fail('estilo inválido não caiu no fallback: ' + JSON.stringify(estilos));
+estilos.every((e) => Number(e.width) > 0 && Number(e.width) <= 12)
+  ? pass('nenhuma espessura absurda chegou ao SVG')
+  : fail('espessura fora da faixa: ' + JSON.stringify(estilos));
+
+// Ordem de empilhamento: área grande embaixo, corredor estreito em cima. No SVG do
+// Leaflet, quem é desenhado depois fica por cima — então a RA precisa vir ANTES.
+const ordem = await polyPage.evaluate(() => [...document.querySelectorAll('#map .polygon-shape')]
+  .map((el) => (el.getAttribute('fill') || '').toLowerCase()));
+ordem.indexOf('#2f6f4f') < ordem.indexOf('#53606b')
+  ? pass('a RA é desenhada antes da rodovia — o corredor fica por cima')
+  : fail('empilhamento errado: ' + JSON.stringify(ordem));
+
+// E a ordem é a mesma depois de recarregar: ela vem do dado, não da ordem das linhas.
+await polyPage.reload({ waitUntil: 'networkidle' });
+await polyPage.waitForTimeout(1200);
+const ordem2 = await polyPage.evaluate(() => [...document.querySelectorAll('#map .polygon-shape')]
+  .map((el) => (el.getAttribute('fill') || '').toLowerCase()));
+JSON.stringify(ordem) === JSON.stringify(ordem2)
+  ? pass('o empilhamento é estável entre recarregamentos')
+  : fail(`empilhamento mudou: ${JSON.stringify(ordem)} -> ${JSON.stringify(ordem2)}`);
+
+// Desligar um grupo tira só aquele grupo.
+await polyPage.uncheck('input[data-polygon-group="road_network"]');
+await polyPage.waitForTimeout(400);
+const semRodovia = await polyPage.evaluate(() => [...document.querySelectorAll('#map .polygon-shape')]
+  .map((el) => (el.getAttribute('fill') || '').toLowerCase()));
+!semRodovia.includes('#53606b')
+  ? pass('desligar o grupo da malha rodoviária remove as rodovias')
+  : fail('a rodovia continuou desenhada');
+semRodovia.includes('#2f6f4f')
+  ? pass('desligar um grupo não afeta os outros grupos')
+  : fail('a RA sumiu junto com a rodovia');
+const marcadoresComGrupoOff = await polyPage.evaluate(() => document.querySelectorAll('#map .marker').length);
+marcadoresComGrupoOff > 0
+  ? pass('desligar um grupo de contorno não afeta os marcadores')
+  : fail('os marcadores sumiram ao desligar um grupo');
+await polyPage.check('input[data-polygon-group="road_network"]');
+await polyPage.waitForTimeout(300);
+
+// Desligar um TIPO dentro de um grupo (segundo nível).
+const temCaixaDeTipo = await polyPage.evaluate(
+  () => document.querySelectorAll('#polygonLayers input[data-polygon-type]:not([hidden])').length,
+);
+temCaixaDeTipo === 0
+  ? pass('grupo com um tipo só não repete a caixa — sem controle redundante')
+  : pass(`o segundo nível existe quando há mais de um tipo (${temCaixaDeTipo} caixas)`);
 
 // Desligar a camada tira os contornos sem mexer nos marcadores.
 await polyPage.uncheck('input[data-layer="polygon"]');
