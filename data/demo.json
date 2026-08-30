@@ -8445,5 +8445,27 @@
       "population_age_60_plus_pct": ""
     }
   ],
-  "polygons": []
+  "polygons": [],
+  "ivv_monthly": [
+    {
+      "reference_month": "2026-05-01",
+      "ivv_pct": "6.5",
+      "offered_units": "6325",
+      "sold_units": "414",
+      "launched_units": "732",
+      "launched_projects": "2",
+      "offer_price_brl_m2": "14018.62",
+      "sale_price_brl_m2": "12071.92",
+      "offered_area_m2": "506965",
+      "sold_area_m2": "29493",
+      "vgo_brl_million": "7107",
+      "vgv_brl_million": "356",
+      "vgl_brl_million": "242",
+      "cancellations_units": "96",
+      "source_id": "SRC_IVV_MAY26_PDF",
+      "source_locator": "Dashboard IVV - Apresentação Executiva MAI26.pdf",
+      "verified_at": "2026-08-18",
+      "coverage_note": "Residencial novo; pesquisa amostral mensal. Published IVV rounded to one decimal percentage point."
+    }
+  ]
 }

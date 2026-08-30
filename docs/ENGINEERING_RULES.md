@@ -600,3 +600,20 @@ Cada uma nasce de um erro que aconteceu de verdade.
   convenção e o resultado está certo; amanhã a causa pode ser coluna trocada, e aí o número
   continuaria plausível. O aviso é a diferença entre "o cliente se virou" e "alguém precisa olhar
   isto".
+
+- **R8.57** *(2026-08-30, carga do IVV_MONTHLY, issue #56)* **Quando o frontend é o primeiro lugar
+  do projeto a declarar o schema de uma aba, coluna que ele RECONHECE pela família mas não declara
+  precisa de aviso próprio — separado do aviso de coluna desconhecida.** `IVV_MONTHLY` não tem
+  `REQUIRED_HEADERS`, `MANAGED_EXTENSION_SHEETS` nem `FIELD_SCHEMA` no Apps Script, nem na v2.2.1:
+  não existe lado servidor para o `tests/contract.test.js` cruzar, e a declaração deste repositório
+  é a única que existe. Nesse regime, uma coluna que casa com um padrão conhecido
+  (`*_ytd`, `*_calc_*`, `*_mom_*`) sobre uma métrica conhecida é o caso mais traiçoeiro: ela **não**
+  cai em "desconhecida", então sem aviso próprio seria descartada por um caminho que *parece*
+  tratamento. Se a planilha viva publicar o acumulado do ano com um nome que o contrato não
+  declara, o motor não acha o `ytdColumn`, recalcula, e devolve um número a poucos centésimos do
+  publicado — o defeito exato da issue #68, de novo, por outra porta. Mecanismo: dois avisos
+  distintos, porque as causas são distintas — coluna inteiramente nova pede declaração de schema;
+  derivada reconhecida pede que alguém confirme se ela é o acumulado que o motor procura —, e o
+  aviso da derivada nomeia a métrica-base, senão quem lê não sabe onde declarar. É por esse aviso,
+  na primeira carga real, que a convenção escrita no código vira verificação.
+
