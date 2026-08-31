@@ -43,7 +43,7 @@ const dom = {
   kpiVisible: el('kpiVisible'), kpiMedian: el('kpiMedian'), kpiNote: el('kpiNote'),
   loadingState: el('loadingState'), errorState: el('errorState'),
   errorTitle: el('errorTitle'), errorDetail: el('errorDetail'), retryBtn: el('retryBtn'),
-  warnings: el('warnings'), sourceBadge: el('sourceBadge'),
+  sourceBadge: el('sourceBadge'),
   datasetMeta: el('datasetMeta'), datasetMetaList: el('datasetMetaList'),
   datasetMetaSummary: el('datasetMetaSummary'),
   detail: el('detail'), detailTitle: el('detailTitle'), detailBody: el('detailBody'),
@@ -1084,20 +1084,10 @@ function showError(messages) {
   console.error('[imob] falha ao carregar o dataset:', messages);
 }
 
-function showWarnings(messages) {
-  if (messages.length === 0) { dom.warnings.hidden = true; return; }
-
-  const title = document.createElement('strong');
-  title.textContent = 'Avisos sobre os dados';
-  const list = document.createElement('ul');
-  for (const message of messages) {
-    const li = document.createElement('li');
-    li.textContent = message;
-    list.append(li);
-  }
-  dom.warnings.replaceChildren(title, list);
-  dom.warnings.hidden = false;
-  console.warn('[imob] avisos:', messages);
+function reportWarnings(messages) {
+  // Avisos de contrato e normalização são informação operacional. Eles continuam
+  // disponíveis para diagnóstico, sem cobrir o mapa na interface pública (#79).
+  if (messages.length > 0) console.warn('[imob] avisos:', messages);
 }
 
 /**
@@ -1351,15 +1341,14 @@ function renderMarketView() {
   setView(viewFromHash());
 
   // Campo em que os meses divergem não vira linha; a divergência vira aviso, na mesma
-  // lista do carregamento (R5.7). Devolver em vez de empurrar mantém a tela de avisos
-  // com uma origem só — duas funções escrevendo nela produziriam ordem imprevisível.
+  // lista do carregamento (R5.7). Devolver em vez de registrar aqui mantém uma origem
+  // única no console e uma ordem determinística entre os avisos.
   return warnings;
 }
 
 async function load() {
   showLoading(true);
   dom.errorState.hidden = true;
-  dom.warnings.hidden = true;
 
   const result = await loadDataset(CONFIG);
   showLoading(false);
@@ -1398,7 +1387,7 @@ async function load() {
   renderAnchorLegend(state.records);
 
   const marketWarnings = renderMarketView();
-  showWarnings([...result.warnings, ...result.errors, ...marketWarnings]);
+  reportWarnings([...result.warnings, ...result.errors, ...marketWarnings]);
   render();
 
   // Enquadra o que tem coordenada, para a primeira tela não depender do zoom padrão.

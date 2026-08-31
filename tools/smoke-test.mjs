@@ -27,7 +27,11 @@ const browser = await chromium.launch(executablePath ? { executablePath } : {});
 const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });
 
 const consoleErrors = [];
-page.on('console', (m) => { if (m.type() === 'error') consoleErrors.push(m.text()); });
+const consoleWarnings = [];
+page.on('console', (m) => {
+  if (m.type() === 'error') consoleErrors.push(m.text());
+  if (m.type() === 'warning') consoleWarnings.push(m.text());
+});
 page.on('pageerror', (e) => consoleErrors.push('pageerror: ' + e.message));
 
 // Força o modo demo sem tocar em src/config.js: o smoke test precisa rodar em
@@ -55,6 +59,15 @@ await page.locator('#loadingState').isHidden() ? pass('loading state some após 
                                                : fail('loading state permaneceu visível');
 (await page.locator('#errorState').isHidden()) ? pass('sem estado de erro')
                                                : fail('estado de erro exibido: ' + await page.locator('#errorDetail').textContent());
+
+// Avisos de contrato continuam no console para o operador, mas não podem cobrir o
+// mapa com informação técnica na interface pública (issue #79).
+(await page.locator('#warnings').count()) === 0
+  ? pass('avisos técnicos não são renderizados sobre o mapa')
+  : fail('o painel técnico #warnings continua na interface pública');
+consoleWarnings.some((message) => message.includes('[imob] avisos:'))
+  ? pass('avisos técnicos continuam disponíveis no console')
+  : fail('avisos técnicos sumiram também do console');
 
 console.log('\n== 4. Mapa e marcadores ==');
 const markers = await page.locator('#map path.marker').count();
@@ -1023,17 +1036,29 @@ await viewPage.addInitScript(() => {
 await viewPage.goto('http://localhost:8080/', { waitUntil: 'networkidle' });
 await viewPage.waitForTimeout(1200);
 
-const lerView = (alvo) => alvo.evaluate(() => ({
-  hash: location.hash,
-  mapa: !document.querySelector('#mapView').hidden,
-  mercado: !document.querySelector('#marketView').hidden,
-  botaoAtivo: document.querySelector('.view-tab[aria-pressed="true"]')?.dataset.view ?? null,
-  desabilitado: document.querySelector('#marketTab').disabled,
-  escopo: document.querySelector('#marketScope')?.textContent ?? '',
-  // Leaflet mede o container quando ele está oculto e conclui tamanho zero: sem
-  // invalidateSize() o mapa volta em branco, sem erro no console.
-  mapaLargura: Math.round(document.querySelector('#map').getBoundingClientRect().width),
-}));
+const lerView = (alvo) => alvo.evaluate(() => {
+  // Conferir só a propriedade `.hidden` deixou passar o bug real da #78: o atributo
+  // estava correto, mas `.layout { display:flex }` o vencia e o mapa seguia visível.
+  const estaVisivel = (node) => {
+    const box = node.getBoundingClientRect();
+    return getComputedStyle(node).display !== 'none' && box.width > 0 && box.height > 0;
+  };
+  const mapView = document.querySelector('#mapView');
+  const marketView = document.querySelector('#marketView');
+  return {
+    hash: location.hash,
+    mapa: estaVisivel(mapView),
+    mercado: estaVisivel(marketView),
+    mapaHidden: mapView.hidden,
+    mercadoHidden: marketView.hidden,
+    botaoAtivo: document.querySelector('.view-tab[aria-pressed="true"]')?.dataset.view ?? null,
+    desabilitado: document.querySelector('#marketTab').disabled,
+    escopo: document.querySelector('#marketScope')?.textContent ?? '',
+    // Leaflet mede o container quando ele está oculto e conclui tamanho zero: sem
+    // invalidateSize() o mapa volta em branco, sem erro no console.
+    mapaLargura: Math.round(document.querySelector('#map').getBoundingClientRect().width),
+  };
+});
 
 const inicial = await lerView(viewPage);
 inicial.mapa && !inicial.mercado
