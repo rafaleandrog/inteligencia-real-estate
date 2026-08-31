@@ -186,6 +186,25 @@ h1, h2 { margin: 0; font-size: 1rem; }
   height: calc(100% - var(--topbar-h));
 }
 
+/* `display: flex` da classe vence a regra nativa do atributo `hidden` em alguns
+   navegadores. Sem esta regra, trocar para o Mercado marca o mapa como oculto no
+   DOM, mas ele continua ocupando a viewport e empurra o dashboard para baixo. */
+.layout[hidden] { display: none; }
+
+.data-warnings {
+  margin: 0 12px 12px;
+  padding: 8px 10px;
+  border: 1px solid var(--line);
+  border-left: 3px solid var(--primary);
+  border-radius: var(--radius);
+  color: var(--muted);
+  font-size: 12px;
+}
+.data-warnings[hidden] { display: none; }
+.data-warnings summary { cursor: pointer; color: var(--ink); }
+.data-warnings ul { margin: 8px 0 0; padding-left: 18px; }
+.data-warnings li + li { margin-top: 6px; }
+
 .panel {
   width: var(--panel-w);
   flex: 0 0 var(--panel-w);
@@ -624,22 +643,6 @@ select:focus, input[type="number"]:focus {
 @media (prefers-reduced-motion: reduce) {
   .spinner { animation-duration: 3s; }
 }
-
-.warnings {
-  position: absolute;
-  left: 12px; bottom: 12px;
-  z-index: 500;
-  max-width: 340px;
-  padding: 10px 12px;
-  border-radius: var(--radius);
-  border-left: 3px solid var(--primary);
-  background: var(--panel);
-  box-shadow: var(--shadow);
-  font-size: 12px;
-  color: var(--muted);
-}
-.warnings[hidden] { display: none; }
-.warnings ul { margin: 6px 0 0; padding-left: 16px; }
 
 /* Detalhe --------------------------------------------------------------- */
 

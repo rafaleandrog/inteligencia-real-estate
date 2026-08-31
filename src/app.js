@@ -43,7 +43,9 @@ const dom = {
   kpiVisible: el('kpiVisible'), kpiMedian: el('kpiMedian'), kpiNote: el('kpiNote'),
   loadingState: el('loadingState'), errorState: el('errorState'),
   errorTitle: el('errorTitle'), errorDetail: el('errorDetail'), retryBtn: el('retryBtn'),
-  warnings: el('warnings'), sourceBadge: el('sourceBadge'),
+  sourceBadge: el('sourceBadge'),
+  dataWarnings: el('dataWarnings'), dataWarningsSummary: el('dataWarningsSummary'),
+  dataWarningsList: el('dataWarningsList'),
   datasetMeta: el('datasetMeta'), datasetMetaList: el('datasetMetaList'),
   datasetMetaSummary: el('datasetMetaSummary'),
   detail: el('detail'), detailTitle: el('detailTitle'), detailBody: el('detailBody'),
@@ -1085,18 +1087,23 @@ function showError(messages) {
 }
 
 function showWarnings(messages) {
-  if (messages.length === 0) { dom.warnings.hidden = true; return; }
-
-  const title = document.createElement('strong');
-  title.textContent = 'Avisos sobre os dados';
-  const list = document.createElement('ul');
-  for (const message of messages) {
-    const li = document.createElement('li');
-    li.textContent = message;
-    list.append(li);
+  if (messages.length === 0) {
+    dom.dataWarnings.hidden = true;
+    dom.dataWarnings.open = false;
+    dom.dataWarningsList.replaceChildren();
+    return;
   }
-  dom.warnings.replaceChildren(title, list);
-  dom.warnings.hidden = false;
+
+  const fragment = document.createDocumentFragment();
+  for (const message of messages) {
+    const item = document.createElement('li');
+    item.textContent = message;
+    fragment.append(item);
+  }
+  dom.dataWarningsSummary.textContent = `${messages.length} aviso${messages.length === 1 ? '' : 's'} técnico${messages.length === 1 ? '' : 's'}`;
+  dom.dataWarningsList.replaceChildren(fragment);
+  dom.dataWarnings.open = false;
+  dom.dataWarnings.hidden = false;
   console.warn('[imob] avisos:', messages);
 }
 
@@ -1351,15 +1358,16 @@ function renderMarketView() {
   setView(viewFromHash());
 
   // Campo em que os meses divergem não vira linha; a divergência vira aviso, na mesma
-  // lista do carregamento (R5.7). Devolver em vez de empurrar mantém a tela de avisos
-  // com uma origem só — duas funções escrevendo nela produziriam ordem imprevisível.
+  // lista do carregamento (R5.7). Devolver em vez de registrar aqui mantém uma origem
+  // única no console e uma ordem determinística entre os avisos.
   return warnings;
 }
 
 async function load() {
   showLoading(true);
   dom.errorState.hidden = true;
-  dom.warnings.hidden = true;
+  dom.dataWarnings.hidden = true;
+  dom.dataWarnings.open = false;
 
   const result = await loadDataset(CONFIG);
   showLoading(false);

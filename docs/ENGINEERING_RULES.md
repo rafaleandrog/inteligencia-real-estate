@@ -686,3 +686,11 @@ Cada uma nasce de um erro que aconteceu de verdade.
   ano é **valor**, não variação: ele nunca recebe cor de bom/ruim, porque pintá-lo pelo sinal
   afirmaria uma comparação que ninguém fez.
 
+- **R8.67** *(2026-08-31, troca de view do Mercado, issue #78)* **Estado declarado no DOM não
+  prova estado renderizado.** O smoke da troca Mapa → Mercado conferia apenas
+  `mapView.hidden === true` e passou verde, embora `.layout { display: flex }` vencesse a regra
+  nativa do atributo e mantivesse o mapa ocupando a viewport inteira; o dashboard existia, mas
+  ficava empurrado para baixo da dobra. Quando o comportamento testado é visual — ocultar,
+  sobrepor, caber ou trocar de tela — a asserção mede o resultado computado no navegador
+  (`getComputedStyle` e dimensões renderizadas), não só a classe, o atributo ou o estado que o
+  código tentou aplicar. O DOM confirma a intenção; o layout confirma o resultado.
