@@ -707,6 +707,49 @@ select:focus, input[type="number"]:focus {
 .detail dt { color: var(--muted); }
 .detail dd { margin: 0; text-align: right; font-variant-numeric: tabular-nums; }
 
+/* Painel de detalhe em três níveis (issue #55).
+
+   O essencial responde à pergunta que fez a pessoa clicar. Ele ganha peso pelo TAMANHO
+   do valor, não por cor: cor aqui competiria com a cor do marcador e a do contorno, que
+   são dado. O resto fica a um clique, em `<details>` fechado.
+
+   Contrato desta issue, com checagem fixa no smoke: o essencial cabe sem rolagem em
+   390 px. É por isso que ele é curto por construção (4 a 6 itens) em vez de curto por
+   sorte. */
+.detail-essential { margin-bottom: 14px; }
+.detail-essential dt { padding-top: 3px; font-size: 12px; }
+.detail-essential dd { font-size: 16px; line-height: 1.25; font-weight: 600; }
+
+.detail-more, .detail-provenance { margin: 0 0 10px; }
+.detail-more > summary, .detail-provenance > summary {
+  cursor: pointer;
+  padding: 6px 0;
+  font-size: 12px;
+  color: var(--muted);
+  /* O marcador nativo do `<details>` já indica aberto/fechado; um ícone próprio seria
+     um segundo vocabulário para a mesma coisa. */
+}
+.detail-more > summary:hover, .detail-provenance > summary:hover { color: var(--ink); }
+.detail-more > summary:focus-visible, .detail-provenance > summary:focus-visible {
+  outline: 2px solid var(--accent-text);
+  outline-offset: 2px;
+}
+.detail-more dl, .detail-provenance dl { margin-bottom: 6px; font-size: 12px; }
+
+/* A procedência é o nível mais fraco de todos: ela existe para auditar de onde veio o
+   desenho, e o hash de geometria não compete com o preço. */
+.detail-provenance dd { color: var(--muted); word-break: break-word; }
+
+/* A descrição é PROSA. Como linha de lista ela caía num `<dd>` alinhado à direita, o
+   que torna um parágrafo ilegível — alinhamento à direita só funciona para valores
+   curtos e comparáveis entre si. */
+.detail-description {
+  margin: 0 0 12px;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--muted);
+}
+
 .detail-source {
   display: inline-block;
   margin-top: 4px;
