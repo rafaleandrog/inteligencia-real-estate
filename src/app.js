@@ -784,12 +784,15 @@ function renderPolygonLegend() {
     } else if (group.types.length === 1) {
       // Mesmo sem caixa própria, o tipo precisa existir no DOM: `readFilters()` monta o
       // Set de tipos a partir dele, e um tipo ausente do Set filtraria o grupo inteiro.
+      const holder = document.createElement('li');
+      holder.hidden = true;
       const hidden = document.createElement('input');
       hidden.type = 'checkbox';
       hidden.checked = true;
       hidden.hidden = true;
       hidden.setAttribute('data-polygon-type', group.types[0].key);
-      list.append(hidden);
+      holder.append(hidden);
+      list.append(holder);
     }
 
     frag.append(list);

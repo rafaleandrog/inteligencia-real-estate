@@ -642,6 +642,11 @@ export function polygonStyle(polygon) {
 const POLYGON_GROUP_DEPTH = {
   administrative_regions: 0,
   poligonais_importadas: 1,
+  // Contorno gravado antes da v2.2.1 não tem `layer_group`, e ele NÃO é uma camada
+  // nova: é justamente um KML importado, quase sempre uma área grande. Deixá-lo no topo
+  // junto com os grupos desconhecidos faria um contorno legado cobrir as rodovias — e
+  // cobrir rouba o clique, não só a cor.
+  [POLYGON_UNCLASSIFIED]: 1,
   road_network: 2,
 };
 const UNKNOWN_GROUP_DEPTH = 3;

@@ -697,7 +697,10 @@ await polyPage.route('**/data/demo.json', async (route) => {
       entity_type: 'administrative_region',
       geometry_geojson: JSON.stringify({
         type: 'Polygon',
-        coordinates: [[[-47.99, -15.90], [-47.80, -15.90], [-47.80, -15.70], [-47.99, -15.70], [-47.99, -15.90]]],
+        // Cobre a rodovia (que é o ponto do teste de empilhamento) e para em -15.83,
+        // acima do SMOKE_1: sobrepor os dois faria um roubar o clique do outro, que é
+        // justamente o defeito que esta issue conserta — não o que ela deve reproduzir.
+        coordinates: [[[-47.99, -15.90], [-47.80, -15.90], [-47.80, -15.83], [-47.99, -15.83], [-47.99, -15.90]]],
       }),
       fill_color: '#2f6f4f',
       stroke_color: '#123456',
@@ -739,6 +742,24 @@ await polyPage.route('**/data/demo.json', async (route) => {
       stroke_width: 999,
       status: 'active',
     },
+    // Segundo TIPO dentro do grupo da malha rodoviária. Ele existe para que o segundo
+    // nível da legenda exista: sem um grupo com mais de um tipo, a checagem do nível de
+    // tipo passaria de qualquer jeito, e teste que não pode falhar não é teste.
+    {
+      polygon_id: 'SMOKE_ENTRONCAMENTO',
+      name: 'Entroncamento sintético',
+      layer_group: 'road_network',
+      entity_type: 'road_junction',
+      geometry_geojson: JSON.stringify({
+        type: 'Polygon',
+        coordinates: [[[-47.60, -15.95], [-47.58, -15.95], [-47.58, -15.93], [-47.60, -15.95]]],
+      }),
+      fill_color: '#8a5a2b',
+      stroke_color: '#8a5a2b',
+      fill_opacity: 0.4,
+      stroke_width: 2,
+      status: 'active',
+    },
   ];
   await route.fulfill({ response, json: payload });
 });
@@ -750,14 +771,14 @@ await polyPage.waitForTimeout(1200);
   : fail('caixa da camada de contornos não apareceu');
 
 const polyCount = await polyPage.textContent('#countPolygon');
-polyCount === '5' ? pass('a contagem mostra os contornos carregados') : fail('contagem errada: ' + polyCount);
+polyCount === '6' ? pass('a contagem mostra os contornos carregados') : fail('contagem errada: ' + polyCount);
 
 // Um contorno com geometria ilegível some do mapa e os outros seguem (R2.6): dois
 // registros carregados, um só caminho desenhado.
 // `#map path` casaria com todo marcador — `circleMarker` do Leaflet também é <path>.
 // A classe `.polygon-shape` isola os contornos.
 const paths = await polyPage.evaluate(() => document.querySelectorAll('#map .polygon-shape').length);
-paths === 4 ? pass('geometria ilegível não é desenhada, as boas continuam') : fail(`contornos desenhados: ${paths}`);
+paths === 5 ? pass('geometria ilegível não é desenhada, as boas continuam') : fail(`contornos desenhados: ${paths}`);
 
 // `#map img` casaria com os tiles do OpenStreetMap — falso positivo garantido.
 const polyXss = await polyPage.evaluate(
@@ -766,7 +787,12 @@ const polyXss = await polyPage.evaluate(
 polyXss === 0 ? pass('nome hostil de contorno não virou markup') : fail('markup injetado via POLYGONS!');
 
 // Clique no contorno abre o painel com as propriedades do KML.
-await polyPage.click('#map .polygon-shape');
+//
+// O contorno é escolhido pela COR, não por ser o primeiro do documento: a ordem no SVG
+// agora vem do dado (issue #52), então "o primeiro" deixou de ser o contorno do KML e
+// passou a ser a RA. Depender da ordem do documento era frágil antes e ficou errado
+// agora — a cor identifica o registro que este bloco quer, sem depender de empilhamento.
+await polyPage.click('#map .polygon-shape[fill="#aa3344"]');
 await polyPage.waitForTimeout(400);
 const polyDetail = await polyPage.textContent('#detail');
 /4321/.test(polyDetail || '')
@@ -848,13 +874,45 @@ marcadoresComGrupoOff > 0
 await polyPage.check('input[data-polygon-group="road_network"]');
 await polyPage.waitForTimeout(300);
 
-// Desligar um TIPO dentro de um grupo (segundo nível).
-const temCaixaDeTipo = await polyPage.evaluate(
-  () => document.querySelectorAll('#polygonLayers input[data-polygon-type]:not([hidden])').length,
-);
-temCaixaDeTipo === 0
-  ? pass('grupo com um tipo só não repete a caixa — sem controle redundante')
-  : pass(`o segundo nível existe quando há mais de um tipo (${temCaixaDeTipo} caixas)`);
+// Desligar um TIPO dentro de um grupo (segundo nível da legenda).
+//
+// O grupo da malha rodoviária tem dois tipos no fixture — trecho e entroncamento —, e é
+// só por isso que este bloco pode falhar. O grupo das RAs tem um tipo só e não ganha
+// sublista: repetir a caixa daria dois controles para a mesma decisão.
+const caixasDeTipo = await polyPage.evaluate(() => [...document.querySelectorAll(
+  '#polygonLayers input[data-polygon-type]',
+)].filter((i) => !i.hidden).map((i) => i.dataset.polygonType));
+caixasDeTipo.length === 2 && caixasDeTipo.every((k) => k.startsWith('road_network'))
+  ? pass('o segundo nível aparece só no grupo com mais de um tipo')
+  : fail('caixas de tipo inesperadas: ' + JSON.stringify(caixasDeTipo));
+
+// A chave do tipo é `grupo\u0000tipo`: NUL não se escreve em seletor CSS, então a caixa
+// é achada percorrendo o DOM.
+await polyPage.evaluate(() => {
+  const input = [...document.querySelectorAll('#polygonLayers input[data-polygon-type]')]
+    .find((i) => i.dataset.polygonType.endsWith('road_junction'));
+  input.checked = false;
+  input.dispatchEvent(new Event('change', { bubbles: true }));
+});
+await polyPage.waitForTimeout(400);
+const semEntroncamento = await polyPage.evaluate(() => [...document.querySelectorAll('#map .polygon-shape')]
+  .map((el) => (el.getAttribute('fill') || '').toLowerCase()));
+!semEntroncamento.includes('#8a5a2b')
+  ? pass('desligar um tipo remove só aquele tipo')
+  : fail('o entroncamento continuou desenhado');
+semEntroncamento.includes('#53606b')
+  ? pass('desligar um tipo não afeta os outros tipos do mesmo grupo')
+  : fail('o trecho rodoviário sumiu junto com o entroncamento');
+semEntroncamento.includes('#2f6f4f')
+  ? pass('desligar um tipo não afeta os outros grupos')
+  : fail('a RA sumiu ao desligar um tipo da malha rodoviária');
+await polyPage.evaluate(() => {
+  const input = [...document.querySelectorAll('#polygonLayers input[data-polygon-type]')]
+    .find((i) => i.dataset.polygonType.endsWith('road_junction'));
+  input.checked = true;
+  input.dispatchEvent(new Event('change', { bubbles: true }));
+});
+await polyPage.waitForTimeout(300);
 
 // Desligar a camada tira os contornos sem mexer nos marcadores.
 await polyPage.uncheck('input[data-layer="polygon"]');
