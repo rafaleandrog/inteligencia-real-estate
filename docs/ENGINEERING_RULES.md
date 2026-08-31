@@ -664,3 +664,25 @@ Cada uma nasce de um erro que aconteceu de verdade.
   quando o dado não está lá volta para a view padrão, senão o link direto contorna o botão e chega
   exatamente na tela vazia que o botão evitava.
 
+- **R8.65** *(2026-08-30, cards do Mercado DF, issue #59)* **A cor e o ícone de uma variação vêm do
+  SIGNIFICADO da métrica, não do sinal aritmético — e o significado é declarado como dado, com
+  cobertura obrigatória de todo o registro.** Distrato subindo não é bom; venda subindo é. Pintar
+  de verde toda seta para cima transforma um alerta em elogio, e o número continua correto, o que
+  torna o erro invisível a quem confere valor por valor. Há um terceiro estado que a implementação
+  ingênua não tem: **neutro**. Preço subindo é bom para quem vende e ruim para quem compra; estoque
+  subindo é oferta farta ou demanda fraca. A tela não sabe de que lado está quem lê, e escolher um
+  lado seria a aplicação opinando sobre o mercado. Mecanismo: um mapa métrica → sentimento
+  (`subir_e_bom` · `subir_e_ruim` · `neutro`), com **teste exigindo entrada para toda métrica do
+  registro**, para que métrica nova não herde "subir é bom" por omissão; e o tom nunca viaja só na
+  cor — ícone e rótulo carregam a mesma informação, para quem não distingue as cores e para quem
+  imprime.
+- **R8.66** *(2026-08-30, cards do Mercado DF, issue #59)* **Variação exibida sobre um período
+  agregado nomeia o recorte a que ela se refere, e duas grandezas diferentes nunca compartilham
+  rótulo.** Um card que mostra o valor de 66 meses e, abaixo, "vs mês anterior +3,2%" convida à
+  leitura de que 3,2% é a variação do período — e é a variação do último mês. O rótulo passa a
+  nomear o mês de referência. A mesma disciplina separa `ivv_mom_pp` de `ivv_mom_pct_change`: +1
+  p.p. e +20% podem descrever exatamente o mesmo movimento, então apresentá-los sob um rótulo
+  comum faz a tela mentir sobre a magnitude — cada um sai com sua unidade escrita. E acumulado do
+  ano é **valor**, não variação: ele nunca recebe cor de bom/ruim, porque pintá-lo pelo sinal
+  afirmaria uma comparação que ninguém fez.
+
