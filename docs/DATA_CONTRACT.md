@@ -275,13 +275,14 @@ livre pelo mesmo motivo de LISTINGS.
 ## Abas opcionais
 
 Ausência gera **warning**, nunca erro. A aplicação não pode cair porque uma aba futura está
-vazia (R2.5). `PRIMARY_OFFERS`, `IVV_MONTHLY` e `IVV_REGION` não são lidas pela tela ainda.
-`RA_PROFILES` passou a ser lida a partir da issue #33/#34 — ver seção dedicada abaixo.
+vazia (R2.5). `PRIMARY_OFFERS` e `IVV_REGION` não são lidas pela tela ainda. `RA_PROFILES` passou a
+ser lida a partir da issue #33/#34 e `IVV_MONTHLY` a partir da issue #56 — ver as seções dedicadas
+abaixo.
 
 | Aba | Chave | Linhas | Papel |
 |---|---|---|---|
 | `PRIMARY_OFFERS` | `observation_id` | 29 | Observações unitárias do mercado primário, previstas para uma fase futura |
-| `IVV_MONTHLY` | `reference_month` | 1 | Índice de Velocidade de Vendas mensal do DF |
+| `IVV_MONTHLY` | `reference_date` | 1 na semente, 66 na planilha | Série mensal do mercado residencial do DF (IVV) — **lida pela tela** |
 | `IVV_REGION` | `reference_month` + `market_region` + `bedroom_bucket` | 95 | IVV por região e faixa de quartos |
 | `RA_PROFILES` | `ra_geo_id` | 35 | Indicadores territoriais por Região Administrativa (censo + PDAD) — **lida pela tela** |
 | `POLYGONS` | `polygon_id` | 0 | Contornos: KML/KMZ, Regiões Administrativas e rodovias — criada pelo `setupProject()` v2.0.0, ampliada para A:AP na v2.2.1 |
@@ -497,6 +498,207 @@ interromper o carregamento do dataset inteiro (R2.6).
 > `properties_json` são escritos por quem produziu o arquivo. Vão para a tela por `textContent`,
 > nunca por `innerHTML` (R4.4). O servidor ainda prefixa `'` em valor que comece com `=`, `+`, `@`
 > ou `-letra`, para que a célula nunca vire fórmula na planilha.
+
+### IVV_MONTHLY — série mensal do mercado residencial (issues #56, #57, #68)
+
+Aba **opcional**, buscada de verdade a partir da issue #56 (`config.ivvMonthlySheet`), com o mesmo
+tratamento de `RA_PROFILES`/`POLYGONS`: promessa iniciada antes do lote obrigatório, teto de tempo
+dedicado, e falha ou ausência virando **aviso, nunca erro** (R2.5). O mapa não depende dela.
+
+Chave: `reference_date`. 66 meses (jan/2021 a jun/2026) na planilha viva; **1 linha e 18 colunas**
+na semente. Sem recorte por Região Administrativa — a série descreve o DF inteiro.
+
+> **Esta aba não tem contrato no Apps Script, e esta seção é o único que existe.** Na v2.2.1 ela
+> está em `OPTIONAL_SHEETS` e `ALLOWED_DATASETS`, mas **não** em `REQUIRED_HEADERS`, **não** em
+> `MANAGED_EXTENSION_SHEETS` e **não** em `FIELD_SCHEMA`: `setupProject()` não a provisiona e
+> `validateAll()` nunca a valida. Não há lado servidor para cruzar, então a rede é o **triângulo**
+> registro (`src/ivv/metrics.js`) ↔ normalizador (`src/ivv/normalize-ivv.js`) ↔ esta seção, fechado
+> nos três sentidos por `tests/ivv-contract.test.js`. Esse teste também **verifica no `Code.gs` de
+> verdade** que a aba continua sem contrato de backend: no dia em que ganhar um, ele quebra e cobra
+> o cruzamento que hoje não existe.
+
+#### Quanto disto é verificado, e quanto é convenção
+
+Das 83 colunas declaradas, **20 têm o nome observado** em arquivo deste repositório e **63 são
+convenção** — nome que descreve o dataset como o backend o publica, sem que nada aqui tenha podido
+confrontá-lo com a planilha viva. A coluna "Origem do nome" das tabelas abaixo diz qual é qual.
+
+Duas consequências práticas, e nenhuma delas é silenciosa:
+
+1. O normalizador **nomeia em aviso** (`COLUNA_NAO_DECLARADA`) toda coluna que a aba trouxer e esta
+   seção não declare, e o aviso vai para a **tela**, não só para o console. A primeira carga real
+   corrige a convenção em vez de deixá-la como palpite mudo (R5.7).
+2. Coluna declarada que não vier é simplesmente ausente — nenhum caminho depende dela para
+   funcionar. O `*_ytd` é o caso a vigiar: se o nome real for outro, o atalho de acumulado do
+   `src/ivv/aggregate.js` fica **inerte** e o motor recalcula. Não produz número errado; produz um
+   número recalculado onde havia um publicado (R8.56).
+
+> **`*_ytd` é a convenção mais exposta do conjunto.** A semente **não tem nenhuma coluna** `_ytd`,
+> `_calc`, `_diff`, `_mom` ou `_yoy` em `IVV_MONTHLY` — as 18 colunas dela são só identificação,
+> métricas mensais e procedência. O único lugar do repositório onde dá para observar como o
+> publicador nomeia a família de conferência é a aba `IVV_REGION`, que usa `ivv_pct_check` e
+> `ivv_variance_pp`; por isso esses dois nomes entram declarados como observados, ao lado de
+> `ivv_calc_pct`/`ivv_diff_pp`, que são convenção. Aceitar as duas grafias não custa nada e dobra a
+> chance de casar com a planilha.
+
+#### Escala: `ivv_pct` é fração decimal
+
+`ivv_pct = 0.057` significa **5,7%**. É o **oposto** de `RA_PROFILES`, onde `54` significa 54%. As
+duas escalas nunca se unificam (R8.44) — trocá-las erra por 100× sem nenhum sintoma.
+
+A escala canônica interna é a decimal. A semente grava `6.5` (ponto percentual), e o normalizador
+converte **com aviso nomeado** — coluna, quantos meses, e um exemplo com valor original e
+convertido —, nunca em silêncio. Valor que não é plausível em nenhuma das duas escalas é mantido
+como veio e sinalizado (`ESCALA_INDETERMINADA`), porque adivinhar ali seria inventar dado.
+
+#### Eixo temporal
+
+`reference_date` é o eixo canônico: ordenação e filtro por data saem dele, **nunca** de
+`period_id`. O normalizador o fixa no dia 1º do mês — a série é mensal, e uma data no meio do mês
+faria dois recortes iguais parecerem períodos diferentes. `year`, `month`, `period_id` e `quarter`
+são preenchidos a partir dele **apenas quando a planilha não os trouxer**; publicado nunca é
+sobrescrito.
+
+#### Agregação de período
+
+A coluna "Agregação de período" abaixo é a política de `src/ivv/metrics.js`, e ela **não é
+uniforme**: fluxo soma, estoque tira média, preço e taxa são razão ponderada **pareada por mês**, e
+`launches_developments` recusa. Somar `offers_units` de doze meses devolve doze vezes o estoque
+real — plausível, formatado e errado (R8.53). Razão cujos dois lados são somados sobre conjuntos de
+meses diferentes erra pelo mesmo tipo de caminho (R8.55).
+
+#### Nomes do schema v1.0.0 na semente
+
+A semente `migration/imob-intelligence-backend.xlsx` é anterior ao schema em vigor e usa outros
+nomes para as mesmas grandezas. São traduzidos pelo normalizador, com aviso:
+
+| Nome na semente (v1.0.0) | Nome canônico |
+|---|---|
+| `offered_units` | `offers_units` |
+| `sold_units` | `sales_units` |
+| `launched_units` | `launches_units` |
+| `launched_projects` | `launches_developments` |
+| `offer_price_brl_m2` | `asking_price_brl_m2` |
+| `offered_area_m2` | `offer_area_m2` |
+
+#### Colunas
+
+**Identificação e filtro** — 8 colunas
+
+| Campo | Tipo | Agregação de período | Origem do nome |
+|---|---|---|---|
+| `period_id` | texto | — | **convenção** |
+| `reference_date` | data (YYYY-MM-DD) | — | **convenção** |
+| `year` | inteiro | — | **convenção** |
+| `month` | inteiro | — | **convenção** |
+| `month_label` | texto | — | **convenção** |
+| `quarter` | texto | — | **convenção** |
+| `is_latest_period` | booleano | — | **convenção** |
+| `reference_month` | data (YYYY-MM-DD) | — | observado na semente |
+
+**Escopo e procedência** — 12 colunas
+
+| Campo | Tipo | Agregação de período | Origem do nome |
+|---|---|---|---|
+| `geography_scope` | texto | — | **convenção** |
+| `market_scope` | texto | — | **convenção** |
+| `segment_scope` | texto | — | **convenção** |
+| `source_publisher` | texto | — | **convenção** |
+| `source_file` | texto | — | **convenção** |
+| `source_url` | URL | — | **convenção** |
+| `report_filter` | texto | — | **convenção** |
+| `quality_flag` | texto | — | **convenção** |
+| `source_id` | texto | — | observado na semente |
+| `source_locator` | texto | — | observado na semente |
+| `verified_at` | data (YYYY-MM-DD) | — | observado na semente |
+| `coverage_note` | texto | — | observado na semente |
+
+**Métricas mensais** — 13 colunas
+
+| Campo | Tipo | Agregação de período | Origem do nome |
+|---|---|---|---|
+| `ivv_pct` | fração decimal | razão ponderada pareada | observado na semente |
+| `offers_units` | inteiro | média do período | observado como `offered_units` |
+| `sales_units` | inteiro | soma | observado como `sold_units` |
+| `launches_units` | inteiro | soma | observado como `launched_units` |
+| `launches_developments` | inteiro | **não agregável** | observado como `launched_projects` |
+| `cancellations_units` | inteiro | soma | observado na semente |
+| `offer_area_m2` | número | média do período | observado como `offered_area_m2` |
+| `sold_area_m2` | número | soma | observado na semente |
+| `asking_price_brl_m2` | número | razão ponderada pareada | observado como `offer_price_brl_m2` |
+| `sale_price_brl_m2` | número | razão ponderada pareada | observado na semente |
+| `vgo_brl_million` | número | média do período | observado na semente |
+| `vgv_brl_million` | número | soma | observado na semente |
+| `vgl_brl_million` | número | soma | observado na semente |
+
+**Derivadas e validação** — 12 colunas
+
+| Campo | Tipo | Agregação de período | Origem do nome |
+|---|---|---|---|
+| `ivv_pct_check` | fração decimal | não agregável | observado em `IVV_REGION` |
+| `ivv_variance_pp` | número | não agregável | observado em `IVV_REGION` |
+| `ivv_calc_pct` | fração decimal | não agregável | **convenção** |
+| `ivv_diff_pp` | número | não agregável | **convenção** |
+| `asking_price_calc_brl_m2` | número | não agregável | **convenção** |
+| `asking_price_diff_brl_m2` | número | não agregável | **convenção** |
+| `sale_price_calc_brl_m2` | número | não agregável | **convenção** |
+| `sale_price_diff_brl_m2` | número | não agregável | **convenção** |
+| `avg_offer_ticket_brl` | número | não agregável | **convenção** |
+| `avg_sale_ticket_brl` | número | não agregável | **convenção** |
+| `avg_offer_area_m2` | número | não agregável | **convenção** |
+| `avg_sold_area_m2` | número | não agregável | **convenção** |
+
+**Acumulados do ano civil** — 12 colunas
+
+| Campo | Tipo | Agregação de período | Origem do nome |
+|---|---|---|---|
+| `sales_units_ytd` | inteiro | lê-se o último mês | **convenção** |
+| `launches_units_ytd` | inteiro | lê-se o último mês | **convenção** |
+| `cancellations_units_ytd` | inteiro | lê-se o último mês | **convenção** |
+| `sold_area_m2_ytd` | número | lê-se o último mês | **convenção** |
+| `vgv_brl_million_ytd` | número | lê-se o último mês | **convenção** |
+| `vgl_brl_million_ytd` | número | lê-se o último mês | **convenção** |
+| `ivv_ytd_pct` | fração decimal | lê-se o último mês | **convenção** |
+| `offers_units_ytd_avg` | número | lê-se o último mês | **convenção** |
+| `offer_area_m2_ytd_avg` | número | lê-se o último mês | **convenção** |
+| `vgo_brl_million_ytd_avg` | número | lê-se o último mês | **convenção** |
+| `asking_price_ytd_brl_m2` | número | lê-se o último mês | **convenção** |
+| `sale_price_ytd_brl_m2` | número | lê-se o último mês | **convenção** |
+
+**Variações** — 26 colunas
+
+| Campo | Tipo | Agregação de período | Origem do nome |
+|---|---|---|---|
+| `ivv_mom_pp` | número | não agregável | **convenção** |
+| `ivv_yoy_pp` | número | não agregável | **convenção** |
+| `ivv_mom_pct_change` | número | não agregável | **convenção** |
+| `ivv_yoy_pct_change` | número | não agregável | **convenção** |
+| `offers_units_mom_pct_change` | número | não agregável | **convenção** |
+| `offers_units_yoy_pct_change` | número | não agregável | **convenção** |
+| `sales_units_mom_pct_change` | número | não agregável | **convenção** |
+| `sales_units_yoy_pct_change` | número | não agregável | **convenção** |
+| `launches_units_mom_pct_change` | número | não agregável | **convenção** |
+| `launches_units_yoy_pct_change` | número | não agregável | **convenção** |
+| `cancellations_units_mom_pct_change` | número | não agregável | **convenção** |
+| `cancellations_units_yoy_pct_change` | número | não agregável | **convenção** |
+| `offer_area_m2_mom_pct_change` | número | não agregável | **convenção** |
+| `offer_area_m2_yoy_pct_change` | número | não agregável | **convenção** |
+| `sold_area_m2_mom_pct_change` | número | não agregável | **convenção** |
+| `sold_area_m2_yoy_pct_change` | número | não agregável | **convenção** |
+| `asking_price_brl_m2_mom_pct_change` | número | não agregável | **convenção** |
+| `asking_price_brl_m2_yoy_pct_change` | número | não agregável | **convenção** |
+| `sale_price_brl_m2_mom_pct_change` | número | não agregável | **convenção** |
+| `sale_price_brl_m2_yoy_pct_change` | número | não agregável | **convenção** |
+| `vgo_brl_million_mom_pct_change` | número | não agregável | **convenção** |
+| `vgo_brl_million_yoy_pct_change` | número | não agregável | **convenção** |
+| `vgv_brl_million_mom_pct_change` | número | não agregável | **convenção** |
+| `vgv_brl_million_yoy_pct_change` | número | não agregável | **convenção** |
+| `vgl_brl_million_mom_pct_change` | número | não agregável | **convenção** |
+| `vgl_brl_million_yoy_pct_change` | número | não agregável | **convenção** |
+
+> **`*_calc_*`, `*_check` e `*_diff_*` sinalizam divergência; não substituem o valor publicado.**
+> `ivv_pct` vence `ivv_calc_pct` sempre (R8.54). E `ivv_mom_pp` e `ivv_mom_pct_change` são grandezas
+> **diferentes**, que nunca se misturam: +1 p.p. e +20% podem descrever o mesmo movimento.
 
 ---
 

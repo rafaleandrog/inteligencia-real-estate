@@ -15,12 +15,16 @@ import {
   normalizeRoadSegments, normalizeRoadSegmentAliases, normalizeTrafficDailyRecords,
 } from './traffic/normalize.js';
 import { linkTrafficDataset } from './traffic/link.js';
+import { normalizeIvvMonthly } from './ivv/normalize-ivv.js';
 
 /** Entidades obrigatórias na V1. Ausência de qualquer uma é erro. */
 export const REQUIRED_ENTITIES = ['listings', 'developments', 'anchors'];
 
 /** Formato de `traffic` quando as três abas de tráfego não carregaram — nunca `undefined`. */
 const EMPTY_TRAFFIC = { bySegmentId: new Map(), orphaned: [], unmatchedSegmentIds: [] };
+
+/** Formato de `ivvMonthly` quando a aba não carregou — lista vazia, nunca `undefined`. */
+const EMPTY_IVV_MONTHLY = [];
 
 /** Timeout de rede. Sem isso, uma planilha inacessível deixa a página em "carregando" para sempre. */
 const FETCH_TIMEOUT_MS = 20000;
@@ -175,6 +179,7 @@ async function loadFromGviz(config) {
   const raProfilesPromise = fetchRaProfilesFromGviz(config);
   const polygonsPromise = fetchPolygonsFromGviz(config);
   const trafficPromise = fetchTrafficSheetsFromGviz(config);
+  const ivvPromise = fetchIvvMonthlyFromGviz(config);
 
   const settled = await Promise.allSettled(
     entries.map(([, sheetName]) => fetchGvizSheet(config.spreadsheetId, sheetName))
@@ -196,15 +201,57 @@ async function loadFromGviz(config) {
   const { polygons, warnings: polygonWarnings } = await polygonsPromise;
   const { segments, aliases, trafficRecords, warnings: trafficWarnings } = await trafficPromise;
   const traffic = linkTrafficDataset(segments, polygons, trafficRecords, aliases);
+  const { ivvMonthly, warnings: ivvWarnings } = await ivvPromise;
   return {
     raw,
     errors,
-    warnings: [...warnings, ...raProfileWarnings, ...polygonWarnings, ...trafficWarnings],
+    warnings: [
+      ...warnings, ...raProfileWarnings, ...polygonWarnings, ...trafficWarnings, ...ivvWarnings,
+    ],
     meta: { spreadsheetId: config.spreadsheetId, ...meta },
     raProfiles,
     polygons,
     traffic,
+    ivvMonthly,
   };
+}
+
+/**
+ * Converte os avisos do normalizador do IVV em texto para a tela de avisos.
+ *
+ * Eles chegam como `{code, message, detail}` e a interface renderiza string; o prefixo diz de
+ * onde veio, porque na lista de avisos convivem APP_META, contornos, tráfego e mercado.
+ * `COLUNA_NAO_DECLARADA` precisa chegar à TELA, não só ao console: é o aviso que nomeia a
+ * coluna que o backend publica e o contrato ainda não declara, e é assim que a convenção
+ * declarada em `src/ivv/normalize-ivv.js` se corrige na primeira carga real.
+ */
+function ivvWarningTexts(warnings) {
+  return (warnings || []).map((warning) => `Mercado (IVV_MONTHLY): ${warning.message}`);
+}
+
+/**
+ * Lê a aba opcional `IVV_MONTHLY` (issue #56): série mensal do mercado residencial do DF.
+ *
+ * Mesmo tratamento de `RA_PROFILES`/`POLYGONS`/tráfego — promessa iniciada **antes** do lote
+ * obrigatório, teto de tempo curto e dedicado, e falha ou ausência virando **aviso, nunca
+ * erro** (R2.5). O mapa não depende desta aba para nada.
+ */
+async function fetchIvvMonthlyFromGviz(config) {
+  const sheetName = config.ivvMonthlySheet;
+  if (!sheetName) return { ivvMonthly: EMPTY_IVV_MONTHLY, warnings: [] };
+
+  try {
+    const rows = await fetchGvizSheet(config.spreadsheetId, sheetName, {
+      timeoutMs: META_FETCH_TIMEOUT_MS,
+    });
+    const { months, warnings } = normalizeIvvMonthly(rows);
+    return { ivvMonthly: months, warnings: ivvWarningTexts(warnings) };
+  } catch (error) {
+    return {
+      ivvMonthly: EMPTY_IVV_MONTHLY,
+      warnings: [`Série de mercado indisponível (${sheetName}): ${error?.message || error}`],
+    };
+  }
 }
 
 /**
@@ -362,10 +409,12 @@ async function loadFromDemo(config) {
   // normalizador tinha rejeitado (`last_validation_at: 'ontem'` reaparecia e virava
   // "Validado em —"), destruindo a distinção entre não publicado e valor inválido.
   // Os campos de geração do demo ficam num ramo à parte, fora do vocabulário APP_META.
+  const demoIvv = normalizeIvvMonthly(payload.ivv_monthly || []);
+
   return {
     raw,
     errors: [],
-    warnings: metaConflictWarnings(payload.meta),
+    warnings: [...metaConflictWarnings(payload.meta), ...ivvWarningTexts(demoIvv.warnings)],
     meta: { ...normalizeAppMeta(payload.meta), demo: payload.meta || {} },
     // Mesmo tratamento de `raw`: aba ausente no demo.json vira mapa vazio, não erro.
     raProfiles: normalizeRaProfiles(payload.ra_profiles || []),
@@ -380,6 +429,10 @@ async function loadFromDemo(config) {
       normalizeTrafficDailyRecords(payload.traffic_daily || []).records,
       normalizeRoadSegmentAliases(payload.road_segment_aliases || []).records
     ),
+    // A semente traz a linha de IVV_MONTHLY com os nomes do schema v1.0.0 e o IVV em
+    // ponto percentual, então o caminho de demo exercita de verdade a tradução de alias
+    // e a conversão de escala — inclusive os avisos que elas produzem.
+    ivvMonthly: demoIvv.months,
   };
 }
 
@@ -401,6 +454,7 @@ async function loadFromAppsScript(config) {
   const raProfilesPromise = fetchRaProfilesFromAppsScript(config);
   const polygonsPromise = fetchPolygonsFromAppsScript(config);
   const trafficPromise = fetchTrafficSheetsFromAppsScript(config);
+  const ivvPromise = fetchIvvMonthlyFromAppsScript(config);
 
   const settled = await Promise.allSettled(
     entries.map(async ([, sheetName]) => {
@@ -452,9 +506,11 @@ async function loadFromAppsScript(config) {
   } = await trafficPromise;
   warnings.push(...trafficWarnings);
   const traffic = linkTrafficDataset(segments, polygons, trafficRecords, aliases);
+  const { ivvMonthly, warnings: ivvWarnings } = await ivvPromise;
+  warnings.push(...ivvWarnings);
 
   return {
-    raw, errors, warnings, meta, raProfiles, polygons, traffic,
+    raw, errors, warnings, meta, raProfiles, polygons, traffic, ivvMonthly,
   };
 }
 
@@ -508,6 +564,26 @@ async function fetchPolygonsFromAppsScript(config) {
     return { polygons: normalizePolygons(payload.rows || []), warnings: [] };
   } catch (error) {
     return { polygons: [], warnings: [`Contornos indisponíveis: ${error?.message || error}`] };
+  }
+}
+
+/** IVV_MONTHLY pelo endpoint read-only do Web App — mesmo contrato de `fetchIvvMonthlyFromGviz`. */
+async function fetchIvvMonthlyFromAppsScript(config) {
+  if (!config.ivvMonthlySheet) return { ivvMonthly: EMPTY_IVV_MONTHLY, warnings: [] };
+
+  try {
+    const url = `${config.appsScriptUrl}?resource=dataset&name=${encodeURIComponent(config.ivvMonthlySheet)}`;
+    const response = await fetchWithTimeout(url, { timeoutMs: META_FETCH_TIMEOUT_MS });
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    const payload = await response.json();
+    if (payload.error) throw new Error(payload.error);
+    const { months, warnings } = normalizeIvvMonthly(payload.rows || []);
+    return { ivvMonthly: months, warnings: ivvWarningTexts(warnings) };
+  } catch (error) {
+    return {
+      ivvMonthly: EMPTY_IVV_MONTHLY,
+      warnings: [`Série de mercado indisponível: ${error?.message || error}`],
+    };
   }
 }
 
@@ -573,6 +649,7 @@ export async function loadDataset(config) {
       raProfiles: {},
       polygons: [],
       traffic: EMPTY_TRAFFIC,
+      ivvMonthly: EMPTY_IVV_MONTHLY,
       source: strategy,
       warnings,
       errors: [error?.message || String(error)],
@@ -611,6 +688,7 @@ export async function loadDataset(config) {
     raProfiles: result.raProfiles || {},
     polygons: result.polygons || [],
     traffic: result.traffic || EMPTY_TRAFFIC,
+    ivvMonthly: result.ivvMonthly || EMPTY_IVV_MONTHLY,
     source: strategy,
     warnings,
     errors,

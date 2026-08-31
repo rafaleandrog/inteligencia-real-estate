@@ -118,6 +118,15 @@ payload.ra_profiles = workbook.RA_PROFILES
 // explicitamente sintético em tests/fixtures/polygons.json.
 payload.polygons = [];
 
+// IVV_MONTHLY é opcional (issue #56). A semente tem UMA linha, com os nomes do schema
+// v1.0.0 e o IVV em ponto percentual — e é exatamente por isso que ela vale no demo: o
+// caminho de tradução de alias e de conversão de escala do src/ivv/normalize-ivv.js sai
+// exercitado por quem abre o modo de demonstração, avisos inclusive. Uma série inventada
+// de 66 meses seria dado de mercado falso dentro de um artefato publicado.
+payload.ivv_monthly = workbook.IVV_MONTHLY
+  ? workbook.IVV_MONTHLY.rows.map(convertDates)
+  : [];
+
 mkdirSync(dirname(target), { recursive: true });
 writeFileSync(target, `${JSON.stringify(payload, null, 2)}\n`);
 
@@ -126,4 +135,5 @@ for (const [sheet, entity] of Object.entries(ENTITY_BY_SHEET)) {
 }
 console.log(`RA_PROFILES     -> ra_profiles    ${payload.ra_profiles.length} linhas`);
 console.log(`POLYGONS        -> polygons       ${payload.polygons.length} linhas (vazio por decisão — ver comentário)`);
+console.log(`IVV_MONTHLY     -> ivv_monthly    ${payload.ivv_monthly.length} linhas`);
 console.log(`\n${target} gerado.`);

@@ -255,22 +255,22 @@ export const LEGACY_COLUMN_ALIASES = Object.freeze({
 const DERIVED_FAMILIES = Object.freeze([
   {
     role: COLUMN_ROLES.ACUMULADO_ANO,
-    pattern: /^(?<base>.+?)_ytd(?:_[a-z0-9_]+)?$/,
+    pattern: /^(?<base>.+?)_ytd(?<rest>_[a-z0-9_]+)?$/,
     reason: 'Acumulado do ano já calculado pelo backend: lê-se o último mês, não se soma.',
   },
   {
     role: COLUMN_ROLES.VERIFICACAO,
-    pattern: /^(?<base>.+?)_(?:calc|check)(?:_[a-z0-9_]+)?$/,
+    pattern: /^(?<base>.+?)_(?:calc|check)(?<rest>_[a-z0-9_]+)?$/,
     reason: 'Recálculo do backend. Serve para sinalizar divergência, nunca para substituir.',
   },
   {
     role: COLUMN_ROLES.VERIFICACAO,
-    pattern: /^(?<base>.+?)_(?:diff|variance)(?:_[a-z0-9_]+)?$/,
+    pattern: /^(?<base>.+?)_(?:diff|variance)(?<rest>_[a-z0-9_]+)?$/,
     reason: 'Divergência entre publicado e recalculado. Sinaliza, não substitui.',
   },
   {
     role: COLUMN_ROLES.VARIACAO,
-    pattern: /^(?<base>.+?)_(?:mom|yoy)(?:_[a-z0-9_]+)?$/,
+    pattern: /^(?<base>.+?)_(?:mom|yoy)(?<rest>_[a-z0-9_]+)?$/,
     reason:
       'Variação entre períodos. `_pp` (pontos percentuais) e `_pct_change` (variação relativa) '
       + 'são grandezas diferentes e nunca se misturam: +1 p.p. e +20% podem descrever o mesmo '
@@ -283,14 +283,30 @@ const IVV_DERIVED_PREFIX_BASE = Object.freeze({
   ivv: 'ivv_pct',
 });
 
-function resolveBase(base) {
-  if (METRIC_BY_KEY[base]) return METRIC_BY_KEY[base];
-  if (IVV_DERIVED_PREFIX_BASE[base]) return METRIC_BY_KEY[IVV_DERIVED_PREFIX_BASE[base]];
-  // `ivv_calc_pct`, `ivv_ytd_pct`: o sufixo de unidade fica depois do marcador da família.
-  const withoutUnit = base.replace(/_pct$/, '');
-  if (METRIC_BY_KEY[withoutUnit]) return METRIC_BY_KEY[withoutUnit];
-  if (IVV_DERIVED_PREFIX_BASE[withoutUnit]) return METRIC_BY_KEY[IVV_DERIVED_PREFIX_BASE[withoutUnit]];
+function lookup(key) {
+  if (METRIC_BY_KEY[key]) return METRIC_BY_KEY[key];
+  if (IVV_DERIVED_PREFIX_BASE[key]) return METRIC_BY_KEY[IVV_DERIVED_PREFIX_BASE[key]];
   return null;
+}
+
+/**
+ * Resolve a métrica de origem de uma coluna derivada.
+ *
+ * O marcador da família aparece nas duas posições no dataset — no fim
+ * (`sales_units_ytd`) e no MEIO, antes do sufixo de unidade (`ivv_calc_pct`,
+ * `asking_price_ytd_brl_m2`). Por isso a busca tenta o prefixo sozinho e, depois, o
+ * prefixo religado ao que sobrou: `asking_price` + `_brl_m2` reencontra
+ * `asking_price_brl_m2`. Sem isso, uma coluna derivada legítima cairia em
+ * `desconhecido` — e um erro de digitação continuaria caindo, que é o que se quer.
+ */
+function resolveBase(base, rest) {
+  const direct = lookup(base);
+  if (direct) return direct;
+  if (rest) {
+    const rejoined = lookup(`${base}${rest}`);
+    if (rejoined) return rejoined;
+  }
+  return lookup(base.replace(/_pct$/, ''));
 }
 
 /**
@@ -332,7 +348,7 @@ export function classifyColumn(column) {
   for (const family of DERIVED_FAMILIES) {
     const match = family.pattern.exec(column);
     if (!match) continue;
-    const base = resolveBase(match.groups.base);
+    const base = resolveBase(match.groups.base, match.groups.rest);
     if (!base) continue;
     return {
       role: family.role, kind: null, metric: base,
