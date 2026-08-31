@@ -646,3 +646,21 @@ Cada uma nasce de um erro que aconteceu de verdade.
   comentário — e guarda que grita sem motivo é desligada na primeira semana. Vale para todo arquivo
   que o navegador executa e o teste não carrega.
 
+- **R8.63** *(2026-08-30, view interna do Mercado Residencial DF, issue #58)* **Tela que muda de
+  recorte territorial em relação à tela anterior declara o recorte NA PRÓPRIA TELA, com peso de
+  conteúdo e não de rodapé.** O dashboard do IVV mostra preço e volume do Distrito Federal inteiro;
+  a fonte não publica a série por Região Administrativa. Quem chega nele por um botão na mesma
+  barra do mapa — onde acabou de aplicar um filtro de RA — assume, por continuidade, que os números
+  respondem ao mesmo recorte. Não respondem, e **nada no número denuncia isso**: o valor é correto,
+  só descreve outro território. Mecanismo: a frase de escopo é elemento de conteúdo no topo da
+  view, não letra miúda no fim; e a tela **não oferece** o filtro que não existe, porque um controle
+  desabilitado ainda sugere que o recorte é possível.
+- **R8.64** *(2026-08-30, view interna do Mercado Residencial DF, issue #58)* **Controle que leva a
+  uma tela sem dado fica desabilitado com o motivo escrito, nunca some, e nunca abre a tela
+  vazia.** As três saídas parecem equivalentes e não são: a tela vazia é indistinguível de tela
+  quebrada, e o botão que some parece falha de carregamento — ninguém procura o que não viu, então
+  o usuário conclui que o recurso não existe. O botão desabilitado com `title` explicando é o único
+  dos três que informa. Vale junto com a guarda no roteamento: pedir a view por `location.hash`
+  quando o dado não está lá volta para a view padrão, senão o link direto contorna o botão e chega
+  exatamente na tela vazia que o botão evitava.
+

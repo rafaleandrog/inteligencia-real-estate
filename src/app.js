@@ -9,6 +9,7 @@
 
 import { loadDataset, flattenEntities } from './data.js';
 import { isApproximateLocation, appMetaRows } from './normalize.js';
+import { ivvProvenance, IVV_SCOPE_NOTICE } from './ivv/scope.js';
 import {
   anchorLegendGroups, applyFilters, computeKpis, createFilterState, distinctAnchorGroups,
   distinctAnchorSegments, distinctLocalities, distinctPropertyTypes, distinctRegions,
@@ -48,6 +49,11 @@ const dom = {
   anchorLegend: el('anchorLegend'),
   polygonLayers: el('polygonLayers'), polygonLayerLabel: el('polygonLayerLabel'),
   polygonMasterLayer: el('polygonMasterLayer'), countPolygon: el('countPolygon'),
+  viewSwitch: el('viewSwitch'), marketTab: el('marketTab'),
+  mapView: el('mapView'), marketView: el('marketView'),
+  marketScope: el('marketScope'), marketBody: el('marketBody'),
+  marketProvenance: el('marketProvenance'), marketProvenanceList: el('marketProvenanceList'),
+  marketSource: el('marketSource'),
 };
 
 const state = {
@@ -59,6 +65,9 @@ const state = {
   // RA_PROFILES está ausente/indisponível — o filtro de RA continua funcionando,
   // só sem nome/população/densidade.
   raProfiles: {},
+  // Série mensal do IVV (issue #56). Lista vazia significa "a aba não veio", que é
+  // estado normal — o botão do Mercado fica desabilitado, com o motivo escrito.
+  ivvMonthly: [],
   // Contornos importados de KML/KMZ (issue #28). Lista vazia é o estado normal de
   // quem ainda não importou nenhum arquivo — a camada só não aparece.
   polygons: [],
@@ -1155,6 +1164,97 @@ function showSourceBadge(source) {
 
 // --- Carregamento ---------------------------------------------------------
 
+// --- View interna do Mercado Residencial DF (issue #58) ----------------------------
+
+const VIEWS = ['mapa', 'mercado'];
+
+/** A view pedida pelo hash. Hash desconhecido cai no mapa, sem erro. */
+function viewFromHash() {
+  const wanted = (location.hash || '').replace('#', '');
+  return VIEWS.includes(wanted) ? wanted : 'mapa';
+}
+
+/**
+ * Troca a view visível (issue #58).
+ *
+ * Duas coisas que este projeto já pagou para aprender:
+ *
+ * 1. **O mapa não é desmontado.** Trocar de view esconde o container; o Leaflet
+ *    continua montado, com zoom, centro e camadas ligadas intactos. Recriar o mapa a
+ *    cada troca perderia tudo isso e ainda custaria os tiles de novo.
+ * 2. **`invalidateSize()` ao voltar.** O Leaflet mede o container quando ele está
+ *    oculto e conclui que tem tamanho zero; sem a remedição o mapa volta em branco,
+ *    sem erro nenhum no console.
+ *
+ * Pedir a view do Mercado sem série carregada volta para o mapa em vez de abrir uma
+ * tela vazia — vazia é indistinguível de quebrada.
+ */
+function setView(name) {
+  const temMercado = state.ivvMonthly.length > 0;
+  const view = name === 'mercado' && temMercado ? 'mercado' : 'mapa';
+
+  dom.mapView.hidden = view !== 'mapa';
+  dom.marketView.hidden = view !== 'mercado';
+
+  for (const tab of dom.viewSwitch.querySelectorAll('.view-tab')) {
+    tab.setAttribute('aria-pressed', String(tab.dataset.view === view));
+  }
+
+  if (view === 'mapa' && map) map.invalidateSize();
+
+  const alvo = `#${view}`;
+  if (location.hash !== alvo) history.replaceState(null, '', alvo);
+}
+
+/**
+ * Monta a view do Mercado: escopo declarado e procedência (issue #58).
+ *
+ * Os cards e gráficos são das issues #59 a #61. O que esta entrega garante é que a tela
+ * existe, diz de que território ela fala e de onde vem o dado — e que ela nunca abre
+ * vazia sem explicar por quê.
+ */
+function renderMarketView() {
+  const temSerie = state.ivvMonthly.length > 0;
+
+  // Botão desabilitado com o motivo escrito, não botão que some: um controle que
+  // desaparece parece bug de carregamento, e ninguém procura o que não viu.
+  dom.marketTab.disabled = !temSerie;
+  dom.marketTab.title = temSerie ? ''
+    : 'A aba IVV_MONTHLY não foi carregada, então não há série de mercado para mostrar.';
+
+  if (!temSerie) {
+    if (viewFromHash() === 'mercado') setView('mapa');
+    return [];
+  }
+
+  dom.marketScope.textContent = IVV_SCOPE_NOTICE;
+
+  const { rows, warnings, sourceUrl } = ivvProvenance(state.ivvMonthly);
+  dom.marketProvenanceList.replaceChildren();
+  for (const row of rows) addRow(dom.marketProvenanceList, row.label, row.value);
+
+  const href = safeExternalUrl(sourceUrl);
+  if (href) {
+    const link = document.createElement('a');
+    link.href = href;
+    link.target = '_blank';
+    link.rel = 'noopener noreferrer';
+    link.textContent = `Fonte: ${hostnameOf(href) || 'abrir'}`;
+    dom.marketSource.replaceChildren(link);
+    dom.marketSource.hidden = false;
+  } else {
+    dom.marketSource.replaceChildren();
+    dom.marketSource.hidden = true;
+  }
+
+  setView(viewFromHash());
+
+  // Campo em que os meses divergem não vira linha; a divergência vira aviso, na mesma
+  // lista do carregamento (R5.7). Devolver em vez de empurrar mantém a tela de avisos
+  // com uma origem só — duas funções escrevendo nela produziriam ordem imprevisível.
+  return warnings;
+}
+
 async function load() {
   showLoading(true);
   dom.errorState.hidden = true;
@@ -1175,6 +1275,7 @@ async function load() {
 
   state.records = flattenEntities(result.entities);
   state.raProfiles = result.raProfiles || {};
+  state.ivvMonthly = result.ivvMonthly || [];
   state.polygons = result.polygons || [];
   renderPolygonLegend();
 
@@ -1195,7 +1296,8 @@ async function load() {
   populateAnchorSegments('');
   renderAnchorLegend(state.records);
 
-  showWarnings([...result.warnings, ...result.errors]);
+  const marketWarnings = renderMarketView();
+  showWarnings([...result.warnings, ...result.errors, ...marketWarnings]);
   render();
 
   // Enquadra o que tem coordenada, para a primeira tela não depender do zoom padrão.
@@ -1225,6 +1327,16 @@ function bindEvents() {
   dom.clearFilters.addEventListener('click', clearFilters);
   dom.closeDetail.addEventListener('click', closeDetail);
   dom.retryBtn.addEventListener('click', () => { load().catch(reportFatal); });
+
+  // Troca de view (issue #58). O hash é a fonte da verdade: o clique escreve nele e o
+  // `hashchange` aplica. Assim o botão e a barra de endereço nunca discordam, e
+  // recarregar em `#mercado` abre direto no dashboard.
+  dom.viewSwitch.addEventListener('click', (event) => {
+    const tab = event.target.closest('.view-tab');
+    if (!tab || tab.disabled) return;
+    setView(tab.dataset.view);
+  });
+  window.addEventListener('hashchange', () => setView(viewFromHash()));
 
   document.addEventListener('keydown', (event) => {
     if (event.key === 'Escape' && !dom.detail.hidden) closeDetail();

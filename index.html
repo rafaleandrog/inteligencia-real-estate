@@ -28,10 +28,19 @@
 
   <div class="source-badge" id="sourceBadge" hidden></div>
 
+  <!-- Troca de view (issue #58). Sem roteador: dois botões, `location.hash` e dois
+       `hidden`. O projeto não tem etapa de build, e uma dependência de roteamento para
+       alternar entre duas telas custaria mais do que resolve. -->
+  <nav class="view-switch" id="viewSwitch" aria-label="Trocar de view">
+    <button type="button" class="view-tab" data-view="mapa" aria-pressed="true">Mapa</button>
+    <button type="button" class="view-tab" data-view="mercado" aria-pressed="false"
+            id="marketTab">Mercado Residencial DF</button>
+  </nav>
+
   <a class="admin-link" href="./admin.html">Administração</a>
 </header>
 
-<main class="layout">
+<main class="layout" id="mapView">
 
   <aside class="panel" id="filters" aria-label="Filtros">
 
@@ -185,6 +194,24 @@
     <div id="detailBody"></div>
   </aside>
 
+</main>
+
+<!-- View interna do Mercado Residencial DF (issue #58). Mesmo HTML, container irmão do
+     mapa, oculto por padrão. O mapa NÃO é desmontado ao trocar de view: remontar o
+     Leaflet a cada troca é caro e perde zoom, centro e camadas ligadas. -->
+<main class="market" id="marketView" hidden aria-label="Mercado Residencial DF">
+  <header class="market-head">
+    <h1>Mercado Residencial DF</h1>
+    <p class="market-scope" id="marketScope"></p>
+  </header>
+
+  <div class="market-body" id="marketBody"></div>
+
+  <details class="market-provenance" id="marketProvenance">
+    <summary>Origem do dado</summary>
+    <dl class="detail-list" id="marketProvenanceList"></dl>
+    <p id="marketSource" hidden></p>
+  </details>
 </main>
 
 <script src="./assets/vendor/leaflet/leaflet.js"></script>

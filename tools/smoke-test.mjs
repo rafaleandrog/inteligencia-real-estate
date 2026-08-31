@@ -1008,6 +1008,157 @@ await polyPage.close();
   ? pass('sem contorno na planilha, a camada não aparece na legenda')
   : fail('caixa de contornos apareceu com a aba vazia');
 
+console.log('\n== 12j. Troca de view: Mapa × Mercado Residencial DF (issue #58) ==');
+
+const viewPage = await browser.newPage({ viewport: { width: 1440, height: 900 } });
+const viewErros = [];
+viewPage.on('pageerror', (e) => viewErros.push(e.message));
+await viewPage.addInitScript(() => {
+  Object.defineProperty(window, 'APP_CONFIG', {
+    configurable: true,
+    set(value) { delete window.APP_CONFIG; window.APP_CONFIG = value; if (value) value.demoMode = true; },
+    get() { return undefined; },
+  });
+});
+await viewPage.goto('http://localhost:8080/', { waitUntil: 'networkidle' });
+await viewPage.waitForTimeout(1200);
+
+const lerView = (alvo) => alvo.evaluate(() => ({
+  hash: location.hash,
+  mapa: !document.querySelector('#mapView').hidden,
+  mercado: !document.querySelector('#marketView').hidden,
+  botaoAtivo: document.querySelector('.view-tab[aria-pressed="true"]')?.dataset.view ?? null,
+  desabilitado: document.querySelector('#marketTab').disabled,
+  escopo: document.querySelector('#marketScope')?.textContent ?? '',
+  // Leaflet mede o container quando ele está oculto e conclui tamanho zero: sem
+  // invalidateSize() o mapa volta em branco, sem erro no console.
+  mapaLargura: Math.round(document.querySelector('#map').getBoundingClientRect().width),
+}));
+
+const inicial = await lerView(viewPage);
+inicial.mapa && !inicial.mercado
+  ? pass('a página abre no mapa') : fail('view inicial errada: ' + JSON.stringify(inicial));
+!inicial.desabilitado
+  ? pass('com série de IVV carregada, o botão do Mercado fica habilitado')
+  : fail('botão do Mercado desabilitado com dado presente');
+
+// Ir para o Mercado.
+await viewPage.click('#marketTab');
+await viewPage.waitForTimeout(300);
+const noMercado = await lerView(viewPage);
+noMercado.mercado && !noMercado.mapa
+  ? pass('o botão troca a view para o Mercado') : fail('não trocou: ' + JSON.stringify(noMercado));
+noMercado.hash === '#mercado'
+  ? pass('o hash reflete a view atual') : fail('hash: ' + noMercado.hash);
+noMercado.botaoAtivo === 'mercado'
+  ? pass('a aba ativa acompanha a view') : fail('aba ativa: ' + noMercado.botaoAtivo);
+/Distrito Federal inteiro/.test(noMercado.escopo) && /Região Administrativa/.test(noMercado.escopo)
+  ? pass('a tela declara o escopo do DF inteiro, sem recorte por RA')
+  : fail('escopo não declarado: ' + noMercado.escopo);
+
+const proveniencia = await viewPage.evaluate(() => ({
+  linhas: document.querySelectorAll('#marketProvenanceList dt').length,
+  temFonte: !document.querySelector('#marketSource').hidden,
+}));
+proveniencia.linhas >= 1
+  ? pass(`a procedência mostra ${proveniencia.linhas} campo(s) do dataset`)
+  : fail('procedência vazia');
+
+// Voltar para o mapa: o Leaflet precisa remedir o container.
+await viewPage.click('.view-tab[data-view="mapa"]');
+await viewPage.waitForTimeout(400);
+const deVolta = await lerView(viewPage);
+deVolta.mapa && !deVolta.mercado
+  ? pass('voltar para o mapa esconde o Mercado') : fail('volta falhou: ' + JSON.stringify(deVolta));
+deVolta.mapaLargura > 200
+  ? pass('o mapa volta com tamanho — invalidateSize() rodou')
+  : fail(`o mapa voltou com ${deVolta.mapaLargura}px de largura`);
+const tilesDeVolta = await viewPage.evaluate(() => document.querySelectorAll('#map .leaflet-tile').length);
+tilesDeVolta > 0
+  ? pass('o mapa continua montado, não foi recriado do zero')
+  : fail('o mapa perdeu os tiles ao voltar');
+
+// Os filtros sobrevivem à ida e volta.
+await viewPage.fill('#search', 'asa');
+await viewPage.waitForTimeout(400);
+const antes = await viewPage.textContent('#kpiVisible');
+await viewPage.click('#marketTab');
+await viewPage.waitForTimeout(250);
+await viewPage.click('.view-tab[data-view="mapa"]');
+await viewPage.waitForTimeout(400);
+const depois = await viewPage.textContent('#kpiVisible');
+(await viewPage.inputValue('#search')) === 'asa' && antes === depois
+  ? pass('trocar de view e voltar não perde os filtros')
+  : fail(`filtros perdidos: busca=${await viewPage.inputValue('#search')} kpi ${antes} -> ${depois}`);
+
+// Link direto e recarga.
+await viewPage.goto('http://localhost:8080/#mercado', { waitUntil: 'networkidle' });
+await viewPage.waitForTimeout(1200);
+const direto = await lerView(viewPage);
+direto.mercado
+  ? pass('recarregar em #mercado abre direto no dashboard')
+  : fail('link direto falhou: ' + JSON.stringify(direto));
+
+// Hash desconhecido cai no mapa, sem erro.
+await viewPage.goto('http://localhost:8080/#nao-existe', { waitUntil: 'networkidle' });
+await viewPage.waitForTimeout(1000);
+const desconhecido = await lerView(viewPage);
+desconhecido.mapa
+  ? pass('hash desconhecido cai no mapa em vez de deixar a tela vazia')
+  : fail('hash desconhecido: ' + JSON.stringify(desconhecido));
+
+viewErros.length === 0
+  ? pass('nenhum erro de execução durante a troca de view')
+  : fail('erros: ' + viewErros.join(' | '));
+
+// Sem a aba IVV_MONTHLY o botão não pode levar a uma tela vazia.
+const semIvv = await browser.newPage({ viewport: { width: 1440, height: 900 } });
+await semIvv.addInitScript(() => {
+  Object.defineProperty(window, 'APP_CONFIG', {
+    configurable: true,
+    set(value) { delete window.APP_CONFIG; window.APP_CONFIG = value; if (value) value.demoMode = true; },
+    get() { return undefined; },
+  });
+});
+await semIvv.route('**/data/demo.json', async (route) => {
+  const response = await route.fetch();
+  const payload = await response.json();
+  payload.ivv_monthly = [];
+  await route.fulfill({ response, json: payload });
+});
+await semIvv.goto('http://localhost:8080/#mercado', { waitUntil: 'networkidle' });
+await semIvv.waitForTimeout(1200);
+const vazio = await lerView(semIvv);
+vazio.desabilitado
+  ? pass('sem IVV_MONTHLY o botão do Mercado fica desabilitado')
+  : fail('botão habilitado sem série');
+vazio.mapa && !vazio.mercado
+  ? pass('sem série, pedir #mercado cai no mapa em vez de abrir tela vazia')
+  : fail('abriu tela vazia: ' + JSON.stringify(vazio));
+(await semIvv.getAttribute('#marketTab', 'title'))?.includes('IVV_MONTHLY')
+  ? pass('o botão desabilitado explica por quê')
+  : fail('botão desabilitado sem explicação');
+await semIvv.close();
+
+// 390 px: as abas cabem sem empurrar a busca para fora.
+await viewPage.goto('http://localhost:8080/', { waitUntil: 'networkidle' });
+await viewPage.waitForTimeout(1000);
+await viewPage.setViewportSize({ width: 390, height: 844 });
+await viewPage.waitForTimeout(400);
+const overflowView = await viewPage.evaluate(
+  () => document.documentElement.scrollWidth - document.documentElement.clientWidth);
+overflowView <= 1
+  ? pass('a barra com as duas abas não estoura em 390px')
+  : fail(`overflow de ${overflowView}px em 390px com as abas`);
+await viewPage.click('#marketTab');
+await viewPage.waitForTimeout(300);
+const overflowMercado = await viewPage.evaluate(
+  () => document.documentElement.scrollWidth - document.documentElement.clientWidth);
+overflowMercado <= 1
+  ? pass('a view do Mercado não estoura em 390px')
+  : fail(`overflow de ${overflowMercado}px na view do Mercado`);
+await viewPage.close();
+
 console.log('\n== 13. Mobile 390px ==');
 await page.click('#closeDetail').catch(()=>{});
 await page.setViewportSize({ width: 390, height: 844 });
