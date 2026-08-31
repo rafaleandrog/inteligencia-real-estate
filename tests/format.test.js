@@ -325,9 +325,10 @@ test('raAgeBands omite faixa sem valor em vez de desenhar barra de zero', () => 
 });
 
 test('raAgeBands devolve vazio quando não há distribuição nenhuma', () => {
-  assert.deepEqual(raAgeBands(perfil()), { bands: [], total: null, scaledFromDecimal: false });
-  assert.deepEqual(raAgeBands(null), { bands: [], total: null, scaledFromDecimal: false });
-  assert.deepEqual(raAgeBands(undefined), { bands: [], total: null, scaledFromDecimal: false });
+  const vazio = { bands: [], total: null, scaledFromDecimal: false, scaleWarning: null };
+  assert.deepEqual(raAgeBands(perfil()), vazio);
+  assert.deepEqual(raAgeBands(null), vazio);
+  assert.deepEqual(raAgeBands(undefined), vazio);
 });
 
 test('raAgeBands converte a escala decimal que o contrato admite (issue #35)', () => {

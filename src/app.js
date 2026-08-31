@@ -21,6 +21,7 @@ import {
   hostnameOf, anchorColor, anchorLegendEntries, formatAnchorCategory, formatAnchorGroup,
   formatAnchorSegment, formatSalesStage, formatRegularizationStatus, formatPercent,
   raAgeBands, polygonStyle, sortPolygonsForDraw, raProfileEssentials,
+  raProfileUnavailability,
 } from './format.js';
 
 const CONFIG = window.APP_CONFIG || {};
@@ -582,7 +583,7 @@ function raStatRow(label, value) {
  * - **Faixa sem valor não vira barra de zero** — ela simplesmente não aparece.
  */
 function buildRaAgeChart(profile) {
-  const { bands, total } = raAgeBands(profile);
+  const { bands, total, scaleWarning } = raAgeBands(profile);
   if (bands.length === 0) return null;
 
   const figure = document.createElement('figure');
@@ -633,6 +634,17 @@ function buildRaAgeChart(profile) {
     figure.append(note);
   }
 
+  // Escala fora da canônica do dataset se declara. A conversão está certa hoje — o
+  // servidor aceita as duas escalas e o cliente espelha isso de propósito (R8.44) —,
+  // mas conversão calada esconderia o dia em que a causa deixar de ser convenção e
+  // passar a ser coluna trocada (issue #54).
+  if (scaleWarning) {
+    const note = document.createElement('p');
+    note.className = 'ra-ages-note ra-scale-note';
+    note.textContent = scaleWarning;
+    figure.append(note);
+  }
+
   return figure;
 }
 
@@ -667,6 +679,18 @@ function renderRaProfile() {
 
   const chart = profile ? buildRaAgeChart(profile) : null;
   if (chart) frag.append(chart);
+
+  // RA criada depois da PDAD-A 2024 não tem perfil e não vai ter até a próxima
+  // pesquisa. Sem esta nota o bloco inteiro simplesmente some, e "some" é
+  // indistinguível de "o carregamento falhou": o operador fica sem saber se procura o
+  // dado ou o defeito (issue #54).
+  const unavailable = raProfileUnavailability(profile);
+  if (unavailable) {
+    const note = document.createElement('p');
+    note.className = 'ra-profile-pending';
+    note.textContent = unavailable.message;
+    frag.append(note);
+  }
 
   if (frag.childElementCount === 0) {
     dom.raProfile.hidden = true;

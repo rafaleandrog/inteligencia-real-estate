@@ -583,3 +583,20 @@ Cada uma nasce de um erro que aconteceu de verdade.
   bug estava em fazer o valor "caber" (por `Math.min` ou por aceitar `0` como medição) em vez de
   perguntar se ele fazia sentido primeiro — normalizar sem validar é a forma mais barata de destruir
   o próprio sinal que o guard existe para preservar.
+- **R8.60** *(2026-08-30, escala percentual por dataset, issue #54)* **Quando duas convenções de
+  unidade convivem no mesmo backend, a escala é declarada em cada chamada — nunca inferida do
+  valor — e o que chega fora da escala canônica do dataset vira aviso, não conversão calada.**
+  `RA_PROFILES.female_pct = 54` significa 54%; `IVV_MONTHLY.ivv_pct = 0.057` significa 5,7%. São
+  campos que se parecem e significam o contrário, e trocar um pelo outro erra por **100× sem
+  exceção**: 5,7% vira 0,057% e 54% vira 5400%. O primeiro passa por "número pequeno" e o segundo
+  por "erro de digitação na planilha" — nenhum dos dois parece defeito de código. Nenhuma
+  heurística resolve isso olhando o número, porque `0,54` é escala decimal legítima **e** é
+  `0,54%` legítimo. Mecanismo, em três partes: (1) um conversor por convenção, nomeado por ela
+  (`percentFromPoints`, `percentFromDecimal`), de modo que trocar um pelo outro seja uma linha
+  visível no diff e não um `* 100` que some; (2) a escala canônica de cada dataset declarada como
+  dado, servindo para nomear a expectativa e não para converter sozinha; (3) o dado que chega na
+  escala não canônica **continua sendo convertido** — o servidor aceita as duas e o cliente
+  espelha o servidor de propósito (R8.44) — mas a conversão aparece na tela. Hoje a causa é
+  convenção e o resultado está certo; amanhã a causa pode ser coluna trocada, e aí o número
+  continuaria plausível. O aviso é a diferença entre "o cliente se virou" e "alguém precisa olhar
+  isto".
