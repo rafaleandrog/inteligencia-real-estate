@@ -929,3 +929,98 @@ select:focus, input[type="number"]:focus {
   .view-tab { flex: 1; }
   .market { padding: 16px 12px 32px; }
 }
+
+/* Cards do Mercado Residencial DF (issue #59).
+
+   São stat tiles sem gráfico: rótulo, valor e as variações. A hierarquia vem do
+   TAMANHO do valor; a cor fica reservada para o tom da variação, que é a única coisa
+   nesta tela em que cor carrega significado.
+
+   Os tons reusam os mesmos pares de `--tone-*` do selo de status do dataset, para a
+   aplicação não ter dois vocabulários de "bom/ruim". E o tom NUNCA viaja sozinho: cada
+   variação leva ícone e rótulo, para quem não distingue as cores e para quem imprime. */
+:root {
+  --tone-good: #2f5a41;
+  --tone-bad: #8c2f2f;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --tone-good: #8fd6ac;
+    --tone-bad: #f0a3a3;
+  }
+}
+
+.market-row {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.market-card {
+  padding: 14px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--panel);
+}
+.market-card-label {
+  margin: 0 0 6px;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--muted);
+  line-height: 1.3;
+}
+
+/* Figuras PROPORCIONAIS de propósito: `tabular-nums` dá a todo dígito a largura de um
+   zero, e num número grande em corpo 24 isso deixa o texto frouxo. Tabular fica para as
+   variações, que são coluna e precisam alinhar. */
+.market-card-value {
+  margin: 0 0 10px;
+  font-size: 24px;
+  font-weight: 600;
+  line-height: 1.15;
+  color: var(--ink);
+}
+
+.market-card-absent {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--muted);
+}
+
+.market-deltas { margin: 0; padding: 0; list-style: none; }
+.market-delta {
+  display: grid;
+  grid-template-columns: 12px 1fr auto;
+  align-items: baseline;
+  gap: 6px;
+  font-size: 12px;
+  line-height: 1.6;
+}
+.market-delta-icon { font-size: 9px; text-align: center; }
+.market-delta-label { color: var(--muted); overflow-wrap: anywhere; }
+.market-delta-value { font-variant-numeric: tabular-nums; color: var(--ink); }
+
+.market-delta-bom .market-delta-icon,
+.market-delta-bom .market-delta-value { color: var(--tone-good); }
+.market-delta-ruim .market-delta-icon,
+.market-delta-ruim .market-delta-value { color: var(--tone-bad); }
+.market-delta-neutro .market-delta-icon { color: var(--muted); }
+
+.market-card-note {
+  margin: 8px 0 0;
+  font-size: 11px;
+  line-height: 1.4;
+  color: var(--muted);
+}
+
+@media (max-width: 900px) {
+  .market-row { grid-template-columns: repeat(2, 1fr); }
+}
+@media (max-width: 560px) {
+  /* Em 390 px os cards empilham. Duas colunas ali dariam ~170 px por card, e
+     "R$ 12.071,92/m²" não cabe sem quebrar no meio do número. */
+  .market-row { grid-template-columns: 1fr; }
+  .market-card-value { font-size: 22px; }
+}

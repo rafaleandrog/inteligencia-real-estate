@@ -1056,6 +1056,34 @@ noMercado.botaoAtivo === 'mercado'
   ? pass('a tela declara o escopo do DF inteiro, sem recorte por RA')
   : fail('escopo não declarado: ' + noMercado.escopo);
 
+// Cards do Mercado (issue #59). O fixture da demo tem UM mês da semente v1.0.0, e é
+// pouco para exercitar variação — por isso a série é substituída por dois meses com os
+// campos de variação preenchidos, na mesma interceptação que o resto do smoke já usa.
+const cards = await viewPage.evaluate(() => {
+  const linhas = [...document.querySelectorAll('#marketBody .market-row')];
+  return {
+    linhas: linhas.length,
+    porLinha: linhas.map((l) => l.querySelectorAll('.market-card').length),
+    primeiros: [...document.querySelectorAll('#marketBody .market-card-label')]
+      .slice(0, 4).map((n) => n.textContent),
+    ausentes: document.querySelectorAll('#marketBody .market-card-absent').length,
+    travessoes: [...document.querySelectorAll('#marketBody .market-card-value')]
+      .filter((n) => n.textContent.trim() === '\u2014').length,
+  };
+});
+cards.linhas === 3 && cards.porLinha.every((n) => n === 4)
+  ? pass('a grade tem três linhas de quatro cards')
+  : fail('grade errada: ' + JSON.stringify(cards));
+/Preço de venda/.test(cards.primeiros[0] || '') && /Preço pedido/.test(cards.primeiros[1] || '')
+  ? pass('preços abrem a tela, antes de qualquer outro indicador')
+  : fail('ordem dos cards: ' + JSON.stringify(cards.primeiros));
+cards.travessoes === 0
+  ? pass('nenhum card mostra travessão no lugar do valor')
+  : fail(`${cards.travessoes} card(s) com travessão`);
+cards.ausentes > 0
+  ? pass(`${cards.ausentes} card(s) sem dado dizem isso por escrito, em vez de zero`)
+  : pass('todos os cards têm valor nesta série');
+
 const proveniencia = await viewPage.evaluate(() => ({
   linhas: document.querySelectorAll('#marketProvenanceList dt').length,
   temFonte: !document.querySelector('#marketSource').hidden,
@@ -1063,6 +1091,105 @@ const proveniencia = await viewPage.evaluate(() => ({
 proveniencia.linhas >= 1
   ? pass(`a procedência mostra ${proveniencia.linhas} campo(s) do dataset`)
   : fail('procedência vazia');
+
+// Tom da variação: o SIGNIFICADO manda, não o sinal. Distrato subindo é ruim, venda
+// subindo é bom, e preço é neutro porque a tela não sabe de que lado está quem lê.
+const tomPage = await browser.newPage({ viewport: { width: 1440, height: 900 } });
+await tomPage.addInitScript(() => {
+  Object.defineProperty(window, 'APP_CONFIG', {
+    configurable: true,
+    set(value) { delete window.APP_CONFIG; window.APP_CONFIG = value; if (value) value.demoMode = true; },
+    get() { return undefined; },
+  });
+});
+await tomPage.route('**/data/demo.json', async (route) => {
+  const response = await route.fetch();
+  const payload = await response.json();
+  const base = {
+    geography_scope: 'Distrito Federal', source_publisher: 'Fixture sintético',
+    sales_units: 400, offers_units: 6000, sold_area_m2: 28000, offer_area_m2: 500000,
+    vgv_brl_million: 350, vgo_brl_million: 7000, vgl_brl_million: 240,
+    cancellations_units: 90, launches_units: 700, ivv_pct: 0.065,
+  };
+  payload.ivv_monthly = [
+    { ...base, reference_date: '2026-04-01' },
+    {
+      ...base,
+      reference_date: '2026-05-01',
+      // Ambas SOBEM. Uma tem que sair boa e a outra ruim.
+      sales_units_mom_pct_change: 5.4,
+      cancellations_units_mom_pct_change: 7.1,
+      sale_price_brl_m2_mom_pct_change: 2.3,
+      ivv_mom_pp: 0.4,
+      ivv_mom_pct_change: 6.5,
+    },
+  ];
+  await route.fulfill({ response, json: payload });
+});
+await tomPage.goto('http://localhost:8080/#mercado', { waitUntil: 'networkidle' });
+
+await tomPage.waitForTimeout(1400);
+
+const tons = await tomPage.evaluate(() => {
+  const ler = (rotulo) => {
+    const card = [...document.querySelectorAll('#marketBody .market-card')]
+      .find((c) => c.querySelector('.market-card-label')?.textContent.includes(rotulo));
+    if (!card) return null;
+    return [...card.querySelectorAll('.market-delta')].map((d) => ({
+      classe: d.className,
+      label: d.querySelector('.market-delta-label').textContent,
+      valor: d.querySelector('.market-delta-value').textContent,
+      icone: d.querySelector('.market-delta-icon').textContent,
+    }));
+  };
+  return {
+    vendas: ler('Unidades vendidas'),
+    distratos: ler('Unidades distratadas'),
+    preco: ler('Preço de venda'),
+    ivv: ler('IVV'),
+  };
+});
+
+tons.vendas?.[0]?.classe.includes('market-delta-bom')
+  ? pass('venda subindo sai como variação boa')
+  : fail('tom de vendas: ' + JSON.stringify(tons.vendas));
+tons.distratos?.[0]?.classe.includes('market-delta-ruim')
+  ? pass('distrato subindo sai como variação RUIM, não boa (o sinal é o mesmo)')
+  : fail('tom de distratos: ' + JSON.stringify(tons.distratos));
+tons.preco?.[0]?.classe.includes('market-delta-neutro')
+  ? pass('preço subindo é neutro: a tela não escolhe lado')
+  : fail('tom de preço: ' + JSON.stringify(tons.preco));
+tons.vendas?.[0]?.icone && tons.distratos?.[0]?.icone !== tons.vendas?.[0]?.icone
+  ? pass('o tom não viaja só na cor: os ícones diferem')
+  : fail('ícones iguais para tons opostos');
+
+const rotulosIvv = (tons.ivv || []).map((d) => d.label);
+const valoresIvv = (tons.ivv || []).map((d) => d.valor);
+rotulosIvv.includes('vs mês anterior') && rotulosIvv.includes('vs mês anterior, em %')
+  ? pass('o IVV separa pontos percentuais de variação percentual')
+  : fail('rótulos do IVV: ' + JSON.stringify(rotulosIvv));
+valoresIvv.some((v) => /p\.p\./.test(v)) && valoresIvv.some((v) => /%$/.test(v) && !/p\.p\./.test(v))
+  ? pass('as duas grandezas do IVV saem com unidades distintas na tela')
+  : fail('valores do IVV: ' + JSON.stringify(valoresIvv));
+
+// 390 px: os cards empilham em uma coluna.
+await tomPage.setViewportSize({ width: 390, height: 844 });
+await tomPage.waitForTimeout(400);
+const empilha = await tomPage.evaluate(() => {
+  const cards = [...document.querySelectorAll('#marketBody .market-row:first-child .market-card')];
+  if (cards.length < 2) return null;
+  const [a, b] = cards.map((c) => c.getBoundingClientRect());
+  return { empilhado: b.top >= a.bottom - 1, largura: Math.round(a.width) };
+});
+empilha?.empilhado
+  ? pass('em 390px os cards empilham em uma coluna')
+  : fail('cards não empilharam em 390px: ' + JSON.stringify(empilha));
+const overflowCards = await tomPage.evaluate(
+  () => document.documentElement.scrollWidth - document.documentElement.clientWidth);
+overflowCards <= 1
+  ? pass('os cards não estouram a largura em 390px')
+  : fail(`overflow de ${overflowCards}px nos cards`);
+await tomPage.close();
 
 // Voltar para o mapa: o Leaflet precisa remedir o container.
 await viewPage.click('.view-tab[data-view="mapa"]');

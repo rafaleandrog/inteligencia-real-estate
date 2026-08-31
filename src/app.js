@@ -10,6 +10,8 @@
 import { loadDataset, flattenEntities } from './data.js';
 import { isApproximateLocation, appMetaRows } from './normalize.js';
 import { ivvProvenance, IVV_SCOPE_NOTICE } from './ivv/scope.js';
+import { aggregatePeriod } from './ivv/aggregate.js';
+import { buildMarketCards } from './ivv/cards.js';
 import {
   anchorLegendGroups, applyFilters, computeKpis, createFilterState, distinctAnchorGroups,
   distinctAnchorSegments, distinctLocalities, distinctPropertyTypes, distinctRegions,
@@ -1213,6 +1215,104 @@ function setView(name) {
  * existe, diz de que território ela fala e de onde vem o dado — e que ela nunca abre
  * vazia sem explicar por quê.
  */
+/**
+ * Uma variação de um card: rótulo, valor e o tom que ela merece (issue #59).
+ *
+ * O tom vem do SIGNIFICADO, não do sinal: distrato subindo não é bom. E ele nunca é
+ * carregado só pela cor — o ícone e o rótulo dizem a mesma coisa, para quem não
+ * distingue as cores e para quem imprime em preto e branco.
+ */
+function marketDeltaRow(delta) {
+  const li = document.createElement('li');
+  li.className = `market-delta market-delta-${delta.tone}`;
+
+  const icon = document.createElement('span');
+  icon.className = 'market-delta-icon';
+  icon.setAttribute('aria-hidden', 'true');
+  icon.textContent = delta.tone === 'bom' ? '▲' : delta.tone === 'ruim' ? '▼' : '•';
+
+  const label = document.createElement('span');
+  label.className = 'market-delta-label';
+  label.textContent = delta.label;
+
+  const value = document.createElement('span');
+  value.className = 'market-delta-value';
+  value.textContent = delta.value;
+
+  li.append(icon, label, value);
+  return li;
+}
+
+/**
+ * Um card do Mercado (issue #59).
+ *
+ * O valor usa figuras PROPORCIONAIS, não tabulares: `tabular-nums` dá a todo dígito a
+ * largura de um zero, e num número grande isso deixa o texto frouxo. Tabular é para
+ * coluna que precisa alinhar verticalmente — as variações, aqui.
+ */
+function marketCard(card) {
+  const box = document.createElement('article');
+  box.className = 'market-card';
+
+  const label = document.createElement('h2');
+  label.className = 'market-card-label';
+  label.textContent = card.label;
+  box.append(label);
+
+  if (card.value === null) {
+    // Ausência é uma frase, não um travessão: travessão numa grade de doze cards é
+    // indistinguível de um card que não carregou.
+    const ausente = document.createElement('p');
+    ausente.className = 'market-card-absent';
+    ausente.textContent = card.absent;
+    box.append(ausente);
+    return box;
+  }
+
+  const value = document.createElement('p');
+  value.className = 'market-card-value';
+  value.textContent = card.value;
+  box.append(value);
+
+  if (card.deltas.length > 0) {
+    const list = document.createElement('ul');
+    list.className = 'market-deltas';
+    for (const delta of card.deltas) list.append(marketDeltaRow(delta));
+    box.append(list);
+
+    if (card.referenceMonth) {
+      // Sem nomear o mês, "vs mês anterior" sobre um período de 66 meses parece variação
+      // do período e é variação do último mês — ambíguo de um jeito caro.
+      const nota = document.createElement('p');
+      nota.className = 'market-card-note';
+      nota.textContent = `Variações referentes a ${card.referenceMonth}.`;
+      box.append(nota);
+    }
+  }
+
+  return box;
+}
+
+/**
+ * A grade de cards do Mercado: preços e volume de vendas primeiro (issue #59).
+ *
+ * Toda agregação passa pelo motor da issue #57 — nenhum card soma estoque por conta
+ * própria, que é o erro caro que aquele motor existe para impedir.
+ */
+function renderMarketCards() {
+  const aggregated = aggregatePeriod(state.ivvMonthly);
+  const rows = buildMarketCards(aggregated, state.ivvMonthly);
+
+  const frag = document.createDocumentFragment();
+  for (const row of rows) {
+    const section = document.createElement('div');
+    section.className = 'market-row';
+    for (const card of row) section.append(marketCard(card));
+    frag.append(section);
+  }
+  dom.marketBody.replaceChildren(frag);
+}
+
 function renderMarketView() {
   const temSerie = state.ivvMonthly.length > 0;
 
@@ -1228,6 +1328,7 @@ function renderMarketView() {
   }
 
   dom.marketScope.textContent = IVV_SCOPE_NOTICE;
+  renderMarketCards();
 
   const { rows, warnings, sourceUrl } = ivvProvenance(state.ivvMonthly);
   dom.marketProvenanceList.replaceChildren();
