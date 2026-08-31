@@ -168,7 +168,8 @@ h1, h2 { margin: 0; font-size: 1rem; }
 .source-badge[data-source="demo"] { background: var(--primary-on-fill); }
 
 .admin-link {
-  margin-left: auto;
+  /* O `margin-left: auto` passou para `.view-switch`, que agora é o primeiro item do
+     bloco à direita da barra. Manter os dois empurraria as abas para longe do link. */
   font-size: 12px;
   opacity: .7;
   color: #fff;
@@ -852,4 +853,79 @@ select:focus, input[type="number"]:focus {
     flex: none;
     border-left: 0;
   }
+}
+
+/* Troca de view e a tela do Mercado Residencial DF (issue #58).
+
+   As duas abas usam a mesma pílula do resto da barra: a troca de view é navegação, não
+   ação destrutiva, e um botão de destaque aqui competiria com a busca, que é o controle
+   mais usado da barra. O estado ativo vem de `aria-pressed`, que já é o que o leitor de
+   tela consulta — um `.is-active` paralelo seria uma segunda verdade sobre a mesma
+   coisa, e as duas divergiriam no primeiro bug. */
+.view-switch { display: flex; gap: 4px; margin-left: auto; }
+
+/* As abas vivem SOBRE a barra escura (`--brand`), não sobre o fundo da página. Por isso
+   a cor delas é branca com opacidade, como `.admin-link` já faz — usar `--ink`/`--muted`
+   aqui daria texto escuro sobre fundo escuro nos dois temas, ilegível e sem erro nenhum
+   que denunciasse. Os tokens de texto existem para conteúdo sobre `--bg`/`--panel`. */
+.view-tab {
+  padding: 6px 12px;
+  border: 1px solid rgba(255, 255, 255, .35);
+  border-radius: 999px;
+  background: transparent;
+  font: inherit;
+  font-size: 12px;
+  color: #fff;
+  opacity: .75;
+  cursor: pointer;
+}
+.view-tab:hover:not(:disabled) { opacity: 1; }
+.view-tab[aria-pressed="true"] {
+  background: rgba(255, 255, 255, .16);
+  border-color: rgba(255, 255, 255, .7);
+  opacity: 1;
+  font-weight: 600;
+}
+.view-tab:disabled { opacity: .4; cursor: not-allowed; }
+.view-tab:focus-visible { outline: 2px solid #fff; outline-offset: 2px; }
+
+.market {
+  max-width: 1100px;
+  margin: 0 auto;
+  padding: 24px 16px 48px;
+}
+.market-head h1 { margin: 0 0 8px; font-size: 22px; }
+
+/* A declaração de escopo NÃO é rodapé nem letra miúda: quem chega aqui vindo de um mapa
+   com filtro de Região Administrativa espera, por continuidade, que os números respondam
+   ao mesmo recorte. Eles não respondem, e esta frase é a única coisa que diz isso. */
+.market-scope {
+  margin: 0 0 20px;
+  padding: 10px 12px;
+  border-left: 3px solid var(--accent-text);
+  background: var(--panel);
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--ink);
+}
+
+.market-provenance { margin-top: 24px; }
+.market-provenance > summary {
+  cursor: pointer;
+  padding: 6px 0;
+  font-size: 12px;
+  color: var(--muted);
+}
+.market-provenance > summary:hover { color: var(--ink); }
+.market-provenance > summary:focus-visible { outline: 2px solid var(--accent-text); outline-offset: 2px; }
+.market-provenance dl { font-size: 12px; }
+.market-provenance dt { color: var(--muted); }
+.market-provenance dd { margin: 0; text-align: right; }
+
+@media (max-width: 760px) {
+  /* Em 390 px a barra já é apertada: as abas passam a ocupar a linha inteira, abaixo da
+     busca, em vez de espremerem o campo de busca a ponto de ele não caber um endereço. */
+  .view-switch { order: 3; width: 100%; }
+  .view-tab { flex: 1; }
+  .market { padding: 16px 12px 32px; }
 }
