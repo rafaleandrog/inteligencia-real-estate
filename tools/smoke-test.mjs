@@ -695,6 +695,14 @@ await polyPage.route('**/data/demo.json', async (route) => {
       name: 'RA sintética',
       layer_group: 'administrative_regions',
       entity_type: 'administrative_region',
+      // Aponta para uma RA que EXISTE em data/demo.json, para o perfil vir do
+      // normalizador de verdade em vez de um objeto montado à mão (issue #53).
+      ra_geo_id: 'RA2026_RA-I',
+      entity_id: 'RA2026_RA-I',
+      // Retrato tirado na sincronização: com perfil canônico disponível, ele NÃO pode
+      // ser despejado embaixo — duas verdades para o mesmo fato, e o valor velho aqui
+      // é justamente o que envelhece sem sintoma.
+      properties_json: '{"population_total":11111,"avg_household_size":2.9}',
       geometry_geojson: JSON.stringify({
         type: 'Polygon',
         // Cobre a rodovia (que é o ponto do teste de empilhamento) e para em -15.83,
@@ -801,6 +809,40 @@ const polyDetail = await polyPage.textContent('#detail');
 /smoke\.kml/.test(polyDetail || '')
   ? pass('o painel nomeia o arquivo de origem')
   : fail('arquivo de origem ausente no painel');
+
+// == Perfil da Região Administrativa no painel (issue #53) ==
+console.log('\n== 12i. Clique numa RA abre o perfil de RA_PROFILES (issue #53) ==');
+
+await polyPage.click('#map .polygon-shape[fill="#2f6f4f"]');
+await polyPage.waitForTimeout(400);
+const raDetail = (await polyPage.textContent('#detail')) || '';
+
+/População/.test(raDetail)
+  ? pass('o painel da RA abre com os indicadores do perfil')
+  : fail('painel da RA sem indicadores: ' + raDetail);
+/RA_PROFILES/.test(raDetail)
+  ? pass('o painel diz de onde veio o perfil')
+  : fail('o painel não nomeia a fonte do perfil');
+// O retrato preso no properties_json não pode aparecer ao lado do perfil canônico: o
+// valor velho e o novo lado a lado não dizem a quem lê qual dos dois está certo.
+!/11\.?111/.test(raDetail)
+  ? pass('properties_json não é despejado quando existe perfil canônico')
+  : fail('o retrato velho do properties_json apareceu junto do perfil: ' + raDetail);
+!/avg_household_size/.test(raDetail)
+  ? pass('chave crua do properties_json não vira rótulo na RA')
+  : fail('chave crua apareceu como rótulo: ' + raDetail);
+
+// Contorno que NÃO é RA continua caindo no properties_json — é a única informação que
+// ele tem, e sem perfil canônico não há duplicação possível.
+await polyPage.click('#map .polygon-shape[fill="#aa3344"]');
+await polyPage.waitForTimeout(400);
+const kmlDetail = (await polyPage.textContent('#detail')) || '';
+/4321/.test(kmlDetail)
+  ? pass('contorno sem perfil continua mostrando as propriedades do KML')
+  : fail('propriedades do KML sumiram do contorno sem perfil: ' + kmlDetail);
+!/RA_PROFILES/.test(kmlDetail)
+  ? pass('contorno sem perfil não afirma uma fonte que não usou')
+  : fail('contorno sem perfil citou RA_PROFILES');
 
 // == Legenda em dois níveis e estilo do backend (issues #51, #52) ==
 console.log('\n== 12h. Camadas de contorno: grupo, tipo e estilo (issues #51, #52) ==');

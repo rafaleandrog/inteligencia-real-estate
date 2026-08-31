@@ -131,6 +131,33 @@ export function polygonPassesLayerFilters(polygon, filters) {
 }
 
 /**
+ * Perfil de `RA_PROFILES` de um contorno de Região Administrativa (issue #53).
+ *
+ * `RA_PROFILES` é a fonte CANÔNICA do perfil socioeconômico. O `properties_json` do
+ * contorno é um retrato tirado no momento da sincronização (`profileSnapshotForRa_` no
+ * Apps Script): ele envelhece sozinho, sem sintoma, enquanto a aba continua sendo
+ * atualizada. Mostrar os dois lado a lado seria mostrar duas verdades para o mesmo fato.
+ *
+ * A exigência de `entity_type === 'administrative_region'` não é formalidade. Um
+ * contorno qualquer — uma área importada de KML, um trecho rodoviário — também carrega
+ * `ra_geo_id`, mas ali o campo diz "está DENTRO desta RA", não "É esta RA". Casar por
+ * `ra_geo_id` sozinho colaria a demografia de Taguatinga inteira num quarteirão
+ * desenhado à mão, com todos os números plausíveis e nenhum deles sobre o objeto que o
+ * usuário clicou.
+ *
+ * `entity_id` é o segundo caminho porque o backend grava os dois com o mesmo valor para
+ * linha de RA (`entity_id: ra.ra_geo_id`); um deles vazio não pode fazer o perfil sumir.
+ */
+export function raProfileForPolygon(polygon, raProfiles) {
+  if (!polygon || !raProfiles) return null;
+  if (polygonEntityType(polygon) !== 'administrative_region') return null;
+
+  const key = String(polygon.ra_geo_id || '').trim() || String(polygon.entity_id || '').trim();
+  if (!key) return null;
+  return raProfiles[key] || null;
+}
+
+/**
  * Mediana de uma lista de números.
  *
  * Ignora `null`, `undefined` e não-finitos em vez de deixá-los virar `NaN` — no

@@ -370,3 +370,62 @@ test('o corredor rodoviário tem a largura pedida, não uma largura plausível q
   assert.ok(Math.abs(area - expected) / expected < 0.05,
     `área do corredor ${area} não bate com ${expected} (comprimento ${length} × 2 × ${bufferM})`);
 });
+
+test('sincronizar RA sem área oficial NÃO apaga a densidade já gravada', () => {
+  // P2 apontado na revisão cruzada da PR #69. A correção existe — `updateRaProfileFromGeometry_`
+  // só atribui `area_km2`/`population_density_km2` quando há valor, e `applyUpdate_` itera
+  // `Object.keys(fields)`, então chave ausente nunca toca a célula. Mas nada na suíte
+  // quebrava se alguém reintroduzisse `fields.area_km2 = areaKm2 || ''` amanhã, e o
+  // estrago seria PERDA DE DADO em silêncio: a densidade da planilha vira célula vazia
+  // porque a camada oficial não devolveu a área NESTA execução.
+  const headers = [
+    'ra_geo_id', 'ra_name', 'ra_code', 'ra_number', 'population_total',
+    'population_density_km2', 'area_km2', 'geometry_source_url', 'updated_at',
+  ];
+  const sandbox = createAppsScriptSandbox({
+    sheets: {
+      RA_PROFILES: [
+        headers,
+        ['RA_III', 'Taguatinga', 'RA III', 3, 222598, 2938.4, 75.75, 'https://exemplo', ''],
+      ],
+    },
+    scriptProperties: {},
+  });
+
+  sandbox.context.updateRaProfileFromGeometry_({
+    ra_geo_id: 'RA_III', ra_name: 'Taguatinga', ra_code: 'RA III', ra_number: 3,
+    ra_area_km2: null, // a camada oficial não trouxe a área nesta execução
+  });
+
+  const row = sandbox.sheets.RA_PROFILES._rows[1];
+  const at = (name) => row[headers.indexOf(name)];
+  assert.equal(at('population_density_km2'), 2938.4,
+    'a densidade existente foi apagada por uma sincronização sem área');
+  assert.equal(at('area_km2'), 75.75, 'a área existente foi apagada');
+  // E o que a camada oficial DE FATO trouxe continua sendo gravado.
+  assert.equal(at('ra_name'), 'Taguatinga');
+  assert.equal(at('geometry_source_url'), sandbox.context.RA_BOUNDARY_LAYER_URL);
+});
+
+test('sincronizar RA COM área oficial recalcula a densidade', () => {
+  // O outro lado: a guarda não pode ter virado "nunca escreve".
+  const headers = [
+    'ra_geo_id', 'ra_name', 'ra_code', 'ra_number', 'population_total',
+    'population_density_km2', 'area_km2', 'geometry_source_url', 'updated_at',
+  ];
+  const sandbox = createAppsScriptSandbox({
+    sheets: {
+      RA_PROFILES: [headers, ['RA_III', 'Taguatinga', 'RA III', 3, 200000, 1000, 10, '', '']],
+    },
+    scriptProperties: {},
+  });
+
+  sandbox.context.updateRaProfileFromGeometry_({
+    ra_geo_id: 'RA_III', ra_name: 'Taguatinga', ra_code: 'RA III', ra_number: 3,
+    ra_area_km2: 50,
+  });
+
+  const row = sandbox.sheets.RA_PROFILES._rows[1];
+  assert.equal(row[headers.indexOf('area_km2')], 50);
+  assert.equal(row[headers.indexOf('population_density_km2')], 4000);
+});
