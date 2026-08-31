@@ -542,6 +542,35 @@ select:focus, input[type="number"]:focus {
 }
 .anchor-categories li + li { margin-top: 4px; }
 
+/* Legenda de contornos em dois níveis: grupo → tipo de entidade (issue #51).
+   Montada por src/app.js a partir do dado, com vocabulário aberto.
+
+   A cor da amostra NÃO é definida aqui: ela vem inline, de `polygonStyle()`, a mesma
+   função que pinta o contorno no mapa. Cor de contorno é DADO da planilha, não tema —
+   e uma regra de classe venceria o atributo inline, que foi como todas as âncoras
+   acabaram verdes na PR #40 (R8.31, R8.45). Por isso `.dot-polygon-sample` declara só
+   forma e espessura. */
+.polygon-legend { margin: 8px 0 0; }
+.polygon-legend[hidden] { display: none; }
+.polygon-group + .polygon-group { margin-top: 10px; }
+
+.dot-polygon-sample {
+  width: 10px;
+  height: 10px;
+  border-radius: 2px;
+  border: 2px solid transparent;
+  box-sizing: border-box;
+  flex: none;
+}
+
+.polygon-legend-label { min-width: 0; overflow-wrap: anywhere; }
+
+/* O tipo é subordinado ao grupo, e a indentação é o que diz isso sem precisar de
+   moldura. Em 390 px a coluna da legenda tem ~300 px úteis: 16 px de recuo é o
+   suficiente para ler a hierarquia sem empurrar a contagem para fora. */
+.polygon-type-row { margin-left: 16px; }
+.polygon-type-row label { font-size: 12px; color: var(--muted); }
+
 .disclaimer {
   font-size: 12px;
   line-height: 1.45;

@@ -161,8 +161,15 @@ export function formatSpatialPrecision(value) {
   return spaced.charAt(0).toUpperCase() + spaced.slice(1);
 }
 
-/** Humaniza um slug: `estacao_metro` → "Estacao metro". Último recurso de rótulo. */
-function humanizeSlug(key) {
+/**
+ * Humaniza um slug: `estacao_metro` → "Estacao metro". Último recurso de rótulo.
+ *
+ * Exportada porque as camadas de contorno têm vocabulário **aberto** (issue #51): um
+ * `layer_group` novo criado no backend precisa aparecer na legenda com um rótulo
+ * legível sem passar por mudança de código aqui. Slug cru na tela seria vazamento de
+ * detalhe de implementação; sumir seria pior.
+ */
+export function humanizeSlug(key) {
   const spaced = key.replace(/_/g, ' ');
   return spaced.charAt(0).toUpperCase() + spaced.slice(1);
 }
@@ -499,4 +506,183 @@ export function raAgeBands(profile) {
     total: bands.reduce((acc, b) => acc + b.pct, 0),
     scaledFromDecimal,
   };
+}
+
+// --- Contornos: vocabulário de camada e estilo cartográfico (issues #51, #52) ----
+
+/**
+ * Texto de um campo já normalizado.
+ *
+ * `normalizePolygon()` devolve string em todo campo de texto, mas esta função também é
+ * chamada com linha crua em teste e a partir do `properties_json`, onde o tipo é do
+ * arquivo, não do contrato. Local de propósito: `format.js` não importa `normalize.js`,
+ * e criar essa dependência só por uma coerção de três linhas acoplaria as duas camadas.
+ */
+function asText(value) {
+  return value === null || value === undefined ? '' : String(value).trim();
+}
+
+/**
+ * Rótulos dos `layer_group` conhecidos. Vocabulário **aberto**: o backend pode criar
+ * um grupo novo sem passar por aqui, e ele aparece na legenda humanizado
+ * (`humanizeSlug`) em vez de vazar o slug ou sumir.
+ */
+const POLYGON_LAYER_GROUP_LABELS = {
+  administrative_regions: 'Regiões administrativas',
+  road_network: 'Malha rodoviária',
+  poligonais_importadas: 'Poligonais importadas',
+};
+
+/** Rótulos dos `entity_type` conhecidos. Mesma regra de vocabulário aberto. */
+const POLYGON_ENTITY_TYPE_LABELS = {
+  administrative_region: 'Região administrativa',
+  road_segment: 'Trecho rodoviário',
+  custom_area: 'Área customizada',
+};
+
+/**
+ * Grupo/tipo de um contorno sem classificação.
+ *
+ * Dado gravado antes da v2.2.1 não tem `layer_group` nem `entity_type`. Ele NÃO pode
+ * sumir do mapa por isso — some sem erro é a pior falha possível aqui —, então cai num
+ * grupo "Outros" que a legenda mostra como qualquer outro.
+ */
+export const POLYGON_UNCLASSIFIED = '__outros__';
+
+export function polygonLayerGroup(polygon) {
+  const raw = asText(polygon ? polygon.layer_group : '');
+  return raw || POLYGON_UNCLASSIFIED;
+}
+
+export function polygonEntityType(polygon) {
+  const raw = asText(polygon ? polygon.entity_type : '');
+  return raw || POLYGON_UNCLASSIFIED;
+}
+
+export function formatLayerGroup(key) {
+  if (!key || key === POLYGON_UNCLASSIFIED) return 'Outros';
+  return POLYGON_LAYER_GROUP_LABELS[key] || humanizeSlug(key);
+}
+
+export function formatEntityType(key) {
+  if (!key || key === POLYGON_UNCLASSIFIED) return 'Sem tipo declarado';
+  return POLYGON_ENTITY_TYPE_LABELS[key] || humanizeSlug(key);
+}
+
+/** Estilo de contorno quando a planilha não declara nada. Constante, nunca regra de CSS. */
+export const POLYGON_FALLBACK_STYLE = Object.freeze({
+  color: '#5b6b8c',
+  fillColor: '#5b6b8c',
+  fillOpacity: 0.15,
+  weight: 2,
+});
+
+/** `#rgb` ou `#rrggbb`. Qualquer outra coisa não é cor utilizável num atributo SVG. */
+function validHexColor(value) {
+  const text = asText(value);
+  return /^#([0-9a-f]{3}|[0-9a-f]{6})$/i.test(text) ? text : null;
+}
+
+/**
+ * Espessura máxima aceita para o traço.
+ *
+ * Não existe para "validar" no sentido burocrático: um `stroke_width` de 400 vindo de
+ * um erro de digitação na planilha desenharia uma faixa que cobre o mapa inteiro, e o
+ * sintoma (mapa cinza) não aponta para a célula que o causou.
+ */
+const MAX_STROKE_WIDTH = 12;
+
+/**
+ * Estilo cartográfico de um contorno, vindo do backend e **validado** (issue #52).
+ *
+ * O backend grava `fill_color`, `stroke_color`, `fill_opacity`, `stroke_width` — as RAs
+ * com a cor oficial do GeoPortal, as rodovias com cinza-ardósia. Cada valor é conferido
+ * antes de virar atributo: cor fora de `#rrggbb`, opacidade fora de 0–1 ou espessura não
+ * numérica caem no fallback, em vez de virar atributo SVG inválido que o navegador
+ * ignora em silêncio — e "ignora em silêncio" aqui significa um contorno invisível sem
+ * nenhum erro no console.
+ *
+ * `color` (a coluna legada) continua valendo como fallback antes da constante, para que
+ * contorno importado de KML antes da v2.2.1 não perca a cor que já tinha.
+ *
+ * A cor sai daqui para `fillColor`/`color` no JS e **nunca** para uma regra de classe no
+ * CSS: regra de classe vence o atributo que o Leaflet escreve no SVG, e foi assim que
+ * todas as âncoras acabaram verdes na PR #40 (R8.31, R8.45).
+ */
+export function polygonStyle(polygon) {
+  const legacy = validHexColor(polygon ? polygon.color : '');
+  const stroke = validHexColor(polygon ? polygon.stroke_color : '')
+    || legacy || POLYGON_FALLBACK_STYLE.color;
+  const fill = validHexColor(polygon ? polygon.fill_color : '')
+    || legacy || POLYGON_FALLBACK_STYLE.fillColor;
+
+  const rawOpacity = polygon ? polygon.fill_opacity : null;
+  const fillOpacity = Number.isFinite(rawOpacity) && rawOpacity >= 0 && rawOpacity <= 1
+    ? rawOpacity
+    : POLYGON_FALLBACK_STYLE.fillOpacity;
+
+  const rawWeight = polygon ? polygon.stroke_width : null;
+  const weight = Number.isFinite(rawWeight) && rawWeight > 0 && rawWeight <= MAX_STROKE_WIDTH
+    ? rawWeight
+    : POLYGON_FALLBACK_STYLE.weight;
+
+  return { color: stroke, fillColor: fill, fillOpacity, weight };
+}
+
+/**
+ * Profundidade padrão de cada grupo, usada só quando `z_index` está ausente.
+ *
+ * Existe porque a ordem de desenho hoje é **acidental**: os contornos entram na ordem
+ * em que chegam da planilha, então uma Região Administrativa pode cobrir uma rodovia
+ * por sorteio — e cobrir significa roubar o clique também, não só a cor. Área grande
+ * embaixo, corredor estreito em cima é a única ordem que deixa os dois utilizáveis.
+ *
+ * Grupo desconhecido vai para cima: quem acabou de criar uma camada quer vê-la.
+ */
+const POLYGON_GROUP_DEPTH = {
+  administrative_regions: 0,
+  poligonais_importadas: 1,
+  // Contorno gravado antes da v2.2.1 não tem `layer_group`, e ele NÃO é uma camada
+  // nova: é justamente um KML importado, quase sempre uma área grande. Deixá-lo no topo
+  // junto com os grupos desconhecidos faria um contorno legado cobrir as rodovias — e
+  // cobrir rouba o clique, não só a cor.
+  [POLYGON_UNCLASSIFIED]: 1,
+  road_network: 2,
+};
+const UNKNOWN_GROUP_DEPTH = 3;
+
+/**
+ * Ordem de desenho: menor primeiro, maior por cima (issue #52).
+ *
+ * `z_index` declarado vence sempre e ordena numericamente. Ausente vai para o fim da
+ * fila, e lá a ordem é a profundidade do grupo — não a ordem das linhas da planilha,
+ * que muda quando alguém insere uma linha e faria o empilhamento mudar entre
+ * recarregamentos sem nada ter mudado no dado.
+ *
+ * O desempate final é o `id`, não a posição no array: `Array.prototype.sort` é estável,
+ * mas estabilidade só preserva a ordem de ENTRADA — e é exatamente a ordem de entrada
+ * que não é confiável aqui.
+ */
+export function comparePolygonDrawOrder(a, b) {
+  const za = Number.isFinite(a && a.z_index) ? a.z_index : null;
+  const zb = Number.isFinite(b && b.z_index) ? b.z_index : null;
+
+  if (za !== null && zb !== null && za !== zb) return za - zb;
+  if (za !== null && zb === null) return -1;
+  if (za === null && zb !== null) return 1;
+
+  if (za === null && zb === null) {
+    const da = POLYGON_GROUP_DEPTH[polygonLayerGroup(a)];
+    const db = POLYGON_GROUP_DEPTH[polygonLayerGroup(b)];
+    const depthA = da === undefined ? UNKNOWN_GROUP_DEPTH : da;
+    const depthB = db === undefined ? UNKNOWN_GROUP_DEPTH : db;
+    if (depthA !== depthB) return depthA - depthB;
+  }
+
+  return String(a && a.id).localeCompare(String(b && b.id));
+}
+
+/** Contornos na ordem em que devem ser desenhados. Não muta a lista recebida. */
+export function sortPolygonsForDraw(polygons) {
+  return [...(polygons || [])].sort(comparePolygonDrawOrder);
 }

@@ -460,6 +460,28 @@ Cada uma nasce de um erro que aconteceu de verdade.
   colagem por cima não consegue apagar em silêncio; (3) a fusão que resolve é de **três vias** e o
   resultado ganha versão nova (aqui, 2.2.1), para que o número deixe de mentir sobre o que o
   arquivo contém.
+- **R8.49** *(2026-08-30, camadas de contorno, issues #51 e #52)* **Filtro que ainda não foi
+  montado é `null`; filtro que o operador esvaziou é conjunto vazio. Os dois nunca são o mesmo
+  valor.** A legenda de contornos é construída a partir do dado, então entre o primeiro `render()`
+  e o carregamento dos contornos não existe caixa nenhuma no DOM. Se esse estado fosse
+  representado por um `Set` vazio — a leitura literal de "nenhuma caixa marcada" —, a camada
+  inteira sumiria do mapa no primeiro quadro e só voltaria depois de alguém clicar em algo,
+  **sem erro no console e sem nada na tela dizendo por quê**. Mecanismo: `null` significa "ainda
+  não há vocabulário, mostre tudo" e conjunto vazio significa "o operador desligou tudo"; a
+  distinção fica escrita no ponto onde o estado nasce (`createFilterState`) e no ponto onde ele é
+  lido (`polygonPassesLayerFilters`), porque é entre esses dois que a confusão acontece. Vale para
+  todo filtro cujo vocabulário vem do dado e não de uma lista no código — o caso oposto,
+  vocabulário fixo, não tem esse estado intermediário e por isso não precisa da distinção.
+- **R8.50** *(2026-08-30, camadas de contorno, issue #51)* **Asserção cujos dois ramos passam não
+  é asserção — é uma linha de log que se disfarça de cobertura.** O smoke desta PR checava o
+  segundo nível da legenda com `condição ? pass(...) : pass(...)`: qualquer resultado era
+  aprovação. E o fixture tornava a coisa pior, porque nenhum grupo tinha mais de um tipo, então o
+  segundo nível **nem existia** na página — a linha teria "passado" com a funcionalidade inteira
+  ausente. Mecanismo, em duas partes: (1) todo ramo de uma checagem que não é `pass` tem que ser
+  `fail`; (2) quando a checagem depende de uma forma de dado (aqui, um grupo com dois tipos), o
+  fixture precisa **conter** essa forma, e a ausência dela é defeito do teste, não do código.
+  Antes de commitar uma checagem nova, quebre o código de propósito e confirme que ela fica
+  vermelha; a que não fica é ruído com aparência de rede.
 - **R8.53** *(2026-08-29, motor de agregação do IVV, issue #57)* **Quando a operação de agregação
   depende da natureza do dado, a natureza é DADO declarado — e o que não foi declarado é recusado,
   não presumido.** No IVV_MONTHLY convivem fluxo (`sales_units`), estoque (`offers_units`), preço

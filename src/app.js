@@ -13,13 +13,14 @@ import {
   anchorLegendGroups, applyFilters, computeKpis, createFilterState, distinctAnchorGroups,
   distinctAnchorSegments, distinctLocalities, distinctPropertyTypes, distinctRegions,
   distinctRegularizationStatuses, distinctSalesStages, LAYERS,
+  groupPolygonsForLegend, polygonPassesLayerFilters,
 } from './filters.js';
 import {
   formatBRL, formatBRLCompact, formatM2, formatNumber, formatPriceM2, formatDate,
   formatPropertyType, formatSpatialPrecision, formatBuildingOrientation, safeExternalUrl,
   hostnameOf, anchorColor, anchorLegendEntries, formatAnchorCategory, formatAnchorGroup,
   formatAnchorSegment, formatSalesStage, formatRegularizationStatus, formatPercent,
-  raAgeBands,
+  raAgeBands, polygonStyle, sortPolygonsForDraw,
 } from './format.js';
 
 const CONFIG = window.APP_CONFIG || {};
@@ -44,7 +45,7 @@ const dom = {
   closeDetail: el('closeDetail'),
   anchorLegend: el('anchorLegend'),
   polygonLayers: el('polygonLayers'), polygonLayerLabel: el('polygonLayerLabel'),
-  countPolygon: el('countPolygon'),
+  polygonMasterLayer: el('polygonMasterLayer'), countPolygon: el('countPolygon'),
 };
 
 const state = {
@@ -95,27 +96,36 @@ function initMap() {
   markerLayer = L.layerGroup().addTo(map);
 }
 
-/** Cor de um contorno sem `color` na planilha. Constante, nunca regra de CSS. */
-const POLYGON_FALLBACK_COLOR = '#5b6b8c';
-
 /**
- * Desenha a camada de contornos (issue #28).
+ * Desenha a camada de contornos (issues #28, #51, #52).
  *
- * A cor vem de `fillColor`/`color` no JS, nunca de regra de classe no CSS: regra de
- * classe vence o atributo que o Leaflet escreve no SVG, e foi assim que todas as
- * âncoras acabaram verdes na PR #40.
+ * Três coisas acontecem aqui, e as três são decisões:
+ *
+ * 1. **Filtro por grupo e tipo** (#51). Rodovia não é camada nova: é uma linha de
+ *    `POLYGONS` com `layer_group: 'road_network'`. Filtrar por `layer_group` +
+ *    `entity_type` é o que faz o mapa distinguir uma RA de um trecho rodoviário.
+ * 2. **Ordem de desenho declarada** (#52). Sem ela, o Leaflet empilha na ordem em que
+ *    as linhas chegam da planilha — e uma RA cobre uma rodovia por sorteio, roubando
+ *    também o clique dela.
+ * 3. **Estilo do backend, validado** (#52). A cor vem de `fillColor`/`color` no JS,
+ *    nunca de regra de classe no CSS: regra de classe vence o atributo que o Leaflet
+ *    escreve no SVG, e foi assim que todas as âncoras acabaram verdes na PR #40.
  *
  * `geometry_geojson` só é parseado aqui — não no normalizador —, e o erro é isolado
  * por registro: um contorno malformado some do mapa e vira aviso, sem derrubar os
- * outros nem o carregamento (R2.6).
+ * outros nem o carregamento (R2.6). `source_geometry_geojson` NUNCA é desenhado: para
+ * rodovia ela é a LineString do eixo oficial, que esta camada não sabe desenhar.
  */
 function renderPolygons() {
   if (!polygonLayer) return;
   polygonLayer.clearLayers();
   if (!state.filters.layers.has('polygon')) return;
 
-  for (const polygon of state.polygons) {
-    if (polygon.status && polygon.status !== 'active') continue;
+  // Ordem primeiro, filtro depois: ordenar só o que sobrou daria um empilhamento que
+  // muda conforme o que está ligado, e a mesma RA subiria ou desceria ao desligar uma
+  // camada vizinha.
+  for (const polygon of sortPolygonsForDraw(state.polygons)) {
+    if (!polygonPassesLayerFilters(polygon, state.filters)) continue;
 
     let geometry = null;
     try {
@@ -125,7 +135,7 @@ function renderPolygons() {
     }
     if (!geometry || (geometry.type !== 'Polygon' && geometry.type !== 'MultiPolygon')) continue;
 
-    const color = polygon.color || POLYGON_FALLBACK_COLOR;
+    const style = polygonStyle(polygon);
     let shape = null;
     try {
       shape = L.geoJSON(geometry, {
@@ -135,7 +145,11 @@ function renderPolygons() {
         // escreve no SVG, que foi como todas as âncoras acabaram verdes na PR #40.
         style: {
           className: 'polygon-shape',
-          color, weight: 2, opacity: 0.9, fillColor: color, fillOpacity: 0.15,
+          color: style.color,
+          weight: style.weight,
+          opacity: 0.9,
+          fillColor: style.fillColor,
+          fillOpacity: style.fillOpacity,
         },
       });
     } catch (error) {
@@ -472,6 +486,20 @@ function readFilters() {
     if (input.checked) layers.add(input.dataset.layer);
   }
   state.filters.layers = layers;
+
+  // Grupos e tipos de contorno (issue #51). A legenda é montada a partir do dado, então
+  // aqui não há lista fixa para conferir: o que existe no DOM é o vocabulário real.
+  // Sem nenhuma caixa montada, os filtros ficam `null` — "mostre tudo" —, e não um
+  // Set vazio, que significaria "o operador desligou tudo" (ver createFilterState).
+  const groupInputs = dom.polygonLayers.querySelectorAll('input[data-polygon-group]');
+  const typeInputs = dom.polygonLayers.querySelectorAll('input[data-polygon-type]');
+
+  state.filters.polygonGroups = groupInputs.length === 0
+    ? null
+    : new Set([...groupInputs].filter((i) => i.checked).map((i) => i.dataset.polygonGroup));
+  state.filters.polygonTypes = typeInputs.length === 0
+    ? null
+    : new Set([...typeInputs].filter((i) => i.checked).map((i) => i.dataset.polygonType));
 }
 
 function renderKpis(kpis) {
@@ -697,17 +725,120 @@ function renderAnchorLegend(records) {
 }
 
 /**
- * A caixa da camada de contornos só existe quando há contorno.
+ * Legenda de contornos em dois níveis: grupo → tipo de entidade (issue #51).
  *
- * Uma camada permanentemente vazia na legenda é ruído: sugere que algo deveria estar
- * ali e não está. A planilha sem nenhum KML importado é o estado normal hoje, não um
- * defeito — então a ausência é silenciosa (R2.5).
+ * A caixa só existe quando há contorno. Uma camada permanentemente vazia na legenda é
+ * ruído: sugere que algo deveria estar ali e não está. A planilha sem nenhum contorno é
+ * o estado normal hoje, não um defeito — então a ausência é silenciosa (R2.5).
+ *
+ * O vocabulário é **aberto**: os grupos saem do dado, não de uma lista aqui. Um
+ * `layer_group` novo criado no backend aparece sozinho, e um contorno antigo sem
+ * `layer_group` cai em "Outros" — nunca some, que é a falha que ninguém percebe.
+ *
+ * Montada uma vez, no carregamento, e não a cada `render()`: recriar as caixas a cada
+ * tecla digitada na busca apagaria o estado de quem acabou de desligar um grupo. A
+ * contagem é a de contornos ATIVOS, que é o que o mapa pode desenhar.
  */
-function showPolygonLayerControl(count) {
-  const visible = count > 0;
-  dom.polygonLayers.hidden = !visible;
+function renderPolygonLegend() {
+  const groups = groupPolygonsForLegend(state.polygons);
+  const total = groups.reduce((acc, g) => acc + g.count, 0);
+  const visible = groups.length > 0;
+
   dom.polygonLayerLabel.hidden = !visible;
-  if (visible) dom.countPolygon.textContent = formatNumber(count);
+  dom.polygonMasterLayer.hidden = !visible;
+  dom.polygonLayers.hidden = !visible;
+  if (!visible) {
+    dom.polygonLayers.replaceChildren();
+    return;
+  }
+  dom.countPolygon.textContent = formatNumber(total);
+
+  const frag = document.createDocumentFragment();
+
+  for (const group of groups) {
+    const list = document.createElement('ul');
+    list.className = 'layers polygon-group';
+
+    list.append(polygonLegendRow({
+      attribute: 'data-polygon-group',
+      value: group.key,
+      label: group.label,
+      count: group.count,
+      sample: group.sample,
+      className: 'polygon-group-row',
+    }));
+
+    // Um grupo com um tipo só não ganha sublista: a linha do tipo repetiria a do grupo
+    // e daria duas caixas para a mesma decisão.
+    if (group.types.length > 1) {
+      for (const type of group.types) {
+        list.append(polygonLegendRow({
+          attribute: 'data-polygon-type',
+          value: type.key,
+          label: type.label,
+          count: type.count,
+          sample: type.first,
+          className: 'polygon-type-row',
+        }));
+      }
+    } else if (group.types.length === 1) {
+      // Mesmo sem caixa própria, o tipo precisa existir no DOM: `readFilters()` monta o
+      // Set de tipos a partir dele, e um tipo ausente do Set filtraria o grupo inteiro.
+      const holder = document.createElement('li');
+      holder.hidden = true;
+      const hidden = document.createElement('input');
+      hidden.type = 'checkbox';
+      hidden.checked = true;
+      hidden.hidden = true;
+      hidden.setAttribute('data-polygon-type', group.types[0].key);
+      holder.append(hidden);
+      list.append(holder);
+    }
+
+    frag.append(list);
+  }
+
+  dom.polygonLayers.replaceChildren(frag);
+}
+
+/**
+ * Uma linha da legenda de contornos: caixa, amostra de cor e contagem.
+ *
+ * A amostra usa o estilo REAL do primeiro contorno daquele grupo/tipo — a mesma
+ * `polygonStyle()` que desenha no mapa —, não uma cor decorativa. Legenda com cor
+ * diferente da do mapa é pior que legenda nenhuma: ela afirma uma correspondência que
+ * não existe (issue #52).
+ */
+function polygonLegendRow({ attribute, value, label, count, sample, className }) {
+  const li = document.createElement('li');
+  li.className = className;
+
+  const labelEl = document.createElement('label');
+  const input = document.createElement('input');
+  input.type = 'checkbox';
+  input.checked = true;
+  input.setAttribute(attribute, value);
+  input.addEventListener('change', render);
+
+  const dot = document.createElement('span');
+  dot.className = 'dot dot-polygon-sample';
+  const style = polygonStyle(sample);
+  // Estilo inline, como no mapa: a cor de um contorno é dado, não tema (R8.31, R8.45).
+  dot.style.borderColor = style.color;
+  dot.style.background = style.fillColor;
+  dot.style.opacity = '0.95';
+
+  const text = document.createElement('span');
+  text.className = 'polygon-legend-label';
+  text.textContent = label;
+
+  const countEl = document.createElement('span');
+  countEl.className = 'count';
+  countEl.textContent = formatNumber(count);
+
+  labelEl.append(input, dot, text, countEl);
+  li.append(labelEl);
+  return li;
 }
 
 function populateSelect(select, values, formatter = (v) => v) {
@@ -881,7 +1012,7 @@ async function load() {
   state.records = flattenEntities(result.entities);
   state.raProfiles = result.raProfiles || {};
   state.polygons = result.polygons || [];
-  showPolygonLayerControl(state.polygons.length);
+  renderPolygonLegend();
 
   populateSelect(dom.locality, distinctLocalities(state.records));
   populateSelect(dom.ptype, distinctPropertyTypes(state.records), formatPropertyType);

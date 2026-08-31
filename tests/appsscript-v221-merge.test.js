@@ -213,8 +213,12 @@ test('src/app.js nunca desenha source_geometry_geojson', () => {
   // Para rodovia, `source_geometry_geojson` é a LineString do eixo oficial: a camada de
   // contorno não sabe desenhá-la, e usá-la por engano no lugar do corredor com buffer
   // seria um mapa vazio sem nenhum erro.
-  const appSrc = read('../src/app.js');
-  assert.equal(appSrc.includes('source_geometry_geojson'), false,
+  // A checagem é sobre CÓDIGO, não sobre o texto do arquivo: comentar por que o campo
+  // não é desenhado é exatamente o que se quer que exista ali. Comentários saem antes.
+  const appSrc = read('../src/app.js')
+    .replace(/\/\*[\s\S]*?\*\//g, ' ')
+    .replace(/(^|[^:])\/\/[^\n]*/g, '$1 ');
+  assert.equal(/\bsource_geometry_geojson\b/.test(appSrc), false,
     'source_geometry_geojson é procedência, não geometria de render');
 });
 
