@@ -60,11 +60,20 @@ await page.locator('#loadingState').isHidden() ? pass('loading state some após 
 (await page.locator('#errorState').isHidden()) ? pass('sem estado de erro')
                                                : fail('estado de erro exibido: ' + await page.locator('#errorDetail').textContent());
 
-// Avisos de contrato continuam no console para o operador, mas não podem cobrir o
-// mapa com informação técnica na interface pública (issue #79).
+// Avisos de contrato continuam disponíveis para o operador, mas ficam recolhidos
+// no fluxo da barra lateral em vez de cobrir o mapa (issue #79).
 (await page.locator('#warnings').count()) === 0
   ? pass('avisos técnicos não são renderizados sobre o mapa')
   : fail('o painel técnico #warnings continua na interface pública');
+(await page.locator('#dataWarnings').isVisible()) && !(await page.locator('#dataWarnings').evaluate((node) => node.open))
+  ? pass('avisos técnicos ficam visíveis e recolhidos na barra lateral')
+  : fail('indicador recolhido de avisos técnicos não está disponível');
+(await page.locator('#dataWarnings').evaluate((node) => !['absolute', 'fixed'].includes(getComputedStyle(node).position)))
+  ? pass('avisos técnicos participam do fluxo e não sobrepõem o mapa')
+  : fail('avisos técnicos ainda podem sobrepor o mapa');
+(await page.locator('#dataWarningsList li').count()) > 0
+  ? pass('detalhes dos avisos continuam acessíveis ao operador')
+  : fail('detalhes dos avisos não chegaram à interface');
 consoleWarnings.some((message) => message.includes('[imob] avisos:'))
   ? pass('avisos técnicos continuam disponíveis no console')
   : fail('avisos técnicos sumiram também do console');

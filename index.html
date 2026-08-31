@@ -56,6 +56,14 @@
       <p class="kpi-note" id="kpiNote"></p>
     </section>
 
+    <!-- Divergências de contrato precisam chegar ao operador (R5.7), mas não podem
+         cobrir o mapa. O resumo fica recolhido dentro da barra lateral e só ocupa
+         espaço quando o usuário decide inspecioná-lo. -->
+    <details class="data-warnings" id="dataWarnings" hidden>
+      <summary id="dataWarningsSummary">Avisos técnicos</summary>
+      <ul id="dataWarningsList"></ul>
+    </details>
+
     <!-- Metadados do dataset, vindos da aba APP_META. Fica escondido enquanto a aba
          não existir ou estiver vazia, que é o estado antes de rodar setupProject(). -->
     <section class="dataset-meta" id="datasetMeta" aria-label="Procedência dos dados" hidden>

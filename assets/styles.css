@@ -191,6 +191,20 @@ h1, h2 { margin: 0; font-size: 1rem; }
    DOM, mas ele continua ocupando a viewport e empurra o dashboard para baixo. */
 .layout[hidden] { display: none; }
 
+.data-warnings {
+  margin: 0 12px 12px;
+  padding: 8px 10px;
+  border: 1px solid var(--line);
+  border-left: 3px solid var(--primary);
+  border-radius: var(--radius);
+  color: var(--muted);
+  font-size: 12px;
+}
+.data-warnings[hidden] { display: none; }
+.data-warnings summary { cursor: pointer; color: var(--ink); }
+.data-warnings ul { margin: 8px 0 0; padding-left: 18px; }
+.data-warnings li + li { margin-top: 6px; }
+
 .panel {
   width: var(--panel-w);
   flex: 0 0 var(--panel-w);

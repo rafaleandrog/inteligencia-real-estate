@@ -44,6 +44,8 @@ const dom = {
   loadingState: el('loadingState'), errorState: el('errorState'),
   errorTitle: el('errorTitle'), errorDetail: el('errorDetail'), retryBtn: el('retryBtn'),
   sourceBadge: el('sourceBadge'),
+  dataWarnings: el('dataWarnings'), dataWarningsSummary: el('dataWarningsSummary'),
+  dataWarningsList: el('dataWarningsList'),
   datasetMeta: el('datasetMeta'), datasetMetaList: el('datasetMetaList'),
   datasetMetaSummary: el('datasetMetaSummary'),
   detail: el('detail'), detailTitle: el('detailTitle'), detailBody: el('detailBody'),
@@ -1084,10 +1086,25 @@ function showError(messages) {
   console.error('[imob] falha ao carregar o dataset:', messages);
 }
 
-function reportWarnings(messages) {
-  // Avisos de contrato e normalização são informação operacional. Eles continuam
-  // disponíveis para diagnóstico, sem cobrir o mapa na interface pública (#79).
-  if (messages.length > 0) console.warn('[imob] avisos:', messages);
+function showWarnings(messages) {
+  if (messages.length === 0) {
+    dom.dataWarnings.hidden = true;
+    dom.dataWarnings.open = false;
+    dom.dataWarningsList.replaceChildren();
+    return;
+  }
+
+  const fragment = document.createDocumentFragment();
+  for (const message of messages) {
+    const item = document.createElement('li');
+    item.textContent = message;
+    fragment.append(item);
+  }
+  dom.dataWarningsSummary.textContent = `${messages.length} aviso${messages.length === 1 ? '' : 's'} técnico${messages.length === 1 ? '' : 's'}`;
+  dom.dataWarningsList.replaceChildren(fragment);
+  dom.dataWarnings.open = false;
+  dom.dataWarnings.hidden = false;
+  console.warn('[imob] avisos:', messages);
 }
 
 /**
@@ -1349,6 +1366,8 @@ function renderMarketView() {
 async function load() {
   showLoading(true);
   dom.errorState.hidden = true;
+  dom.dataWarnings.hidden = true;
+  dom.dataWarnings.open = false;
 
   const result = await loadDataset(CONFIG);
   showLoading(false);
@@ -1387,7 +1406,7 @@ async function load() {
   renderAnchorLegend(state.records);
 
   const marketWarnings = renderMarketView();
-  reportWarnings([...result.warnings, ...result.errors, ...marketWarnings]);
+  showWarnings([...result.warnings, ...result.errors, ...marketWarnings]);
   render();
 
   // Enquadra o que tem coordenada, para a primeira tela não depender do zoom padrão.
