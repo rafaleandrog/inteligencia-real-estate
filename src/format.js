@@ -686,3 +686,43 @@ export function comparePolygonDrawOrder(a, b) {
 export function sortPolygonsForDraw(polygons) {
   return [...(polygons || [])].sort(comparePolygonDrawOrder);
 }
+
+// --- Perfil da Região Administrativa no painel de detalhe (issue #53) --------------
+
+/**
+ * Indicadores ESSENCIAIS de uma RA, na ordem em que devem ser lidos.
+ *
+ * Seis itens, não trinta. O painel de contorno hoje percorre `properties_json` em ordem
+ * alfabética usando a chave crua como rótulo, e numa RA isso são ~30 linhas que começam
+ * em `avg_household_size` e passam por `geometry_source_hash` antes de chegar em
+ * `population_total` — o que o usuário veio ver fica abaixo do que ele nunca vai olhar.
+ *
+ * Indicador sem valor é OMITIDO, nunca vira travessão nem linha vazia: a cobertura do
+ * PDAD é esparsa e `null` aqui significa "não publicado", que é diferente de zero
+ * (mesma razão da issue #35). Uma RA sem nenhum indicador devolve lista vazia, e quem
+ * renderiza decide o que fazer — não existe "perfil vazio" desenhado na tela.
+ */
+const AGE_DECIMAL = new Intl.NumberFormat('pt-BR', { maximumFractionDigits: 1 });
+
+export function raProfileEssentials(profile) {
+  if (!profile) return [];
+  const rows = [];
+  const add = (label, value) => { if (value !== null && value !== undefined) rows.push({ label, value }); };
+
+  add('População', profile.population_total === null ? null : formatNumber(profile.population_total));
+  add('Densidade', profile.population_density_km2 === null
+    ? null : `${formatNumber(Math.round(profile.population_density_km2))} hab/km²`);
+  add('Renda per capita', profile.income_per_capita_brl === null
+    ? null : formatBRL(profile.income_per_capita_brl));
+  // Idade média com uma casa: `formatNumber` arredonda para inteiro, e "34 anos" no
+  // lugar de "34,2 anos" perde a única casa que distingue duas RAs vizinhas.
+  add('Idade média', profile.average_age === null
+    ? null : `${AGE_DECIMAL.format(profile.average_age)} anos`);
+  add('Domicílios', profile.households_total === null ? null : formatNumber(profile.households_total));
+  // `area_km2` vem do limite oficial do GeoPortal, não do cálculo planar aproximado do
+  // cliente — é medida publicada, não estimativa nossa.
+  add('Área', profile.area_km2 === null
+    ? null : `${formatNumber(Math.round(profile.area_km2))} km²`);
+
+  return rows;
+}

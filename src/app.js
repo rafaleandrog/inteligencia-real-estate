@@ -13,14 +13,14 @@ import {
   anchorLegendGroups, applyFilters, computeKpis, createFilterState, distinctAnchorGroups,
   distinctAnchorSegments, distinctLocalities, distinctPropertyTypes, distinctRegions,
   distinctRegularizationStatuses, distinctSalesStages, LAYERS,
-  groupPolygonsForLegend, polygonPassesLayerFilters,
+  groupPolygonsForLegend, polygonPassesLayerFilters, raProfileForPolygon,
 } from './filters.js';
 import {
   formatBRL, formatBRLCompact, formatM2, formatNumber, formatPriceM2, formatDate,
   formatPropertyType, formatSpatialPrecision, formatBuildingOrientation, safeExternalUrl,
   hostnameOf, anchorColor, anchorLegendEntries, formatAnchorCategory, formatAnchorGroup,
   formatAnchorSegment, formatSalesStage, formatRegularizationStatus, formatPercent,
-  raAgeBands, polygonStyle, sortPolygonsForDraw,
+  raAgeBands, polygonStyle, sortPolygonsForDraw, raProfileEssentials,
 } from './format.js';
 
 const CONFIG = window.APP_CONFIG || {};
@@ -170,24 +170,45 @@ function renderPolygons() {
  *
  * Tudo por `textContent`: `properties_json` vem de atributo de KML de terceiro, que é
  * entrada não confiável tanto quanto o título de um anúncio (R4.4).
+ *
+ * Contorno de Região Administrativa lê o perfil de `RA_PROFILES`, que é a fonte
+ * canônica (issue #53). O `properties_json` de uma RA é um retrato tirado na
+ * sincronização e envelhece sozinho, sem sintoma — por isso, quando o perfil existe,
+ * ele NÃO é despejado embaixo: as duas listas mostrariam os mesmos fatos com valores
+ * que podem já ter divergido, e quem lê não tem como saber qual está certo.
  */
 function openPolygonDetail(polygon) {
   const dl = document.createElement('dl');
   dl.className = 'detail-list';
 
+  const raProfile = raProfileForPolygon(polygon, state.raProfiles);
+  const essentials = raProfileEssentials(raProfile);
+
+  // O essencial vem primeiro, acima da dobra. Antes desta issue, a primeira linha de uma
+  // RA era `avg_household_size` — a ordem alfabética das chaves cruas do KML.
+  for (const row of essentials) addRow(dl, row.label, row.value);
+
+  if (raProfile && raProfile.ra_code) addRow(dl, 'Código da RA', raProfile.ra_code);
   addRow(dl, 'Categoria', polygon.category);
   addRow(dl, 'Descrição', polygon.description);
   addRow(dl, 'Arquivo de origem', polygon.source_file);
   addRow(dl, 'Importado em', formatDate(polygon.imported_at));
 
-  // As propriedades do KML são vocabulário aberto — nome de chave é do arquivo, não
-  // do contrato. Só o que for escalar vira linha; objeto aninhado viraria
-  // "[object Object]" e não informa nada.
-  const properties = polygon.properties || {};
-  for (const key of Object.keys(properties).sort()) {
-    const value = properties[key];
-    if (value === null || typeof value === 'object') continue;
-    addRow(dl, key, String(value));
+  if (essentials.length > 0) {
+    // Dizer de onde veio o número é o que permite ao operador conferir na planilha certa
+    // quando ele discordar do valor (R5.7).
+    addRow(dl, 'Fonte do perfil', 'RA_PROFILES');
+  } else {
+    // Sem perfil canônico, o `properties_json` volta a ser a única informação que existe.
+    // As propriedades do KML são vocabulário aberto — nome de chave é do arquivo, não do
+    // contrato. Só o que for escalar vira linha; objeto aninhado viraria
+    // "[object Object]" e não informa nada.
+    const properties = polygon.properties || {};
+    for (const key of Object.keys(properties).sort()) {
+      const value = properties[key];
+      if (value === null || typeof value === 'object') continue;
+      addRow(dl, key, String(value));
+    }
   }
 
   // `selectedId` fica nulo: ele identifica um REGISTRO plotável, e o `render()` fecha

@@ -482,6 +482,27 @@ Cada uma nasce de um erro que aconteceu de verdade.
   fixture precisa **conter** essa forma, e a ausência dela é defeito do teste, não do código.
   Antes de commitar uma checagem nova, quebre o código de propósito e confirme que ela fica
   vermelha; a que não fica é ruído com aparência de rede.
+- **R8.51** *(2026-08-30, perfil de RA no painel de detalhe, issue #53)* **Chave estrangeira que
+  significa "está dentro de X" não é a mesma que significa "é X". Casar pela chave sem checar o
+  tipo do registro cola o atributo do container no conteúdo.** Todo contorno de `POLYGONS` carrega
+  `ra_geo_id` — uma área desenhada à mão, um trecho rodoviário, um KML importado. Só na linha cuja
+  `entity_type` é `administrative_region` esse campo identifica a própria RA; em todas as outras
+  ele diz apenas em qual RA o objeto está. Resolver o perfil por `ra_geo_id` sozinho colaria os 222
+  mil habitantes de Taguatinga num quarteirão, **com todos os números plausíveis e nenhum deles
+  sobre o objeto clicado** — e nada na tela denunciaria a troca. Mecanismo: a função que resolve a
+  referência checa o tipo antes da chave, e o teste que a cobre percorre os tipos que NÃO devem
+  casar, não só o que deve. Vale para toda referência num modelo onde a mesma coluna aparece em
+  registros de naturezas diferentes.
+- **R8.52** *(2026-08-30, perfil de RA no painel de detalhe, issue #53)* **Retrato de um dado
+  canônico não é exibido ao lado da fonte canônica. Ou ele substitui a fonte, ou ele não aparece.**
+  O `properties_json` de um contorno de RA é um retrato que o Apps Script tira na sincronização
+  (`profileSnapshotForRa_`); `RA_PROFILES` continua sendo atualizada depois disso. Os dois
+  envelhecem em ritmos diferentes, e o retrato envelhece **sem sintoma**. Mostrar os dois no mesmo
+  painel entrega duas populações para a mesma RA sem dizer a quem lê qual delas está certa — o que
+  é pior que mostrar só a velha, porque transforma um erro em uma dúvida. Mecanismo: existindo a
+  fonte canônica, ela é a única exibida e o painel **nomeia a fonte**, para o operador saber onde
+  conferir quando discordar do valor; faltando a fonte canônica, o retrato volta a ser a única
+  informação que existe e aparece sozinho.
 - **R8.53** *(2026-08-29, motor de agregação do IVV, issue #57)* **Quando a operação de agregação
   depende da natureza do dado, a natureza é DADO declarado — e o que não foi declarado é recusado,
   não presumido.** No IVV_MONTHLY convivem fluxo (`sales_units`), estoque (`offers_units`), preço
