@@ -490,7 +490,9 @@ export function raAgeBands(profile) {
     if (value === null || value === undefined || !Number.isFinite(value)) continue;
     present.push({ key, label, pct: value });
   }
-  if (present.length === 0) return { bands: [], total: null, scaledFromDecimal: false };
+  if (present.length === 0) {
+    return { bands: [], total: null, scaledFromDecimal: false, scaleWarning: null };
+  }
 
   const sum = present.reduce((acc, b) => acc + b.pct, 0);
   const scaledFromDecimal = present.length >= 2
@@ -498,13 +500,41 @@ export function raAgeBands(profile) {
     && sum <= DECIMAL_SCALE_MAX_SUM;
 
   const bands = scaledFromDecimal
-    ? present.map((b) => ({ ...b, pct: b.pct * 100 }))
-    : present;
+    // A conversão é declarada: `percentFromDecimal`, e não uma multiplicação por 100
+    // solta no meio do código. Trocar por `percentFromPoints` vira uma linha visível
+    // no diff em vez de um `* 100` que some (issue #54).
+    ? present.map((b) => ({ ...b, pct: percentFromDecimal(b.pct) }))
+    : present.map((b) => ({ ...b, pct: percentFromPoints(b.pct) }));
+
+  // A escala canônica de RA_PROFILES é pontos percentuais. Converter em silêncio o que
+  // chega em decimal esconderia uma divergência entre a planilha e o contrato: hoje é
+  // conversão certa, amanhã pode ser coluna trocada. O aviso é a diferença entre
+  // "o cliente se virou" e "alguém precisa olhar isto" (R5.7).
+  // Faixa acima de 100 não é escala trocada — é valor impossível: nenhuma parcela da
+  // população é maior que a população. O caminho real que produz isso hoje é a
+  // ambiguidade documentada de `toNumber`, que lê a célula "0,182" como 182 (vírgula
+  // com exatamente três casas vira separador de milhar). Sem esta checagem a barra é
+  // desenhada, o número é formatado, e "182,0%" tem exatamente a mesma aparência de um
+  // dado correto.
+  const impossible = bands.filter((b) => b.pct > 100);
+
+  let scaleWarning = null;
+  if (impossible.length > 0) {
+    scaleWarning = `Faixa etária acima de 100% da população (${impossible
+      .map((b) => `${b.label}: ${Math.round(b.pct)}%`).join(', ')}). `
+      + 'O valor está fora da faixa possível e não descreve uma parcela da população — '
+      + 'confira a célula na planilha.';
+  } else if (scaledFromDecimal) {
+    scaleWarning = 'As faixas etárias vieram em escala decimal (0–1) e foram convertidas '
+      + 'para porcento. A escala esperada em RA_PROFILES é '
+      + `${DATASET_PERCENT_SCALE.RA_PROFILES === PERCENT_SCALES.POINTS ? 'pontos percentuais (0–100)' : 'decimal'}.`;
+  }
 
   return {
     bands,
     total: bands.reduce((acc, b) => acc + b.pct, 0),
     scaledFromDecimal,
+    scaleWarning,
   };
 }
 
@@ -725,4 +755,82 @@ export function raProfileEssentials(profile) {
     ? null : `${formatNumber(Math.round(profile.area_km2))} km²`);
 
   return rows;
+}
+
+// --- Escala percentual declarada por dataset (issue #54) ---------------------------
+
+/**
+ * As duas convenções de porcentagem que este backend usa — ao mesmo tempo, em abas
+ * diferentes, em campos que se parecem e significam o contrário:
+ *
+ * - `RA_PROFILES.female_pct = 54` quer dizer **54%** (pontos percentuais);
+ * - `IVV_MONTHLY.ivv_pct = 0.057` quer dizer **5,7%** (escala decimal).
+ *
+ * Trocar uma pela outra erra por 100× **sem exceção e sem sintoma**: 5,7% vira 0,057%
+ * e 54% vira 5400%. O primeiro passa por "número pequeno", o segundo por "erro de
+ * digitação na planilha" — nenhum dos dois parece um bug de código. É a mesma família
+ * da R8.44.
+ *
+ * Por isso a escala é **declarada em cada chamada**, nunca inferida do valor: um
+ * `0,54` é escala decimal legítima e é também um `0,54%` legítimo, e nenhuma heurística
+ * distingue os dois olhando só para o número.
+ */
+export const PERCENT_SCALES = Object.freeze({
+  POINTS: 'points',
+  DECIMAL: 'decimal',
+});
+
+/**
+ * Escala canônica de cada dataset, do lado do backend que a produz.
+ *
+ * Serve para NOMEAR a expectativa, não para converter automaticamente: o que chega
+ * fora da escala canônica do seu dataset vira aviso, não conversão calada.
+ */
+export const DATASET_PERCENT_SCALE = Object.freeze({
+  RA_PROFILES: PERCENT_SCALES.POINTS,
+  IVV_MONTHLY: PERCENT_SCALES.DECIMAL,
+});
+
+/**
+ * Percentual a partir de pontos percentuais: `54` → `54`. Identidade, e existe
+ * justamente por isso — a chamada declara a escala de origem em vez de deixá-la
+ * implícita, e trocar esta função pela outra vira uma mudança visível no diff.
+ *
+ * Ausência devolve `null`, nunca `0`: campo vazio não é "0% da população" (R5.7).
+ */
+export function percentFromPoints(value) {
+  return Number.isFinite(value) ? value : null;
+}
+
+/** Percentual a partir da escala decimal: `0.057` → `5.7`. Ausência devolve `null`. */
+export function percentFromDecimal(value) {
+  return Number.isFinite(value) ? value * 100 : null;
+}
+
+/**
+ * RA cujo perfil estatístico ainda não existe — e por quê (issue #54).
+ *
+ * `26 de Setembro` e `Ponte Alta` foram criadas depois da PDAD-A 2024, então população,
+ * renda e faixas etárias estão vazias e vão continuar vazias até a próxima pesquisa.
+ * Sem esta função a tela some com o bloco inteiro, e "some" é indistinguível de "o
+ * carregamento falhou" — o operador fica sem saber se procura o dado ou o defeito.
+ *
+ * `predecessor_ra` vai junto porque é a resposta prática: até a PDAD nova sair, o perfil
+ * que descreve aquele território é o da RA de origem.
+ */
+export const RA_PROFILE_PENDING_STATUS = 'not_available_created_after_pdad_2024';
+
+export function raProfileUnavailability(profile) {
+  if (!profile || profile.profile_status !== RA_PROFILE_PENDING_STATUS) return null;
+
+  const parts = ['Dados estatísticos ainda não disponíveis'];
+  parts.push('esta Região Administrativa foi criada depois da PDAD-A 2024');
+  if (profile.predecessor_ra) {
+    parts.push(`o território era parte de ${profile.predecessor_ra}`);
+  }
+  return {
+    status: profile.profile_status,
+    predecessor: profile.predecessor_ra || null,
+    message: `${parts[0]}: ${parts.slice(1).join('; ')}.`,
+  };
 }

@@ -406,6 +406,19 @@ h1, h2 { margin: 0; font-size: 1rem; }
   color: var(--muted);
 }
 
+/* Escala fora da canônica do dataset e RA sem perfil publicado (issue #54).
+
+   As duas notas herdam a tipografia de `.ra-ages-note` de propósito: são observações
+   sobre o dado, não erro da aplicação, e pintar de vermelho faria o operador procurar
+   um defeito que não existe. `--muted` já contrasta o suficiente nos dois temas — a
+   cor vem do token, nunca de um hex fixo, senão a nota some no modo escuro. */
+.ra-profile-pending {
+  margin: 8px 0 0;
+  font-size: 11px;
+  line-height: 1.4;
+  color: var(--muted);
+}
+
 select, input[type="number"] {
   width: 100%;
   padding: 7px 9px;

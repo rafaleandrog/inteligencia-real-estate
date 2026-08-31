@@ -559,7 +559,12 @@ const lerBlocoRa = (alvo) => alvo.evaluate(() => {
       valor: li.querySelector('.ra-age-value').textContent,
       largura: li.querySelector('.ra-age-bar').style.width,
     })),
-    nota: box.querySelector('.ra-ages-note')?.textContent ?? null,
+    // A nota de composição é a primeira `.ra-ages-note`; o aviso de escala é a que
+    // carrega também `.ra-scale-note`. Ler as duas pelo mesmo seletor pegaria uma pela
+    // outra conforme a ordem no DOM.
+    nota: box.querySelector('.ra-ages-note:not(.ra-scale-note)')?.textContent ?? null,
+    avisoEscala: box.querySelector('.ra-scale-note')?.textContent ?? null,
+    pendente: box.querySelector('.ra-profile-pending')?.textContent ?? null,
   };
 });
 
@@ -603,6 +608,16 @@ await raPage.route('**/data/demo.json', async (route) => {
     'RA2026_RA-IX': { population_age_0_14_pct: '0.182', population_age_15_29_pct: '0.214',
       population_age_30_44_pct: '0.241', population_age_45_59_pct: '0.196',
       population_age_60_plus_pct: '0.167' },
+    // RA criada depois da PDAD-A 2024: as colunas existem e estão vazias, e vão
+    // continuar vazias até a próxima pesquisa (issue #54).
+    'RA2026_RA-X': {
+      profile_status: 'not_available_created_after_pdad_2024',
+      predecessor_ra: 'Ceilândia',
+      population_total: '', population_density_km2: '', income_per_capita_brl: '',
+      population_age_0_14_pct: '', population_age_15_29_pct: '',
+      population_age_30_44_pct: '', population_age_45_59_pct: '',
+      population_age_60_plus_pct: '',
+    },
   };
   payload.ra_profiles = payload.ra_profiles.map((r) => ({ ...r, ...(PERFIS[r.ra_geo_id] || {}) }));
   await route.fulfill({ response, json: payload });
@@ -645,6 +660,28 @@ const raDecimal = await lerBlocoRa(raPage);
 raDecimal.faixas[0].valor === '18,2%'
   ? pass('escala decimal (0,182) vira porcento em vez de cinco barras invisíveis')
   : fail('escala decimal não convertida: ' + raDecimal.faixas[0].valor);
+// A conversão está certa, mas não pode ser calada: hoje a causa é convenção, amanhã
+// pode ser coluna trocada, e o número continuaria plausível (issue #54).
+/escala decimal/.test(raDecimal.avisoEscala || '')
+  ? pass('a conversão de escala é declarada na tela, não acontece em silêncio')
+  : fail('conversão de escala silenciosa: ' + raDecimal.avisoEscala);
+raCheia.avisoEscala === null
+  ? pass('distribuição já em porcento não recebe aviso de escala')
+  : fail('aviso de escala indevido: ' + raCheia.avisoEscala);
+
+// RA sem perfil publicado: a tela diz por quê, em vez de sumir com o bloco.
+await raPage.selectOption('#raFilter', 'RA2026_RA-X');
+await raPage.waitForTimeout(400);
+const raPendente = await lerBlocoRa(raPage);
+raPendente && /ainda não disponíveis/.test(raPendente.pendente || '')
+  ? pass('RA criada após a PDAD-A 2024 diz que o dado ainda não existe')
+  : fail('RA pendente não explicada: ' + JSON.stringify(raPendente));
+/Ceilândia/.test(raPendente?.pendente || '')
+  ? pass('a nota aponta a RA de origem do território')
+  : fail('RA de origem ausente na nota');
+raPendente && raPendente.stats.length === 0 && raPendente.faixas.length === 0
+  ? pass('RA pendente não mostra zero em indicador nenhum')
+  : fail('RA pendente mostrou indicador: ' + JSON.stringify(raPendente));
 await raPage.close();
 
 // == Camada de contornos (issue #28) ==
