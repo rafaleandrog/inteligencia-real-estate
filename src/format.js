@@ -834,3 +834,140 @@ export function raProfileUnavailability(profile) {
     message: `${parts[0]}: ${parts.slice(1).join('; ')}.`,
   };
 }
+
+// --- Painel de detalhe em três níveis (issue #55) -----------------------------------
+
+/**
+ * Rótulos em português das chaves conhecidas de `properties_json`.
+ *
+ * O vocabulário é aberto: chave que não está aqui é humanizada e vai para o nível
+ * técnico, **nunca para o essencial**. Chave crua num nível de destaque é vazamento de
+ * detalhe de implementação — `display_simplification_tolerance_m` não é informação de
+ * usuário em lugar nenhum, mas no topo do painel ela empurra para baixo o que é.
+ */
+const POLYGON_PROPERTY_LABELS = {
+  road_name: 'Rodovia',
+  road_code: 'Código',
+  segment_type: 'Tipo de trecho',
+  jurisdiction: 'Jurisdição',
+  administration: 'Administração',
+  traffic_avg_daily_flow: 'Fluxo médio diário',
+  traffic_latest_daily_flow: 'Fluxo do último dia medido',
+  traffic_daily_rows: 'Dias com medição',
+  traffic_date_min: 'Primeira medição',
+  traffic_date_max: 'Última medição',
+  population_total: 'População',
+  population_density_km2: 'Densidade',
+  income_per_capita_brl: 'Renda per capita',
+  average_age: 'Idade média',
+  households_total: 'Domicílios',
+  avg_household_size: 'Moradores por domicílio',
+  dominant_dwelling_type: 'Tipo de domicílio predominante',
+  dominant_tenure: 'Situação de ocupação predominante',
+  profile_reference_year: 'Ano de referência do perfil',
+};
+
+export const DETAIL_TIERS = Object.freeze({
+  ESSENCIAL: 'essencial',
+  COMPLEMENTAR: 'complementar',
+  TECNICO: 'tecnico',
+});
+
+/** Em que nível uma chave de `properties_json` entra, e com que rótulo. */
+export function classifyPolygonProperty(key) {
+  // A regra é uma só, e é uma LISTA, não um padrão de nome: chave com rótulo declarado
+  // é informação de usuário; qualquer outra é pipeline até que alguém a declare.
+  //
+  // Tentei o inverso primeiro — um padrão casando `_id$`, `_hash$`, `_crs$`,
+  // `^source_` — e ele erra dos dois lados: não pega
+  // `display_simplification_tolerance_m` (que termina em `_m`) e pegaria uma chave de
+  // usuário que por acaso termine em `_id`. Um padrão que precisa de exceções para
+  // funcionar é mais frágil que a lista que ele tentava evitar.
+  const label = POLYGON_PROPERTY_LABELS[key];
+  return label
+    ? { tier: DETAIL_TIERS.COMPLEMENTAR, label }
+    : { tier: DETAIL_TIERS.TECNICO, label: humanizeSlug(key) };
+}
+
+/** Um valor escalar de `properties_json` vira texto; objeto e lista não viram linha. */
+function scalarText(value) {
+  if (value === null || value === undefined || typeof value === 'object') return null;
+  const text = String(value).trim();
+  return text === '' ? null : text;
+}
+
+/**
+ * Os 4 a 6 itens de alto valor de um contorno, por tipo de entidade (issue #55).
+ *
+ * O nome NÃO entra: ele já é o título do painel, e repeti-lo gastaria uma das poucas
+ * linhas que cabem acima da dobra.
+ *
+ * Para RA os números vêm de `RA_PROFILES` (issue #53), que é a fonte canônica. Para
+ * rodovia e área customizada vêm de campos com rótulo declarado — nunca de uma varredura
+ * de chaves, que é o que hoje põe `avg_household_size` na primeira linha.
+ */
+export function polygonEssentials(polygon, raProfile) {
+  if (!polygon) return [];
+  const type = polygonEntityType(polygon);
+  const props = polygon.properties || {};
+  const rows = [];
+  const add = (label, value) => { if (value !== null && value !== undefined && value !== '') rows.push({ label, value }); };
+
+  if (type === 'administrative_region') return raProfileEssentials(raProfile);
+
+  if (type === 'road_segment') {
+    add('Código', scalarText(props.road_code));
+    add('Tipo de trecho', scalarText(props.segment_type));
+    add('Jurisdição', scalarText(props.jurisdiction));
+    const flow = toFiniteNumber(props.traffic_avg_daily_flow);
+    // Fluxo é contagem de veículos por dia: sem medição nenhuma, a linha some. Zero
+    // aqui seria uma rodovia por onde ninguém passa, que é afirmação diferente.
+    add('Fluxo médio diário', flow === null ? null : `${formatNumber(Math.round(flow))} veíc./dia`);
+    return rows;
+  }
+
+  add('Categoria', polygon.category);
+  add('Área', polygon.area_ha === null || polygon.area_ha === undefined
+    ? null : `${formatNumber(Math.round(polygon.area_ha))} ha`);
+  add('Origem', polygon.source_file || polygon.source_system);
+  add('Importado em', formatDate(polygon.imported_at) === '—' ? null : formatDate(polygon.imported_at));
+  return rows;
+}
+
+/** Número finito ou `null`. `properties_json` traz o tipo do arquivo, não do contrato. */
+function toFiniteNumber(value) {
+  if (typeof value === 'number') return Number.isFinite(value) ? value : null;
+  const text = scalarText(value);
+  if (text === null) return null;
+  const n = Number(text.replace(',', '.'));
+  return Number.isFinite(n) ? n : null;
+}
+
+/**
+ * As linhas de `properties_json` divididas entre complementar e técnico (issue #55).
+ *
+ * `skip` recebe as chaves já mostradas no essencial: repetir "Jurisdição" duas vezes no
+ * mesmo painel gasta espaço e faz o leitor conferir se são a mesma coisa.
+ */
+export function polygonPropertyTiers(polygon, { skip = [] } = {}) {
+  const props = (polygon && polygon.properties) || {};
+  const ignore = new Set(skip);
+  const complementar = [];
+  const tecnico = [];
+
+  for (const key of Object.keys(props).sort()) {
+    if (ignore.has(key)) continue;
+    const value = scalarText(props[key]);
+    if (value === null) continue;
+    const { tier, label } = classifyPolygonProperty(key);
+    (tier === DETAIL_TIERS.COMPLEMENTAR ? complementar : tecnico).push({ label, value });
+  }
+  return { complementar, tecnico };
+}
+
+/** Chaves de `properties_json` que o essencial já consumiu, por tipo de entidade. */
+export function polygonEssentialKeys(polygon) {
+  return polygonEntityType(polygon) === 'road_segment'
+    ? ['road_code', 'segment_type', 'jurisdiction', 'traffic_avg_daily_flow']
+    : [];
+}

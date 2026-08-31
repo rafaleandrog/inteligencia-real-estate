@@ -1016,6 +1016,49 @@ const overflow = await page.evaluate(() => document.documentElement.scrollWidth 
 overflow <= 1 ? pass('sem overflow horizontal em 390px') : fail(`overflow horizontal de ${overflow}px`);
 (await page.locator('#map').isVisible()) ? pass('mapa visível em mobile') : fail('mapa some em mobile');
 (await page.locator('#search').isVisible()) ? pass('busca acessível em mobile') : fail('busca some em mobile');
+
+// Critério de aceite da issue #55, como checagem FIXA: o nível essencial do painel de
+// detalhe cabe sem rolagem em 390 px. Sem esta trava o painel volta a crescer na
+// próxima issue que precisar mostrar mais um campo — foi assim que ele chegou a ~30
+// linhas de peso visual idêntico.
+await page.locator('#map .marker').first().click();
+await page.waitForTimeout(500);
+const painel390 = await page.evaluate(() => {
+  const detail = document.querySelector('#detail');
+  if (!detail || detail.hidden) return null;
+  const essencial = detail.querySelector('.detail-essential');
+  if (!essencial) return { semEssencial: true };
+  const caixa = detail.getBoundingClientRect();
+  const fim = essencial.getBoundingClientRect().bottom;
+  return {
+    // Quanto do essencial fica ABAIXO da área visível do painel. Zero ou menos é o
+    // essencial inteiro visível sem arrastar.
+    excedente: Math.round(fim - caixa.bottom),
+    linhas: essencial.querySelectorAll('dt').length,
+    recolhidas: detail.querySelectorAll('details').length,
+    // Rótulo com underscore é chave crua vazando para o nível de destaque.
+    rotulos: [...essencial.querySelectorAll('dt')].map((n) => n.textContent),
+  };
+});
+
+painel390 && !painel390.semEssencial
+  ? pass('o painel de detalhe abre com um nível essencial em 390px')
+  : fail('sem nível essencial no painel: ' + JSON.stringify(painel390));
+painel390.excedente <= 0
+  ? pass('o essencial cabe sem rolagem em 390px (critério de aceite da #55)')
+  : fail(`o essencial passa ${painel390.excedente}px além do painel em 390px`);
+painel390.linhas >= 1 && painel390.linhas <= 6
+  ? pass(`o essencial tem ${painel390.linhas} linhas, dentro do teto de 6`)
+  : fail(`essencial com ${painel390.linhas} linhas`);
+painel390.recolhidas >= 1
+  ? pass('o resto da informação fica recolhido, não some')
+  : fail('nenhuma seção recolhida — a informação complementar sumiu');
+painel390.rotulos.every((r) => !/_/.test(r))
+  ? pass('nenhuma chave crua aparece no nível essencial')
+  : fail('chave crua no essencial: ' + JSON.stringify(painel390.rotulos));
+
+await page.click('#closeDetail').catch(() => {});
+await page.waitForTimeout(200);
 await page.screenshot({ path: process.env.SHOT_MOBILE || 'mobile.png' });
 
 await page.setViewportSize({ width: 1440, height: 900 });

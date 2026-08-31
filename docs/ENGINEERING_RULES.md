@@ -617,3 +617,32 @@ Cada uma nasce de um erro que aconteceu de verdade.
   aviso da derivada nomeia a métrica-base, senão quem lê não sabe onde declarar. É por esse aviso,
   na primeira carga real, que a convenção escrita no código vira verificação.
 
+- **R8.61** *(2026-08-30, painel de detalhe em três níveis, issue #55)* **Painel que mostra tudo com
+  o mesmo peso não mostra nada. A hierarquia é declarada por nível, e o nível de destaque tem teto
+  fixo com checagem que roda.** O painel de contorno chegou a ~30 linhas iguais somando três
+  decisões que isoladamente parecem inofensivas: ordem alfabética das chaves, chave crua como
+  rótulo, e nenhuma hierarquia. O efeito é que `avg_household_size` abria o painel de uma Região
+  Administrativa e `population_total` aparecia depois de `geometry_source_hash` — o que a pessoa
+  clicou para ver ficava abaixo do que ela nunca vai olhar, e arrastar virava a única saída.
+  Mecanismo, em três partes: (1) três níveis explícitos — essencial visível, complementar e
+  procedência recolhidos —, com o essencial montado a partir de campos de rótulo **declarado**, um
+  por tipo de entidade, nunca de uma varredura de chaves; (2) chave sem rótulo declarado cai no
+  nível técnico por definição, então nenhum campo novo do backend escala sozinho para o topo;
+  (3) o teto do essencial é **verificado** no smoke em 390 px, porque sem checagem que roda ele
+  volta a crescer na primeira issue que precisar de mais um campo, que foi exatamente como ele
+  cresceu da primeira vez. Ressalva nunca é recolhida: aviso de precisão, procedência de
+  regularização e registro sem coordenada continuam sempre visíveis, porque quem não sabe que a
+  seção existe nunca a abre.
+- **R8.62** *(2026-08-30, painel de detalhe em três níveis, issue #55)* **Identificador usado sem
+  import é `ReferenceError` em tempo de execução, e num arquivo que nenhum teste carrega ele passa
+  por `npm test` e por `node --check` intacto.** `src/app.js` toca `document` e `L` no topo, então
+  nenhum teste o importa; os testes de unidade importam `src/format.js` direto. Quando
+  `openPolygonDetail` passou a chamar `polygonEntityType` sem incluí-lo na lista de imports, a
+  suíte inteira ficou verde, a sintaxe era válida, e o sintoma no navegador foi um painel de
+  detalhe **vazio** — sem erro visível para quem estava olhando a tela, só a informação sumindo.
+  Mecanismo: guarda estática que, para cada nome exportado pelos módulos que `app.js` importa,
+  verifica se o nome aparece como chamada no corpo do arquivo sem estar na lista de imports. A
+  checagem ignora comentários e strings, senão acusa falso positivo em toda função citada num
+  comentário — e guarda que grita sem motivo é desligada na primeira semana. Vale para todo arquivo
+  que o navegador executa e o teste não carrega.
+

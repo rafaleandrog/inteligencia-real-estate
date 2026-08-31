@@ -21,7 +21,8 @@ import {
   hostnameOf, anchorColor, anchorLegendEntries, formatAnchorCategory, formatAnchorGroup,
   formatAnchorSegment, formatSalesStage, formatRegularizationStatus, formatPercent,
   raAgeBands, polygonStyle, sortPolygonsForDraw, raProfileEssentials,
-  raProfileUnavailability,
+  raProfileUnavailability, polygonEssentials, polygonPropertyTiers, polygonEssentialKeys,
+  polygonEntityType,
 } from './format.js';
 
 const CONFIG = window.APP_CONFIG || {};
@@ -179,38 +180,67 @@ function renderPolygons() {
  * que podem já ter divergido, e quem lê não tem como saber qual está certo.
  */
 function openPolygonDetail(polygon) {
-  const dl = document.createElement('dl');
-  dl.className = 'detail-list';
-
+  const frag = document.createDocumentFragment();
   const raProfile = raProfileForPolygon(polygon, state.raProfiles);
-  const essentials = raProfileEssentials(raProfile);
 
-  // O essencial vem primeiro, acima da dobra. Antes desta issue, a primeira linha de uma
-  // RA era `avg_household_size` — a ordem alfabética das chaves cruas do KML.
-  for (const row of essentials) addRow(dl, row.label, row.value);
+  const essencial = polygonEssentials(polygon, raProfile);
+  const { complementar, tecnico } = polygonPropertyTiers(polygon, {
+    skip: polygonEssentialKeys(polygon),
+  });
 
-  if (raProfile && raProfile.ra_code) addRow(dl, 'Código da RA', raProfile.ra_code);
-  addRow(dl, 'Categoria', polygon.category);
-  addRow(dl, 'Descrição', polygon.description);
-  addRow(dl, 'Arquivo de origem', polygon.source_file);
-  addRow(dl, 'Importado em', formatDate(polygon.imported_at));
-
-  if (essentials.length > 0) {
-    // Dizer de onde veio o número é o que permite ao operador conferir na planilha certa
-    // quando ele discordar do valor (R5.7).
-    addRow(dl, 'Fonte do perfil', 'RA_PROFILES');
-  } else {
-    // Sem perfil canônico, o `properties_json` volta a ser a única informação que existe.
-    // As propriedades do KML são vocabulário aberto — nome de chave é do arquivo, não do
-    // contrato. Só o que for escalar vira linha; objeto aninhado viraria
-    // "[object Object]" e não informa nada.
-    const properties = polygon.properties || {};
-    for (const key of Object.keys(properties).sort()) {
-      const value = properties[key];
-      if (value === null || typeof value === 'object') continue;
-      addRow(dl, key, String(value));
-    }
+  if (raProfile) {
+    // Com perfil canônico, o `properties_json` da RA é um retrato que envelhece sozinho
+    // e NÃO é despejado embaixo (R8.52). O que resta dele é procedência do desenho.
+    complementar.length = 0;
+    tecnico.length = 0;
+    if (raProfile.ra_code) complementar.push({ label: 'Código da RA', value: raProfile.ra_code });
+    // Dizer de onde veio o número é o que permite conferir na planilha certa quando
+    // alguém discordar do valor (R5.7).
+    complementar.push({ label: 'Fonte do perfil', value: 'RA_PROFILES' });
   }
+
+  // Campos do próprio registro que são informação de usuário.
+  if (polygon.category && polygonEntityType(polygon) === 'administrative_region') {
+    complementar.push({ label: 'Categoria', value: polygon.category });
+  }
+  if (polygon.subcategory) complementar.push({ label: 'Subcategoria', value: polygon.subcategory });
+
+  // Procedência do desenho: existe para auditar de onde veio a geometria, e é
+  // exatamente o que não pode ocupar o topo do painel.
+  const proveniencia = [
+    ['Sistema de origem', polygon.source_system],
+    ['Camada de origem', polygon.source_layer_name],
+    ['Arquivo de origem', polygon.source_file],
+    ['Importado em', dateOrNull(polygon.imported_at)],
+    ['Sincronizado em', dateOrNull(polygon.last_synced_at)],
+    ['Verificado em', dateOrNull(polygon.source_page_verified_at)],
+    ['Confiança', polygon.confidence_flag],
+    ['Qualidade', polygon.quality_flag],
+    ['Sistema de coordenadas', polygon.source_crs],
+    ['Papel da geometria', polygon.geometry_role],
+    ['Buffer de exibição', polygon.display_buffer_m === null || polygon.display_buffer_m === undefined
+      ? null : `${formatNumber(polygon.display_buffer_m)} m por lado`],
+    ['Hash da geometria', polygon.geometry_hash],
+  ];
+  for (const [label, value] of proveniencia) {
+    if (value) tecnico.push({ label, value });
+  }
+
+  appendTiers(frag, { essencial, complementar, tecnico });
+
+  // A descrição deixa de ser linha de lista dentro de um `<dd>` alinhado à direita: ela
+  // é um parágrafo de prosa, e um parágrafo numa coluna de valores fica ilegível. Some
+  // quando existe perfil canônico, porque `buildRaDescription_` no backend repete em
+  // prosa exatamente o que as linhas estruturadas já dizem (R8.52).
+  if (polygon.description && !raProfile) {
+    const p = document.createElement('p');
+    p.className = 'detail-description';
+    p.textContent = polygon.description;
+    frag.append(p);
+  }
+
+  const source = buildPolygonSourceLink(polygon);
+  if (source) frag.append(source);
 
   // `selectedId` fica nulo: ele identifica um REGISTRO plotável, e o `render()` fecha
   // o detalhe quando o id selecionado sai do filtro. Um contorno não passa pelos
@@ -218,9 +248,30 @@ function openPolygonDetail(polygon) {
   // primeiro render.
   state.selectedId = null;
   dom.detailTitle.textContent = polygon.name || polygon.id;
-  dom.detailBody.replaceChildren(dl);
+  dom.detailBody.replaceChildren(frag);
   dom.detail.hidden = false;
   dom.closeDetail.focus();
+}
+
+/** Data formatada, ou `null` quando não há data — o travessão não é informação. */
+function dateOrNull(iso) {
+  const text = formatDate(iso);
+  return text === '\u2014' ? null : text;
+}
+
+/** Link para a fonte de um contorno, quando a URL é utilizável. */
+function buildPolygonSourceLink(polygon) {
+  const href = safeExternalUrl(polygon.source_url);
+  if (!href) return null;
+  const p = document.createElement('p');
+  p.className = 'detail-source';
+  const link = document.createElement('a');
+  link.href = href;
+  link.target = '_blank';
+  link.rel = 'noopener noreferrer';
+  link.textContent = `Fonte: ${hostnameOf(href) || 'abrir'}`;
+  p.append(link);
+  return p;
 }
 
 /** Desenha os marcadores dos registros filtrados que têm coordenada. */
@@ -266,6 +317,56 @@ function renderMarkers(records) {
 // --- Painel de detalhe ----------------------------------------------------
 
 /** Linha de definição do painel. Omite o campo quando não há valor. */
+/**
+ * Uma seção recolhida do painel de detalhe (issue #55).
+ *
+ * Reusa o padrão que `#datasetMeta` usa desde a issue #19: `<details>` fechado, com o
+ * resumo dizendo quantos itens estão lá dentro. Saber que existem 12 linhas escondidas
+ * é o que faz alguém abrir; um "Mais informações" mudo não dá motivo nenhum.
+ *
+ * Seção vazia não é renderizada — um `<details>` que abre para o nada é pior que a
+ * ausência dele.
+ */
+function detailSection(title, rows, className) {
+  if (!rows || rows.length === 0) return null;
+
+  const box = document.createElement('details');
+  box.className = className;
+
+  const summary = document.createElement('summary');
+  summary.textContent = `${title} (${rows.length})`;
+  box.append(summary);
+
+  const dl = document.createElement('dl');
+  dl.className = 'detail-list';
+  for (const row of rows) addRow(dl, row.label, row.value);
+  box.append(dl);
+  return box;
+}
+
+/**
+ * Monta o painel em três níveis: essencial visível, o resto recolhido.
+ *
+ * O essencial é o contrato desta issue e tem checagem fixa no smoke: **cabe sem rolagem
+ * em 390 px**. Sem essa trava o painel volta a crescer na próxima issue que precisar
+ * mostrar mais um campo, que foi exatamente como ele chegou a ~30 linhas de peso visual
+ * idêntico.
+ */
+function appendTiers(frag, { essencial, complementar, tecnico }) {
+  if (essencial && essencial.length > 0) {
+    const dl = document.createElement('dl');
+    dl.className = 'detail-list detail-essential';
+    for (const row of essencial) addRow(dl, row.label, row.value);
+    if (dl.childElementCount > 0) frag.append(dl);
+  }
+
+  const more = detailSection('Mais informações', complementar, 'detail-more');
+  if (more) frag.append(more);
+
+  const tech = detailSection('Origem e qualidade', tecnico, 'detail-provenance');
+  if (tech) frag.append(tech);
+}
+
 function addRow(dl, label, value) {
   if (value === null || value === undefined || value === '' || value === '—') return;
   const dt = document.createElement('dt');
@@ -353,6 +454,18 @@ function buildRegularizationNotice(record) {
   return note;
 }
 
+/**
+ * Card de um registro (anúncio, empreendimento, âncora), em três níveis (issue #55).
+ *
+ * O essencial responde à pergunta que fez a pessoa clicar no ponto: quanto custa, que
+ * tamanho tem, onde fica. O resto é consulta, e consulta pode estar a um clique de
+ * distância. Antes desta issue eram ~15 linhas de peso visual idêntico, com "Portal" e
+ * "Observado em" ocupando o mesmo destaque que o preço.
+ *
+ * As ressalvas — precisão espacial, procedência da regularização, registro sem
+ * coordenada — continuam SEMPRE visíveis. Recolher uma ressalva é o mesmo que apagá-la:
+ * quem não sabe que ela existe nunca abre a seção.
+ */
 function buildDetailBody(record) {
   const frag = document.createDocumentFragment();
 
@@ -375,63 +488,69 @@ function buildDetailBody(record) {
 
   frag.append(buildPrecisionNotice(record));
 
-  const dl = document.createElement('dl');
+  const num = (value) => (value === null || value === undefined ? null : formatNumber(value));
+  const essencial = [];
+  const complementar = [];
+  const tecnico = [];
+  const push = (list, label, value) => { if (value) list.push({ label, value }); };
 
   if (record.kind === 'listing') {
-    addRow(dl, 'Tipo', formatPropertyType(record.property_type));
-    // Derivada de Tipo, sem depender do backend (issue #31) — o empreendimento traz a
-    // mesma linha, vinda da coluna própria dele.
-    addRow(dl, 'Vertical / horizontal', formatBuildingOrientation(record.building_orientation));
-    addRow(dl, 'Localidade', record.locality);
-    addRow(dl, 'Endereço', record.address);
-    addRow(dl, 'Preço pedido', formatBRL(record.price));
-    addRow(dl, 'Área', formatM2(record.area_m2));
-    addRow(dl, 'Preço/m²', formatPriceM2(record.price_m2));
-    addRow(dl, 'Quartos', record.bedrooms === null ? '' : formatNumber(record.bedrooms));
-    addRow(dl, 'Suítes', record.suites === null ? '' : formatNumber(record.suites));
-    addRow(dl, 'Vagas', record.parking_spaces === null ? '' : formatNumber(record.parking_spaces));
-    addRow(dl, 'Condomínio', formatBRL(record.condo_fee_brl));
-    addRow(dl, 'IPTU', formatBRL(record.iptu_brl));
+    push(essencial, 'Preço pedido', formatBRL(record.price));
+    push(essencial, 'Área', formatM2(record.area_m2));
+    push(essencial, 'Preço/m²', formatPriceM2(record.price_m2));
+    push(essencial, 'Tipo', formatPropertyType(record.property_type));
+    push(essencial, 'Localidade', record.locality);
+
+    push(complementar, 'Quartos', num(record.bedrooms));
+    push(complementar, 'Suítes', num(record.suites));
+    push(complementar, 'Vagas', num(record.parking_spaces));
+    push(complementar, 'Condomínio', formatBRL(record.condo_fee_brl));
+    push(complementar, 'IPTU', formatBRL(record.iptu_brl));
+    push(complementar, 'Endereço', record.address);
+    // Derivada de Tipo, sem depender do backend (issue #31).
+    push(complementar, 'Vertical / horizontal', formatBuildingOrientation(record.building_orientation));
     // Exibição pública decidida pelo dono do repositório na issue #32. A ressalva de
-    // procedência vai logo abaixo da lista, em `buildRegularizationNotice`.
-    addRow(dl, 'Regularização', formatRegularizationStatus(record.regularization_status));
-    addRow(dl, 'Portal', record.source);
-    addRow(dl, 'Observado em', formatDate(record.observed_at));
+    // procedência continua fora da seção recolhida, logo abaixo.
+    push(complementar, 'Regularização', formatRegularizationStatus(record.regularization_status));
+
+    push(tecnico, 'Portal', record.source);
+    push(tecnico, 'Observado em', dateOrNull(record.observed_at));
   } else if (record.kind === 'development') {
-    addRow(dl, 'Incorporadora', record.developer_name);
-    addRow(dl, 'Bairro', record.locality);
-    addRow(dl, 'Endereço', record.address);
-    addRow(dl, 'Situação', record.status);
-    // O estágio de comercialização (issue #30) aparece como selo no topo do card, não
-    // como linha aqui — ver `buildDetailBody`.
-    addRow(dl, 'Vertical / horizontal', formatBuildingOrientation(record.building_orientation));
-    addRow(dl, 'Regularização', formatRegularizationStatus(record.regularization_status));
-    addRow(dl, 'Segmento', record.segment);
-    addRow(dl, 'Produto', record.product);
-    addRow(dl, 'Unidades', record.units_total === null ? '' : formatNumber(record.units_total));
-    addRow(dl, 'Área', record.area_min_m2 === null ? ''
-      : `${formatM2(record.area_min_m2)} – ${formatM2(record.area_max_m2)}`);
-    addRow(dl, 'Obra', record.work_progress_pct === null ? '' : `${record.work_progress_pct}%`);
-    addRow(dl, 'Entrega prevista', record.expected_delivery);
-    addRow(dl, 'Verificado em', formatDate(record.observed_at));
+    push(essencial, 'Incorporadora', record.developer_name);
+    push(essencial, 'Unidades', num(record.units_total));
+    push(essencial, 'Área', record.area_min_m2 === null ? null
+      : `${formatM2(record.area_min_m2)} a ${formatM2(record.area_max_m2)}`);
+    push(essencial, 'Situação', record.status);
+    push(essencial, 'Bairro', record.locality);
+
+    push(complementar, 'Endereço', record.address);
+    push(complementar, 'Vertical / horizontal', formatBuildingOrientation(record.building_orientation));
+    push(complementar, 'Regularização', formatRegularizationStatus(record.regularization_status));
+    push(complementar, 'Segmento', record.segment);
+    push(complementar, 'Produto', record.product);
+    push(complementar, 'Obra', record.work_progress_pct === null ? null : `${record.work_progress_pct}%`);
+    push(complementar, 'Entrega prevista', record.expected_delivery);
+
+    push(tecnico, 'Verificado em', dateOrNull(record.observed_at));
   } else {
     // Classificação em dois eixos (issue #26) primeiro, `category`/`subcategory`
     // depois: o vocabulário novo é o que a legenda e o mapa usam, o antigo continua
-    // visível enquanto a planilha ainda o carrega. `addRow` omite o que estiver vazio,
-    // então uma âncora sem grupo/segmento mostra exatamente o que mostrava antes.
-    addRow(dl, 'Grupo', formatAnchorGroup(record.group));
-    addRow(dl, 'Segmento', formatAnchorSegment(record.segment));
-    addRow(dl, 'Categoria', formatAnchorCategory(record.category));
-    addRow(dl, 'Subcategoria', record.subcategory);
-    addRow(dl, 'Marca', record.brand_name);
-    addRow(dl, 'Área ocupada', formatM2(record.occupied_area_m2));
-    addRow(dl, 'Operador', record.operator_name);
-    addRow(dl, 'Bairro', record.locality);
-    addRow(dl, 'Endereço', record.address);
-    addRow(dl, 'Verificado em', formatDate(record.observed_at));
+    // visível enquanto a planilha ainda o carrega.
+    push(essencial, 'Grupo', formatAnchorGroup(record.group));
+    push(essencial, 'Segmento', formatAnchorSegment(record.segment));
+    push(essencial, 'Marca', record.brand_name);
+    push(essencial, 'Bairro', record.locality);
+
+    push(complementar, 'Categoria', formatAnchorCategory(record.category));
+    push(complementar, 'Subcategoria', record.subcategory);
+    push(complementar, 'Área ocupada', formatM2(record.occupied_area_m2));
+    push(complementar, 'Operador', record.operator_name);
+    push(complementar, 'Endereço', record.address);
+
+    push(tecnico, 'Verificado em', dateOrNull(record.observed_at));
   }
 
-  if (dl.childElementCount > 0) frag.append(dl);
+  appendTiers(frag, { essencial, complementar, tecnico });
 
   const regularization = buildRegularizationNotice(record);
   if (regularization) frag.append(regularization);
