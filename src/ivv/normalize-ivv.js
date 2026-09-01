@@ -16,7 +16,10 @@
 
 import { toText, toNumber, toInteger, toBoolean, toDateISO } from '../normalize.js';
 import { safeExternalUrl } from '../format.js';
-import { classifyColumn, COLUMN_ROLES, LEGACY_COLUMN_ALIASES, METRIC_BY_KEY } from './metrics.js';
+import {
+  classifyColumn, COLUMN_ROLES, LEGACY_COLUMN_ALIASES, PUBLISHED_COLUMN_ALIASES,
+  METRIC_BY_KEY,
+} from './metrics.js';
 
 /** Grupos do schema, na ordem em que a issue #56 os descreve. */
 export const IVV_COLUMN_GROUPS = Object.freeze({
@@ -65,6 +68,7 @@ export const IVV_COLUMNS = Object.freeze([
   { key: 'market_scope', group: G.ESCOPO, type: T.TEXTO },
   { key: 'segment_scope', group: G.ESCOPO, type: T.TEXTO },
   { key: 'source_publisher', group: G.ESCOPO, type: T.TEXTO },
+  { key: 'source_report_generated_at', group: G.ESCOPO, type: T.TEXTO },
   { key: 'source_file', group: G.ESCOPO, type: T.TEXTO },
   { key: 'source_url', group: G.ESCOPO, type: T.URL },
   { key: 'report_filter', group: G.ESCOPO, type: T.TEXTO },
@@ -107,8 +111,10 @@ export const IVV_COLUMNS = Object.freeze([
   { key: 'ivv_diff_pp', group: G.DERIVADA, type: T.NUMERO },
   { key: 'asking_price_calc_brl_m2', group: G.DERIVADA, type: T.NUMERO },
   { key: 'asking_price_diff_brl_m2', group: G.DERIVADA, type: T.NUMERO },
+  { key: 'asking_price_diff_pct', group: G.DERIVADA, type: T.FRACAO, autoScale: true },
   { key: 'sale_price_calc_brl_m2', group: G.DERIVADA, type: T.NUMERO },
   { key: 'sale_price_diff_brl_m2', group: G.DERIVADA, type: T.NUMERO },
+  { key: 'sale_price_diff_pct', group: G.DERIVADA, type: T.FRACAO, autoScale: true },
   // A divergência vem na unidade da própria métrica: p.p. para uma fração, R$/m² para um
   // preço. Uma coluna `_diff_pct` sobre um preço seria ambígua entre as duas leituras.
   // Tickets e áreas médias: valor por unidade, já dividido pelo backend. Não são família
@@ -116,8 +122,10 @@ export const IVV_COLUMNS = Object.freeze([
   // aqui uma a uma em vez de reconhecidas por padrão.
   { key: 'avg_offer_ticket_brl', group: G.DERIVADA, type: T.NUMERO },
   { key: 'avg_sale_ticket_brl', group: G.DERIVADA, type: T.NUMERO },
+  { key: 'avg_launch_ticket_brl', group: G.DERIVADA, type: T.NUMERO },
   { key: 'avg_offer_area_m2', group: G.DERIVADA, type: T.NUMERO },
   { key: 'avg_sold_area_m2', group: G.DERIVADA, type: T.NUMERO },
+  { key: 'cancellations_to_sales_pct', group: G.DERIVADA, type: T.FRACAO, autoScale: true },
 
   // ---------- acumulados do ano civil (zeram em janeiro) ----------
   { key: 'sales_units_ytd', group: G.ACUMULADO, type: T.INTEIRO },
@@ -212,7 +220,7 @@ function coerce(column, value, context) {
 }
 
 /** Traduz os nomes do schema v1.0.0 (semente) para as chaves canônicas. */
-function applyLegacyAliases(row, warnings, month) {
+function applyAliases(row, warnings, month) {
   const out = { ...row };
   for (const [legacy, canonical] of Object.entries(LEGACY_COLUMN_ALIASES)) {
     if (!(legacy in out)) continue;
@@ -222,6 +230,13 @@ function applyLegacyAliases(row, warnings, month) {
     out[canonical] = legacyValue;
     pushWarning(warnings, 'COLUNA_LEGADA', 'coluna do schema v1.0.0',
       { month, legacy, canonical });
+  }
+  for (const [published, canonical] of Object.entries(PUBLISHED_COLUMN_ALIASES)) {
+    if (!(published in out)) continue;
+    const publishedValue = out[published];
+    delete out[published];
+    if (out[canonical] !== undefined && toText(out[canonical]) !== '') continue;
+    out[canonical] = publishedValue;
   }
   return out;
 }
@@ -245,7 +260,7 @@ export function normalizeIvvMonth(row, { warnings = [] } = {}) {
     || toDateISO(row.period_id);
   const monthLabelForWarning = rawDate ? rawDate.slice(0, 7) : (toText(row.period_id) || 'linha sem data');
 
-  const source = applyLegacyAliases(row, warnings, monthLabelForWarning);
+  const source = applyAliases(row, warnings, monthLabelForWarning);
   if (!rawDate) {
     pushWarning(warnings, 'MES_SEM_DATA', 'linha sem data utilizável',
       { row: monthLabelForWarning });
@@ -371,7 +386,7 @@ export function normalizeIvvMonthly(rows) {
   for (const row of list) {
     if (!row || typeof row !== 'object') continue;
     for (const key of Object.keys(row)) {
-      if (IVV_COLUMN_BY_KEY[key] || LEGACY_COLUMN_ALIASES[key]) continue;
+      if (IVV_COLUMN_BY_KEY[key] || LEGACY_COLUMN_ALIASES[key] || PUBLISHED_COLUMN_ALIASES[key]) continue;
       // Coluna derivada que o registro reconhece pela família (`*_ytd`, `*_calc_*`, `*_mom_*`)
       // MAS que este schema não declara é o caso mais traiçoeiro dos dois: ela não é lida, e
       // reconhecer a família sem avisar a esconderia justamente de quem precisa vê-la. É por

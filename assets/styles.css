@@ -912,6 +912,84 @@ select:focus, input[type="number"]:focus {
   color: var(--ink);
 }
 
+.market-filters {
+  display: grid;
+  grid-template-columns: minmax(180px, 1.4fr) repeat(2, minmax(140px, 1fr));
+  gap: 12px;
+  align-items: end;
+  margin: 0 0 18px;
+  padding: 14px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--panel);
+}
+.market-filters label { display: grid; gap: 5px; }
+.market-filters label > span {
+  font-size: 11px;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: .04em;
+}
+.market-filters select,
+.market-filters input[type="month"] {
+  width: 100%;
+  min-height: 38px;
+  padding: 7px 9px;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: var(--bg);
+  color: var(--ink);
+}
+.market-custom-range {
+  grid-column: 1 / -1;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(160px, 1fr));
+  gap: 12px;
+}
+.market-custom-range[hidden] { display: none; }
+.market-period-label {
+  grid-column: 1 / -1;
+  margin: 0;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.market-history { margin-top: 30px; }
+.market-history > header { margin-bottom: 12px; }
+.market-history h2 { font-size: 18px; }
+.market-history header p { margin: 5px 0 0; font-size: 12px; color: var(--muted); }
+.market-chart-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+.market-chart {
+  min-width: 0;
+  padding: 14px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--panel);
+}
+.market-chart h3 { margin: 0 0 8px; font-size: 13px; font-weight: 600; }
+.market-chart svg { display: block; width: 100%; height: auto; overflow: visible; }
+.chart-grid-line { stroke: var(--line); stroke-width: 1; }
+.chart-axis-value,
+.chart-axis-month { fill: var(--muted); font-size: 10px; }
+.chart-axis-value { text-anchor: end; }
+.market-chart-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 16px;
+  margin: 8px 0 0;
+  padding: 0;
+  list-style: none;
+  color: var(--muted);
+  font-size: 11px;
+}
+.market-chart-legend li { display: inline-flex; align-items: center; gap: 6px; }
+.market-chart-legend span { width: 14px; height: 3px; border-radius: 2px; }
+.market-chart-empty { min-height: 120px; margin: 0; color: var(--muted); font-size: 12px; }
+
 .market-provenance { margin-top: 24px; }
 .market-provenance > summary {
   cursor: pointer;
@@ -931,6 +1009,9 @@ select:focus, input[type="number"]:focus {
   .view-switch { order: 3; width: 100%; }
   .view-tab { flex: 1; }
   .market { padding: 16px 12px 32px; }
+  .market-filters { grid-template-columns: 1fr 1fr; }
+  .market-filters > label:first-child { grid-column: 1 / -1; }
+  .market-chart-grid { grid-template-columns: 1fr; }
 }
 
 /* Cards do Mercado Residencial DF (issue #59).
@@ -1026,4 +1107,8 @@ select:focus, input[type="number"]:focus {
      "R$ 12.071,92/m²" não cabe sem quebrar no meio do número. */
   .market-row { grid-template-columns: 1fr; }
   .market-card-value { font-size: 22px; }
+  .market-filters,
+  .market-custom-range { grid-template-columns: 1fr; }
+  .market-filters > label,
+  .market-custom-range { grid-column: 1; }
 }

@@ -470,12 +470,21 @@ test('#68 · nenhum mês pareado devolve null com aviso, nunca média simples', 
   assert.equal(result.warnings.filter((item) => item.code === 'PAREAMENTO_INCOMPLETO').length, 2);
 });
 
-test('#68 · o preço ainda não tem coluna de acumulado publicada, e o caminho fica declarado', () => {
-  // `asking_price_brl_m2` não declara `ytdColumn` no registro: o atalho é inerte hoje e passa
-  // a valer no dia em que a coluna for confirmada na planilha, sem mudar o motor.
-  assert.equal(METRIC_BY_KEY.asking_price_brl_m2.ytdColumn, undefined);
-  assert.equal(aggregateMetric(year2024, 'asking_price_brl_m2').origin,
-    VALUE_ORIGINS.RAZAO_PONDERADA);
+test('#81 · preço e estoque usam o acumulado publicado quando o recorte é YTD', () => {
+  const janJun = year2024.slice(0, 6).map((row) => ({ ...row }));
+  janJun[5].asking_price_ytd_brl_m2 = 12345;
+  janJun[5].offers_units_ytd_avg = 6100;
+
+  const price = aggregateMetric(janJun, 'asking_price_brl_m2');
+  assert.equal(price.origin, VALUE_ORIGINS.YTD_BACKEND);
+  assert.equal(price.value, 12345);
+
+  const stock = aggregateMetric(janJun, 'offers_units');
+  assert.equal(stock.origin, VALUE_ORIGINS.YTD_BACKEND);
+  assert.equal(stock.value, 6100);
+
+  assert.equal(aggregateMetric(janJun.slice(1), 'offers_units').origin, VALUE_ORIGINS.MEDIA,
+    'intervalo que não começa em janeiro nunca usa média YTD');
 });
 
 test('#68 · coluna de acumulado existente e ZERADA não vira "0%" com cara de publicado', () => {

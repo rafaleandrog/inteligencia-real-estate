@@ -519,9 +519,11 @@ na semente. Sem recorte por Região Administrativa — a série descreve o DF in
 
 #### Quanto disto é verificado, e quanto é convenção
 
-Das 83 colunas declaradas, **20 têm o nome observado** em arquivo deste repositório e **63 são
-convenção** — nome que descreve o dataset como o backend o publica, sem que nada aqui tenha podido
-confrontá-lo com a planilha viva. A coluna "Origem do nome" das tabelas abaixo diz qual é qual.
+Em 2026-09-01 o frontend confrontou diretamente a aba pública: **66 meses e 79 cabeçalhos**.
+Os nomes reais estão registrados no de-para abaixo. O modelo interno mantém chaves canônicas
+estáveis — por exemplo, `sales_units_ytd` — e o normalizador traduz o cabeçalho publicado
+`sales_ytd_units` antes de qualquer filtro, soma ou gráfico. Assim o backend não precisa mudar e
+o restante do frontend não aprende duas grafias para a mesma grandeza.
 
 Duas consequências práticas, e nenhuma delas é silenciosa:
 
@@ -529,17 +531,8 @@ Duas consequências práticas, e nenhuma delas é silenciosa:
    seção não declare, e o aviso vai para a **tela**, não só para o console. A primeira carga real
    corrige a convenção em vez de deixá-la como palpite mudo (R5.7).
 2. Coluna declarada que não vier é simplesmente ausente — nenhum caminho depende dela para
-   funcionar. O `*_ytd` é o caso a vigiar: se o nome real for outro, o atalho de acumulado do
-   `src/ivv/aggregate.js` fica **inerte** e o motor recalcula. Não produz número errado; produz um
-   número recalculado onde havia um publicado (R8.56).
-
-> **`*_ytd` é a convenção mais exposta do conjunto.** A semente **não tem nenhuma coluna** `_ytd`,
-> `_calc`, `_diff`, `_mom` ou `_yoy` em `IVV_MONTHLY` — as 18 colunas dela são só identificação,
-> métricas mensais e procedência. O único lugar do repositório onde dá para observar como o
-> publicador nomeia a família de conferência é a aba `IVV_REGION`, que usa `ivv_pct_check` e
-> `ivv_variance_pp`; por isso esses dois nomes entram declarados como observados, ao lado de
-> `ivv_calc_pct`/`ivv_diff_pp`, que são convenção. Aceitar as duas grafias não custa nada e dobra a
-> chance de casar com a planilha.
+   funcionar. Os `*_ytd`, antes convencionais, foram confirmados com outra ordem de palavras no
+   cabeçalho real e agora entram pelo de-para observado (R8.56).
 
 #### Escala: `ivv_pct` é fração decimal
 
@@ -581,6 +574,47 @@ nomes para as mesmas grandezas. São traduzidos pelo normalizador, com aviso:
 | `offer_price_brl_m2` | `asking_price_brl_m2` |
 | `offered_area_m2` | `offer_area_m2` |
 
+#### Cabeçalhos observados na planilha pública
+
+| Nome publicado | Chave canônica do frontend |
+|---|---|
+| `ivv_ytd_avg_pct` | `ivv_ytd_pct` |
+| `offers_ytd_avg_units` | `offers_units_ytd_avg` |
+| `sales_ytd_units` | `sales_units_ytd` |
+| `launches_ytd_units` | `launches_units_ytd` |
+| `offer_area_ytd_avg_m2` | `offer_area_m2_ytd_avg` |
+| `sold_area_ytd_m2` | `sold_area_m2_ytd` |
+| `asking_price_ytd_calc_brl_m2` | `asking_price_ytd_brl_m2` |
+| `sale_price_ytd_calc_brl_m2` | `sale_price_ytd_brl_m2` |
+| `vgo_ytd_avg_brl_million` | `vgo_brl_million_ytd_avg` |
+| `vgv_ytd_brl_million` | `vgv_brl_million_ytd` |
+| `vgl_ytd_brl_million` | `vgl_brl_million_ytd` |
+| `cancellations_ytd_units` | `cancellations_units_ytd` |
+| `offers_mom_pct_change` | `offers_units_mom_pct_change` |
+| `offers_yoy_pct_change` | `offers_units_yoy_pct_change` |
+| `sales_mom_pct_change` | `sales_units_mom_pct_change` |
+| `sales_yoy_pct_change` | `sales_units_yoy_pct_change` |
+| `launches_mom_pct_change` | `launches_units_mom_pct_change` |
+| `launches_yoy_pct_change` | `launches_units_yoy_pct_change` |
+| `asking_price_mom_pct_change` | `asking_price_brl_m2_mom_pct_change` |
+| `asking_price_yoy_pct_change` | `asking_price_brl_m2_yoy_pct_change` |
+| `sale_price_mom_pct_change` | `sale_price_brl_m2_mom_pct_change` |
+| `sale_price_yoy_pct_change` | `sale_price_brl_m2_yoy_pct_change` |
+| `vgo_mom_pct_change` | `vgo_brl_million_mom_pct_change` |
+| `vgo_yoy_pct_change` | `vgo_brl_million_yoy_pct_change` |
+| `vgv_mom_pct_change` | `vgv_brl_million_mom_pct_change` |
+| `vgv_yoy_pct_change` | `vgv_brl_million_yoy_pct_change` |
+| `vgl_mom_pct_change` | `vgl_brl_million_mom_pct_change` |
+| `vgl_yoy_pct_change` | `vgl_brl_million_yoy_pct_change` |
+| `cancellations_mom_pct_change` | `cancellations_units_mom_pct_change` |
+| `cancellations_yoy_pct_change` | `cancellations_units_yoy_pct_change` |
+| `offer_area_mom_pct_change` | `offer_area_m2_mom_pct_change` |
+| `offer_area_yoy_pct_change` | `offer_area_m2_yoy_pct_change` |
+| `sold_area_mom_pct_change` | `sold_area_m2_mom_pct_change` |
+| `sold_area_yoy_pct_change` | `sold_area_m2_yoy_pct_change` |
+| `avg_offer_unit_area_m2` | `avg_offer_area_m2` |
+| `avg_sold_unit_area_m2` | `avg_sold_area_m2` |
+
 #### Colunas
 
 **Identificação e filtro** — 8 colunas
@@ -604,6 +638,7 @@ nomes para as mesmas grandezas. São traduzidos pelo normalizador, com aviso:
 | `market_scope` | texto | — | **convenção** |
 | `segment_scope` | texto | — | **convenção** |
 | `source_publisher` | texto | — | **convenção** |
+| `source_report_generated_at` | texto ISO | — | observado na planilha pública |
 | `source_file` | texto | — | **convenção** |
 | `source_url` | URL | — | **convenção** |
 | `report_filter` | texto | — | **convenção** |
@@ -641,12 +676,16 @@ nomes para as mesmas grandezas. São traduzidos pelo normalizador, com aviso:
 | `ivv_diff_pp` | número | não agregável | **convenção** |
 | `asking_price_calc_brl_m2` | número | não agregável | **convenção** |
 | `asking_price_diff_brl_m2` | número | não agregável | **convenção** |
+| `asking_price_diff_pct` | fração decimal | não agregável | observado na planilha pública |
 | `sale_price_calc_brl_m2` | número | não agregável | **convenção** |
 | `sale_price_diff_brl_m2` | número | não agregável | **convenção** |
+| `sale_price_diff_pct` | fração decimal | não agregável | observado na planilha pública |
 | `avg_offer_ticket_brl` | número | não agregável | **convenção** |
 | `avg_sale_ticket_brl` | número | não agregável | **convenção** |
+| `avg_launch_ticket_brl` | número | não agregável | observado na planilha pública |
 | `avg_offer_area_m2` | número | não agregável | **convenção** |
 | `avg_sold_area_m2` | número | não agregável | **convenção** |
+| `cancellations_to_sales_pct` | fração decimal | não agregável | observado na planilha pública |
 
 **Acumulados do ano civil** — 12 colunas
 
