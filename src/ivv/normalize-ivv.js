@@ -147,15 +147,15 @@ export const IVV_COLUMNS = Object.freeze([
   // podem descrever o mesmo movimento. Nenhuma das duas é agregável entre meses.
   { key: 'ivv_mom_pp', group: G.VARIACAO, type: T.NUMERO },
   { key: 'ivv_yoy_pp', group: G.VARIACAO, type: T.NUMERO },
-  { key: 'ivv_mom_pct_change', group: G.VARIACAO, type: T.NUMERO },
-  { key: 'ivv_yoy_pct_change', group: G.VARIACAO, type: T.NUMERO },
+  { key: 'ivv_mom_pct_change', group: G.VARIACAO, type: T.FRACAO, autoScale: true },
+  { key: 'ivv_yoy_pct_change', group: G.VARIACAO, type: T.FRACAO, autoScale: true },
   ...[
     'offers_units', 'sales_units', 'launches_units', 'cancellations_units',
     'offer_area_m2', 'sold_area_m2', 'asking_price_brl_m2', 'sale_price_brl_m2',
     'vgo_brl_million', 'vgv_brl_million', 'vgl_brl_million',
   ].flatMap((base) => [
-    { key: `${base}_mom_pct_change`, group: G.VARIACAO, type: T.NUMERO },
-    { key: `${base}_yoy_pct_change`, group: G.VARIACAO, type: T.NUMERO },
+    { key: `${base}_mom_pct_change`, group: G.VARIACAO, type: T.FRACAO, autoScale: true },
+    { key: `${base}_yoy_pct_change`, group: G.VARIACAO, type: T.FRACAO, autoScale: true },
   ]),
 ]);
 
