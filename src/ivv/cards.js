@@ -87,7 +87,9 @@ export function formatMetricValue(metricKey, value) {
 /** Variação percentual formatada com sinal explícito. `+0,0%` nunca vira `0,0%`. */
 function formatChange(value) {
   if (value === null || value === undefined || !Number.isFinite(value)) return null;
-  const texto = formatPercent(Math.abs(value));
+  // `*_pct_change` segue a escala decimal do backend: -0.1207 significa -12,07%.
+  // Pontos percentuais (`*_pp`) continuam na função separada abaixo.
+  const texto = formatPercent(percentFromDecimal(Math.abs(value)));
   return value < 0 ? `−${texto}` : `+${texto}`;
 }
 
