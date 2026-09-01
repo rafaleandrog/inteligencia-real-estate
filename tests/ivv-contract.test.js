@@ -246,15 +246,15 @@ test('cabeçalhos observados na planilha pública chegam às chaves canônicas',
     sales_ytd_units: 550,
     offers_ytd_avg_units: 1900,
     asking_price_ytd_calc_brl_m2: 12500,
-    sales_mom_pct_change: 4.2,
-    sales_yoy_pct_change: -3.1,
+    sales_mom_pct_change: 0.042,
+    sales_yoy_pct_change: -0.031,
     avg_offer_unit_area_m2: 82,
   }]);
   assert.equal(months[0].sales_units_ytd, 550);
   assert.equal(months[0].offers_units_ytd_avg, 1900);
   assert.equal(months[0].asking_price_ytd_brl_m2, 12500);
-  assert.equal(months[0].sales_units_mom_pct_change, 4.2);
-  assert.equal(months[0].sales_units_yoy_pct_change, -3.1);
+  assert.equal(months[0].sales_units_mom_pct_change, 0.042);
+  assert.equal(months[0].sales_units_yoy_pct_change, -0.031);
   assert.equal(months[0].avg_offer_area_m2, 82);
   assert.deepEqual(unknownColumns, []);
   assert.deepEqual(undeclaredDerivedColumns, []);
