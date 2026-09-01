@@ -20,7 +20,8 @@ import {
   normalizeIvvMonthly, normalizeIvvMonth, latestIvvMonth,
 } from '../src/ivv/normalize-ivv.js';
 import {
-  METRIC_BY_KEY, METRIC_KEYS, LEGACY_COLUMN_ALIASES, classifyColumn, COLUMN_ROLES,
+  METRIC_BY_KEY, METRIC_KEYS, LEGACY_COLUMN_ALIASES, PUBLISHED_COLUMN_ALIASES,
+  classifyColumn, COLUMN_ROLES,
 } from '../src/ivv/metrics.js';
 import { aggregatePeriod } from '../src/ivv/aggregate.js';
 
@@ -76,16 +77,19 @@ test('toda coluna declarada no contrato existe no normalizador', () => {
   // A seção também documenta os nomes do schema v1.0.0, que o normalizador lê via alias:
   // eles são código lido, não prosa, e por isso contam como declaração legítima.
   const sobrando = doContrato.filter(
-    (key) => !IVV_COLUMN_BY_KEY[key] && !LEGACY_COLUMN_ALIASES[key],
+    (key) => !IVV_COLUMN_BY_KEY[key] && !LEGACY_COLUMN_ALIASES[key]
+      && !PUBLISHED_COLUMN_ALIASES[key],
   );
   assert.deepEqual(sobrando, [],
     'coluna documentada que nenhum código lê — documentação que descreve algo que não existe');
 
-  const canonicas = doContrato.filter((key) => !LEGACY_COLUMN_ALIASES[key]);
+  const canonicas = doContrato.filter(
+    (key) => !LEGACY_COLUMN_ALIASES[key] && !PUBLISHED_COLUMN_ALIASES[key],
+  );
   assert.equal(new Set(canonicas).size, canonicas.length, 'coluna repetida nas tabelas do contrato');
 });
 
-test('a tabela de aliases do contrato é exatamente LEGACY_COLUMN_ALIASES', () => {
+test('as tabelas de aliases do contrato são exatamente os de-paras executados', () => {
   // Quarto fecho: a tradução documentada e a tradução executada precisam ser a mesma. Uma
   // tabela de-para que envelhece é pior que nenhuma — ela afirma um comportamento que sumiu.
   const documentados = {};
@@ -93,7 +97,7 @@ test('a tabela de aliases do contrato é exatamente LEGACY_COLUMN_ALIASES', () =
     const match = /^\|\s*`([a-z0-9_]+)`\s*\|\s*`([a-z0-9_]+)`\s*\|\s*$/.exec(line);
     if (match) documentados[match[1]] = match[2];
   }
-  assert.deepEqual(documentados, { ...LEGACY_COLUMN_ALIASES });
+  assert.deepEqual(documentados, { ...LEGACY_COLUMN_ALIASES, ...PUBLISHED_COLUMN_ALIASES });
 });
 
 // --------------------------------------------------------------------------------------
@@ -128,7 +132,9 @@ test('toda coluna derivada declarada resolve para uma métrica do registro', () 
   // Ticket e área média não derivam de nenhuma métrica do registro: são colunas próprias, e a
   // lista é fechada para que uma coluna nova não entre aqui de carona.
   assert.deepEqual(soltas.sort(), [
-    'avg_offer_area_m2', 'avg_offer_ticket_brl', 'avg_sale_ticket_brl', 'avg_sold_area_m2',
+    'asking_price_diff_pct', 'avg_launch_ticket_brl', 'avg_offer_area_m2',
+    'avg_offer_ticket_brl', 'avg_sale_ticket_brl', 'avg_sold_area_m2',
+    'cancellations_to_sales_pct', 'sale_price_diff_pct',
   ]);
 });
 
@@ -230,6 +236,29 @@ test('a linha real da semente atravessa o normalizador e chega agregável ao mot
   assert.equal(agregado.values.ivv_pct.value, 0.065);
   assert.equal(agregado.values.offers_units.value, 6325);
   assert.deepEqual(agregado.unsupported, {}, 'mês único não recusa métrica nenhuma');
+});
+
+test('cabeçalhos observados na planilha pública chegam às chaves canônicas', () => {
+  const { months, warnings, unknownColumns, undeclaredDerivedColumns } = normalizeIvvMonthly([{
+    reference_date: '2026-06-01',
+    sales_units: 100,
+    offers_units: 2000,
+    sales_ytd_units: 550,
+    offers_ytd_avg_units: 1900,
+    asking_price_ytd_calc_brl_m2: 12500,
+    sales_mom_pct_change: 0.042,
+    sales_yoy_pct_change: -0.031,
+    avg_offer_unit_area_m2: 82,
+  }]);
+  assert.equal(months[0].sales_units_ytd, 550);
+  assert.equal(months[0].offers_units_ytd_avg, 1900);
+  assert.equal(months[0].asking_price_ytd_brl_m2, 12500);
+  assert.equal(months[0].sales_units_mom_pct_change, 0.042);
+  assert.equal(months[0].sales_units_yoy_pct_change, -0.031);
+  assert.equal(months[0].avg_offer_area_m2, 82);
+  assert.deepEqual(unknownColumns, []);
+  assert.deepEqual(undeclaredDerivedColumns, []);
+  assert.equal(warnings.some((item) => item.code === 'COLUNA_NAO_DECLARADA'), false);
 });
 
 test('coluna que a aba trouxer e o contrato não declarar é NOMEADA no aviso', () => {

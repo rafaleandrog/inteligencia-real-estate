@@ -694,3 +694,21 @@ Cada uma nasce de um erro que aconteceu de verdade.
   sobrepor, caber ou trocar de tela — a asserção mede o resultado computado no navegador
   (`getComputedStyle` e dimensões renderizadas), não só a classe, o atributo ou o estado que o
   código tentou aplicar. O DOM confirma a intenção; o layout confirma o resultado.
+
+- **R8.68** *(2026-09-01, filtros e histórico do IVV, issue #81)* **Nome canônico correto não
+  consome coluna publicada com outra ordem de palavras.** A dashboard procurava
+  `sales_units_ytd` e `sales_units_mom_pct_change`, enquanto a planilha publicava
+  `sales_ytd_units` e `sales_mom_pct_change`. Os valores existiam, passavam pelo GViz e eram
+  descartados como avisos; o acumulado era recalculado e a variação desaparecia. Nenhum número
+  mensal denunciava a perda. Mecanismo: cabeçalhos observados entram por um de-para único no
+  normalizador, antes da coerção; contrato e teste declaram exatamente o mesmo mapa; agregação,
+  cards e gráficos consomem apenas a chave canônica. Compatibilidade de schema não é aceitar duas
+  grafias em cada consumidor — é traduzir uma vez na fronteira.
+
+- **R8.69** *(2026-09-01, variações do IVV, issue #81)* **`*_pct_change` é fração decimal,
+  não ponto percentual.** Normalize variações percentuais para escala decimal e converta para
+  porcentagem somente na formatação: `-0.1207` publicado significa `-12,1%`. A família `*_pp`
+  permanece separada e expressa pontos percentuais. A primeira prévia com os dados reais exibiu
+  a queda de vendas de 414 para 364 como `-0,1%`, embora o backend publicasse `-0.1207`; fixtures
+  em pontos percentuais haviam mascarado o erro de 100×. A guarda usa frações decimais nos testes
+  dos cards e exige a porcentagem formatada correta.

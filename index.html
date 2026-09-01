@@ -212,7 +212,41 @@
     <p class="market-scope" id="marketScope"></p>
   </header>
 
+  <section class="market-filters" aria-label="Período dos indicadores">
+    <label>
+      <span>Período</span>
+      <select id="marketPeriodMode"></select>
+    </label>
+    <label>
+      <span>Ano de referência</span>
+      <select id="marketYear"></select>
+    </label>
+    <label>
+      <span>Mês de referência</span>
+      <select id="marketMonth"></select>
+    </label>
+    <div class="market-custom-range" id="marketCustomRange" hidden>
+      <label>
+        <span>De</span>
+        <input type="month" id="marketStart">
+      </label>
+      <label>
+        <span>Até</span>
+        <input type="month" id="marketEnd">
+      </label>
+    </div>
+    <p class="market-period-label" id="marketPeriodLabel" aria-live="polite"></p>
+  </section>
+
   <div class="market-body" id="marketBody"></div>
+
+  <section class="market-history" aria-labelledby="marketHistoryTitle">
+    <header>
+      <h2 id="marketHistoryTitle">Histórico mensal</h2>
+      <p id="marketHistoryNote"></p>
+    </header>
+    <div class="market-chart-grid" id="marketCharts"></div>
+  </section>
 
   <details class="market-provenance" id="marketProvenance">
     <summary>Origem do dado</summary>

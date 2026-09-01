@@ -202,12 +202,32 @@ function aggregateFluxo(metric, prepared, result, { preferYtd }) {
   return result;
 }
 
-function aggregateEstoque(metric, prepared, result) {
+function aggregateEstoque(metric, prepared, result, { preferYtd }) {
   const values = seriesOf(prepared, metric.key);
   result.monthsWithData = values.length;
+  const ytd = publishedYtd(metric, prepared, preferYtd);
+  if (ytd !== null) {
+    result.value = ytd;
+    result.origin = VALUE_ORIGINS.YTD_BACKEND;
+    result.monthsWithData = prepared.length;
+    if (values.length === prepared.length) {
+      const average = values.reduce((acc, item) => acc + item.value, 0) / values.length;
+      if (relativeDiff(ytd, average) <= DIVERGENCE_TOLERANCE) return result;
+      result.warnings.push(warning(
+        'DIVERGENCIA_YTD', metric.key,
+        `${metric.label}: média acumulada do backend (${ytd}) diverge da média dos meses `
+        + `(${average}). O acumulado publicado prevalece.`,
+        { ytd, average },
+      ));
+    }
+    return result;
+  }
+
   if (values.length === 0) return result;
   const sum = values.reduce((acc, item) => acc + item.value, 0);
-  result.value = sum / values.length;
+  const average = sum / values.length;
+
+  result.value = average;
   result.origin = prepared.length === 1 ? VALUE_ORIGINS.PUBLICADO : VALUE_ORIGINS.MEDIA;
   if (values.length < prepared.length) {
     result.warnings.push(warning(
@@ -472,7 +492,7 @@ export function aggregateMetric(rows, key, options = {}) {
       return aggregateFluxo(metric, prepared, result, { preferYtd });
     case METRIC_KINDS.ESTOQUE:
       checkPublishedAgainstDerived(metric, prepared, result);
-      return aggregateEstoque(metric, prepared, result);
+      return aggregateEstoque(metric, prepared, result, { preferYtd });
     case METRIC_KINDS.PRECO:
       checkPublishedAgainstDerived(metric, prepared, result);
       return aggregatePreco(metric, prepared, result, { preferYtd });

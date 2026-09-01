@@ -11,7 +11,12 @@ import { loadDataset, flattenEntities } from './data.js';
 import { isApproximateLocation, appMetaRows } from './normalize.js';
 import { ivvProvenance, IVV_SCOPE_NOTICE } from './ivv/scope.js';
 import { aggregatePeriod } from './ivv/aggregate.js';
-import { buildMarketCards } from './ivv/cards.js';
+import { buildMarketCards, formatMetricValue } from './ivv/cards.js';
+import {
+  PERIOD_MODE_OPTIONS, PERIOD_MODES, availableYears, availableMonths,
+  defaultPeriodSelection, selectIvvPeriod, chartRowsForSelection, periodLabel,
+} from './ivv/period.js';
+import { buildHistoryCharts } from './ivv/history.js';
 import {
   anchorLegendGroups, applyFilters, computeKpis, createFilterState, distinctAnchorGroups,
   distinctAnchorSegments, distinctLocalities, distinctPropertyTypes, distinctRegions,
@@ -56,6 +61,11 @@ const dom = {
   viewSwitch: el('viewSwitch'), marketTab: el('marketTab'),
   mapView: el('mapView'), marketView: el('marketView'),
   marketScope: el('marketScope'), marketBody: el('marketBody'),
+  marketPeriodMode: el('marketPeriodMode'), marketYear: el('marketYear'),
+  marketMonth: el('marketMonth'), marketCustomRange: el('marketCustomRange'),
+  marketStart: el('marketStart'), marketEnd: el('marketEnd'),
+  marketPeriodLabel: el('marketPeriodLabel'), marketCharts: el('marketCharts'),
+  marketHistoryNote: el('marketHistoryNote'),
   marketProvenance: el('marketProvenance'), marketProvenanceList: el('marketProvenanceList'),
   marketSource: el('marketSource'),
 };
@@ -72,6 +82,8 @@ const state = {
   // Série mensal do IVV (issue #56). Lista vazia significa "a aba não veio", que é
   // estado normal — o botão do Mercado fica desabilitado, com o motivo escrito.
   ivvMonthly: [],
+  marketSelection: null,
+  baseWarnings: [],
   // Contornos importados de KML/KMZ (issue #28). Lista vazia é o estado normal de
   // quem ainda não importou nenhum arquivo — a camada só não aparece.
   polygons: [],
@@ -1218,9 +1230,8 @@ function setView(name) {
 /**
  * Monta a view do Mercado: escopo declarado e procedência (issue #58).
  *
- * Os cards e gráficos são das issues #59 a #61. O que esta entrega garante é que a tela
- * existe, diz de que território ela fala e de onde vem o dado — e que ela nunca abre
- * vazia sem explicar por quê.
+ * A tela declara território, procedência e período; cards e gráficos consomem a mesma
+ * seleção temporal para não contar histórias diferentes sobre os mesmos dados.
  */
 /**
  * Uma variação de um card: rótulo, valor e o tom que ela merece (issue #59).
@@ -1306,9 +1317,9 @@ function marketCard(card) {
  * Toda agregação passa pelo motor da issue #57 — nenhum card soma estoque por conta
  * própria, que é o erro caro que aquele motor existe para impedir.
  */
-function renderMarketCards() {
-  const aggregated = aggregatePeriod(state.ivvMonthly);
-  const rows = buildMarketCards(aggregated, state.ivvMonthly);
+function renderMarketCards(months) {
+  const aggregated = aggregatePeriod(months);
+  const rows = buildMarketCards(aggregated, months);
 
   const frag = document.createDocumentFragment();
   for (const row of rows) {
@@ -1318,6 +1329,161 @@ function renderMarketCards() {
     frag.append(section);
   }
   dom.marketBody.replaceChildren(frag);
+  return aggregated.warnings;
+}
+
+function option(value, label) {
+  const node = document.createElement('option');
+  node.value = String(value);
+  node.textContent = label;
+  return node;
+}
+
+function populateMarketMonths(year, preferred) {
+  const months = availableMonths(state.ivvMonthly, year);
+  dom.marketMonth.replaceChildren(...months.map((item) => option(item.value, item.label)));
+  const wanted = String(preferred || '');
+  dom.marketMonth.value = months.some((item) => String(item.value) === wanted)
+    ? wanted : String(months.at(-1)?.value || '');
+}
+
+function syncMarketFilterVisibility() {
+  const mode = state.marketSelection.mode;
+  const custom = mode === PERIOD_MODES.CUSTOM;
+  const all = mode === PERIOD_MODES.ALL;
+  dom.marketCustomRange.hidden = !custom;
+  dom.marketYear.disabled = custom || all;
+  dom.marketMonth.disabled = custom || all || mode === PERIOD_MODES.YEAR;
+}
+
+function initializeMarketFilters() {
+  state.marketSelection = defaultPeriodSelection(state.ivvMonthly);
+  dom.marketPeriodMode.replaceChildren(
+    ...PERIOD_MODE_OPTIONS.map((item) => option(item.value, item.label)),
+  );
+  dom.marketPeriodMode.value = state.marketSelection.mode;
+
+  const years = availableYears(state.ivvMonthly);
+  dom.marketYear.replaceChildren(...years.map((year) => option(year, String(year))));
+  dom.marketYear.value = String(state.marketSelection.year || '');
+  populateMarketMonths(state.marketSelection.year, state.marketSelection.month);
+
+  const first = state.ivvMonthly[0]?.reference_date?.slice(0, 7) || '';
+  const last = state.ivvMonthly.at(-1)?.reference_date?.slice(0, 7) || '';
+  for (const input of [dom.marketStart, dom.marketEnd]) {
+    input.min = first;
+    input.max = last;
+  }
+  dom.marketStart.value = state.marketSelection.start || first;
+  dom.marketEnd.value = state.marketSelection.end || last;
+  syncMarketFilterVisibility();
+}
+
+const SVG_NS = 'http://www.w3.org/2000/svg';
+
+function svgNode(name, attributes = {}) {
+  const node = document.createElementNS(SVG_NS, name);
+  for (const [key, value] of Object.entries(attributes)) node.setAttribute(key, String(value));
+  return node;
+}
+
+function marketChart(model) {
+  const article = document.createElement('article');
+  article.className = 'market-chart';
+  article.dataset.chart = model.key;
+
+  const title = document.createElement('h3');
+  title.textContent = model.title;
+  article.append(title);
+
+  if (model.empty || model.months.length === 0) {
+    const empty = document.createElement('p');
+    empty.className = 'market-chart-empty';
+    empty.textContent = 'Sem valores mensais para este período.';
+    article.append(empty);
+    return article;
+  }
+
+  const width = 640;
+  const height = 230;
+  const plot = { left: 64, right: 18, top: 18, bottom: 38 };
+  const plotWidth = width - plot.left - plot.right;
+  const plotHeight = height - plot.top - plot.bottom;
+  const monthIndex = new Map(model.months.map((month, index) => [month, index]));
+  const x = (month) => plot.left + (model.months.length === 1 ? plotWidth / 2
+    : (monthIndex.get(month) / (model.months.length - 1)) * plotWidth);
+  const y = (value) => plot.top + ((model.max - value) / (model.max - model.min || 1)) * plotHeight;
+
+  const svg = svgNode('svg', {
+    viewBox: `0 0 ${width} ${height}`,
+    role: 'img',
+    'aria-label': `${model.title}, de ${model.startLabel} a ${model.endLabel}`,
+  });
+
+  for (const [value, label] of [[model.max, model.maxLabel], [model.min, model.minLabel]]) {
+    const lineY = y(value);
+    svg.append(svgNode('line', {
+      x1: plot.left, x2: width - plot.right, y1: lineY, y2: lineY, class: 'chart-grid-line',
+    }));
+    const text = svgNode('text', { x: plot.left - 8, y: lineY + 4, class: 'chart-axis-value' });
+    text.textContent = label || '';
+    svg.append(text);
+  }
+
+  for (const series of model.series) {
+    if (series.points.length === 0) continue;
+    const points = series.points.map((point) => `${x(point.month)},${y(point.value)}`).join(' ');
+    svg.append(svgNode('polyline', {
+      points, fill: 'none', stroke: series.color, 'stroke-width': 3,
+      'stroke-linecap': 'round', 'stroke-linejoin': 'round',
+    }));
+    if (series.points.length <= 24) {
+      for (const point of series.points) {
+        const circle = svgNode('circle', {
+          cx: x(point.month), cy: y(point.value), r: 3.5, fill: series.color,
+        });
+        const tooltip = svgNode('title');
+        tooltip.textContent = `${series.label} · ${point.month}: ${formatMetricValue(series.key, point.value)}`;
+        circle.append(tooltip);
+        svg.append(circle);
+      }
+    }
+  }
+
+  const start = svgNode('text', { x: plot.left, y: height - 10, class: 'chart-axis-month' });
+  start.textContent = model.startLabel;
+  const end = svgNode('text', {
+    x: width - plot.right, y: height - 10, class: 'chart-axis-month', 'text-anchor': 'end',
+  });
+  end.textContent = model.endLabel;
+  svg.append(start, end);
+  article.append(svg);
+
+  const legend = document.createElement('ul');
+  legend.className = 'market-chart-legend';
+  for (const series of model.series) {
+    const item = document.createElement('li');
+    const swatch = document.createElement('span');
+    swatch.style.backgroundColor = series.color;
+    swatch.setAttribute('aria-hidden', 'true');
+    item.append(swatch, document.createTextNode(series.label));
+    legend.append(item);
+  }
+  article.append(legend);
+  return article;
+}
+
+function renderMarketDashboard() {
+  const selected = selectIvvPeriod(state.ivvMonthly, state.marketSelection);
+  dom.marketPeriodLabel.textContent = `Indicadores: ${periodLabel(selected)}`;
+
+  const warnings = renderMarketCards(selected.rows);
+  const chartRows = chartRowsForSelection(state.ivvMonthly, selected);
+  dom.marketHistoryNote.textContent = selected.rows.length === 1
+    ? `Os cards mostram ${periodLabel(selected)}; os gráficos dão contexto com até 12 meses anteriores.`
+    : `Valores mensais no mesmo recorte dos indicadores: ${periodLabel(selected)}.`;
+  dom.marketCharts.replaceChildren(...buildHistoryCharts(chartRows).map(marketChart));
+  return warnings.map((item) => `Mercado (${item.metric || 'período'}): ${item.message}`);
 }
 
 function renderMarketView() {
@@ -1335,7 +1501,8 @@ function renderMarketView() {
   }
 
   dom.marketScope.textContent = IVV_SCOPE_NOTICE;
-  renderMarketCards();
+  if (!state.marketSelection) initializeMarketFilters();
+  const aggregationWarnings = renderMarketDashboard();
 
   const { rows, warnings, sourceUrl } = ivvProvenance(state.ivvMonthly);
   dom.marketProvenanceList.replaceChildren();
@@ -1360,7 +1527,12 @@ function renderMarketView() {
   // Campo em que os meses divergem não vira linha; a divergência vira aviso, na mesma
   // lista do carregamento (R5.7). Devolver em vez de registrar aqui mantém uma origem
   // única no console e uma ordem determinística entre os avisos.
-  return warnings;
+  return [...warnings, ...aggregationWarnings];
+}
+
+function refreshMarketView() {
+  const marketWarnings = renderMarketView();
+  showWarnings([...state.baseWarnings, ...marketWarnings]);
 }
 
 async function load() {
@@ -1385,6 +1557,8 @@ async function load() {
   state.records = flattenEntities(result.entities);
   state.raProfiles = result.raProfiles || {};
   state.ivvMonthly = result.ivvMonthly || [];
+  state.marketSelection = null;
+  state.baseWarnings = [...result.warnings, ...result.errors];
   state.polygons = result.polygons || [];
   renderPolygonLegend();
 
@@ -1405,8 +1579,7 @@ async function load() {
   populateAnchorSegments('');
   renderAnchorLegend(state.records);
 
-  const marketWarnings = renderMarketView();
-  showWarnings([...result.warnings, ...result.errors, ...marketWarnings]);
+  refreshMarketView();
   render();
 
   // Enquadra o que tem coordenada, para a primeira tela não depender do zoom padrão.
@@ -1436,6 +1609,33 @@ function bindEvents() {
   dom.clearFilters.addEventListener('click', clearFilters);
   dom.closeDetail.addEventListener('click', closeDetail);
   dom.retryBtn.addEventListener('click', () => { load().catch(reportFatal); });
+
+  dom.marketPeriodMode.addEventListener('change', () => {
+    if (!state.marketSelection) return;
+    state.marketSelection.mode = dom.marketPeriodMode.value;
+    syncMarketFilterVisibility();
+    refreshMarketView();
+  });
+  dom.marketYear.addEventListener('change', () => {
+    if (!state.marketSelection) return;
+    state.marketSelection.year = Number(dom.marketYear.value);
+    populateMarketMonths(state.marketSelection.year, state.marketSelection.month);
+    state.marketSelection.month = Number(dom.marketMonth.value);
+    refreshMarketView();
+  });
+  dom.marketMonth.addEventListener('change', () => {
+    if (!state.marketSelection) return;
+    state.marketSelection.month = Number(dom.marketMonth.value);
+    refreshMarketView();
+  });
+  for (const input of [dom.marketStart, dom.marketEnd]) {
+    input.addEventListener('change', () => {
+      if (!state.marketSelection) return;
+      state.marketSelection.start = dom.marketStart.value;
+      state.marketSelection.end = dom.marketEnd.value;
+      refreshMarketView();
+    });
+  }
 
   // Troca de view (issue #58). O hash é a fonte da verdade: o clique escreve nele e o
   // `hashchange` aplica. Assim o botão e a barra de endereço nunca discordam, e

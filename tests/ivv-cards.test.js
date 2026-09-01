@@ -97,7 +97,7 @@ test('as variações vêm dos campos publicados, e o mês é nomeado', () => {
   // "vs mês anterior +3,2%" sobre um período de 66 meses parece variação do período e é
   // variação do último mês. Sem nomear o mês, a ambiguidade é cara.
   const { deltas, mes: ref } = metricDeltas('sales_units', mes({
-    sales_units_mom_pct_change: 3.2, sales_units_yoy_pct_change: -8.4, sales_units_ytd: 1980,
+    sales_units_mom_pct_change: 0.032, sales_units_yoy_pct_change: -0.084, sales_units_ytd: 1980,
   }));
   assert.equal(ref, '2026-05');
   assert.deepEqual(deltas, [
@@ -111,7 +111,7 @@ test('o IVV mostra pontos percentuais e variação percentual como coisas DIFERE
   // +1 p.p. e +20% podem descrever o mesmo movimento. Apresentar as duas com o mesmo
   // rótulo faria a tela mentir sobre a magnitude.
   const { deltas } = metricDeltas('ivv_pct', mes({
-    ivv_mom_pp: 0.4, ivv_mom_pct_change: 6.5, ivv_yoy_pp: -1.2, ivv_ytd_pct: 0.058,
+    ivv_mom_pp: 0.4, ivv_mom_pct_change: 0.065, ivv_yoy_pp: -1.2, ivv_ytd_pct: 0.058,
   }));
   const porRotulo = Object.fromEntries(deltas.map((d) => [d.label, d.value]));
   assert.equal(porRotulo['vs mês anterior'], '+0,4 p.p.');

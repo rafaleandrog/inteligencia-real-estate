@@ -1118,6 +1118,25 @@ cards.ausentes > 0
   ? pass(`${cards.ausentes} card(s) sem dado dizem isso por escrito, em vez de zero`)
   : pass('todos os cards têm valor nesta série');
 
+const filtrosEGraficos = await viewPage.evaluate(() => ({
+  modo: document.querySelector('#marketPeriodMode')?.value,
+  anos: document.querySelector('#marketYear')?.options.length ?? 0,
+  meses: document.querySelector('#marketMonth')?.options.length ?? 0,
+  periodo: document.querySelector('#marketPeriodLabel')?.textContent ?? '',
+  graficos: document.querySelectorAll('#marketCharts .market-chart').length,
+  svgs: document.querySelectorAll('#marketCharts .market-chart-svg').length,
+  pontos: document.querySelectorAll('#marketCharts circle').length,
+}));
+filtrosEGraficos.modo === 'ytd' && filtrosEGraficos.anos >= 1 && filtrosEGraficos.meses >= 1
+  ? pass('os filtros abrem no acumulado do ano e expõem ano e mês disponíveis')
+  : fail('filtros temporais incompletos: ' + JSON.stringify(filtrosEGraficos));
+filtrosEGraficos.periodo.length > 0
+  ? pass('a tela declara explicitamente o intervalo aplicado aos cards')
+  : fail('rótulo do período ficou vazio');
+filtrosEGraficos.graficos === 4 && filtrosEGraficos.svgs === 4 && filtrosEGraficos.pontos > 0
+  ? pass('o dashboard renderiza quatro gráficos históricos com dados')
+  : fail('gráficos históricos incompletos: ' + JSON.stringify(filtrosEGraficos));
+
 const proveniencia = await viewPage.evaluate(() => ({
   linhas: document.querySelectorAll('#marketProvenanceList dt').length,
   temFonte: !document.querySelector('#marketSource').hidden,
@@ -1205,6 +1224,33 @@ rotulosIvv.includes('vs mês anterior') && rotulosIvv.includes('vs mês anterior
 valoresIvv.some((v) => /p\.p\./.test(v)) && valoresIvv.some((v) => /%$/.test(v) && !/p\.p\./.test(v))
   ? pass('as duas grandezas do IVV saem com unidades distintas na tela')
   : fail('valores do IVV: ' + JSON.stringify(valoresIvv));
+
+// A mesma série precisa mudar de soma YTD para leitura pontual quando o usuário escolhe
+// um mês. O gráfico mantém o contexto histórico, sem somar pontos mensais entre si.
+const lerVendasEPeriodo = (alvo) => alvo.evaluate(() => {
+  const card = [...document.querySelectorAll('#marketBody .market-card')]
+    .find((item) => item.querySelector('.market-card-label')?.textContent.includes('Unidades vendidas'));
+  return {
+    valor: card?.querySelector('.market-card-value')?.textContent ?? '',
+    periodo: document.querySelector('#marketPeriodLabel')?.textContent ?? '',
+    pontosVendas: document.querySelectorAll('[data-chart="activity"] circle').length,
+  };
+});
+const vendasYtd = await lerVendasEPeriodo(tomPage);
+/800/.test(vendasYtd.valor)
+  ? pass('o acumulado do ano soma os fluxos mensais')
+  : fail('vendas YTD não somadas: ' + JSON.stringify(vendasYtd));
+await tomPage.selectOption('#marketPeriodMode', 'month');
+await tomPage.selectOption('#marketYear', '2026');
+await tomPage.selectOption('#marketMonth', '4');
+await tomPage.waitForTimeout(250);
+const vendasAbril = await lerVendasEPeriodo(tomPage);
+/400/.test(vendasAbril.valor) && /abr\./i.test(vendasAbril.periodo)
+  ? pass('selecionar abril troca os cards para o valor mensal correto')
+  : fail('filtro mensal incorreto: ' + JSON.stringify(vendasAbril));
+vendasAbril.pontosVendas >= 2
+  ? pass('no modo mensal, o gráfico preserva contexto histórico anterior')
+  : fail('o gráfico perdeu o histórico ao filtrar um mês: ' + JSON.stringify(vendasAbril));
 
 // 390 px: os cards empilham em uma coluna.
 await tomPage.setViewportSize({ width: 390, height: 844 });

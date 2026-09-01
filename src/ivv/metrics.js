@@ -140,6 +140,7 @@ export const IVV_METRICS = Object.freeze([
     label: 'Unidades em oferta',
     unit: 'unidades',
     kind: METRIC_KINDS.ESTOQUE,
+    ytdColumn: 'offers_units_ytd_avg',
     note: 'Fotografia do estoque no mês. Somar doze meses devolve doze vezes o estoque real.',
   },
   {
@@ -147,6 +148,7 @@ export const IVV_METRICS = Object.freeze([
     label: 'Área em oferta',
     unit: 'm2',
     kind: METRIC_KINDS.ESTOQUE,
+    ytdColumn: 'offer_area_m2_ytd_avg',
     note: 'Estoque de área, não área acumulada.',
   },
   {
@@ -154,6 +156,7 @@ export const IVV_METRICS = Object.freeze([
     label: 'VGO (valor geral de oferta)',
     unit: 'brl_milhoes',
     kind: METRIC_KINDS.ESTOQUE,
+    ytdColumn: 'vgo_brl_million_ytd_avg',
     note: 'Valor do estoque ofertado no mês.',
   },
 
@@ -166,6 +169,7 @@ export const IVV_METRICS = Object.freeze([
     numerator: 'vgo_brl_million',
     numeratorScale: 1e6,
     denominator: 'offer_area_m2',
+    ytdColumn: 'asking_price_ytd_brl_m2',
     note: 'SUM(VGO)×1e6 / SUM(área ofertada). Média simples ignoraria o peso de cada mês.',
   },
   {
@@ -176,6 +180,7 @@ export const IVV_METRICS = Object.freeze([
     numerator: 'vgv_brl_million',
     numeratorScale: 1e6,
     denominator: 'sold_area_m2',
+    ytdColumn: 'sale_price_ytd_brl_m2',
     note: 'SUM(VGV)×1e6 / SUM(área vendida). É preço realizado, não preço pedido (R3.7).',
   },
 
@@ -243,6 +248,55 @@ export const LEGACY_COLUMN_ALIASES = Object.freeze({
   launched_projects: 'launches_developments',
   offer_price_brl_m2: 'asking_price_brl_m2',
   offered_area_m2: 'offer_area_m2',
+});
+
+/**
+ * Cabeçalhos observados na planilha pública em 2026-09-01.
+ *
+ * O schema real posiciona a unidade depois de `ytd`/`mom`/`yoy`, enquanto as chaves
+ * canônicas do frontend preservam o nome completo da métrica antes do sufixo. O de-para
+ * deixa o backend intacto e faz filtros, acumulados e variações consumirem o campo que
+ * realmente existe, sem duplicar essa tradução nos cards e gráficos.
+ */
+export const PUBLISHED_COLUMN_ALIASES = Object.freeze({
+  ivv_ytd_avg_pct: 'ivv_ytd_pct',
+  offers_ytd_avg_units: 'offers_units_ytd_avg',
+  sales_ytd_units: 'sales_units_ytd',
+  launches_ytd_units: 'launches_units_ytd',
+  offer_area_ytd_avg_m2: 'offer_area_m2_ytd_avg',
+  sold_area_ytd_m2: 'sold_area_m2_ytd',
+  asking_price_ytd_calc_brl_m2: 'asking_price_ytd_brl_m2',
+  sale_price_ytd_calc_brl_m2: 'sale_price_ytd_brl_m2',
+  vgo_ytd_avg_brl_million: 'vgo_brl_million_ytd_avg',
+  vgv_ytd_brl_million: 'vgv_brl_million_ytd',
+  vgl_ytd_brl_million: 'vgl_brl_million_ytd',
+  cancellations_ytd_units: 'cancellations_units_ytd',
+
+  offers_mom_pct_change: 'offers_units_mom_pct_change',
+  offers_yoy_pct_change: 'offers_units_yoy_pct_change',
+  sales_mom_pct_change: 'sales_units_mom_pct_change',
+  sales_yoy_pct_change: 'sales_units_yoy_pct_change',
+  launches_mom_pct_change: 'launches_units_mom_pct_change',
+  launches_yoy_pct_change: 'launches_units_yoy_pct_change',
+  asking_price_mom_pct_change: 'asking_price_brl_m2_mom_pct_change',
+  asking_price_yoy_pct_change: 'asking_price_brl_m2_yoy_pct_change',
+  sale_price_mom_pct_change: 'sale_price_brl_m2_mom_pct_change',
+  sale_price_yoy_pct_change: 'sale_price_brl_m2_yoy_pct_change',
+  vgo_mom_pct_change: 'vgo_brl_million_mom_pct_change',
+  vgo_yoy_pct_change: 'vgo_brl_million_yoy_pct_change',
+  vgv_mom_pct_change: 'vgv_brl_million_mom_pct_change',
+  vgv_yoy_pct_change: 'vgv_brl_million_yoy_pct_change',
+  vgl_mom_pct_change: 'vgl_brl_million_mom_pct_change',
+  vgl_yoy_pct_change: 'vgl_brl_million_yoy_pct_change',
+  cancellations_mom_pct_change: 'cancellations_units_mom_pct_change',
+  cancellations_yoy_pct_change: 'cancellations_units_yoy_pct_change',
+  offer_area_mom_pct_change: 'offer_area_m2_mom_pct_change',
+  offer_area_yoy_pct_change: 'offer_area_m2_yoy_pct_change',
+  sold_area_mom_pct_change: 'sold_area_m2_mom_pct_change',
+  sold_area_yoy_pct_change: 'sold_area_m2_yoy_pct_change',
+
+  avg_offer_unit_area_m2: 'avg_offer_area_m2',
+  avg_sold_unit_area_m2: 'avg_sold_area_m2',
 });
 
 /**
@@ -338,6 +392,16 @@ export function classifyColumn(column) {
       role: COLUMN_ROLES.METRICA, kind: target.kind, metric: target,
       canonicalKey: canonical, legacyOf: column,
       reason: `Nome do schema v1.0.0 (semente) para \`${canonical}\`.`,
+    };
+  }
+
+  const publishedCanonical = PUBLISHED_COLUMN_ALIASES[column];
+  if (publishedCanonical) {
+    const target = classifyColumn(publishedCanonical);
+    return {
+      ...target,
+      legacyOf: column,
+      reason: `Cabeçalho publicado pela planilha para \`${publishedCanonical}\`.`,
     };
   }
 

@@ -9,7 +9,7 @@ import { readFileSync } from 'node:fs';
 import { readXlsx } from '../tools/xlsx.mjs';
 import {
   IVV_METRICS, METRIC_BY_KEY, METRIC_KEYS, METRIC_KINDS, COLUMN_ROLES,
-  IVV_METADATA_COLUMNS, LEGACY_COLUMN_ALIASES, IVV_PCT_SCALE,
+  IVV_METADATA_COLUMNS, LEGACY_COLUMN_ALIASES, PUBLISHED_COLUMN_ALIASES, IVV_PCT_SCALE,
   classifyColumn, isDeclaredColumn, getMetric, metricsByKind, metricKindValues,
 } from '../src/ivv/metrics.js';
 
@@ -129,12 +129,10 @@ test('preço e taxa declaram numerador e denominador, e ambos são métricas do 
   assert.equal(METRIC_BY_KEY.sale_price_brl_m2.denominator, 'sold_area_m2');
 });
 
-test('a coluna de acumulado declarada existe no dataset e é classificada como acumulado', () => {
-  const columns = new Set(columnsOf(fixtureRows));
+test('a coluna canônica de acumulado declarada é classificada como acumulado', () => {
   for (const metric of IVV_METRICS) {
     if (!metric.ytdColumn) continue;
     assert.equal(classifyColumn(metric.ytdColumn).role, COLUMN_ROLES.ACUMULADO_ANO, metric.ytdColumn);
-    assert.ok(columns.has(metric.ytdColumn), `${metric.ytdColumn} ausente do fixture`);
   }
 });
 
@@ -143,6 +141,16 @@ test('aliases do schema antigo apontam para métricas reais e não colidem com c
     assert.ok(METRIC_BY_KEY[canonical], `${legacy} aponta para métrica inexistente: ${canonical}`);
     assert.equal(METRIC_BY_KEY[legacy], undefined, `${legacy} não pode ser chave canônica também`);
     assert.equal(classifyColumn(legacy).legacyOf, legacy);
+  }
+});
+
+test('aliases publicados resolvem para a mesma classificação da chave canônica', () => {
+  for (const [published, canonical] of Object.entries(PUBLISHED_COLUMN_ALIASES)) {
+    const from = classifyColumn(published);
+    const to = classifyColumn(canonical);
+    assert.equal(from.role, to.role, published);
+    assert.equal(from.canonicalKey, to.canonicalKey, published);
+    assert.equal(from.legacyOf, published, published);
   }
 });
 
