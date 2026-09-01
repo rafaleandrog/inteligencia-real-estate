@@ -544,6 +544,10 @@ converte **com aviso nomeado** — coluna, quantos meses, e um exemplo com valor
 convertido —, nunca em silêncio. Valor que não é plausível em nenhuma das duas escalas é mantido
 como veio e sinalizado (`ESCALA_INDETERMINADA`), porque adivinhar ali seria inventar dado.
 
+Os campos `*_pct_change` usam a mesma escala decimal: `-0.1207` significa **-12,07%**. A interface
+converte a fração somente ao formatar. Já `ivv_mom_pp` e `ivv_yoy_pp` permanecem em pontos
+percentuais; misturar essas duas famílias produz um erro silencioso de 100× (R8.69).
+
 #### Eixo temporal
 
 `reference_date` é o eixo canônico: ordenação e filtro por data saem dele, **nunca** de
