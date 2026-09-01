@@ -704,3 +704,11 @@ Cada uma nasce de um erro que aconteceu de verdade.
   normalizador, antes da coerção; contrato e teste declaram exatamente o mesmo mapa; agregação,
   cards e gráficos consomem apenas a chave canônica. Compatibilidade de schema não é aceitar duas
   grafias em cada consumidor — é traduzir uma vez na fronteira.
+
+- **R8.69** *(2026-09-01, variações do IVV, issue #81)* **`*_pct_change` é fração decimal,
+  não ponto percentual.** Normalize variações percentuais para escala decimal e converta para
+  porcentagem somente na formatação: `-0.1207` publicado significa `-12,1%`. A família `*_pp`
+  permanece separada e expressa pontos percentuais. A primeira prévia com os dados reais exibiu
+  a queda de vendas de 414 para 364 como `-0,1%`, embora o backend publicasse `-0.1207`; fixtures
+  em pontos percentuais haviam mascarado o erro de 100×. A guarda usa frações decimais nos testes
+  dos cards e exige a porcentagem formatada correta.
