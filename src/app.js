@@ -1916,6 +1916,10 @@ function renderMarketDashboard() {
   const janela = chartRowsForSelection(state.ivvMonthly, selected);
   const fontes = { periodo: selected.rows, janela, completa: state.ivvMonthly };
 
+  const modo = state.marketSeriesMode || modoPadraoDaSerie(state.marketSelection);
+  state.marketSeriesMode = modo;
+  sincronizarModoDaSerie(modo);
+
   const { warnings, mesReferencia, sparks } = renderMarketCards(selected.rows, janela);
 
   // A base de comparação fica escrita UMA vez, junto do período, em vez de repetida em
@@ -1925,13 +1929,13 @@ function renderMarketDashboard() {
       + `${monthYearLabel(mesAnterior(mesReferencia))} e com `
       + `${monthYearLabel(mesmoMesAnoAnterior(mesReferencia))}.`
     : '';
-  dom.marketHistoryNote.textContent = selected.rows.length === 1
-    ? `Os indicadores mostram ${resumo.intervalo}; os gráficos dão contexto com até 12 meses anteriores.`
-    : `Valores mensais no mesmo recorte dos indicadores: ${resumo.intervalo}.`;
+  const recorte = selected.rows.length === 1
+    ? `${resumo.intervalo}, com até 12 meses anteriores de contexto`
+    : resumo.intervalo;
+  dom.marketHistoryNote.textContent = modo === SERIES_MODES.ACUMULADO
+    ? `Acumulado no ano, mês a mês, em ${recorte}.`
+    : `Valores de cada mês em ${recorte}.`;
 
-  const modo = state.marketSeriesMode || modoPadraoDaSerie(state.marketSelection);
-  state.marketSeriesMode = modo;
-  sincronizarModoDaSerie(modo);
   const graficos = [
     ...buildHistoryCharts(fontes, modo),
     buildSeasonality(state.ivvMonthly, { modo }),

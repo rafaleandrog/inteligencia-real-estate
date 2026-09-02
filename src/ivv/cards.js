@@ -175,7 +175,7 @@ function numberAt(row, key) {
  * grandezas diferentes — +1 p.p. e +20% podem descrever o mesmo movimento, e apresentar
  * as duas com o mesmo rótulo faria a tela mentir sobre a magnitude.
  */
-export function metricDeltas(metricKey, lastMonth) {
+export function metricDeltas(metricKey, lastMonth, periodo = {}) {
   if (!lastMonth) return [];
   const metric = METRIC_BY_KEY[metricKey];
   const mes = typeof lastMonth.reference_date === 'string'
@@ -206,12 +206,27 @@ export function metricDeltas(metricKey, lastMonth) {
       numberAt(lastMonth, `${metricKey}_yoy_pct_change`));
   }
 
-  if (metric && metric.ytdColumn) {
+  // O acumulado do ano só entra quando o período NÃO é ele mesmo (issue #85).
+  //
+  // Em período "Acumulado do ano", o valor grande e esta linha vinham da mesma coluna, da
+  // mesma linha do dataset, formatados pela mesma função: o card exibia o mesmo texto duas
+  // vezes, byte a byte, e a repetição ainda empurrava o resto do card para baixo. Repetir
+  // não é redundância inofensiva — é ruído que ocupa a posição de uma informação.
+  //
+  // Nos demais períodos ele é um dado de OUTRO recorte pendurado no card, e por isso o
+  // rótulo nomeia o recorte em vez de dizer só "acumulado".
+  if (metric && metric.ytdColumn && !periodo.yearToDate) {
     const ytd = numberAt(lastMonth, metric.ytdColumn);
     const texto = formatMetricValue(metricKey, ytd);
     // O acumulado do ano não é variação: é um VALOR, e por isso nunca ganha cor de
     // bom/ruim. Pintá-lo pelo sinal afirmaria uma comparação que ninguém fez.
-    if (texto !== null) deltas.push({ label: 'Acumulado do ano', value: texto, tone: 'neutro' });
+    if (texto !== null) {
+      deltas.push({
+        label: mes ? `No ano até ${monthYearLabel(mes)}` : 'No ano',
+        value: texto,
+        tone: 'neutro',
+      });
+    }
   }
 
   return { deltas, mes };
@@ -227,13 +242,15 @@ export function metricDeltas(metricKey, lastMonth) {
  * Métrica que o motor RECUSA agregar (`launches_developments` entre meses) não vira card
  * silenciosamente vazio: ela carrega a mensagem da recusa.
  */
-function cardDe(key, aggregated, lastMonth) {
+function cardDe(key, aggregated, lastMonth, periodo) {
   const metric = METRIC_BY_KEY[key];
   const result = aggregated && aggregated.values ? aggregated.values[key] : null;
   const recusa = aggregated && aggregated.unsupported ? aggregated.unsupported[key] : null;
 
   const valor = result ? formatMetricValue(key, result.value) : null;
-  const { deltas, mes } = valor === null ? { deltas: [], mes: null } : metricDeltas(key, lastMonth);
+  const { deltas, mes } = valor === null
+    ? { deltas: [], mes: null }
+    : metricDeltas(key, lastMonth, periodo);
 
   return {
     key,
@@ -259,9 +276,10 @@ function cardDe(key, aggregated, lastMonth) {
  */
 export function buildMarketDashboard(aggregated, months) {
   const lastMonth = (months || []).length > 0 ? months[months.length - 1] : null;
+  const periodo = aggregated?.period || {};
 
   const destaques = CARD_DESTAQUES.map((key) => {
-    const card = cardDe(key, aggregated, lastMonth);
+    const card = cardDe(key, aggregated, lastMonth, periodo);
     return {
       ...card,
       destaque: true,
@@ -275,7 +293,7 @@ export function buildMarketDashboard(aggregated, months) {
     grupos: CARD_GRUPOS.map((grupo) => ({
       key: grupo.key,
       label: grupo.label,
-      cards: grupo.metricas.map((key) => cardDe(key, aggregated, lastMonth)),
+      cards: grupo.metricas.map((key) => cardDe(key, aggregated, lastMonth, periodo)),
     })),
     mesReferencia: destaques.find((card) => card.referenceMonth)?.referenceMonth || null,
   };

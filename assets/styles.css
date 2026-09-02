@@ -93,6 +93,7 @@
   --tipo-lg: 16px;
   --tipo-xl: 20px;
   --tipo-2xl: 26px;
+  --tipo-3xl: 30px;
 
   /* Espaço. */
   --esp-1: 4px;
@@ -1079,19 +1080,20 @@ select:focus, input[type="number"]:focus {
   padding: 24px 16px 48px;
   overflow-y: auto;
 }
-.market-head h1 { margin: 0 0 8px; font-size: 22px; }
+.market-head h1 { margin: 0 0 var(--esp-2); font-size: var(--tipo-xl); }
 
 /* A declaração de escopo NÃO é rodapé nem letra miúda: quem chega aqui vindo de um mapa
    com filtro de Região Administrativa espera, por continuidade, que os números respondam
    ao mesmo recorte. Eles não respondem, e esta frase é a única coisa que diz isso. */
+/* O escopo é uma declaração PERMANENTE, não um alerta: ele vale para todos os números da
+   tela, todos os dias. Com peso de aviso, ele competia com os indicadores toda vez. */
 .market-scope {
-  margin: 0 0 20px;
-  padding: 10px 12px;
-  border-left: 3px solid var(--accent-text);
-  background: var(--panel);
-  font-size: 13px;
+  margin: 0 0 var(--esp-4);
+  padding-left: var(--esp-3);
+  border-left: 2px solid var(--borda-forte);
+  font-size: var(--tipo-sm);
   line-height: 1.5;
-  color: var(--ink);
+  color: var(--texto-sec);
 }
 
 .market-filters {
@@ -1109,7 +1111,7 @@ select:focus, input[type="number"]:focus {
    seria uma segunda verdade sobre a mesma coisa. */
 .market-chips { display: flex; flex-wrap: wrap; gap: var(--esp-2); }
 .market-chip {
-  padding: 5px 12px;
+  padding: 5px var(--esp-3);
   border: 1px solid var(--borda-forte);
   border-radius: var(--raio-pill);
   background: var(--superficie-sutil);
@@ -1183,11 +1185,11 @@ select:focus, input[type="number"]:focus {
 .market-chart-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 12px;
+  gap: var(--esp-3);
 }
 .market-chart {
   min-width: 0;
-  padding: 14px;
+  padding: var(--esp-4);
   border: 1px solid var(--line);
   border-radius: var(--raio-lg);
   background: var(--panel);
@@ -1430,16 +1432,16 @@ select:focus, input[type="number"]:focus {
   overflow: visible;
 }
 
-.market-provenance { margin-top: 24px; }
+.market-provenance { margin-top: var(--esp-5); }
 .market-provenance > summary {
   cursor: pointer;
-  padding: 6px 0;
-  font-size: 12px;
+  padding: var(--esp-1) 0;
+  font-size: var(--tipo-sm);
   color: var(--muted);
 }
 .market-provenance > summary:hover { color: var(--ink); }
 .market-provenance > summary:focus-visible { outline: 2px solid var(--accent-text); outline-offset: 2px; }
-.market-provenance dl { font-size: 12px; }
+.market-provenance dl { font-size: var(--tipo-sm); }
 .market-provenance dt { color: var(--muted); }
 .market-provenance dd { margin: 0; text-align: right; }
 
@@ -1479,7 +1481,11 @@ select:focus, input[type="number"]:focus {
   background: var(--superficie-base);
   box-shadow: var(--sombra-1);
 }
+/* Duas linhas reservadas para o rótulo: "IVV (índice de velocidade de vendas)" quebra e os
+   outros três não, e sem a reserva os quatro valores da faixa saem em alturas diferentes —
+   uma régua de indicadores só se lê de relance quando os números estão na mesma linha. */
 .market-kpi-rotulo {
+  min-height: calc(var(--tipo-2xs) * 1.35 * 2);
   margin: 0 0 var(--esp-1);
   font-size: var(--tipo-2xs);
   font-weight: 700;
@@ -1490,7 +1496,7 @@ select:focus, input[type="number"]:focus {
 }
 .market-kpi-valor {
   margin: 0;
-  font-size: var(--tipo-2xl);
+  font-size: var(--tipo-3xl);
   font-weight: 600;
   line-height: 1.1;
   color: var(--texto-forte);
@@ -1521,20 +1527,25 @@ select:focus, input[type="number"]:focus {
   border-radius: var(--raio-lg);
   background: var(--superficie-base);
 }
+/* Mesma anatomia do destaque, um degrau abaixo: rótulo em caixa-alta miúda nos DOIS, e a
+   hierarquia vindo do tamanho do valor. Antes o tile tinha o rótulo MAIOR que o do
+   destaque (12px caixa-baixa contra 10px caixa-alta), o que invertia a leitura. */
 .market-card-label {
-  margin: 0 0 6px;
-  font-size: var(--tipo-sm);
-  font-weight: 500;
+  margin: 0 0 var(--esp-1);
+  font-size: var(--tipo-2xs);
+  font-weight: 700;
+  letter-spacing: .04em;
+  text-transform: uppercase;
   color: var(--texto-sec);
-  line-height: 1.3;
+  line-height: 1.35;
 }
 
 /* Figuras PROPORCIONAIS de propósito: `tabular-nums` dá a todo dígito a largura de um
    zero, e num número grande em corpo 24 isso deixa o texto frouxo. Tabular fica para as
    variações, que são coluna e precisam alinhar. */
 .market-card-value {
-  margin: 0 0 10px;
-  font-size: var(--tipo-xl);
+  margin: 0;
+  font-size: var(--tipo-lg);
   font-weight: 600;
   line-height: 1.15;
   color: var(--texto-forte);
@@ -1549,18 +1560,20 @@ select:focus, input[type="number"]:focus {
 
 .market-deltas { margin: var(--esp-2) 0 0; padding: 0; list-style: none; }
 
-/* A variação que a pessoa veio ver, no destaque. Ganha corpo, e só ela. */
-.market-delta-principal { font-size: var(--tipo-base); }
-.market-delta-principal .market-delta-value { font-weight: 600; }
+/* A variação que a pessoa veio ver, no destaque. Ganha corpo, e só ela — antes era UM pixel
+   maior que as secundárias, uma diferença que ninguém enxerga. */
+.market-delta-principal { font-size: var(--tipo-md); line-height: 1.5; }
+.market-delta-principal .market-delta-value { font-weight: 700; }
+.market-delta-principal .market-delta-icon { font-size: var(--tipo-xs); }
 .market-delta {
   display: grid;
   grid-template-columns: 12px 1fr auto;
   align-items: baseline;
-  gap: 6px;
-  font-size: 12px;
-  line-height: 1.6;
+  gap: var(--esp-1) 6px;
+  font-size: var(--tipo-xs);
+  line-height: 1.55;
 }
-.market-delta-icon { font-size: 9px; text-align: center; }
+.market-delta-icon { font-size: var(--tipo-2xs); text-align: center; }
 .market-delta-label { color: var(--muted); overflow-wrap: anywhere; }
 .market-delta-value { font-variant-numeric: tabular-nums; color: var(--ink); }
 
@@ -1594,12 +1607,16 @@ select:focus, input[type="number"]:focus {
     gap: var(--esp-1) var(--esp-2);
     padding: var(--esp-2) var(--esp-3);
   }
-  .market-kpi-rotulo { margin: 0; }
-  .market-kpi-valor { font-size: var(--tipo-lg); white-space: nowrap; }
+  /* Em pílula não há régua de valores para alinhar — rótulo e valor dividem a linha —,
+     então a reserva de duas linhas do desktop só abriria um buraco. */
+  .market-kpi-rotulo { min-height: 0; margin: 0; }
+  .market-kpi-valor { font-size: var(--tipo-xl); white-space: nowrap; }
   .market-kpi > .market-kpi-spark,
   .market-kpi > .market-deltas,
   .market-kpi > .market-card-absent { grid-column: 1 / -1; }
   .market-tiles { grid-template-columns: 1fr; }
-  .market-card-value { font-size: var(--tipo-xl); }
+  /* Em pílula o destaque cai para --tipo-xl; o tile precisa ficar abaixo dele, ou a
+     hierarquia se inverte justamente onde há menos espaço para reconstruí-la. */
+  .market-card-value { font-size: var(--tipo-lg); }
   .market-campos { grid-template-columns: 1fr; }
 }

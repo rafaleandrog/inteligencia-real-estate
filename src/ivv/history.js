@@ -55,6 +55,7 @@ export const HISTORY_CHARTS = Object.freeze([
     key: 'atividade',
     acumulavel: true,
     titulo: 'Vendas e lançamentos por mês',
+    tituloAcumulado: 'Vendas e lançamentos no ano',
     pergunta: 'Entra ou sai mais unidade do mercado?',
     // Contagem de evento do mês é coluna, não linha: a linha sugere continuidade entre
     // dois meses, e não há nada acontecendo entre eles.
@@ -80,6 +81,7 @@ export const HISTORY_CHARTS = Object.freeze([
     key: 'vgv',
     acumulavel: true,
     titulo: 'VGV por mês',
+    tituloAcumulado: 'VGV no ano',
     pergunta: 'Quanto de dinheiro girou?',
     tipo: CHART_TYPES.COLUNAS,
     fonte: CHART_SOURCES.JANELA,
@@ -211,7 +213,9 @@ function modeloDe(definicao, rows, modo) {
   const modelo = buildChartModel(
     {
       key: definicao.key,
-      titulo: definicao.titulo,
+      // Título que contradiz o desenho é pior que título genérico: "por mês" sobre uma
+      // curva acumulada faz duvidar do número, não do rótulo.
+      titulo: (acumulado && definicao.tituloAcumulado) || definicao.titulo,
       tipo: definicao.tipo,
       baseZero: definicao.baseZero,
       formatar: (valor) => formatMetricValue(referencia, valor),
