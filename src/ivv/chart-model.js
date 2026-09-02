@@ -74,7 +74,13 @@ export function thinLabels(total, maxRotulos) {
   const passo = Math.ceil((total - 1) / (maxRotulos - 1));
   const indices = [];
   for (let i = 0; i < total; i += passo) indices.push(i);
-  if (indices.at(-1) !== total - 1) indices.push(total - 1);
+  if (indices.at(-1) !== total - 1) {
+    // O último rótulo entra sempre — mas se ele cair colado no anterior, SUBSTITUI aquele
+    // em vez de se somar a ele. Empurrar os dois para o mesmo lugar não é rótulo a mais:
+    // é "nov./2025dez./2025" ilegível na ponta do eixo, que foi o que apareceu na tela.
+    if (total - 1 - indices.at(-1) < passo) indices[indices.length - 1] = total - 1;
+    else indices.push(total - 1);
+  }
   return indices;
 }
 

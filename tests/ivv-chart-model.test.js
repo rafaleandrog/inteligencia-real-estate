@@ -54,6 +54,19 @@ test('thinLabels mantém o primeiro e o último rótulo', () => {
   assert.deepEqual(thinLabels(10, 0), []);
 });
 
+test('o último rótulo substitui o vizinho colado, em vez de se somar a ele', () => {
+  // Somar os dois não é um rótulo a mais: é "nov./2025dez./2025" ilegível na ponta do eixo.
+  for (const [total, teto] of [[12, 8], [24, 8], [66, 8], [12, 4], [18, 4]]) {
+    const indices = thinLabels(total, teto);
+    const ultimoPasso = indices.at(-1) - indices.at(-2);
+    const primeiroPasso = indices[1] - indices[0];
+    assert.ok(ultimoPasso >= primeiroPasso,
+      `${total}/${teto}: último rótulo colado no anterior (${JSON.stringify(indices)})`);
+    assert.equal(indices.at(-1), total - 1);
+    assert.ok(indices.length <= teto + 1, `${total}/${teto}: rótulos demais`);
+  }
+});
+
 test('ausência preserva a categoria e vira frase, nunca zero', () => {
   const modelo = buildChartModel(definicao, [
     serie('a', [['2026-01', 10], ['2026-02', null], ['2026-03', 30]]),

@@ -1559,10 +1559,13 @@ function marketChartTable(model) {
   const cabecalho = document.createElement('tr');
   for (const coluna of model.tabela.colunas) {
     const celula = document.createElement('th');
+    celula.setAttribute('scope', 'col');
     celula.textContent = coluna;
     cabecalho.append(celula);
   }
-  tabela.append(document.createElement('thead')).append(cabecalho);
+  const topo = document.createElement('thead');
+  topo.append(cabecalho);
+  tabela.append(topo);
 
   const corpo = document.createElement('tbody');
   for (const linha of model.tabela.linhas) {
@@ -1807,6 +1810,13 @@ function bindEvents() {
       refreshMarketView();
     });
   }
+
+  // A geometria do gráfico é calculada em JS a partir da largura disponível, e JS não
+  // reage a media query sozinho: sem este ouvinte, girar o telefone ou estreitar a janela
+  // deixaria o desenho de 640 pontos preso numa tela de 390 (issue #83).
+  window.matchMedia('(max-width: 560px)').addEventListener('change', () => {
+    if (state.marketSelection) refreshMarketView();
+  });
 
   // Troca de view (issue #58). O hash é a fonte da verdade: o clique escreve nele e o
   // `hashchange` aplica. Assim o botão e a barra de endereço nunca discordam, e
