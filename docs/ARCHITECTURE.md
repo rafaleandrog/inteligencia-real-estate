@@ -29,11 +29,25 @@ Uma linguagem por arquivo, uma responsabilidade por módulo.
 | `src/normalize.js` | Conversão e normalização — **funções puras** |
 | `src/filters.js` | Filtros, mediana, KPIs — **funções puras** |
 | `src/format.js` | Formatação e saneamento — **funções puras** |
+| `src/ivv/chart-model.js` | Significado do gráfico: categorias, séries, eixo, ausência — **funções puras** |
+| `src/ivv/chart-layout.js` | Geometria do gráfico: coordenadas, caminhos, colunas — **funções puras** |
+| `src/ivv/history.js` | Quais gráficos existem, o que cada um pergunta e de que recorte lê |
 | `src/app.js` | Interação, mapa e DOM |
 | Google Sheet | Registros e governança |
 
-A divisão não é estética: as três camadas de funções puras são as que a suíte cobre sem
-navegador e sem rede. `app.js` concentra o que só dá para verificar por smoke test.
+A divisão não é estética: as camadas de funções puras são as que a suíte cobre sem navegador
+e sem rede. `app.js` concentra o que só dá para verificar por smoke test.
+
+O gráfico é dividido em **dois** módulos puros de propósito. `chart-model.js` decide
+significado e `chart-layout.js` decide pixel, porque as duas decisões envelhecem em ritmos
+diferentes: passar de quatro para cinco marcas no eixo é estética, mudar o que "sem valor
+publicado" significa é metodologia — e juntas, a segunda acaba alterada por engano ao mexer na
+primeira. O renderizador em `app.js` recebe geometria pronta e só cria nós: não calcula nada.
+
+**Não há biblioteca de gráfico**, e não é por falta de opção: dependência de runtime é
+vendorizada (R1.6) e o site é estático sem etapa de build, então uma biblioteca custaria peso
+de download e superfície de manutenção para desenhar sete gráficos de uma série mensal. Cor de
+série também não mora nesses módulos — a série declara um ÍNDICE de paleta e o CSS resolve.
 
 ## Estratégias de dados
 

@@ -691,6 +691,14 @@ nomes para as mesmas grandezas. São traduzidos pelo normalizador, com aviso:
 | `avg_sold_area_m2` | número | não agregável | **convenção** |
 | `cancellations_to_sales_pct` | fração decimal | não agregável | observado na planilha pública |
 
+`cancellations_to_sales_pct` é a única coluna derivada **consumida pela tela** (issue #83): ela
+alimenta o gráfico "Distratos sobre vendas" e nada além dele. Está declarada em
+`IVV_DERIVED_SERIES` (`src/ivv/metrics.js`), um registro separado do de métricas e **sem
+natureza de agregação** — é razão publicada por mês, então dá uma linha honesta no gráfico e não
+dá card de período: agregar razão de meses diferentes produziria média de razões, que é
+exatamente o erro que a política de agregação por natureza existe para impedir. A escala é
+decimal (`0.12` = 12%), como todo `*_pct` desta aba.
+
 **Acumulados do ano civil** — 12 colunas
 
 | Campo | Tipo | Agregação de período | Origem do nome |
