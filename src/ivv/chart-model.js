@@ -115,6 +115,9 @@ export function buildChartModel(definicao, series) {
   const {
     key, titulo, tipo = CHART_TYPES.LINHA, baseZero = true,
     formatar = (v) => String(v), rotuloCategoria = (c) => c, ticks = 4,
+    // O EIXO usa a forma curta; ponto, balão e tabela continuam exatos. Quatro rótulos de
+    // `509.218` empilhados viram parede de dígitos, e eixo serve para ler de relance.
+    formatarCurto = formatar,
   } = definicao || {};
 
   const normalizadas = (series || []).map((serie) => ({
@@ -147,6 +150,7 @@ export function buildChartModel(definicao, series) {
           categoria: categoria.chave,
           valor,
           rotulo: texto,
+          rotuloCurto: valor === null ? null : formatarCurto(valor),
           titulo: `${serie.rotulo} · ${categoria.rotulo}: ${texto === null ? AUSENTE : texto}`,
         };
       }),
@@ -163,7 +167,7 @@ export function buildChartModel(definicao, series) {
       min,
       max,
       baseZero,
-      ticks: niceTicks(min, max, ticks).map((valor) => ({ valor, rotulo: formatar(valor) })),
+      ticks: niceTicks(min, max, ticks).map((valor) => ({ valor, rotulo: formatarCurto(valor) })),
     },
     vazio: vazio || categorias.length === 0,
     mensagemVazio: MENSAGEM_SEM_DADO,

@@ -18,6 +18,7 @@ import {
   monthYearLabel, mesAnterior, mesmoMesAnoAnterior,
 } from './ivv/period.js';
 import { buildHistoryCharts, buildSeasonality, buildSparkline } from './ivv/history.js';
+import { CHART_TYPES } from './ivv/chart-model.js';
 import { chartGeometry, chartViewport, sparkViewport } from './ivv/chart-layout.js';
 import {
   anchorLegendGroups, applyFilters, computeKpis, createFilterState, distinctAnchorGroups,
@@ -1460,6 +1461,8 @@ function svgNode(name, attributes = {}) {
  */
 function chartSvg(model, viewport) {
   const geometria = chartGeometry(model, viewport);
+  // O sparkline não tem eixo nem grade: ele não leva linha de base nem rótulo final.
+  const semEixo = geometria.grade.length === 0 && geometria.eixoX.length === 0;
   // Sem `preserveAspectRatio="none"`: com o `viewBox` na medida da caixa a escala é 1:1 e
   // uniforme. Forçar o preenchimento não-uniforme era o que achatava o traço do sparkline
   // e transformava o marcador redondo em elipse.
@@ -1517,6 +1520,18 @@ function chartSvg(model, viewport) {
     svg.append(grupo);
   }
 
+  // Linha de base do eixo X: é ela que ancora as colunas e diz onde o plot termina. Sem
+  // ela, coluna e área ficam pairando sobre o nada.
+  if (!semEixo) {
+    svg.append(svgNode('line', {
+      x1: geometria.plot.x,
+      x2: geometria.plot.x + geometria.plot.largura,
+      y1: geometria.plot.y + geometria.plot.altura,
+      y2: geometria.plot.y + geometria.plot.altura,
+      class: 'chart-axis-line',
+    }));
+  }
+
   for (const rotulo of geometria.eixoX) {
     const texto = svgNode('text', {
       x: rotulo.x, y: geometria.eixoXBaseY, 'text-anchor': rotulo.ancora, class: 'chart-axis-month',
@@ -1525,7 +1540,23 @@ function chartSvg(model, viewport) {
     svg.append(texto);
   }
 
-  return svg;
+  // Rótulo direto SÓ no último ponto de cada série. Número em todo ponto é ruído que
+  // ninguém lê; no último ele responde "e agora, quanto está?" sem passar pelo eixo.
+  if (!semEixo) {
+    for (const serie of geometria.series) {
+      if (!serie.ultimoPonto?.rotulo) continue;
+      const texto = svgNode('text', {
+        x: serie.ultimoPonto.rotuloX,
+        y: serie.ultimoPonto.rotuloY,
+        'text-anchor': 'end',
+        class: `chart-rotulo-final serie-${serie.cat}`,
+      });
+      texto.textContent = serie.ultimoPonto.rotulo;
+      svg.append(texto);
+    }
+  }
+
+  return { svg, geometria };
 }
 
 function tituloSvg(texto) {
@@ -1545,7 +1576,10 @@ function marketChartLegend(model) {
   for (const serie of model.series) {
     const item = document.createElement('li');
     const cor = document.createElement('span');
-    cor.className = `market-legenda-cor serie-${serie.cat}`;
+    // A chave espelha a marca: traço para linha, retângulo para área e coluna. Um quadrado
+    // ao lado de uma linha faz procurar no gráfico uma forma que não está lá.
+    const forma = model.tipo === CHART_TYPES.LINHA ? 'traco' : 'bloco';
+    cor.className = `market-legenda-cor market-legenda-${forma} serie-${serie.cat}`;
     cor.setAttribute('aria-hidden', 'true');
     item.append(cor, document.createTextNode(serie.rotulo));
     legenda.append(item);
@@ -1612,16 +1646,38 @@ function marketChart(model) {
   article.className = 'market-chart';
   article.dataset.chart = model.key;
 
+  const cabecalho = document.createElement('header');
+  cabecalho.className = 'market-chart-head';
+
+  const titulos = document.createElement('div');
   const title = document.createElement('h3');
   title.textContent = model.titulo;
-  article.append(title);
-
+  titulos.append(title);
   if (model.pergunta) {
     const pergunta = document.createElement('p');
     pergunta.className = 'market-chart-pergunta';
     pergunta.textContent = model.pergunta;
-    article.append(pergunta);
+    titulos.append(pergunta);
   }
+  cabecalho.append(titulos);
+
+  // O valor no canto responde de relance a pergunta que o desenho responde devagar — e diz
+  // QUE OPERAÇÃO o produziu, porque soma e média sobre a mesma série de doze meses dão
+  // números que diferem por doze e parecem igualmente plausíveis sem o rótulo.
+  if (model.resumo) {
+    const resumo = document.createElement('p');
+    resumo.className = 'market-chart-resumo';
+    const valor = document.createElement('strong');
+    valor.textContent = model.resumo.valor;
+    resumo.append(valor);
+    if (model.resumo.rotulo) {
+      const nota = document.createElement('span');
+      nota.textContent = model.resumo.rotulo;
+      resumo.append(nota);
+    }
+    cabecalho.append(resumo);
+  }
+  article.append(cabecalho);
 
   if (model.vazio) {
     // Ausência é frase, não gráfico vazio: um desenho sem traço é indistinguível de um
@@ -1635,7 +1691,8 @@ function marketChart(model) {
 
   const plot = document.createElement('div');
   plot.className = 'market-chart-plot';
-  article.append(plot, marketChartLegend(model), marketChartTable(model));
+  // Legenda ANTES do plot: ela é a chave de leitura, e chave se lê antes do que ela abre.
+  article.append(marketChartLegend(model), plot, marketChartTable(model));
   return { article, plot, model };
 }
 
@@ -1655,14 +1712,175 @@ function desenharGraficos(cards) {
     if (Math.abs(largura - (card.larguraDesenhada || 0)) < TOLERANCIA_DE_REDESENHO) continue;
     card.larguraDesenhada = largura;
     const viewport = card.spark ? sparkViewport(largura) : chartViewport(largura);
-    const svg = chartSvg(card.model, viewport);
-    if (card.spark) prepararSpark(svg);
+    const { svg, geometria } = chartSvg(card.model, viewport);
+    if (card.spark) {
+      prepararSpark(svg);
+      card.plot.replaceChildren(svg);
+      continue;
+    }
     card.plot.replaceChildren(svg);
+    ligarLeitura(card.plot, svg, card.model, geometria);
   }
 }
 
 /** Abaixo disto a diferença de largura não muda o desenho o bastante para valer o reflow. */
 const TOLERANCIA_DE_REDESENHO = 8;
+
+/**
+ * A camada de leitura do gráfico: linha guia + balão com TODAS as séries do mês (issue #85).
+ *
+ * Três decisões que ela carrega:
+ *
+ * 1. **O ponteiro mira um MÊS, não um traço.** Um retângulo transparente cobre o plot
+ *    inteiro e a categoria mais próxima vence — ninguém acerta uma linha de 2px de
+ *    propósito. É `categoriasX`, publicado pela geometria, que faz essa conta.
+ * 2. **O balão mostra o mês inteiro, não a série sob o cursor.** Comparar duas séries é a
+ *    razão de elas dividirem o gráfico; obrigar a passar por cima de cada uma desfaz isso.
+ * 3. **O teclado vê o que o mouse vê.** O `<svg>` é focável e as setas andam pelos meses.
+ *    Sem isso o balão viraria informação exclusiva de quem usa mouse — e o balão nunca é o
+ *    único caminho: os mesmos números estão no `<details>` abaixo.
+ */
+function ligarLeitura(plot, svg, model, geometria) {
+  if (geometria.categoriasX.length === 0) return;
+
+  const guia = svgNode('line', {
+    class: 'chart-guia',
+    y1: geometria.plot.y,
+    y2: geometria.plot.y + geometria.plot.altura,
+    x1: 0,
+    x2: 0,
+  });
+  guia.setAttribute('hidden', 'hidden');
+  svg.append(guia);
+
+  const focos = geometria.series.map((serie) => {
+    const foco = svgNode('circle', { class: `chart-foco serie-${serie.cat}`, r: 4.5, cx: 0, cy: 0 });
+    foco.setAttribute('hidden', 'hidden');
+    svg.append(foco);
+    return { serie, foco };
+  });
+
+  const captura = svgNode('rect', {
+    class: 'chart-captura',
+    x: geometria.plot.x,
+    y: geometria.plot.y,
+    width: geometria.plot.largura,
+    height: geometria.plot.altura,
+  });
+  svg.append(captura);
+
+  const balao = document.createElement('div');
+  balao.className = 'market-chart-tooltip';
+  balao.hidden = true;
+  plot.append(balao);
+
+  let indiceAtivo = -1;
+
+  const esconder = () => {
+    indiceAtivo = -1;
+    balao.hidden = true;
+    guia.setAttribute('hidden', 'hidden');
+    for (const { foco } of focos) foco.setAttribute('hidden', 'hidden');
+  };
+
+  const mostrar = (indice) => {
+    if (indice < 0 || indice >= geometria.categoriasX.length) return;
+    indiceAtivo = indice;
+    const x = geometria.categoriasX[indice];
+
+    guia.setAttribute('x1', String(x));
+    guia.setAttribute('x2', String(x));
+    guia.removeAttribute('hidden');
+
+    for (const { serie, foco } of focos) {
+      const ponto = model.series.find((item) => item.chave === serie.chave)?.pontos[indice];
+      const marca = serie.marcadores.find((m) => Math.abs(m.cx - x) < 0.5);
+      const coluna = serie.colunas.find((c) => x >= c.x - 1 && x <= c.x + c.largura + 1);
+      if (!ponto || ponto.valor === null || (!marca && !coluna)) {
+        foco.setAttribute('hidden', 'hidden');
+        continue;
+      }
+      foco.setAttribute('cx', String(marca ? marca.cx : coluna.x + coluna.largura / 2));
+      foco.setAttribute('cy', String(marca ? marca.cy : coluna.y));
+      foco.removeAttribute('hidden');
+    }
+
+    preencherBalao(balao, model, indice);
+    balao.hidden = false;
+    posicionarBalao(balao, plot, svg, geometria, x);
+  };
+
+  captura.addEventListener('pointermove', (evento) => {
+    const caixa = svg.getBoundingClientRect();
+    if (caixa.width === 0) return;
+    // O `viewBox` tem a largura da caixa, mas a escala é reconferida: o card pode ter
+    // mudado de tamanho entre o desenho e o ponteiro.
+    const escala = geometria.largura / caixa.width;
+    const alvo = (evento.clientX - caixa.left) * escala;
+    mostrar(indiceMaisProximo(geometria.categoriasX, alvo));
+  });
+  captura.addEventListener('pointerleave', esconder);
+
+  svg.setAttribute('tabindex', '0');
+  svg.addEventListener('focus', () => mostrar(indiceAtivo >= 0 ? indiceAtivo : geometria.categoriasX.length - 1));
+  svg.addEventListener('blur', esconder);
+  svg.addEventListener('keydown', (evento) => {
+    const passo = { ArrowLeft: -1, ArrowRight: 1, Home: -Infinity, End: Infinity }[evento.key];
+    if (passo === undefined) {
+      if (evento.key === 'Escape') esconder();
+      return;
+    }
+    evento.preventDefault();
+    const ultimo = geometria.categoriasX.length - 1;
+    const base = indiceAtivo >= 0 ? indiceAtivo : ultimo;
+    mostrar(Math.min(ultimo, Math.max(0, passo === -Infinity ? 0 : (passo === Infinity ? ultimo : base + passo))));
+  });
+}
+
+function indiceMaisProximo(posicoes, alvo) {
+  let melhor = 0;
+  for (let i = 1; i < posicoes.length; i += 1) {
+    if (Math.abs(posicoes[i] - alvo) < Math.abs(posicoes[melhor] - alvo)) melhor = i;
+  }
+  return melhor;
+}
+
+/**
+ * O balão. Valor em destaque e nome da série secundário — é o inverso da legenda, porque
+ * aqui quem lê já sabe qual é a série e quer o número.
+ */
+function preencherBalao(balao, model, indice) {
+  const titulo = document.createElement('p');
+  titulo.className = 'market-tooltip-mes';
+  titulo.textContent = model.categorias[indice].rotulo;
+
+  const lista = document.createElement('ul');
+  for (const serie of model.series) {
+    const ponto = serie.pontos[indice];
+    const item = document.createElement('li');
+    const chave = document.createElement('span');
+    chave.className = `market-tooltip-chave serie-${serie.cat}`;
+    chave.setAttribute('aria-hidden', 'true');
+    const valor = document.createElement('strong');
+    valor.textContent = ponto.rotulo ?? 'sem valor publicado';
+    const nome = document.createElement('span');
+    nome.className = 'market-tooltip-serie';
+    nome.textContent = serie.rotulo;
+    item.append(chave, valor, nome);
+    lista.append(item);
+  }
+  balao.replaceChildren(titulo, lista);
+}
+
+/** O balão segue o mês e não sai da caixa: perto da borda direita ele vira para a esquerda. */
+function posicionarBalao(balao, plot, svg, geometria, x) {
+  const caixa = svg.getBoundingClientRect();
+  const escala = caixa.width / geometria.largura;
+  const meio = geometria.largura / 2;
+  balao.classList.toggle('market-chart-tooltip-esquerda', x > meio);
+  balao.style.left = `${Math.round(x * escala)}px`;
+  balao.style.top = `${Math.round(geometria.plot.y * escala)}px`;
+}
 
 /** O sparkline não é gráfico: é a forma do movimento ao lado do número. */
 function prepararSpark(svg) {

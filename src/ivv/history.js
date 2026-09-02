@@ -11,9 +11,11 @@
 // `cat: 3` e quem resolve o índice em cor é o CSS.
 
 import { CHART_TYPES, CHART_SOURCES, buildChartModel } from './chart-model.js';
-import { monthlySeries, derivedSeries, prepareRows } from './aggregate.js';
+import {
+  monthlySeries, derivedSeries, prepareRows, aggregateMetric, VALUE_ORIGINS,
+} from './aggregate.js';
 import { getPlottable } from './metrics.js';
-import { formatMetricValue } from './cards.js';
+import { formatMetricValue, formatMetricCompact } from './cards.js';
 import { monthYearLabel, monthShortLabel } from './period.js';
 
 /**
@@ -119,6 +121,39 @@ function pontosDe(rows, { key, derivada }) {
   return serie.map((ponto) => ({ categoria: ponto.month, valor: ponto.value }));
 }
 
+/**
+ * O que o canto do card mostra: o valor da série principal NO RECORTE QUE O GRÁFICO DESENHA,
+ * com o nome da operação que o produziu (issue #85).
+ *
+ * "R$ 8.124 mi · soma do período" responde de relance a pergunta que o desenho responde
+ * devagar. E dizer a operação não é preciosismo: `soma` e `média` sobre a mesma série de
+ * doze meses dão números que diferem por doze, e sem o rótulo os dois parecem igualmente
+ * plausíveis — que é exatamente o erro caro que o motor de agregação existe para impedir.
+ */
+const ROTULO_DA_ORIGEM = Object.freeze({
+  [VALUE_ORIGINS.SOMA]: 'soma do período',
+  [VALUE_ORIGINS.MEDIA]: 'média do período',
+  [VALUE_ORIGINS.RAZAO_PONDERADA]: 'média ponderada',
+  [VALUE_ORIGINS.YTD_BACKEND]: 'acumulado no ano',
+  [VALUE_ORIGINS.PUBLICADO]: 'no mês',
+});
+
+function resumoDe(definicao, rows) {
+  const principal = definicao.series[0];
+  // Série derivada não tem natureza de agregação declarada — de propósito. Um resumo aqui
+  // teria de inventar uma operação para ela.
+  if (principal.derivada || rows.length === 0) return null;
+  try {
+    const { value, origin } = aggregateMetric(rows, principal.key);
+    const texto = formatMetricValue(principal.key, value);
+    if (texto === null) return null;
+    return { valor: texto, rotulo: ROTULO_DA_ORIGEM[origin] || null };
+  } catch {
+    // Métrica que o motor recusa agregar não ganha resumo — e não derruba o gráfico.
+    return null;
+  }
+}
+
 function modeloDe(definicao, rows) {
   const referencia = definicao.series[0].key;
   const modelo = buildChartModel(
@@ -128,6 +163,7 @@ function modeloDe(definicao, rows) {
       tipo: definicao.tipo,
       baseZero: definicao.baseZero,
       formatar: (valor) => formatMetricValue(referencia, valor),
+      formatarCurto: (valor) => formatMetricCompact(referencia, valor),
       rotuloCategoria: monthYearLabel,
     },
     definicao.series.map((serie) => ({
@@ -139,7 +175,7 @@ function modeloDe(definicao, rows) {
   );
   // A pergunta viaja com o modelo: é ela que o card do gráfico mostra abaixo do título, e
   // é o que transforma "VGV por mês" em algo que se sabe por que está olhando.
-  return { ...modelo, pergunta: definicao.pergunta };
+  return { ...modelo, pergunta: definicao.pergunta, resumo: resumoDe(definicao, rows) };
 }
 
 /**
@@ -180,6 +216,7 @@ export function buildSeasonality(rows, opcoes = {}) {
       tipo: SEASONALITY_CHART.tipo,
       baseZero: SEASONALITY_CHART.baseZero,
       formatar: (valor) => formatMetricValue(metrica, valor),
+      formatarCurto: (valor) => formatMetricCompact(metrica, valor),
       rotuloCategoria: (mes) => monthShortLabel(Number(mes)),
     },
     recentes.map((ano, indice) => ({
@@ -212,6 +249,7 @@ export function buildSparkline(rows, metricKey) {
       // sparkline comunica.
       baseZero: false,
       formatar: (valor) => formatMetricValue(metricKey, valor),
+      formatarCurto: (valor) => formatMetricCompact(metricKey, valor),
       rotuloCategoria: monthYearLabel,
     },
     [{

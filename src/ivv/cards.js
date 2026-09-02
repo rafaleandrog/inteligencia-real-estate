@@ -8,7 +8,7 @@
 import { METRIC_BY_KEY, METRIC_KEYS, getPlottable } from './metrics.js';
 import { monthYearLabel, mesAnterior, mesmoMesAnoAnterior } from './period.js';
 import {
-  formatNumber, formatM2, formatPriceM2, formatPercent, percentFromDecimal,
+  formatNumber, formatM2, formatPriceM2, formatPercent, percentFromDecimal, compactNumber,
 } from '../format.js';
 
 /**
@@ -115,6 +115,26 @@ export function formatMetricValue(metricKey, value) {
     // `* 100` solto (R8.60).
     case 'fracao': return formatPercent(percentFromDecimal(value));
     default: return formatNumber(Math.round(value));
+  }
+}
+
+/**
+ * O mesmo valor, em forma curta, para rótulo de eixo (issue #85).
+ *
+ * Só a magnitude é compactada; a UNIDADE continua inteira, porque é ela que diz o que o
+ * eixo está medindo. `R$ 14 mil/m²` e `509 mil m²` são lidos de relance; `14.404` e
+ * `509.218` obrigam a contar casas. Percentual não compacta: já é curto por natureza, e
+ * arredondar `6,4%` para `6%` perderia justamente a casa que interessa.
+ */
+export function formatMetricCompact(metricKey, value) {
+  if (value === null || value === undefined || !Number.isFinite(value)) return null;
+  const metric = getPlottable(metricKey);
+  switch (metric && metric.unit) {
+    case 'brl_m2': return `R$ ${compactNumber(value)}/m²`;
+    case 'm2': return `${compactNumber(value)} m²`;
+    case 'brl_milhoes': return `R$ ${compactNumber(value * 1e6)}`;
+    case 'fracao': return formatPercent(percentFromDecimal(value));
+    default: return compactNumber(value);
   }
 }
 

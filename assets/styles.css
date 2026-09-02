@@ -1185,26 +1185,57 @@ select:focus, input[type="number"]:focus {
   border-radius: var(--raio-lg);
   background: var(--panel);
 }
+.market-chart-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--esp-3);
+  margin-bottom: var(--esp-2);
+}
 .market-chart h3 { margin: 0 0 2px; font-size: var(--tipo-base); font-weight: 600; }
 
 /* A pergunta que o gráfico responde, embaixo do título. É ela que transforma
    "VGV por mês" em algo que a pessoa sabe por que está olhando. */
 .market-chart-pergunta {
-  margin: 0 0 var(--esp-2);
+  margin: 0;
   font-size: var(--tipo-xs);
+  color: var(--texto-sec);
+}
+
+/* O valor no canto: o que o desenho diz devagar, dito de relance — com a operação que o
+   produziu, porque soma e média sobre a mesma série diferem por doze e parecem igualmente
+   plausíveis sem o rótulo. */
+.market-chart-resumo {
+  flex: none;
+  margin: 0;
+  text-align: right;
+  line-height: 1.25;
+}
+.market-chart-resumo strong {
+  display: block;
+  font-size: var(--tipo-lg);
+  font-weight: 600;
+  color: var(--texto-forte);
+}
+.market-chart-resumo span {
+  font-size: var(--tipo-2xs);
+  text-transform: uppercase;
+  letter-spacing: .04em;
   color: var(--texto-sec);
 }
 
 /* A caixa que o desenho mede. Ela existe para ser MEDIDA: o `viewBox` do SVG sai da
    largura dela, então o gráfico é desenhado no tamanho em que vai aparecer (R8.74). */
-.market-chart-plot { min-width: 0; }
+.market-chart-plot { position: relative; min-width: 0; }
 .market-chart-svg {
   display: block;
   width: 100%;
   height: auto;
   overflow: visible;
 }
-.chart-grid-line { stroke: var(--borda-base); stroke-width: 1; }
+.chart-grid-line { stroke: var(--borda-sutil); stroke-width: 1; }
+/* Linha de base do eixo X: ancora coluna e área, e diz onde o plot termina. */
+.chart-axis-line { stroke: var(--borda-base); stroke-width: 1; }
 .chart-zero-line { stroke: var(--borda-forte); stroke-width: 1; stroke-opacity: .6; }
 .chart-axis-value,
 .chart-axis-month { fill: var(--texto-sec); font-size: var(--tipo-2xs); }
@@ -1238,9 +1269,79 @@ select:focus, input[type="number"]:focus {
   stroke-linecap: round;
   stroke-linejoin: round;
 }
-.market-serie-area { fill: var(--serie-cor); fill-opacity: .18; stroke: none; }
+/* Área é um véu, não um bloco: ela contextualiza a linha sem competir com ela. */
+.market-serie-area { fill: var(--serie-cor); fill-opacity: .12; stroke: none; }
 .market-serie-coluna { fill: var(--serie-cor); }
 .market-serie-marcador { fill: var(--serie-cor); }
+
+/* Rótulo direto no último ponto. Ele veste TOKEN DE TEXTO, não a cor da série: matiz claro
+   é ilegível como texto, e a identidade já vem do traço logo abaixo dele. */
+.chart-rotulo-final {
+  fill: var(--texto-forte);
+  font-size: var(--tipo-2xs);
+  font-weight: 700;
+}
+
+/* Camada de leitura: linha guia, ponto em foco e a área que captura o ponteiro. */
+.chart-guia { stroke: var(--borda-forte); stroke-width: 1; pointer-events: none; }
+.chart-foco {
+  fill: var(--serie-cor);
+  stroke: var(--superficie-base);
+  stroke-width: 2;
+  pointer-events: none;
+}
+.chart-captura { fill: transparent; }
+.market-chart-svg:focus-visible { outline: 2px solid var(--accent-text); outline-offset: 2px; }
+[hidden] { display: none; }
+
+/* O balão segue o mês. Valor em destaque e nome da série secundário — o inverso da
+   legenda, porque aqui quem lê já sabe a série e quer o número. */
+.market-chart-tooltip {
+  position: absolute;
+  z-index: 2;
+  min-width: 132px;
+  padding: var(--esp-2);
+  transform: translateX(var(--esp-2));
+  border: 1px solid var(--borda-forte);
+  border-radius: var(--raio-md);
+  background: var(--superficie-elevada);
+  box-shadow: var(--sombra-2);
+  pointer-events: none;
+}
+.market-chart-tooltip-esquerda { transform: translateX(calc(-100% - var(--esp-2))); }
+.market-tooltip-mes {
+  margin: 0 0 var(--esp-1);
+  font-size: var(--tipo-2xs);
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: .04em;
+  color: var(--texto-sec);
+}
+.market-chart-tooltip ul { margin: 0; padding: 0; list-style: none; }
+.market-chart-tooltip li {
+  display: grid;
+  grid-template-columns: 10px auto;
+  align-items: baseline;
+  gap: 2px var(--esp-2);
+  font-size: var(--tipo-sm);
+}
+.market-chart-tooltip strong {
+  font-weight: 600;
+  color: var(--texto-forte);
+  font-variant-numeric: tabular-nums;
+}
+.market-tooltip-serie {
+  grid-column: 2;
+  font-size: var(--tipo-2xs);
+  color: var(--texto-sec);
+}
+.market-tooltip-chave {
+  align-self: center;
+  width: 10px;
+  height: 2px;
+  border-radius: var(--raio-xs);
+  background: var(--serie-cor);
+}
 
 .market-chart-legend {
   display: flex;
@@ -1253,12 +1354,11 @@ select:focus, input[type="number"]:focus {
   font-size: var(--tipo-xs);
 }
 .market-chart-legend li { display: inline-flex; align-items: center; gap: 6px; }
-.market-legenda-cor {
-  width: 10px;
-  height: 10px;
-  border-radius: var(--raio-xs);
-  background: var(--serie-cor);
-}
+/* A chave espelha a marca: traço para linha, bloco para área e coluna. Um quadrado ao lado
+   de uma linha faz procurar no gráfico uma forma que não está lá. */
+.market-legenda-cor { background: var(--serie-cor); border-radius: var(--raio-xs); }
+.market-legenda-bloco { width: 10px; height: 10px; }
+.market-legenda-traco { width: 14px; height: 3px; }
 
 /* Os mesmos números em tabela, recolhidos: acima de 24 meses o gráfico não desenha
    marcador, e sem marcador não há `title` para consultar o valor de um mês. */

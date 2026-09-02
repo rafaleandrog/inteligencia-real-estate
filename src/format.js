@@ -45,6 +45,31 @@ export function formatNumber(value) {
   return DECIMAL.format(value);
 }
 
+/**
+ * Número em forma COMPACTA, para eixo de gráfico (issue #85).
+ *
+ * `509.218` num rótulo de eixo obriga a contar casas para saber a ordem de grandeza, e
+ * quatro rótulos assim empilhados viram uma parede de dígitos. `509 mil` é lido de relance,
+ * que é para o que serve um eixo — o valor exato continua no balão e na tabela.
+ *
+ * O corte é em mil: abaixo disso o número inteiro já é curto e arredondar só perderia
+ * informação de graça.
+ */
+export function compactNumber(value) {
+  if (value === null || value === undefined || !Number.isFinite(value)) return '—';
+  const absoluto = Math.abs(value);
+  if (absoluto >= 1e9) return `${umaCasa(value / 1e9)} bi`;
+  if (absoluto >= 1e6) return `${umaCasa(value / 1e6)} mi`;
+  if (absoluto >= 1e3) return `${umaCasa(value / 1e3)} mil`;
+  return DECIMAL.format(Math.round(value));
+}
+
+/** Uma casa decimal, e sem o `,0` inútil de um número redondo. */
+function umaCasa(value) {
+  const texto = value.toLocaleString('pt-BR', { minimumFractionDigits: 1, maximumFractionDigits: 1 });
+  return texto.endsWith(',0') ? texto.slice(0, -2) : texto;
+}
+
 /** Data ISO em formato brasileiro. Entrada inválida devolve travessão. */
 export function formatDate(iso) {
   if (!iso) return '—';

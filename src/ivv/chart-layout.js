@@ -200,7 +200,7 @@ export function chartGeometry(model, viewport = VIEWPORTS.PADRAO) {
       marcadores: marcadoresVisiveis
         ? trechos.flat().map((p) => ({ cx: p.x, cy: p.y, titulo: p.titulo }))
         : [],
-      ultimoPonto: ultimoPontoDe(serie, xPonto, y),
+      ultimoPonto: ultimoPontoDe(serie, xPonto, y, plot),
     };
   });
 
@@ -244,11 +244,23 @@ export function chartGeometry(model, viewport = VIEWPORTS.PADRAO) {
  * É o último com valor, não o último do eixo: uma série que termina em buraco tem o rótulo
  * pendurado no mês em que ela realmente acaba, e não flutuando no vazio.
  */
-function ultimoPontoDe(serie, xPonto, y) {
+function ultimoPontoDe(serie, xPonto, y, plot) {
   for (let i = serie.pontos.length - 1; i >= 0; i -= 1) {
     const ponto = serie.pontos[i];
     if (ponto.valor === null) continue;
-    return { cx: xPonto(ponto.i), cy: y(ponto.valor), rotulo: ponto.rotulo, titulo: ponto.titulo };
+    const cx = xPonto(ponto.i);
+    const cy = y(ponto.valor);
+    return {
+      cx,
+      cy,
+      rotulo: ponto.rotuloCurto || ponto.rotulo,
+      titulo: ponto.titulo,
+      // O rótulo fica ACIMA do ponto e termina nele: o último ponto encosta na borda
+      // direita do plot, e qualquer texto à direita dele sairia da caixa. O piso em `plot.y`
+      // impede que um valor no topo do domínio empurre o rótulo para fora por cima.
+      rotuloX: arred(cx),
+      rotuloY: arred(Math.max(plot.y + 9, cy - 9)),
+    };
   }
   return null;
 }
