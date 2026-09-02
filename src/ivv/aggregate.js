@@ -580,6 +580,47 @@ export function derivedSeries(rows, key) {
   return prepared.map((item) => ({ month: item.month, value: numberAt(item, key) }));
 }
 
+/**
+ * Série ACUMULADA NO ANO: em cada mês, o valor de janeiro daquele ano até ele (issue #85).
+ *
+ * O que "acumulado" significa NÃO é decidido aqui — é o `kind` da métrica que decide, porque
+ * quem agrega é o mesmo `aggregateMetric` de sempre. Daí caem de graça três coisas que uma
+ * soma corrente ingênua erraria:
+ *
+ * - **fluxo soma**, e a curva é a escada que se espera de vendas ou VGV;
+ * - **estoque tira MÉDIA** do ano corrido. Somar doze fotografias do estoque devolve doze
+ *   vezes o estoque real — plausível, bem formatado e errado;
+ * - **preço e taxa refazem a razão ponderada** do período, em vez de somar razões.
+ *
+ * E, onde o backend publica a coluna `*_ytd`, ela vence o recálculo (R8.54): o último ponto
+ * da curva passa a ser exatamente o número que o card mostra, em vez de uma segunda conta
+ * que pode divergir da primeira sem ninguém perceber.
+ *
+ * A curva ZERA em janeiro, de propósito: acumulado do ano civil é o que o dataset publica, e
+ * uma curva que atravessa o ano sem reiniciar afirmaria um acumulado que ninguém calculou.
+ */
+export function runningSeries(rows, key, options = {}) {
+  const { rows: prepared } = prepareRows(rows);
+  const porAno = new Map();
+  for (const item of prepared) {
+    if (!porAno.has(item.year)) porAno.set(item.year, []);
+    porAno.get(item.year).push(item);
+  }
+
+  const serie = [];
+  for (const doAno of porAno.values()) {
+    for (let i = 0; i < doAno.length; i += 1) {
+      // As linhas CRUAS do recorte: `aggregateMetric` prepara de novo, o que é barato e
+      // evita fabricar aqui um array "preparado" à mão — marca interna que só `prepareRows`
+      // tem o direito de pôr.
+      const ateAqui = doAno.slice(0, i + 1).map((item) => item.row);
+      const { value, origin } = aggregateMetric(ateAqui, key, options);
+      serie.push({ month: doAno[i].month, value, origin });
+    }
+  }
+  return serie;
+}
+
 /** Série mensal de uma métrica, para gráfico. Não agrega — só ordena e converte. */
 export function monthlySeries(rows, key) {
   const metric = METRIC_BY_KEY[key];

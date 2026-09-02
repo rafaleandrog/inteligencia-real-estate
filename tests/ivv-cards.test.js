@@ -109,7 +109,7 @@ test('as variações vêm dos campos publicados, e o mês é nomeado', () => {
   assert.deepEqual(deltas, [
     { label: 'vs abr./2026', value: '+3,2%', tone: 'bom' },
     { label: 'vs mai./2025', value: '−8,4%', tone: 'ruim' },
-    { label: 'Acumulado do ano', value: '1.980', tone: 'neutro' },
+    { label: 'No ano até mai./2026', value: '1.980', tone: 'neutro' },
   ]);
 });
 
@@ -129,9 +129,33 @@ test('o IVV mostra pontos percentuais e variação percentual como coisas DIFERE
 test('o acumulado do ano é VALOR, não variação, e nunca ganha cor', () => {
   // Pintar o acumulado pelo sinal afirmaria uma comparação que ninguém fez.
   const { deltas } = metricDeltas('cancellations_units', mes({ cancellations_units_ytd: 480 }));
-  const ytd = deltas.find((d) => d.label === 'Acumulado do ano');
+  const ytd = deltas.find((d) => d.label.startsWith('No ano'));
   assert.equal(ytd.value, '480');
   assert.equal(ytd.tone, 'neutro');
+});
+
+test('o acumulado do ano SOME quando o período já é o acumulado do ano', () => {
+  // Nesse recorte o valor grande do card e esta linha vêm da mesma coluna, da mesma linha
+  // do dataset, formatados pela mesma função: o card exibia o mesmo texto duas vezes, byte
+  // a byte. Repetir não é redundância inofensiva — é ruído ocupando a posição de uma
+  // informação (issue #85).
+  const linha = mes({ sales_units_ytd: 1980, sales_units_mom_pct_change: 0.032 });
+  const noAno = metricDeltas('sales_units', linha, { yearToDate: true });
+  assert.deepEqual(noAno.deltas.map((d) => d.label), ['vs abr./2026']);
+
+  const foraDoAno = metricDeltas('sales_units', linha, { yearToDate: false });
+  assert.deepEqual(foraDoAno.deltas.map((d) => d.label), ['vs abr./2026', 'No ano até mai./2026']);
+});
+
+test('o painel inteiro respeita o recorte, não só a função de variação', () => {
+  const meses = [
+    mes({ reference_date: '2026-01-01' }),
+    mes({ reference_date: '2026-02-01', sales_units_ytd: 828 }),
+  ];
+  const painel = buildMarketDashboard(aggregatePeriod(meses), meses);
+  const vendas = painel.destaques.find((c) => c.key === 'sales_units');
+  assert.equal(vendas.deltas.some((d) => d.label.startsWith('No ano')), false,
+    'jan–fev é o acumulado do ano: a linha repetiria o valor grande');
 });
 
 test('sem data utilizável o rótulo genérico volta — vago, mas não falso', () => {

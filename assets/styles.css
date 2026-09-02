@@ -93,6 +93,7 @@
   --tipo-lg: 16px;
   --tipo-xl: 20px;
   --tipo-2xl: 26px;
+  --tipo-3xl: 30px;
 
   /* Espaço. */
   --esp-1: 4px;
@@ -101,6 +102,7 @@
   --esp-4: 16px;
   --esp-5: 24px;
   --esp-6: 32px;
+  --esp-7: 48px;
 
   /* Estados semânticos: saturada para traço e texto, tinta para bloco, borda para o contorno.
      A saturada NUNCA é superfície de texto — quem preenche é o par `-fundo`/`-borda`.
@@ -120,7 +122,7 @@
   --info-fundo: #e8eef7;
   --info-borda: #bfd0e6;
 
-  /* Paleta CATEGÓRICA das séries de gráfico (issue #83).
+  /* Paleta CATEGÓRICA das séries de gráfico (issues #83 e #85).
 
      Família PRÓPRIA, de propósito: `--listing`, `--development` e `--anchor` codificam
      camada do mapa, e reusá-las num gráfico ensinaria uma associação falsa — azul viraria
@@ -129,16 +131,46 @@
      Consome-se por ÍNDICE (`--cat-3`), nunca por nome de cor: a definição do gráfico diz
      `cat: 3` e não sabe que cor é essa, que é o que permite trocar o tema sem tocar em
      módulo puro. O índice 8 é o slot neutro, reservado para resíduo/"Outros" — nunca para
-     a série principal. Todas passam de 3:1 sobre `--bg` e `--panel` nos dois temas, que é
-     o mínimo de contraste para elemento gráfico. */
-  --cat-1: #24563d;
-  --cat-2: #3478b9;
-  --cat-3: #a86a12;
-  --cat-4: #7252a3;
-  --cat-5: #2e8a86;
-  --cat-6: #b2503f;
+     a série principal.
+
+     COR DE MARCA NÃO É COR DE SÉRIE (R8.75). A primeira versão desta paleta usou o verde
+     da marca (`#24563d`) como série 1, e ele REPROVA: fora da faixa de luminosidade e
+     abaixo do piso de croma no tema claro — lido como quase-preto —, e o par oliva↔
+     terracota que vinha depois dava ΔE 1,3 sob deuteranopia, ou seja, duas séries
+     indistinguíveis. A marca continua na interface; como série ela vira um passo mais
+     claro e mais cromático.
+
+     Verificada por script, não no olho — `dataviz/scripts/validate_palette.js`:
+
+       claro  (superfície #ffffff): TODAS as cinco checagens passam.
+                                    pior par adjacente CVD ΔE 13,0 · visão normal 20,1
+       escuro (superfície #161c18): passa, com um WARN — teal↔violeta ΔE 7,6, na banda
+                                    6–8, legal só com codificação secundária. Aqui ela é
+                                    obrigatória de qualquer jeito (legenda sempre presente
+                                    e rótulo no último ponto), e esses dois nunca aparecem
+                                    no mesmo gráfico. */
+  --cat-1: #2f8f5b;
+  --cat-2: #2a78d6;
+  --cat-3: #c07c0a;
+  --cat-4: #7452c4;
+  --cat-5: #0d8f9e;
+  --cat-6: #d1483c;
   --cat-7: #6d7f45;
   --cat-8: #6f7b75;
+
+  /* Rampa ORDINAL dos anos, do mais antigo (claro) ao corrente (escuro) — issue #85.
+
+     Ano é categoria ORDENADA, não identidade: 2023 vem antes de 2024. Pintar cada ano com
+     um matiz diferente gastava a paleta categórica com uma ordem que a própria cor podia
+     carregar, e o quarteto azul↔violeta reprovava quando as quatro linhas dividiam o mesmo
+     plano. Um matiz só, mais escuro a cada ano, resolve os dois.
+
+     Passa `--ordinal` nos dois temas: monotonia de luminosidade, ΔL ≥ 0,06 entre passos,
+     ponta clara acima de 2:1 sobre a superfície, matiz único (dispersão ≤ 3°). */
+  --ano-1: #7ebe9a;
+  --ano-2: #4fa675;
+  --ano-3: #2f8054;
+  --ano-4: #155839;
 
   --font-sans: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
   /* Reforça o caráter de dado (preço, m², contagens) sem depender de fonte
@@ -187,14 +219,22 @@
     --info-fundo: #1a2536;
     --info-borda: #2e415c;
 
-    --cat-1: #57b57e;
-    --cat-2: #8eb8ff;
-    --cat-3: #e0b055;
-    --cat-4: #b498e8;
-    --cat-5: #63c9c3;
-    --cat-6: #eb9182;
-    --cat-7: #adc46f;
+    --cat-1: #3f9e68;
+    --cat-2: #5b92d8;
+    --cat-3: #bd8a2e;
+    --cat-4: #8f6fd0;
+    --cat-5: #149dad;
+    --cat-6: #d4665a;
+    --cat-7: #8f9e5a;
     --cat-8: #8fa196;
+
+    /* A rampa dos anos inverte no escuro: o ano corrente é o passo MAIS CLARO, porque é
+       ele que precisa saltar da superfície escura. A ordem de leitura (antigo → corrente)
+       continua a mesma; o que muda é de que lado da superfície ela caminha. */
+    --ano-1: #1f5a3d;
+    --ano-2: #2f8558;
+    --ano-3: #4fb07b;
+    --ano-4: #8fd6ac;
   }
 }
 
@@ -568,7 +608,7 @@ h1, h2 { margin: 0; font-size: 1rem; }
 
 select, input[type="number"] {
   width: 100%;
-  padding: 7px 9px;
+  padding: var(--esp-2);
   border: 1px solid var(--line);
   border-radius: 8px;
   background: var(--panel);
@@ -1038,22 +1078,23 @@ select:focus, input[type="number"]:focus {
   max-width: 1100px;
   height: calc(100% - var(--topbar-h));
   margin: 0 auto;
-  padding: 24px 16px 48px;
+  padding: var(--esp-5) var(--esp-4) var(--esp-7);
   overflow-y: auto;
 }
-.market-head h1 { margin: 0 0 8px; font-size: 22px; }
+.market-head h1 { margin: 0 0 var(--esp-2); font-size: var(--tipo-xl); }
 
 /* A declaração de escopo NÃO é rodapé nem letra miúda: quem chega aqui vindo de um mapa
    com filtro de Região Administrativa espera, por continuidade, que os números respondam
    ao mesmo recorte. Eles não respondem, e esta frase é a única coisa que diz isso. */
+/* O escopo é uma declaração PERMANENTE, não um alerta: ele vale para todos os números da
+   tela, todos os dias. Com peso de aviso, ele competia com os indicadores toda vez. */
 .market-scope {
-  margin: 0 0 20px;
-  padding: 10px 12px;
-  border-left: 3px solid var(--accent-text);
-  background: var(--panel);
-  font-size: 13px;
+  margin: 0 0 var(--esp-4);
+  padding-left: var(--esp-3);
+  border-left: 2px solid var(--borda-forte);
+  font-size: var(--tipo-sm);
   line-height: 1.5;
-  color: var(--ink);
+  color: var(--texto-sec);
 }
 
 .market-filters {
@@ -1071,7 +1112,7 @@ select:focus, input[type="number"]:focus {
    seria uma segunda verdade sobre a mesma coisa. */
 .market-chips { display: flex; flex-wrap: wrap; gap: var(--esp-2); }
 .market-chip {
-  padding: 5px 12px;
+  padding: var(--esp-1) var(--esp-3);
   border: 1px solid var(--borda-forte);
   border-radius: var(--raio-pill);
   background: var(--superficie-sutil);
@@ -1095,7 +1136,7 @@ select:focus, input[type="number"]:focus {
   gap: var(--esp-3);
   align-items: end;
 }
-.market-campos label { display: grid; gap: 5px; }
+.market-campos label { display: grid; gap: var(--esp-1); }
 .market-campos label > span {
   font-size: var(--tipo-xs);
   font-weight: 700;
@@ -1107,7 +1148,7 @@ select:focus, input[type="number"]:focus {
 .market-campos input[type="month"] {
   width: 100%;
   min-height: 38px;
-  padding: 7px 9px;
+  padding: var(--esp-2);
   border: 1px solid var(--borda-forte);
   border-radius: var(--raio-md);
   background: var(--superficie-sutil);
@@ -1131,39 +1172,88 @@ select:focus, input[type="number"]:focus {
   color: var(--texto-base);
 }
 
-.market-history { margin-top: 30px; }
-.market-history > header { margin-bottom: 12px; }
-.market-history h2 { font-size: 18px; }
-.market-history header p { margin: 5px 0 0; font-size: 12px; color: var(--muted); }
+.market-history { margin-top: var(--esp-6); }
+.market-history-head {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: var(--esp-3);
+  flex-wrap: wrap;
+  margin-bottom: var(--esp-3);
+}
+.market-history h2 { font-size: var(--tipo-lg); }
+.market-history-head p { margin: var(--esp-1) 0 0; font-size: var(--tipo-sm); color: var(--texto-sec); }
 .market-chart-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 12px;
+  gap: var(--esp-3);
 }
 .market-chart {
   min-width: 0;
-  padding: 14px;
+  padding: var(--esp-4);
   border: 1px solid var(--line);
   border-radius: var(--raio-lg);
   background: var(--panel);
 }
-.market-chart h3 { margin: 0 0 2px; font-size: var(--tipo-base); font-weight: 600; }
+.market-chart-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--esp-3);
+  margin-bottom: var(--esp-2);
+}
+.market-chart h3 { margin: 0; font-size: var(--tipo-base); font-weight: 600; }
 
 /* A pergunta que o gráfico responde, embaixo do título. É ela que transforma
    "VGV por mês" em algo que a pessoa sabe por que está olhando. */
 .market-chart-pergunta {
-  margin: 0 0 var(--esp-2);
+  margin: 0;
   font-size: var(--tipo-xs);
   color: var(--texto-sec);
 }
 
+/* Qual série está na tela — dito no gráfico, porque quem rolou até aqui não vê mais a
+   pílula que escolheu o modo. */
+.market-chart-modo {
+  margin: var(--esp-1) 0 0;
+  font-size: var(--tipo-2xs);
+  color: var(--texto-fraco);
+}
+
+/* O valor no canto: o que o desenho diz devagar, dito de relance — com a operação que o
+   produziu, porque soma e média sobre a mesma série diferem por doze e parecem igualmente
+   plausíveis sem o rótulo. */
+.market-chart-resumo {
+  flex: none;
+  margin: 0;
+  text-align: right;
+  line-height: 1.25;
+}
+.market-chart-resumo strong {
+  display: block;
+  font-size: var(--tipo-lg);
+  font-weight: 600;
+  color: var(--texto-forte);
+}
+.market-chart-resumo span {
+  font-size: var(--tipo-2xs);
+  text-transform: uppercase;
+  letter-spacing: .04em;
+  color: var(--texto-sec);
+}
+
+/* A caixa que o desenho mede. Ela existe para ser MEDIDA: o `viewBox` do SVG sai da
+   largura dela, então o gráfico é desenhado no tamanho em que vai aparecer (R8.74). */
+.market-chart-plot { position: relative; min-width: 0; }
 .market-chart-svg {
   display: block;
   width: 100%;
   height: auto;
   overflow: visible;
 }
-.chart-grid-line { stroke: var(--borda-base); stroke-width: 1; }
+.chart-grid-line { stroke: var(--borda-sutil); stroke-width: 1; }
+/* Linha de base do eixo X: ancora coluna e área, e diz onde o plot termina. */
+.chart-axis-line { stroke: var(--borda-base); stroke-width: 1; }
 .chart-zero-line { stroke: var(--borda-forte); stroke-width: 1; stroke-opacity: .6; }
 .chart-axis-value,
 .chart-axis-month { fill: var(--texto-sec); font-size: var(--tipo-2xs); }
@@ -1184,6 +1274,12 @@ select:focus, input[type="number"]:focus {
 .serie-7 { --serie-cor: var(--cat-7); }
 .serie-8 { --serie-cor: var(--cat-8); }
 
+/* Anos da sazonalidade: mesma mecânica das séries, rampa ordinal em vez de categórica. */
+.ano-1 { --serie-cor: var(--ano-1); }
+.ano-2 { --serie-cor: var(--ano-2); }
+.ano-3 { --serie-cor: var(--ano-3); }
+.ano-4 { --serie-cor: var(--ano-4); }
+
 .market-serie-linha {
   fill: none;
   stroke: var(--serie-cor);
@@ -1191,9 +1287,79 @@ select:focus, input[type="number"]:focus {
   stroke-linecap: round;
   stroke-linejoin: round;
 }
-.market-serie-area { fill: var(--serie-cor); fill-opacity: .18; stroke: none; }
+/* Área é um véu, não um bloco: ela contextualiza a linha sem competir com ela. */
+.market-serie-area { fill: var(--serie-cor); fill-opacity: .12; stroke: none; }
 .market-serie-coluna { fill: var(--serie-cor); }
 .market-serie-marcador { fill: var(--serie-cor); }
+
+/* Rótulo direto no último ponto. Ele veste TOKEN DE TEXTO, não a cor da série: matiz claro
+   é ilegível como texto, e a identidade já vem do traço logo abaixo dele. */
+.chart-rotulo-final {
+  fill: var(--texto-forte);
+  font-size: var(--tipo-2xs);
+  font-weight: 700;
+}
+
+/* Camada de leitura: linha guia, ponto em foco e a área que captura o ponteiro. */
+.chart-guia { stroke: var(--borda-forte); stroke-width: 1; pointer-events: none; }
+.chart-foco {
+  fill: var(--serie-cor);
+  stroke: var(--superficie-base);
+  stroke-width: 2;
+  pointer-events: none;
+}
+.chart-captura { fill: transparent; }
+.market-chart-svg:focus-visible { outline: 2px solid var(--accent-text); outline-offset: 2px; }
+[hidden] { display: none; }
+
+/* O balão segue o mês. Valor em destaque e nome da série secundário — o inverso da
+   legenda, porque aqui quem lê já sabe a série e quer o número. */
+.market-chart-tooltip {
+  position: absolute;
+  z-index: 2;
+  min-width: 132px;
+  padding: var(--esp-2);
+  transform: translateX(var(--esp-2));
+  border: 1px solid var(--borda-forte);
+  border-radius: var(--raio-md);
+  background: var(--superficie-elevada);
+  box-shadow: var(--sombra-2);
+  pointer-events: none;
+}
+.market-chart-tooltip-esquerda { transform: translateX(calc(-100% - var(--esp-2))); }
+.market-tooltip-mes {
+  margin: 0 0 var(--esp-1);
+  font-size: var(--tipo-2xs);
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: .04em;
+  color: var(--texto-sec);
+}
+.market-chart-tooltip ul { margin: 0; padding: 0; list-style: none; }
+.market-chart-tooltip li {
+  display: grid;
+  grid-template-columns: 10px auto;
+  align-items: baseline;
+  gap: var(--esp-1) var(--esp-2);
+  font-size: var(--tipo-sm);
+}
+.market-chart-tooltip strong {
+  font-weight: 600;
+  color: var(--texto-forte);
+  font-variant-numeric: tabular-nums;
+}
+.market-tooltip-serie {
+  grid-column: 2;
+  font-size: var(--tipo-2xs);
+  color: var(--texto-sec);
+}
+.market-tooltip-chave {
+  align-self: center;
+  width: 10px;
+  height: 2px;
+  border-radius: var(--raio-xs);
+  background: var(--serie-cor);
+}
 
 .market-chart-legend {
   display: flex;
@@ -1205,13 +1371,12 @@ select:focus, input[type="number"]:focus {
   color: var(--texto-sec);
   font-size: var(--tipo-xs);
 }
-.market-chart-legend li { display: inline-flex; align-items: center; gap: 6px; }
-.market-legenda-cor {
-  width: 10px;
-  height: 10px;
-  border-radius: var(--raio-xs);
-  background: var(--serie-cor);
-}
+.market-chart-legend li { display: inline-flex; align-items: center; gap: var(--esp-2); }
+/* A chave espelha a marca: traço para linha, bloco para área e coluna. Um quadrado ao lado
+   de uma linha faz procurar no gráfico uma forma que não está lá. */
+.market-legenda-cor { background: var(--serie-cor); border-radius: var(--raio-xs); }
+.market-legenda-bloco { width: 10px; height: 10px; }
+.market-legenda-traco { width: 14px; height: 3px; }
 
 /* Os mesmos números em tabela, recolhidos: acima de 24 meses o gráfico não desenha
    marcador, e sem marcador não há `title` para consultar o valor de um mês. */
@@ -1235,7 +1400,7 @@ select:focus, input[type="number"]:focus {
 }
 .market-chart-valores th,
 .market-chart-valores td {
-  padding: 4px 6px;
+  padding: var(--esp-1) var(--esp-2);
   border-bottom: 1px solid var(--borda-sutil);
   text-align: right;
 }
@@ -1257,24 +1422,27 @@ select:focus, input[type="number"]:focus {
   font-size: var(--tipo-sm);
 }
 
-/* O sparkline não tem eixo nem legenda: só a forma do movimento, ao lado do número. */
+/* O sparkline não tem eixo nem legenda: só a forma do movimento, ao lado do número.
+   A altura vem da proporção do `viewBox` (medido), não de um valor fixo brigando com ele —
+   era essa briga que esticava o desenho 2,1× na horizontal. */
+.market-kpi-spark { min-width: 0; margin: var(--esp-2) 0; }
 .market-spark-svg {
   display: block;
   width: 100%;
-  height: 32px;
+  height: auto;
   overflow: visible;
 }
 
-.market-provenance { margin-top: 24px; }
+.market-provenance { margin-top: var(--esp-5); }
 .market-provenance > summary {
   cursor: pointer;
-  padding: 6px 0;
-  font-size: 12px;
+  padding: var(--esp-1) 0;
+  font-size: var(--tipo-sm);
   color: var(--muted);
 }
 .market-provenance > summary:hover { color: var(--ink); }
 .market-provenance > summary:focus-visible { outline: 2px solid var(--accent-text); outline-offset: 2px; }
-.market-provenance dl { font-size: 12px; }
+.market-provenance dl { font-size: var(--tipo-sm); }
 .market-provenance dt { color: var(--muted); }
 .market-provenance dd { margin: 0; text-align: right; }
 
@@ -1283,7 +1451,7 @@ select:focus, input[type="number"]:focus {
      busca, em vez de espremerem o campo de busca a ponto de ele não caber um endereço. */
   .view-switch { order: 3; width: 100%; }
   .view-tab { flex: 1; }
-  .market { padding: 16px 12px 32px; }
+  .market { padding: var(--esp-4) var(--esp-3) var(--esp-6); }
   .market-campos { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .market-chart-grid { grid-template-columns: 1fr; }
 }
@@ -1314,7 +1482,11 @@ select:focus, input[type="number"]:focus {
   background: var(--superficie-base);
   box-shadow: var(--sombra-1);
 }
+/* Duas linhas reservadas para o rótulo: "IVV (índice de velocidade de vendas)" quebra e os
+   outros três não, e sem a reserva os quatro valores da faixa saem em alturas diferentes —
+   uma régua de indicadores só se lê de relance quando os números estão na mesma linha. */
 .market-kpi-rotulo {
+  min-height: calc(var(--tipo-2xs) * 1.35 * 2);
   margin: 0 0 var(--esp-1);
   font-size: var(--tipo-2xs);
   font-weight: 700;
@@ -1325,7 +1497,7 @@ select:focus, input[type="number"]:focus {
 }
 .market-kpi-valor {
   margin: 0;
-  font-size: var(--tipo-2xl);
+  font-size: var(--tipo-3xl);
   font-weight: 600;
   line-height: 1.1;
   color: var(--texto-forte);
@@ -1356,20 +1528,25 @@ select:focus, input[type="number"]:focus {
   border-radius: var(--raio-lg);
   background: var(--superficie-base);
 }
+/* Mesma anatomia do destaque, um degrau abaixo: rótulo em caixa-alta miúda nos DOIS, e a
+   hierarquia vindo do tamanho do valor. Antes o tile tinha o rótulo MAIOR que o do
+   destaque (12px caixa-baixa contra 10px caixa-alta), o que invertia a leitura. */
 .market-card-label {
-  margin: 0 0 6px;
-  font-size: var(--tipo-sm);
-  font-weight: 500;
+  margin: 0 0 var(--esp-1);
+  font-size: var(--tipo-2xs);
+  font-weight: 700;
+  letter-spacing: .04em;
+  text-transform: uppercase;
   color: var(--texto-sec);
-  line-height: 1.3;
+  line-height: 1.35;
 }
 
 /* Figuras PROPORCIONAIS de propósito: `tabular-nums` dá a todo dígito a largura de um
    zero, e num número grande em corpo 24 isso deixa o texto frouxo. Tabular fica para as
    variações, que são coluna e precisam alinhar. */
 .market-card-value {
-  margin: 0 0 10px;
-  font-size: var(--tipo-xl);
+  margin: 0;
+  font-size: var(--tipo-lg);
   font-weight: 600;
   line-height: 1.15;
   color: var(--texto-forte);
@@ -1377,25 +1554,27 @@ select:focus, input[type="number"]:focus {
 
 .market-card-absent {
   margin: 0;
-  font-size: 12px;
+  font-size: var(--tipo-sm);
   line-height: 1.45;
   color: var(--muted);
 }
 
 .market-deltas { margin: var(--esp-2) 0 0; padding: 0; list-style: none; }
 
-/* A variação que a pessoa veio ver, no destaque. Ganha corpo, e só ela. */
-.market-delta-principal { font-size: var(--tipo-base); }
-.market-delta-principal .market-delta-value { font-weight: 600; }
+/* A variação que a pessoa veio ver, no destaque. Ganha corpo, e só ela — antes era UM pixel
+   maior que as secundárias, uma diferença que ninguém enxerga. */
+.market-delta-principal { font-size: var(--tipo-md); line-height: 1.5; }
+.market-delta-principal .market-delta-value { font-weight: 700; }
+.market-delta-principal .market-delta-icon { font-size: var(--tipo-xs); }
 .market-delta {
   display: grid;
   grid-template-columns: 12px 1fr auto;
   align-items: baseline;
-  gap: 6px;
-  font-size: 12px;
-  line-height: 1.6;
+  gap: var(--esp-1) var(--esp-2);
+  font-size: var(--tipo-xs);
+  line-height: 1.55;
 }
-.market-delta-icon { font-size: 9px; text-align: center; }
+.market-delta-icon { font-size: var(--tipo-2xs); text-align: center; }
 .market-delta-label { color: var(--muted); overflow-wrap: anywhere; }
 .market-delta-value { font-variant-numeric: tabular-nums; color: var(--ink); }
 
@@ -1406,7 +1585,7 @@ select:focus, input[type="number"]:focus {
 .market-delta-neutro .market-delta-icon { color: var(--muted); }
 
 .market-period-base {
-  margin: -6px 0 0;
+  margin: 0;
   font-size: var(--tipo-sm);
   color: var(--texto-sec);
 }
@@ -1429,12 +1608,16 @@ select:focus, input[type="number"]:focus {
     gap: var(--esp-1) var(--esp-2);
     padding: var(--esp-2) var(--esp-3);
   }
-  .market-kpi-rotulo { margin: 0; }
-  .market-kpi-valor { font-size: var(--tipo-lg); white-space: nowrap; }
-  .market-kpi > .market-spark-svg,
+  /* Em pílula não há régua de valores para alinhar — rótulo e valor dividem a linha —,
+     então a reserva de duas linhas do desktop só abriria um buraco. */
+  .market-kpi-rotulo { min-height: 0; margin: 0; }
+  .market-kpi-valor { font-size: var(--tipo-xl); white-space: nowrap; }
+  .market-kpi > .market-kpi-spark,
   .market-kpi > .market-deltas,
   .market-kpi > .market-card-absent { grid-column: 1 / -1; }
   .market-tiles { grid-template-columns: 1fr; }
-  .market-card-value { font-size: var(--tipo-xl); }
+  /* Em pílula o destaque cai para --tipo-xl; o tile precisa ficar abaixo dele, ou a
+     hierarquia se inverte justamente onde há menos espaço para reconstruí-la. */
+  .market-card-value { font-size: var(--tipo-lg); }
   .market-campos { grid-template-columns: 1fr; }
 }

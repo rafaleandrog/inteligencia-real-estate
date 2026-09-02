@@ -13,12 +13,15 @@ import { ivvProvenance, IVV_SCOPE_NOTICE } from './ivv/scope.js';
 import { aggregatePeriod } from './ivv/aggregate.js';
 import { buildMarketDashboard, formatMetricValue } from './ivv/cards.js';
 import {
-  PERIOD_MODE_OPTIONS, availableYears, availableMonths, controlDisabledReason,
+  PERIOD_MODE_OPTIONS, PERIOD_MODES, availableYears, availableMonths, controlDisabledReason,
   defaultPeriodSelection, selectIvvPeriod, chartRowsForSelection, periodSummary,
   monthYearLabel, mesAnterior, mesmoMesAnoAnterior,
 } from './ivv/period.js';
-import { buildHistoryCharts, buildSeasonality, buildSparkline } from './ivv/history.js';
-import { chartGeometry, chartViewport, VIEWPORTS } from './ivv/chart-layout.js';
+import {
+  buildHistoryCharts, buildSeasonality, buildSparkline, SERIES_MODES,
+} from './ivv/history.js';
+import { CHART_TYPES } from './ivv/chart-model.js';
+import { chartGeometry, chartViewport, sparkViewport } from './ivv/chart-layout.js';
 import {
   anchorLegendGroups, applyFilters, computeKpis, createFilterState, distinctAnchorGroups,
   distinctAnchorSegments, distinctLocalities, distinctPropertyTypes, distinctRegions,
@@ -68,6 +71,7 @@ const dom = {
   marketStart: el('marketStart'), marketEnd: el('marketEnd'),
   marketPeriodLabel: el('marketPeriodLabel'), marketPeriodBase: el('marketPeriodBase'),
   marketDestaques: el('marketDestaques'), marketCharts: el('marketCharts'),
+  marketSeriesMode: el('marketSeriesMode'),
   marketHistoryNote: el('marketHistoryNote'),
   marketProvenance: el('marketProvenance'), marketProvenanceList: el('marketProvenanceList'),
   marketSource: el('marketSource'),
@@ -1273,7 +1277,7 @@ function marketDeltaRow(delta) {
  *
  * `data-metrica` é o endereço estável do card: rótulo muda, chave de métrica não.
  */
-function marketCard(card, { destaque = false, spark = null } = {}) {
+function marketCard(card, { destaque = false, spark = null, sparks = [] } = {}) {
   const box = document.createElement('article');
   box.className = destaque ? 'market-kpi' : 'market-card';
   box.dataset.metrica = card.key;
@@ -1298,7 +1302,12 @@ function marketCard(card, { destaque = false, spark = null } = {}) {
   value.textContent = card.value;
   box.append(value);
 
-  if (spark && !spark.vazio) box.append(marketSpark(spark));
+  if (spark && !spark.vazio) {
+    const caixa = document.createElement('div');
+    caixa.className = 'market-kpi-spark';
+    box.append(caixa);
+    sparks.push({ plot: caixa, model: spark, spark: true });
+  }
 
   if (card.deltas.length > 0) {
     const list = document.createElement('ul');
@@ -1345,12 +1354,17 @@ function renderMarketCards(months, janela) {
   const aggregated = aggregatePeriod(months);
   const { destaques, grupos, mesReferencia } = buildMarketDashboard(aggregated, months);
 
+  // Os sparklines seguem a mesma regra dos gráficos: caixa vazia agora, desenho depois de
+  // medir (issue #85). Antes disso o spark tinha `viewBox` de 120×32 esticado à força num
+  // card de ~250px — 2,1× na horizontal, com o traço deformando junto.
+  const sparks = [];
   dom.marketDestaques.replaceChildren(...destaques.map((card) => marketCard(card, {
     destaque: true,
     spark: buildSparkline(janela, card.key),
+    sparks,
   })));
   dom.marketBody.replaceChildren(...grupos.map(marketGrupo));
-  return { warnings: aggregated.warnings, mesReferencia };
+  return { warnings: aggregated.warnings, mesReferencia, sparks };
 }
 
 function option(value, label) {
@@ -1450,10 +1464,14 @@ function svgNode(name, attributes = {}) {
  */
 function chartSvg(model, viewport) {
   const geometria = chartGeometry(model, viewport);
+  // O sparkline não tem eixo nem grade: ele não leva linha de base nem rótulo final.
+  const semEixo = geometria.grade.length === 0 && geometria.eixoX.length === 0;
+  // Sem `preserveAspectRatio="none"`: com o `viewBox` na medida da caixa a escala é 1:1 e
+  // uniforme. Forçar o preenchimento não-uniforme era o que achatava o traço do sparkline
+  // e transformava o marcador redondo em elipse.
   const svg = svgNode('svg', {
     viewBox: geometria.viewBox,
     class: 'market-chart-svg',
-    preserveAspectRatio: 'none',
     role: 'img',
     'aria-label': model.ariaLabel,
   });
@@ -1505,6 +1523,18 @@ function chartSvg(model, viewport) {
     svg.append(grupo);
   }
 
+  // Linha de base do eixo X: é ela que ancora as colunas e diz onde o plot termina. Sem
+  // ela, coluna e área ficam pairando sobre o nada.
+  if (!semEixo) {
+    svg.append(svgNode('line', {
+      x1: geometria.plot.x,
+      x2: geometria.plot.x + geometria.plot.largura,
+      y1: geometria.plot.y + geometria.plot.altura,
+      y2: geometria.plot.y + geometria.plot.altura,
+      class: 'chart-axis-line',
+    }));
+  }
+
   for (const rotulo of geometria.eixoX) {
     const texto = svgNode('text', {
       x: rotulo.x, y: geometria.eixoXBaseY, 'text-anchor': rotulo.ancora, class: 'chart-axis-month',
@@ -1513,7 +1543,23 @@ function chartSvg(model, viewport) {
     svg.append(texto);
   }
 
-  return svg;
+  // Rótulo direto SÓ no último ponto de cada série. Número em todo ponto é ruído que
+  // ninguém lê; no último ele responde "e agora, quanto está?" sem passar pelo eixo.
+  if (!semEixo) {
+    for (const serie of geometria.series) {
+      if (!serie.ultimoPonto?.rotulo) continue;
+      const texto = svgNode('text', {
+        x: serie.ultimoPonto.rotuloX,
+        y: serie.ultimoPonto.rotuloY,
+        'text-anchor': 'end',
+        class: `chart-rotulo-final serie-${serie.cat}`,
+      });
+      texto.textContent = serie.ultimoPonto.rotulo;
+      svg.append(texto);
+    }
+  }
+
+  return { svg, geometria };
 }
 
 function tituloSvg(texto) {
@@ -1533,7 +1579,10 @@ function marketChartLegend(model) {
   for (const serie of model.series) {
     const item = document.createElement('li');
     const cor = document.createElement('span');
-    cor.className = `market-legenda-cor serie-${serie.cat}`;
+    // A chave espelha a marca: traço para linha, retângulo para área e coluna. Um quadrado
+    // ao lado de uma linha faz procurar no gráfico uma forma que não está lá.
+    const forma = model.tipo === CHART_TYPES.LINHA ? 'traco' : 'bloco';
+    cor.className = `market-legenda-cor market-legenda-${forma} serie-${serie.cat}`;
     cor.setAttribute('aria-hidden', 'true');
     item.append(cor, document.createTextNode(serie.rotulo));
     legenda.append(item);
@@ -1583,21 +1632,63 @@ function marketChartTable(model) {
   return bloco;
 }
 
-function marketChart(model, viewport) {
+/**
+ * O card do gráfico, montado SEM o desenho (issue #85).
+ *
+ * O SVG entra numa segunda passada, depois que o card já está no DOM e dá para MEDIR a
+ * caixa. Enquanto o `viewBox` era um número fixo (640) e a caixa real tinha ~498px, o
+ * navegador escalava a arte inteira por 0,78 — rótulo de 10px chegando com 7,8px, traço
+ * de 2px com 1,56px — e nada denunciava (R8.74).
+ *
+ * Medir é melhor que calcular: deduzir a largura pelo número de colunas obrigaria a repetir
+ * em JS os pontos de quebra que já estão no CSS, e duas verdades sobre a mesma grade
+ * divergem no primeiro ajuste.
+ */
+function marketChart(model) {
   const article = document.createElement('article');
   article.className = 'market-chart';
   article.dataset.chart = model.key;
 
+  const cabecalho = document.createElement('header');
+  cabecalho.className = 'market-chart-head';
+
+  const titulos = document.createElement('div');
   const title = document.createElement('h3');
   title.textContent = model.titulo;
-  article.append(title);
-
+  titulos.append(title);
   if (model.pergunta) {
     const pergunta = document.createElement('p');
     pergunta.className = 'market-chart-pergunta';
     pergunta.textContent = model.pergunta;
-    article.append(pergunta);
+    titulos.append(pergunta);
   }
+  if (model.notaModo) {
+    // Que série está na tela é informação do gráfico, não do controle lá em cima: quem
+    // rola até aqui não vê mais a pílula que escolheu o modo.
+    const nota = document.createElement('p');
+    nota.className = 'market-chart-modo';
+    nota.textContent = model.notaModo;
+    titulos.append(nota);
+  }
+  cabecalho.append(titulos);
+
+  // O valor no canto responde de relance a pergunta que o desenho responde devagar — e diz
+  // QUE OPERAÇÃO o produziu, porque soma e média sobre a mesma série de doze meses dão
+  // números que diferem por doze e parecem igualmente plausíveis sem o rótulo.
+  if (model.resumo) {
+    const resumo = document.createElement('p');
+    resumo.className = 'market-chart-resumo';
+    const valor = document.createElement('strong');
+    valor.textContent = model.resumo.valor;
+    resumo.append(valor);
+    if (model.resumo.rotulo) {
+      const nota = document.createElement('span');
+      nota.textContent = model.resumo.rotulo;
+      resumo.append(nota);
+    }
+    cabecalho.append(resumo);
+  }
+  article.append(cabecalho);
 
   if (model.vazio) {
     // Ausência é frase, não gráfico vazio: um desenho sem traço é indistinguível de um
@@ -1606,23 +1697,210 @@ function marketChart(model, viewport) {
     empty.className = 'market-chart-empty';
     empty.textContent = model.mensagemVazio;
     article.append(empty);
-    return article;
+    return { article, plot: null, model };
   }
 
-  article.append(chartSvg(model, viewport), marketChartLegend(model), marketChartTable(model));
-  return article;
+  const plot = document.createElement('div');
+  plot.className = 'market-chart-plot';
+  // Legenda ANTES do plot: ela é a chave de leitura, e chave se lê antes do que ela abre.
+  article.append(marketChartLegend(model), plot, marketChartTable(model));
+  return { article, plot, model };
+}
+
+/**
+ * Segunda passada: mede a caixa e desenha dentro dela.
+ *
+ * `clientWidth` de um elemento fora do DOM é 0 — daí a ordem obrigatória: inserir, medir,
+ * desenhar. Quando a medida vem 0 mesmo assim (container oculto), o viewport cai no
+ * fallback do perfil em vez de produzir um `viewBox` degenerado.
+ */
+function desenharGraficos(cards) {
+  for (const card of cards) {
+    if (!card.plot) continue;
+    const largura = card.plot.clientWidth;
+    // Redesenhar com a mesma medida é trabalho jogado fora — e, dentro do observador de
+    // tamanho, é o que realimentaria o laço.
+    if (Math.abs(largura - (card.larguraDesenhada || 0)) < TOLERANCIA_DE_REDESENHO) continue;
+    card.larguraDesenhada = largura;
+    const viewport = card.spark ? sparkViewport(largura) : chartViewport(largura);
+    const { svg, geometria } = chartSvg(card.model, viewport);
+    if (card.spark) {
+      prepararSpark(svg);
+      card.plot.replaceChildren(svg);
+      continue;
+    }
+    card.plot.replaceChildren(svg);
+    ligarLeitura(card.plot, svg, card.model, geometria);
+  }
+}
+
+/** Abaixo disto a diferença de largura não muda o desenho o bastante para valer o reflow. */
+const TOLERANCIA_DE_REDESENHO = 8;
+
+/**
+ * A camada de leitura do gráfico: linha guia + balão com TODAS as séries do mês (issue #85).
+ *
+ * Três decisões que ela carrega:
+ *
+ * 1. **O ponteiro mira um MÊS, não um traço.** Um retângulo transparente cobre o plot
+ *    inteiro e a categoria mais próxima vence — ninguém acerta uma linha de 2px de
+ *    propósito. É `categoriasX`, publicado pela geometria, que faz essa conta.
+ * 2. **O balão mostra o mês inteiro, não a série sob o cursor.** Comparar duas séries é a
+ *    razão de elas dividirem o gráfico; obrigar a passar por cima de cada uma desfaz isso.
+ * 3. **O teclado vê o que o mouse vê.** O `<svg>` é focável e as setas andam pelos meses.
+ *    Sem isso o balão viraria informação exclusiva de quem usa mouse — e o balão nunca é o
+ *    único caminho: os mesmos números estão no `<details>` abaixo.
+ */
+function ligarLeitura(plot, svg, model, geometria) {
+  if (geometria.categoriasX.length === 0) return;
+
+  const guia = svgNode('line', {
+    class: 'chart-guia',
+    y1: geometria.plot.y,
+    y2: geometria.plot.y + geometria.plot.altura,
+    x1: 0,
+    x2: 0,
+  });
+  guia.setAttribute('hidden', 'hidden');
+  svg.append(guia);
+
+  const focos = geometria.series.map((serie) => {
+    const foco = svgNode('circle', { class: `chart-foco serie-${serie.cat}`, r: 4.5, cx: 0, cy: 0 });
+    foco.setAttribute('hidden', 'hidden');
+    svg.append(foco);
+    return { serie, foco };
+  });
+
+  const captura = svgNode('rect', {
+    class: 'chart-captura',
+    x: geometria.plot.x,
+    y: geometria.plot.y,
+    width: geometria.plot.largura,
+    height: geometria.plot.altura,
+  });
+  svg.append(captura);
+
+  const balao = document.createElement('div');
+  balao.className = 'market-chart-tooltip';
+  balao.hidden = true;
+  plot.append(balao);
+
+  let indiceAtivo = -1;
+
+  const esconder = () => {
+    indiceAtivo = -1;
+    balao.hidden = true;
+    guia.setAttribute('hidden', 'hidden');
+    for (const { foco } of focos) foco.setAttribute('hidden', 'hidden');
+  };
+
+  const mostrar = (indice) => {
+    if (indice < 0 || indice >= geometria.categoriasX.length) return;
+    indiceAtivo = indice;
+    const x = geometria.categoriasX[indice];
+
+    guia.setAttribute('x1', String(x));
+    guia.setAttribute('x2', String(x));
+    guia.removeAttribute('hidden');
+
+    for (const { serie, foco } of focos) {
+      const ponto = model.series.find((item) => item.chave === serie.chave)?.pontos[indice];
+      const marca = serie.marcadores.find((m) => Math.abs(m.cx - x) < 0.5);
+      const coluna = serie.colunas.find((c) => x >= c.x - 1 && x <= c.x + c.largura + 1);
+      if (!ponto || ponto.valor === null || (!marca && !coluna)) {
+        foco.setAttribute('hidden', 'hidden');
+        continue;
+      }
+      foco.setAttribute('cx', String(marca ? marca.cx : coluna.x + coluna.largura / 2));
+      foco.setAttribute('cy', String(marca ? marca.cy : coluna.y));
+      foco.removeAttribute('hidden');
+    }
+
+    preencherBalao(balao, model, indice);
+    balao.hidden = false;
+    posicionarBalao(balao, plot, svg, geometria, x);
+  };
+
+  captura.addEventListener('pointermove', (evento) => {
+    const caixa = svg.getBoundingClientRect();
+    if (caixa.width === 0) return;
+    // O `viewBox` tem a largura da caixa, mas a escala é reconferida: o card pode ter
+    // mudado de tamanho entre o desenho e o ponteiro.
+    const escala = geometria.largura / caixa.width;
+    const alvo = (evento.clientX - caixa.left) * escala;
+    mostrar(indiceMaisProximo(geometria.categoriasX, alvo));
+  });
+  captura.addEventListener('pointerleave', esconder);
+
+  svg.setAttribute('tabindex', '0');
+  svg.addEventListener('focus', () => mostrar(indiceAtivo >= 0 ? indiceAtivo : geometria.categoriasX.length - 1));
+  svg.addEventListener('blur', esconder);
+  svg.addEventListener('keydown', (evento) => {
+    const passo = { ArrowLeft: -1, ArrowRight: 1, Home: -Infinity, End: Infinity }[evento.key];
+    if (passo === undefined) {
+      if (evento.key === 'Escape') esconder();
+      return;
+    }
+    evento.preventDefault();
+    const ultimo = geometria.categoriasX.length - 1;
+    const base = indiceAtivo >= 0 ? indiceAtivo : ultimo;
+    mostrar(Math.min(ultimo, Math.max(0, passo === -Infinity ? 0 : (passo === Infinity ? ultimo : base + passo))));
+  });
+}
+
+function indiceMaisProximo(posicoes, alvo) {
+  let melhor = 0;
+  for (let i = 1; i < posicoes.length; i += 1) {
+    if (Math.abs(posicoes[i] - alvo) < Math.abs(posicoes[melhor] - alvo)) melhor = i;
+  }
+  return melhor;
+}
+
+/**
+ * O balão. Valor em destaque e nome da série secundário — é o inverso da legenda, porque
+ * aqui quem lê já sabe qual é a série e quer o número.
+ */
+function preencherBalao(balao, model, indice) {
+  const titulo = document.createElement('p');
+  titulo.className = 'market-tooltip-mes';
+  titulo.textContent = model.categorias[indice].rotulo;
+
+  const lista = document.createElement('ul');
+  for (const serie of model.series) {
+    const ponto = serie.pontos[indice];
+    const item = document.createElement('li');
+    const chave = document.createElement('span');
+    chave.className = `market-tooltip-chave serie-${serie.cat}`;
+    chave.setAttribute('aria-hidden', 'true');
+    const valor = document.createElement('strong');
+    valor.textContent = ponto.rotulo ?? 'sem valor publicado';
+    const nome = document.createElement('span');
+    nome.className = 'market-tooltip-serie';
+    nome.textContent = serie.rotulo;
+    item.append(chave, valor, nome);
+    lista.append(item);
+  }
+  balao.replaceChildren(titulo, lista);
+}
+
+/** O balão segue o mês e não sai da caixa: perto da borda direita ele vira para a esquerda. */
+function posicionarBalao(balao, plot, svg, geometria, x) {
+  const caixa = svg.getBoundingClientRect();
+  const escala = caixa.width / geometria.largura;
+  const meio = geometria.largura / 2;
+  balao.classList.toggle('market-chart-tooltip-esquerda', x > meio);
+  balao.style.left = `${Math.round(x * escala)}px`;
+  balao.style.top = `${Math.round(geometria.plot.y * escala)}px`;
 }
 
 /** O sparkline não é gráfico: é a forma do movimento ao lado do número. */
-function marketSpark(model) {
-  const svg = chartSvg(model, VIEWPORTS.SPARK);
+function prepararSpark(svg) {
   svg.setAttribute('class', 'market-spark-svg');
   // O valor e a variação já estão em texto no card; repetir a série no leitor de tela
   // só atrapalharia.
   svg.setAttribute('aria-hidden', 'true');
   svg.removeAttribute('role');
   svg.removeAttribute('aria-label');
-  return svg;
 }
 
 function renderMarketDashboard() {
@@ -1637,9 +1915,12 @@ function renderMarketDashboard() {
   // pedir isso ao módulo de definição obrigaria ele a conhecer `state`.
   const janela = chartRowsForSelection(state.ivvMonthly, selected);
   const fontes = { periodo: selected.rows, janela, completa: state.ivvMonthly };
-  const viewport = chartViewport(dom.marketCharts.clientWidth || window.innerWidth);
 
-  const { warnings, mesReferencia } = renderMarketCards(selected.rows, janela);
+  const modo = state.marketSeriesMode || modoPadraoDaSerie(state.marketSelection);
+  state.marketSeriesMode = modo;
+  sincronizarModoDaSerie(modo);
+
+  const { warnings, mesReferencia, sparks } = renderMarketCards(selected.rows, janela);
 
   // A base de comparação fica escrita UMA vez, junto do período, em vez de repetida em
   // doze cards. Os rótulos das variações já nomeiam o mês; esta frase diz de onde ele vem.
@@ -1648,13 +1929,75 @@ function renderMarketDashboard() {
       + `${monthYearLabel(mesAnterior(mesReferencia))} e com `
       + `${monthYearLabel(mesmoMesAnoAnterior(mesReferencia))}.`
     : '';
-  dom.marketHistoryNote.textContent = selected.rows.length === 1
-    ? `Os indicadores mostram ${resumo.intervalo}; os gráficos dão contexto com até 12 meses anteriores.`
-    : `Valores mensais no mesmo recorte dos indicadores: ${resumo.intervalo}.`;
+  const recorte = selected.rows.length === 1
+    ? `${resumo.intervalo}, com até 12 meses anteriores de contexto`
+    : resumo.intervalo;
+  dom.marketHistoryNote.textContent = modo === SERIES_MODES.ACUMULADO
+    ? `Acumulado no ano, mês a mês, em ${recorte}.`
+    : `Valores de cada mês em ${recorte}.`;
 
-  const graficos = [...buildHistoryCharts(fontes), buildSeasonality(state.ivvMonthly)];
-  dom.marketCharts.replaceChildren(...graficos.map((model) => marketChart(model, viewport)));
+  const graficos = [
+    ...buildHistoryCharts(fontes, modo),
+    buildSeasonality(state.ivvMonthly, { modo }),
+  ];
+  const cards = graficos.map(marketChart);
+  dom.marketCharts.replaceChildren(...cards.map((item) => item.article));
+
+  // Inserido primeiro, medido depois, desenhado por último. Guardar o que está na tela é o
+  // que permite redesenhar só os SVGs quando a janela muda de largura, sem refazer a
+  // agregação inteira.
+  cardsNaTela = [...cards, ...sparks];
+  desenharGraficos(cardsNaTela);
   return warnings.map((item) => `Mercado (${item.metric || 'período'}): ${item.message}`);
+}
+
+const MODOS_DE_SERIE = Object.freeze([
+  { value: SERIES_MODES.MENSAL, chip: 'Mês a mês', label: 'Valores de cada mês' },
+  { value: SERIES_MODES.ACUMULADO, chip: 'Acumulado no ano', label: 'Acumulado no ano até cada mês' },
+]);
+
+/**
+ * O modo em que os gráficos abrem SEGUE O PERÍODO escolhido (issue #85).
+ *
+ * Quem pediu "Acumulado do ano" nos indicadores está perguntando como está o ano; abrir os
+ * gráficos em mês a mês faria as duas metades da tela responderem perguntas diferentes sem
+ * ninguém ter pedido isso. Nos demais períodos o mês a mês é o que responde.
+ */
+function modoPadraoDaSerie(selecao) {
+  return selecao?.mode === PERIOD_MODES.YTD ? SERIES_MODES.ACUMULADO : SERIES_MODES.MENSAL;
+}
+
+function sincronizarModoDaSerie(modo) {
+  if (dom.marketSeriesMode.childElementCount === 0) {
+    dom.marketSeriesMode.replaceChildren(...MODOS_DE_SERIE.map((item) => {
+      const botao = periodChip(item);
+      botao.dataset.serieModo = item.value;
+      delete botao.dataset.mode;
+      return botao;
+    }));
+  }
+  for (const chip of dom.marketSeriesMode.querySelectorAll('.market-chip')) {
+    chip.setAttribute('aria-pressed', String(chip.dataset.serieModo === modo));
+  }
+}
+
+/** O que está desenhado na tela agora, para o redesenho por mudança de largura. */
+let cardsNaTela = [];
+
+/**
+ * Redesenha os SVGs quando a caixa muda de largura (issue #85).
+ *
+ * A geometria é calculada em JS a partir da medida, e JS não reage a mudança de layout
+ * sozinho: sem isto, estreitar a janela deixaria um desenho de 528 pontos preso numa caixa
+ * de 300. O redesenho acontece DENTRO do observador de tamanho, então a guarda de
+ * `TOLERANCIA_DE_REDESENHO` em `desenharGraficos` é o que impede o laço — cada card só é
+ * redesenhado quando a própria caixa dele mudou de verdade.
+ */
+function observarLarguraDosGraficos() {
+  if (typeof ResizeObserver !== 'function') return;
+  const observador = new ResizeObserver(() => desenharGraficos(cardsNaTela));
+  observador.observe(dom.marketCharts);
+  observador.observe(dom.marketDestaques);
 }
 
 function renderMarketView() {
@@ -1783,10 +2126,20 @@ function bindEvents() {
 
   // Delegação: as pílulas são geradas a cada carga da série, e ouvir no container evita
   // reamarrar seis ouvintes toda vez.
+  dom.marketSeriesMode.addEventListener('click', (event) => {
+    const chip = event.target.closest('.market-chip');
+    if (!chip) return;
+    state.marketSeriesMode = chip.dataset.serieModo;
+    refreshMarketView();
+  });
+
   dom.marketPeriodChips.addEventListener('click', (event) => {
     const chip = event.target.closest('.market-chip');
     if (!chip || !state.marketSelection) return;
     state.marketSelection.mode = chip.dataset.mode;
+    // Trocar de período reajusta o modo dos gráficos: quem sai do acumulado do ano para
+    // "Mês" está mudando de pergunta, e a tela acompanha em vez de manter a resposta velha.
+    state.marketSeriesMode = modoPadraoDaSerie(state.marketSelection);
     syncMarketFilterState();
     refreshMarketView();
   });
@@ -1811,12 +2164,10 @@ function bindEvents() {
     });
   }
 
-  // A geometria do gráfico é calculada em JS a partir da largura disponível, e JS não
-  // reage a media query sozinho: sem este ouvinte, girar o telefone ou estreitar a janela
-  // deixaria o desenho de 640 pontos preso numa tela de 390 (issue #83).
-  window.matchMedia('(max-width: 560px)').addEventListener('change', () => {
-    if (state.marketSelection) refreshMarketView();
-  });
+  // A largura do desenho é medida, então quem avisa que ela mudou é o observador de
+  // tamanho — e não um `matchMedia`, que só dispararia no ponto de quebra e deixaria
+  // passar toda mudança de largura entre eles (issue #85).
+  observarLarguraDosGraficos();
 
   // Troca de view (issue #58). O hash é a fonte da verdade: o clique escreve nele e o
   // `hashchange` aplica. Assim o botão e a barra de endereço nunca discordam, e

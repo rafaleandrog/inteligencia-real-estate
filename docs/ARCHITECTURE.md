@@ -31,7 +31,7 @@ Uma linguagem por arquivo, uma responsabilidade por módulo.
 | `src/format.js` | Formatação e saneamento — **funções puras** |
 | `src/ivv/chart-model.js` | Significado do gráfico: categorias, séries, eixo, ausência — **funções puras** |
 | `src/ivv/chart-layout.js` | Geometria do gráfico: coordenadas, caminhos, colunas — **funções puras** |
-| `src/ivv/history.js` | Quais gráficos existem, o que cada um pergunta e de que recorte lê |
+| `src/ivv/history.js` | Quais gráficos existem, o que cada um pergunta, de que recorte lê e se acumula |
 | `src/app.js` | Interação, mapa e DOM |
 | Google Sheet | Registros e governança |
 
@@ -42,7 +42,17 @@ O gráfico é dividido em **dois** módulos puros de propósito. `chart-model.js
 significado e `chart-layout.js` decide pixel, porque as duas decisões envelhecem em ritmos
 diferentes: passar de quatro para cinco marcas no eixo é estética, mudar o que "sem valor
 publicado" significa é metodologia — e juntas, a segunda acaba alterada por engano ao mexer na
-primeira. O renderizador em `app.js` recebe geometria pronta e só cria nós: não calcula nada.
+primeira. O renderizador em `app.js` recebe geometria pronta e só cria nós: não calcula nada — mas ele
+MEDE. O `viewBox` sai da largura real do card (duas passadas: monta, insere, mede, desenha),
+porque um `viewBox` fixo dentro de uma caixa menor encolhe a arte inteira em silêncio (R8.74).
+
+**Mês a mês × acumulado no ano** é um modo de série, não um gráfico à parte. `runningSeries`
+(`src/ivv/aggregate.js`) agrega de janeiro até cada mês chamando o mesmo `aggregateMetric` de
+sempre, então o que "acumulado" significa continua sendo decidido pelo `kind` da métrica —
+fluxo soma, estoque tira média, preço e taxa refazem a razão ponderada — e o último ponto da
+curva é o mesmo número que o card mostra. O modo troca a série em vez de sobrepor as duas: a
+curva acumulada é uma ordem de grandeza maior que a mensal, e um segundo eixo Y para acomodar
+as duas inventaria uma correlação que o dado não tem.
 
 **Não há biblioteca de gráfico**, e não é por falta de opção: dependência de runtime é
 vendorizada (R1.6) e o site é estático sem etapa de build, então uma biblioteca custaria peso

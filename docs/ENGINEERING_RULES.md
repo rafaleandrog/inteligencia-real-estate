@@ -754,3 +754,47 @@ Cada uma nasce de um erro que aconteceu de verdade.
   O smoke prova rolagem com `scrollHeight`, `clientHeight` e um `scrollTop` que efetivamente se
   move.
 
+- **R8.74** *(2026-09-02, acabamento do Mercado DF, issue #85)* **`viewBox` que não
+  corresponde à caixa real encolhe a arte inteira em silêncio — e a medida vem do DOM, nunca
+  de repetir o breakpoint em JS.** O gráfico usava `viewBox` fixo de 640 dentro de um card de
+  ~498px: o navegador escalava tudo por 0,78, e o rótulo de eixo de 10px chegava na tela com
+  7,8px, o traço de 2px com 1,56px, o marcador com 2,7px. Nada errava, nada avisava — o
+  desenho só parecia mal feito, quando na verdade estava reduzido. O sparkline era pior:
+  `preserveAspectRatio="none"` num `viewBox` de 120×32 dentro de 250px esticava 2,1× só na
+  horizontal, deformando traço e marcador. Mecanismo: renderização em duas passadas — monta o
+  card, insere no DOM, mede `clientWidth`, desenha —, com `chartViewport(largura)` devolvendo
+  a largura medida e o smoke afirmando que `viewBox` e caixa batem em 1440 e em 390. Deduzir a
+  largura pelo número de colunas seria repetir em JS os pontos de quebra que já estão no CSS:
+  duas verdades sobre a mesma grade divergem no primeiro ajuste. A mesma lógica vale para
+  quantos rótulos cabem num eixo — é conta de espaço disponível, não número fixo.
+
+- **R8.75** *(2026-09-02, acabamento do Mercado DF, issue #85)* **Paleta de série é verificada
+  por script, e cor de marca não é cor de série.** A primeira paleta categórica usou o verde
+  da marca (`#24563d`) como série 1 e reprovava em três checagens: fora da faixa de
+  luminosidade, abaixo do piso de croma — lida como quase-preto no tema claro — e com o par
+  oliva↔terracota a ΔE 1,3 sob deuteranopia, ou seja, duas séries indistinguíveis para quem
+  não separa esses matizes. Nada disso aparece olhando a tela com visão tricromática, que é
+  exatamente por que a verificação é computável e não estética. Mecanismo:
+  `validate_palette.js` (skill `dataviz`) rodado com as superfícies reais do app nos dois
+  temas, e a saída registrada no comentário do bloco de tokens; a marca continua na interface,
+  e como série ela vira um passo mais claro e mais cromático que passa nas gates.
+
+- **R8.76** *(2026-09-02, acabamento do Mercado DF, issue #85)* **Categoria ORDENADA usa rampa
+  de um matiz; categórica é para identidade.** A sazonalidade pintava 2023, 2024, 2025 e 2026
+  com quatro matizes diferentes — tratando como identidade o que é ordem. Custava duas coisas:
+  a ordem dos anos, que a própria cor podia carregar, ficava só no rótulo; e o quarteto
+  azul↔violeta reprovava quando as quatro linhas dividiam o mesmo plano. Uma rampa de um
+  matiz, mais escura a cada ano, resolve as duas — e o tema escuro inverte o sentido da rampa,
+  porque lá é o passo mais claro que salta da superfície.
+
+- **R8.77** *(2026-09-02, acabamento do Mercado DF, issue #85)* **Densidade também é contrato:
+  `font-size` e espaçamento literais são o caminho por onde a hierarquia se inverte.** O guard
+  de tokens nasceu proibindo cor e raio, e a tipografia escapou — sobraram ~20 literais no
+  bloco da tela. Foi por aí que o rótulo do tile ficou MAIOR que o do destaque (12px
+  caixa-baixa contra 10px caixa-alta), que a variação principal ficou um pixel maior que a
+  secundária, e que em 390px o valor do tile passou o do destaque. Nenhuma dessas decisões foi
+  tomada; todas foram escritas uma regra por vez. Mecanismo: o guard passa a recusar `px`
+  cravado em `font-size`, `padding`, `margin` e `gap` nas regras da tela, aceitando `0`,
+  unidades relativas e `var(--tipo-*)`/`var(--esp-*)`. Escala existe para que o degrau seja
+  decidido uma vez.
+
