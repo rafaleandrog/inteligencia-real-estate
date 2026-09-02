@@ -1,8 +1,10 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  PERIOD_MODES, availableYears, availableMonths, defaultPeriodSelection,
-  selectIvvPeriod, chartRowsForSelection, periodLabel,
+  PERIOD_MODES, PERIOD_MODE_OPTIONS, PERIOD_MODE_CONTROLS, availableYears, availableMonths,
+  defaultPeriodSelection, selectIvvPeriod, chartRowsForSelection, periodLabel,
+  periodSummary, controlDisabledReason, trailingRows, mesAnterior, mesmoMesAnoAnterior,
+  monthYearLabel, monthShortLabel,
 } from '../src/ivv/period.js';
 
 const rows = Array.from({ length: 18 }, (_, index) => {
@@ -58,4 +60,58 @@ test('gráfico dá 12 meses de contexto quando os cards mostram um único mês',
 test('série vazia devolve seleção utilizável', () => {
   assert.deepEqual(selectIvvPeriod([], { mode: PERIOD_MODES.ALL }).rows, []);
   assert.deepEqual(availableYears([]), []);
+});
+
+// --- Que campo cada período usa (issue #83) -------------------------------------------
+
+test('todo período declara o uso dos três campos, e a lista fecha com as opções', () => {
+  const modos = PERIOD_MODE_OPTIONS.map((item) => item.value);
+  assert.deepEqual(Object.keys(PERIOD_MODE_CONTROLS).sort(), [...modos].sort(),
+    'um período sem declaração de campos cairia num default silencioso');
+  for (const [modo, usos] of Object.entries(PERIOD_MODE_CONTROLS)) {
+    assert.deepEqual(Object.keys(usos).sort(), ['ano', 'intervalo', 'mes'], modo);
+  }
+});
+
+test('toda pílula tem texto curto e frase inteira, e as duas são diferentes coisas', () => {
+  for (const item of PERIOD_MODE_OPTIONS) {
+    assert.ok(item.chip && item.chip.length <= 14, `${item.value}: chip longo demais`);
+    assert.ok(item.label && item.label.length >= item.chip.length, `${item.value}: label`);
+  }
+});
+
+test('campo apagado sempre tem motivo escrito; campo ativo não tem nenhum', () => {
+  // Controle desabilitado sem motivo é indistinguível de controle quebrado (R8.64).
+  for (const [modo, usos] of Object.entries(PERIOD_MODE_CONTROLS)) {
+    for (const [controle, usa] of Object.entries(usos)) {
+      const motivo = controlDisabledReason(modo, controle);
+      if (usa) assert.equal(motivo, null, `${modo}/${controle}`);
+      else assert.match(motivo, /não usa/, `${modo}/${controle}`);
+    }
+  }
+  assert.match(controlDisabledReason(PERIOD_MODES.ALL, 'ano'), /Histórico completo/);
+});
+
+test('o resumo do período diz o intervalo e conta os meses', () => {
+  const selecao = selectIvvPeriod(rows, { mode: PERIOD_MODES.YTD, year: 2025, month: 3 });
+  const resumo = periodSummary(selecao);
+  assert.equal(resumo.meses, 3);
+  assert.match(resumo.intervalo, /^jan\.\/2025 a mar\.\/2025$/);
+  assert.equal(resumo.referencia, '2025-03');
+
+  const umMes = periodSummary(selectIvvPeriod(rows, { mode: PERIOD_MODES.MONTH, year: 2025, month: 3 }));
+  assert.equal(umMes.intervalo, 'mar./2025', 'mês único não vira "X a X"');
+  assert.equal(periodSummary({}).meses, 0);
+});
+
+test('trailingRows é a única fonte da janela de contexto', () => {
+  const janela = trailingRows(rows, '2025-06', 12);
+  assert.equal(janela.length, 12);
+  assert.equal(janela.at(-1).reference_date, '2025-06-01');
+  assert.equal(janela[0].reference_date, '2024-07-01');
+  // Menos meses disponíveis que o pedido não estoura: devolve o que existe.
+  assert.equal(trailingRows(rows, '2024-02', 12).length, 2);
+  // Mês inexistente cai no último disponível, como a janela do gráfico sempre fez.
+  assert.equal(trailingRows(rows, '2099-01', 3).at(-1).reference_date, '2025-06-01');
+  assert.deepEqual(trailingRows([], '2025-01'), []);
 });

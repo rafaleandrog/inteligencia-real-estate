@@ -13,8 +13,8 @@ import { ivvProvenance, IVV_SCOPE_NOTICE } from './ivv/scope.js';
 import { aggregatePeriod } from './ivv/aggregate.js';
 import { buildMarketDashboard, formatMetricValue } from './ivv/cards.js';
 import {
-  PERIOD_MODE_OPTIONS, PERIOD_MODES, availableYears, availableMonths,
-  defaultPeriodSelection, selectIvvPeriod, chartRowsForSelection, periodLabel,
+  PERIOD_MODE_OPTIONS, availableYears, availableMonths, controlDisabledReason,
+  defaultPeriodSelection, selectIvvPeriod, chartRowsForSelection, periodSummary,
   monthYearLabel, mesAnterior, mesmoMesAnoAnterior,
 } from './ivv/period.js';
 import { buildHistoryCharts, buildSeasonality, buildSparkline } from './ivv/history.js';
@@ -63,8 +63,8 @@ const dom = {
   viewSwitch: el('viewSwitch'), marketTab: el('marketTab'),
   mapView: el('mapView'), marketView: el('marketView'),
   marketScope: el('marketScope'), marketBody: el('marketBody'),
-  marketPeriodMode: el('marketPeriodMode'), marketYear: el('marketYear'),
-  marketMonth: el('marketMonth'), marketCustomRange: el('marketCustomRange'),
+  marketPeriodChips: el('marketPeriodChips'), marketYear: el('marketYear'),
+  marketMonth: el('marketMonth'),
   marketStart: el('marketStart'), marketEnd: el('marketEnd'),
   marketPeriodLabel: el('marketPeriodLabel'), marketPeriodBase: el('marketPeriodBase'),
   marketDestaques: el('marketDestaques'), marketCharts: el('marketCharts'),
@@ -1368,21 +1368,49 @@ function populateMarketMonths(year, preferred) {
     ? wanted : String(months.at(-1)?.value || '');
 }
 
-function syncMarketFilterVisibility() {
+/**
+ * Marca a pílula do período escolhido e apaga os campos que ele não usa (issue #83).
+ *
+ * Nenhum `if` de modo mora aqui: quem sabe que campo cada período usa é
+ * `PERIOD_MODE_CONTROLS`, e o motivo do campo apagado sai de `controlDisabledReason` —
+ * campo desabilitado sem motivo escrito é indistinguível de campo quebrado (R8.64).
+ */
+function syncMarketFilterState() {
   const mode = state.marketSelection.mode;
-  const custom = mode === PERIOD_MODES.CUSTOM;
-  const all = mode === PERIOD_MODES.ALL;
-  dom.marketCustomRange.hidden = !custom;
-  dom.marketYear.disabled = custom || all;
-  dom.marketMonth.disabled = custom || all || mode === PERIOD_MODES.YEAR;
+
+  for (const chip of dom.marketPeriodChips.querySelectorAll('.market-chip')) {
+    chip.setAttribute('aria-pressed', String(chip.dataset.mode === mode));
+  }
+
+  const campos = [
+    ['ano', [dom.marketYear]],
+    ['mes', [dom.marketMonth]],
+    ['intervalo', [dom.marketStart, dom.marketEnd]],
+  ];
+  for (const [controle, alvos] of campos) {
+    const motivo = controlDisabledReason(mode, controle);
+    for (const alvo of alvos) {
+      alvo.disabled = motivo !== null;
+      alvo.title = motivo || '';
+    }
+  }
+}
+
+function periodChip(item) {
+  const botao = document.createElement('button');
+  botao.type = 'button';
+  botao.className = 'market-chip';
+  botao.dataset.mode = item.value;
+  // O texto curto cabe na pílula; o leitor de tela recebe a frase inteira.
+  botao.textContent = item.chip;
+  botao.setAttribute('aria-label', item.label);
+  botao.setAttribute('aria-pressed', 'false');
+  return botao;
 }
 
 function initializeMarketFilters() {
   state.marketSelection = defaultPeriodSelection(state.ivvMonthly);
-  dom.marketPeriodMode.replaceChildren(
-    ...PERIOD_MODE_OPTIONS.map((item) => option(item.value, item.label)),
-  );
-  dom.marketPeriodMode.value = state.marketSelection.mode;
+  dom.marketPeriodChips.replaceChildren(...PERIOD_MODE_OPTIONS.map(periodChip));
 
   const years = availableYears(state.ivvMonthly);
   dom.marketYear.replaceChildren(...years.map((year) => option(year, String(year))));
@@ -1397,7 +1425,7 @@ function initializeMarketFilters() {
   }
   dom.marketStart.value = state.marketSelection.start || first;
   dom.marketEnd.value = state.marketSelection.end || last;
-  syncMarketFilterVisibility();
+  syncMarketFilterState();
 }
 
 const SVG_NS = 'http://www.w3.org/2000/svg';
@@ -1596,7 +1624,10 @@ function marketSpark(model) {
 
 function renderMarketDashboard() {
   const selected = selectIvvPeriod(state.ivvMonthly, state.marketSelection);
-  dom.marketPeriodLabel.textContent = `Indicadores: ${periodLabel(selected)}`;
+  const resumo = periodSummary(selected);
+  dom.marketPeriodLabel.textContent = resumo.meses > 0
+    ? `Indicadores de ${resumo.intervalo} · ${resumo.meses} ${resumo.meses === 1 ? 'mês' : 'meses'}`
+    : resumo.intervalo;
 
   // Os três recortes que os gráficos declaram consumir (issue #83). Montá-los aqui é o
   // que permite às definições serem puras: `sazonalidade` precisa de anos inteiros, e
@@ -1615,8 +1646,8 @@ function renderMarketDashboard() {
       + `${monthYearLabel(mesmoMesAnoAnterior(mesReferencia))}.`
     : '';
   dom.marketHistoryNote.textContent = selected.rows.length === 1
-    ? `Os cards mostram ${periodLabel(selected)}; os gráficos dão contexto com até 12 meses anteriores.`
-    : `Valores mensais no mesmo recorte dos indicadores: ${periodLabel(selected)}.`;
+    ? `Os indicadores mostram ${resumo.intervalo}; os gráficos dão contexto com até 12 meses anteriores.`
+    : `Valores mensais no mesmo recorte dos indicadores: ${resumo.intervalo}.`;
 
   const graficos = [...buildHistoryCharts(fontes), buildSeasonality(state.ivvMonthly)];
   dom.marketCharts.replaceChildren(...graficos.map((model) => marketChart(model, viewport)));
@@ -1747,10 +1778,13 @@ function bindEvents() {
   dom.closeDetail.addEventListener('click', closeDetail);
   dom.retryBtn.addEventListener('click', () => { load().catch(reportFatal); });
 
-  dom.marketPeriodMode.addEventListener('change', () => {
-    if (!state.marketSelection) return;
-    state.marketSelection.mode = dom.marketPeriodMode.value;
-    syncMarketFilterVisibility();
+  // Delegação: as pílulas são geradas a cada carga da série, e ouvir no container evita
+  // reamarrar seis ouvintes toda vez.
+  dom.marketPeriodChips.addEventListener('click', (event) => {
+    const chip = event.target.closest('.market-chip');
+    if (!chip || !state.marketSelection) return;
+    state.marketSelection.mode = chip.dataset.mode;
+    syncMarketFilterState();
     refreshMarketView();
   });
   dom.marketYear.addEventListener('change', () => {

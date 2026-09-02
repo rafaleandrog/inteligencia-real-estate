@@ -1058,44 +1058,77 @@ select:focus, input[type="number"]:focus {
 
 .market-filters {
   display: grid;
-  grid-template-columns: minmax(180px, 1.4fr) repeat(2, minmax(140px, 1fr));
-  gap: 12px;
-  align-items: end;
-  margin: 0 0 18px;
-  padding: 14px;
-  border: 1px solid var(--line);
+  gap: var(--esp-3);
+  margin: 0 0 var(--esp-5);
+  padding: var(--esp-3) var(--esp-4);
+  border: 1px solid var(--borda-base);
   border-radius: var(--raio-lg);
-  background: var(--panel);
+  background: var(--superficie-base);
 }
-.market-filters label { display: grid; gap: 5px; }
-.market-filters label > span {
-  font-size: 11px;
-  color: var(--muted);
+
+/* Pílulas de período: o conjunto inteiro à vista, e a escolhida marcada por
+   `aria-pressed` — que já é o que o leitor de tela consulta. Um `.is-active` paralelo
+   seria uma segunda verdade sobre a mesma coisa. */
+.market-chips { display: flex; flex-wrap: wrap; gap: var(--esp-2); }
+.market-chip {
+  padding: 5px 12px;
+  border: 1px solid var(--borda-forte);
+  border-radius: var(--raio-pill);
+  background: var(--superficie-sutil);
+  font: inherit;
+  font-size: var(--tipo-sm);
+  color: var(--texto-sec);
+  cursor: pointer;
+}
+.market-chip:hover { border-color: var(--accent-text); color: var(--texto-base); }
+.market-chip[aria-pressed="true"] {
+  border-color: var(--sucesso);
+  background: var(--sucesso-fundo);
+  color: var(--sucesso);
+  font-weight: 600;
+}
+.market-chip:focus-visible { outline: 2px solid var(--accent-text); outline-offset: 2px; }
+
+.market-campos {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: var(--esp-3);
+  align-items: end;
+}
+.market-campos label { display: grid; gap: 5px; }
+.market-campos label > span {
+  font-size: var(--tipo-xs);
+  font-weight: 700;
+  color: var(--texto-sec);
   text-transform: uppercase;
   letter-spacing: .04em;
 }
-.market-filters select,
-.market-filters input[type="month"] {
+.market-campos select,
+.market-campos input[type="month"] {
   width: 100%;
   min-height: 38px;
   padding: 7px 9px;
-  border: 1px solid var(--line);
-  border-radius: var(--raio-sm);
-  background: var(--bg);
-  color: var(--ink);
+  border: 1px solid var(--borda-forte);
+  border-radius: var(--raio-md);
+  background: var(--superficie-sutil);
+  color: var(--texto-base);
+  font: inherit;
+  font-size: var(--tipo-md);
 }
-.market-custom-range {
-  grid-column: 1 / -1;
-  display: grid;
-  grid-template-columns: repeat(2, minmax(160px, 1fr));
-  gap: 12px;
+.market-campos select:focus-visible,
+.market-campos input[type="month"]:focus-visible {
+  outline: 2px solid var(--accent-text);
+  outline-offset: 1px;
 }
-.market-custom-range[hidden] { display: none; }
+/* Campo que o período não usa fica apagado, NÃO escondido: o motivo mora no `title`. */
+.market-campos :disabled { opacity: .5; cursor: not-allowed; }
+.market-campos label:has(:disabled) > span { color: var(--texto-fraco); }
+
 .market-period-label {
-  grid-column: 1 / -1;
   margin: 0;
-  font-size: 12px;
-  color: var(--muted);
+  font-size: var(--tipo-sm);
+  font-weight: 600;
+  color: var(--texto-base);
 }
 
 .market-history { margin-top: 30px; }
@@ -1251,8 +1284,7 @@ select:focus, input[type="number"]:focus {
   .view-switch { order: 3; width: 100%; }
   .view-tab { flex: 1; }
   .market { padding: 16px 12px 32px; }
-  .market-filters { grid-template-columns: 1fr 1fr; }
-  .market-filters > label:first-child { grid-column: 1 / -1; }
+  .market-campos { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .market-chart-grid { grid-template-columns: 1fr; }
 }
 
@@ -1374,8 +1406,7 @@ select:focus, input[type="number"]:focus {
 .market-delta-neutro .market-delta-icon { color: var(--muted); }
 
 .market-period-base {
-  grid-column: 1 / -1;
-  margin: 0;
+  margin: -6px 0 0;
   font-size: var(--tipo-sm);
   color: var(--texto-sec);
 }
@@ -1405,8 +1436,5 @@ select:focus, input[type="number"]:focus {
   .market-kpi > .market-card-absent { grid-column: 1 / -1; }
   .market-tiles { grid-template-columns: 1fr; }
   .market-card-value { font-size: var(--tipo-xl); }
-  .market-filters,
-  .market-custom-range { grid-template-columns: 1fr; }
-  .market-filters > label,
-  .market-custom-range { grid-column: 1; }
+  .market-campos { grid-template-columns: 1fr; }
 }

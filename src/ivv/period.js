@@ -15,14 +15,59 @@ export const PERIOD_MODES = Object.freeze({
   CUSTOM: 'custom',
 });
 
+/**
+ * Os períodos oferecidos, na ordem em que aparecem como pílulas (issue #83).
+ *
+ * `chip` é o texto curto do botão; `label` continua sendo a frase inteira, que vai para o
+ * `aria-label` — a pílula precisa caber em quatro linhas de 390px, e o leitor de tela não
+ * precisa se contentar com a abreviação.
+ *
+ * A ordem é de recorte crescente: o mês, o ano corrente até aqui, os doze últimos, o ano
+ * fechado, tudo, e por fim o intervalo à mão.
+ */
 export const PERIOD_MODE_OPTIONS = Object.freeze([
-  { value: PERIOD_MODES.MONTH, label: 'Mês selecionado' },
-  { value: PERIOD_MODES.LAST_12, label: 'Últimos 12 meses' },
-  { value: PERIOD_MODES.YTD, label: 'Acumulado do ano' },
-  { value: PERIOD_MODES.YEAR, label: 'Ano completo' },
-  { value: PERIOD_MODES.ALL, label: 'Histórico completo' },
-  { value: PERIOD_MODES.CUSTOM, label: 'Intervalo personalizado' },
+  { value: PERIOD_MODES.MONTH, chip: 'Mês', label: 'Mês selecionado' },
+  { value: PERIOD_MODES.YTD, chip: 'No ano', label: 'Acumulado do ano' },
+  { value: PERIOD_MODES.LAST_12, chip: '12 meses', label: 'Últimos 12 meses' },
+  { value: PERIOD_MODES.YEAR, chip: 'Ano fechado', label: 'Ano completo' },
+  { value: PERIOD_MODES.ALL, chip: 'Tudo', label: 'Histórico completo' },
+  { value: PERIOD_MODES.CUSTOM, chip: 'Personalizado', label: 'Intervalo personalizado' },
 ]);
+
+/**
+ * Que campo cada período usa — DADO, não `if` espalhado pela tela.
+ *
+ * Campo que o período não usa fica DESABILITADO, com o motivo no `title`, e nunca some
+ * (R8.64): controle que desaparece parece defeito de carregamento, e ninguém procura o
+ * que não viu. Foi por isso que o intervalo "De/Até", que antes era escondido, passou a
+ * ficar visível e apagado fora do modo personalizado.
+ */
+export const PERIOD_MODE_CONTROLS = Object.freeze({
+  [PERIOD_MODES.MONTH]: Object.freeze({ ano: true, mes: true, intervalo: false }),
+  [PERIOD_MODES.YTD]: Object.freeze({ ano: true, mes: true, intervalo: false }),
+  [PERIOD_MODES.LAST_12]: Object.freeze({ ano: true, mes: true, intervalo: false }),
+  [PERIOD_MODES.YEAR]: Object.freeze({ ano: true, mes: false, intervalo: false }),
+  [PERIOD_MODES.ALL]: Object.freeze({ ano: false, mes: false, intervalo: false }),
+  [PERIOD_MODES.CUSTOM]: Object.freeze({ ano: false, mes: false, intervalo: true }),
+});
+
+const CONTROL_LABELS = Object.freeze({
+  ano: 'o ano de referência',
+  mes: 'o mês de referência',
+  intervalo: 'o intervalo personalizado',
+});
+
+/**
+ * Por que este campo está apagado — a frase que vai para o `title`, ou `null` quando o
+ * campo está ativo. Um controle desabilitado sem motivo escrito é indistinguível de um
+ * controle quebrado.
+ */
+export function controlDisabledReason(mode, controle) {
+  const usos = PERIOD_MODE_CONTROLS[mode] || PERIOD_MODE_CONTROLS[PERIOD_MODES.YTD];
+  if (usos[controle]) return null;
+  const periodo = PERIOD_MODE_OPTIONS.find((item) => item.value === mode);
+  return `${(periodo?.label || 'O período escolhido')} não usa ${CONTROL_LABELS[controle]}.`;
+}
 
 const MONTH_LABELS = Object.freeze([
   'jan.', 'fev.', 'mar.', 'abr.', 'mai.', 'jun.',
@@ -122,15 +167,19 @@ export function selectIvvPeriod(rows, selection = {}) {
   };
 }
 
+/** Os `n` meses que terminam em `end`, inclusive. Uma fonte só para "janela de contexto". */
+export function trailingRows(rows, end, n = 12) {
+  const prepared = preparedRows(rows);
+  if (prepared.length === 0) return [];
+  const index = prepared.findIndex((item) => item.month === end);
+  const endIndex = index >= 0 ? index : prepared.length - 1;
+  return prepared.slice(Math.max(0, endIndex - (n - 1)), endIndex + 1).map((item) => item.row);
+}
+
 /** Um mês isolado ganha contexto de 12 meses no gráfico; os cards continuam mensais. */
 export function chartRowsForSelection(rows, selected) {
   if ((selected?.rows || []).length > 1) return selected.rows;
-  const prepared = preparedRows(rows);
-  if (prepared.length === 0) return [];
-  const end = selected?.end || prepared.at(-1).month;
-  const index = prepared.findIndex((item) => item.month === end);
-  const endIndex = index >= 0 ? index : prepared.length - 1;
-  return prepared.slice(Math.max(0, endIndex - 11), endIndex + 1).map((item) => item.row);
+  return trailingRows(rows, selected?.end || null);
 }
 
 /**
@@ -167,4 +216,25 @@ export function periodLabel(selected) {
   if (!selected?.start || !selected?.end) return 'Sem período disponível';
   if (selected.start === selected.end) return monthYearLabel(selected.start);
   return `${monthYearLabel(selected.start)} a ${monthYearLabel(selected.end)} · ${selected.rows.length} meses`;
+}
+
+/**
+ * O período em uma frase, e a base de comparação em outra (issue #83).
+ *
+ * Existe porque "Acumulado do ano" sozinho não diz de quando até quando, e a pessoa que
+ * chega na tela precisa saber que recorte está lendo antes de acreditar em qualquer
+ * número dela.
+ */
+export function periodSummary(selected) {
+  if (!selected?.start || !selected?.end) {
+    return { intervalo: 'Sem período disponível', meses: 0, referencia: null };
+  }
+  const meses = selected.rows.length;
+  return {
+    intervalo: selected.start === selected.end
+      ? monthYearLabel(selected.start)
+      : `${monthYearLabel(selected.start)} a ${monthYearLabel(selected.end)}`,
+    meses,
+    referencia: selected.end,
+  };
 }
