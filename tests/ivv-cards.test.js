@@ -9,8 +9,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  CARD_ROWS, METRIC_SENTIMENT, SENTIMENTS, deltaTone, formatMetricValue,
-  metricDeltas, buildMarketCards, metricsWithoutSentiment,
+  CARD_DESTAQUES, CARD_GRUPOS, METRIC_SENTIMENT, SENTIMENTS, deltaTone, formatMetricValue,
+  metricDeltas, buildMarketDashboard, dashboardMetricKeys, metricsWithoutSentiment,
 } from '../src/ivv/cards.js';
 import { aggregatePeriod } from '../src/ivv/aggregate.js';
 import { METRIC_KEYS } from '../src/ivv/metrics.js';
@@ -23,17 +23,23 @@ test('toda métrica do registro tem sentimento declarado', () => {
   assert.deepEqual(metricsWithoutSentiment(), []);
 });
 
-test('as três linhas de cards existem e não repetem métrica', () => {
-  const todas = CARD_ROWS.flat();
-  assert.equal(CARD_ROWS.length, 3);
-  assert.equal(new Set(todas).size, todas.length, 'card repetido entre as linhas');
+test('destaques e grupos cobrem as métricas sem repetir nenhuma', () => {
+  const todas = dashboardMetricKeys();
+  assert.equal(new Set(todas).size, todas.length, 'métrica repetida entre destaque e grupo');
   for (const key of todas) assert.ok(METRIC_KEYS.includes(key), key);
+  assert.equal(CARD_DESTAQUES.length, 4, 'destaque demais deixa de ser destaque');
+  assert.ok(CARD_GRUPOS.every((g) => g.label && g.metricas.length > 0), 'grupo sem rótulo ou vazio');
 });
 
-test('a primeira linha é preço e volume de vendas, nessa ordem', () => {
+test('o destaque abre com preço e volume de vendas, nessa ordem', () => {
   // Prioridade definida pelo dono do repositório: preços e volume de vendas primeiro.
-  assert.deepEqual([...CARD_ROWS[0]],
-    ['sale_price_brl_m2', 'asking_price_brl_m2', 'sales_units', 'sold_area_m2']);
+  assert.deepEqual([...CARD_DESTAQUES],
+    ['sale_price_brl_m2', 'sales_units', 'ivv_pct', 'vgv_brl_million']);
+});
+
+test('a hierarquia é dado congelado, não ordem de append no DOM', () => {
+  assert.ok(Object.isFrozen(CARD_DESTAQUES) && Object.isFrozen(CARD_GRUPOS));
+  assert.ok(CARD_GRUPOS.every((g) => Object.isFrozen(g) && Object.isFrozen(g.metricas)));
 });
 
 // --- O tom segue o significado, não o sinal ------------------------------------------
@@ -101,8 +107,8 @@ test('as variações vêm dos campos publicados, e o mês é nomeado', () => {
   }));
   assert.equal(ref, '2026-05');
   assert.deepEqual(deltas, [
-    { label: 'vs mês anterior', value: '+3,2%', tone: 'bom' },
-    { label: 'vs mesmo mês do ano anterior', value: '−8,4%', tone: 'ruim' },
+    { label: 'vs abr./2026', value: '+3,2%', tone: 'bom' },
+    { label: 'vs mai./2025', value: '−8,4%', tone: 'ruim' },
     { label: 'Acumulado do ano', value: '1.980', tone: 'neutro' },
   ]);
 });
@@ -114,10 +120,10 @@ test('o IVV mostra pontos percentuais e variação percentual como coisas DIFERE
     ivv_mom_pp: 0.4, ivv_mom_pct_change: 0.065, ivv_yoy_pp: -1.2, ivv_ytd_pct: 0.058,
   }));
   const porRotulo = Object.fromEntries(deltas.map((d) => [d.label, d.value]));
-  assert.equal(porRotulo['vs mês anterior'], '+0,4 p.p.');
-  assert.equal(porRotulo['vs mês anterior, em %'], '+6,5%');
-  assert.equal(porRotulo['vs mesmo mês do ano anterior'], '−1,2 p.p.');
-  assert.notEqual(porRotulo['vs mês anterior'], porRotulo['vs mês anterior, em %']);
+  assert.equal(porRotulo['vs abr./2026'], '+0,4 p.p.');
+  assert.equal(porRotulo['vs abr./2026, em %'], '+6,5%');
+  assert.equal(porRotulo['vs mai./2025'], '−1,2 p.p.');
+  assert.notEqual(porRotulo['vs abr./2026'], porRotulo['vs abr./2026, em %']);
 });
 
 test('o acumulado do ano é VALOR, não variação, e nunca ganha cor', () => {
@@ -126,6 +132,14 @@ test('o acumulado do ano é VALOR, não variação, e nunca ganha cor', () => {
   const ytd = deltas.find((d) => d.label === 'Acumulado do ano');
   assert.equal(ytd.value, '480');
   assert.equal(ytd.tone, 'neutro');
+});
+
+test('sem data utilizável o rótulo genérico volta — vago, mas não falso', () => {
+  const { deltas, mes: ref } = metricDeltas('sales_units', {
+    sales_units_mom_pct_change: 0.032, sales_units_yoy_pct_change: -0.084,
+  });
+  assert.equal(ref, null);
+  assert.deepEqual(deltas.map((d) => d.label), ['vs mês anterior', 'vs mesmo mês do ano anterior']);
 });
 
 test('variação que o backend não publicou simplesmente não aparece', () => {
@@ -142,7 +156,8 @@ test('os cards saem do motor de agregação, nunca de soma própria', () => {
   const meses = Array.from({ length: 12 }, (_, i) => mes({
     reference_date: `2026-${String(i + 1).padStart(2, '0')}-01`,
   }));
-  const cards = buildMarketCards(aggregatePeriod(meses), meses).flat();
+  const painel = buildMarketDashboard(aggregatePeriod(meses), meses);
+  const cards = [...painel.destaques, ...painel.grupos.flatMap((g) => g.cards)];
   const porChave = Object.fromEntries(cards.map((c) => [c.key, c]));
 
   assert.equal(porChave.offers_units.value, '6.325', 'estoque virou soma de 12 meses');
@@ -153,19 +168,34 @@ test('os cards saem do motor de agregação, nunca de soma própria', () => {
 
 test('métrica sem valor vira frase de ausência, nunca zero', () => {
   const meses = [mes({ vgl_brl_million: null, launches_units: null })];
-  const cards = buildMarketCards(aggregatePeriod(meses), meses).flat();
-  const vgl = cards.find((c) => c.key === 'vgl_brl_million');
+  const painel = buildMarketDashboard(aggregatePeriod(meses), meses);
+  const vgl = painel.grupos.flatMap((g) => g.cards).find((c) => c.key === 'vgl_brl_million');
   assert.equal(vgl.value, null);
   assert.match(vgl.absent, /Sem valor publicado/);
   assert.deepEqual(vgl.deltas, []);
 });
 
-test('série vazia devolve a grade inteira ausente, sem estourar', () => {
-  const cards = buildMarketCards(aggregatePeriod([]), []);
-  assert.equal(cards.length, 3);
-  for (const card of cards.flat()) {
+test('série vazia devolve a tela inteira ausente, sem estourar', () => {
+  const painel = buildMarketDashboard(aggregatePeriod([]), []);
+  assert.equal(painel.destaques.length, CARD_DESTAQUES.length);
+  assert.equal(painel.grupos.length, CARD_GRUPOS.length);
+  assert.equal(painel.mesReferencia, null);
+  for (const card of [...painel.destaques, ...painel.grupos.flatMap((g) => g.cards)]) {
     assert.equal(card.value, null, card.key);
     assert.ok(card.absent, card.key);
   }
-  assert.doesNotThrow(() => buildMarketCards(null, null));
+  assert.doesNotThrow(() => buildMarketDashboard(null, null));
+});
+
+test('o destaque separa a variação principal das demais', () => {
+  const meses = [mes({ sales_units_mom_pct_change: 0.032, sales_units_yoy_pct_change: -0.084 })];
+  const painel = buildMarketDashboard(aggregatePeriod(meses), meses);
+  const vendas = painel.destaques.find((c) => c.key === 'sales_units');
+  assert.equal(vendas.destaque, true);
+  assert.equal(vendas.deltaPrincipal.label, 'vs abr./2026');
+  assert.deepEqual(vendas.deltasSecundarios.map((d) => d.label), ['vs mai./2025']);
+  assert.equal(painel.mesReferencia, '2026-05');
+  // O tile comum não separa nada: a hierarquia é só do destaque.
+  const tile = painel.grupos.flatMap((g) => g.cards)[0];
+  assert.equal('deltaPrincipal' in tile, false);
 });

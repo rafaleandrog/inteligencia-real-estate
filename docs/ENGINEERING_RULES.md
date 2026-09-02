@@ -712,3 +712,45 @@ Cada uma nasce de um erro que aconteceu de verdade.
   a queda de vendas de 414 para 364 como `-0,1%`, embora o backend publicasse `-0.1207`; fixtures
   em pontos percentuais haviam mascarado o erro de 100×. A guarda usa frações decimais nos testes
   dos cards e exige a porcentagem formatada correta.
+
+- **R8.70** *(2026-09-02, dashboard do Mercado DF, issue #83)* **`var()` em atributo de
+  apresentação de SVG não resolve: cor de traço, preenchimento ou marcador vem de classe CSS.**
+  `stroke="var(--cat-1)"` é aceito pelo parser, descartado em silêncio pelo navegador, e o
+  resultado é a série sumir do gráfico sem um erro sequer no console — a mesma família de falha
+  calada da R8.14, por outra porta. Mecanismo: cada série sai num `<g class="serie-N">`, a classe
+  define uma custom property local (`--serie-cor: var(--cat-N)`) e as classes de forma (linha,
+  área, coluna, marcador, quadradinho da legenda) consomem essa propriedade. Uma declaração de
+  cor por índice, legenda e traço com o mesmo valor por construção, e nenhum literal atravessando
+  o JS. O smoke prova pelo valor **computado**, porque o atributo presente não prova cor aplicada
+  (R8.67).
+
+- **R8.71** *(2026-09-02, dashboard do Mercado DF, issue #83)* **Cor de série é token consumido
+  por ÍNDICE, e módulo puro não conhece cor.** `src/ivv/history.js` cravava `#55d99a`, `#8eb8ff`,
+  `#d6a449` e `#9f7aea` na definição dos gráficos: quatro cores fixas, iguais nos dois temas,
+  decididas dentro do módulo onde mora significado e fora do alcance de qualquer teste. A paleta
+  categórica é `--cat-1..8`, consumida como `cat: 3`, com o índice 8 reservado ao resíduo neutro;
+  é família **própria**, separada de `--listing`/`--development`/`--anchor`, porque essas
+  codificam camada do mapa e reusá-las ensinaria uma associação falsa (azul = anúncio). Mecanismo:
+  `tests/ui-tokens.test.js` recusa literal de cor e raio nas regras da tela, recusa qualquer cor
+  em `src/ivv/` **sem exceção e sem lista** — proibição total não tem como envelhecer, lista de
+  perdão tem —, exige que todo `var()` nomeie token existente e proíbe fallback, que esconderia
+  token inexistente da primeira checagem. E o próprio guard tem teste que o vê falhar.
+
+- **R8.72** *(2026-09-02, dashboard do Mercado DF, issue #83)* **Contagem digitada em teste
+  envelhece; contagem derivada do módulo cobra.** O smoke afirmava "quatro gráficos" com um `4`
+  literal e "três linhas de quatro cards" com números escritos à mão: acrescentar um gráfico
+  deixaria o teste verde subtestando, e remover um o deixaria vermelho sem que nada tivesse
+  quebrado. Onde a quantidade já é decisão declarada num módulo puro, o teste importa a
+  declaração (`HISTORY_CHARTS.length`, `CARD_DESTAQUES`, `PERIOD_MODE_OPTIONS`) e afirma a
+  relação, não o número. Vale para cards, gráficos, filtros e qualquer grade cuja composição seja
+  dado.
+
+- **R8.73** *(2026-09-02, dashboard do Mercado DF, issue #83)* **Toda view declara a própria
+  altura e o próprio overflow, e rolagem se prova medindo.** `body { overflow: hidden }` é decisão
+  do mapa, que ocupa a viewport por definição; a view do Mercado é irmã dele no mesmo `body` e
+  herdou o corte sem herdar o `height` que `.layout` declara. Resultado: no desktop, tudo abaixo
+  da dobra ficava inalcançável — sem barra de rolagem, sem erro, com a tela apenas parecendo
+  curta. Mesma família da R8.67: o atributo confirma a intenção, o layout confirma o resultado.
+  O smoke prova rolagem com `scrollHeight`, `clientHeight` e um `scrollTop` que efetivamente se
+  move.
+

@@ -46,6 +46,100 @@
   --panel-w: 300px;
   --detail-w: 360px;
 
+  /* Escalas de contrato de UI (issue #83).
+
+     Vieram do contrato do UrbiVerso — ênfase de texto em quatro degraus, borda em três,
+     superfície em três, e escalas fechadas de raio, tipo e espaço. O que NÃO veio é a
+     paleta: a identidade verde é herdada do modelo V3 e continua mandando. O ganho é
+     poder falar por PAPEL ("texto secundário", "borda sutil", "raio médio") em vez de
+     escolher um pixel por vez em cada regra nova.
+
+     O bloco é ADITIVO: nenhum token antigo foi renomeado, e onde o valor coincide o novo
+     nome é apelido do velho. Renomear em massa seria refatoração larga embutida numa
+     feature, que é exatamente o que a R5.2 proíbe. */
+
+  /* Ênfase do texto. `--texto-base` e `--texto-sec` são os de sempre com o nome do papel. */
+  --texto-forte: #0c120e;
+  --texto-base: var(--ink);
+  --texto-sec: var(--muted);
+  --texto-fraco: #7d8781;
+
+  /* Ênfase da borda. `--borda-base` é `--line`. */
+  --borda-sutil: #e9ede8;
+  --borda-base: var(--line);
+  --borda-forte: #c3ccc3;
+
+  /* Camadas de superfície sobre o fundo da página. */
+  --superficie-sutil: var(--bg);
+  --superficie-base: var(--panel);
+  --superficie-hover: #eef1ec;
+  --superficie-elevada: #fff;
+
+  /* Forma. `--radius` (10px) continua valendo para o que já o usa. */
+  --raio-xs: 4px;
+  --raio-sm: 6px;
+  --raio-md: 8px;
+  --raio-lg: 12px;
+  --raio-pill: 999px;
+  --sombra-1: 0 1px 2px #13251a14;
+  --sombra-2: var(--shadow);
+
+  /* Tipo. Sete degraus, do rótulo de eixo ao valor de destaque. */
+  --tipo-2xs: 10px;
+  --tipo-xs: 11px;
+  --tipo-sm: 12px;
+  --tipo-base: 13px;
+  --tipo-md: 14px;
+  --tipo-lg: 16px;
+  --tipo-xl: 20px;
+  --tipo-2xl: 26px;
+
+  /* Espaço. */
+  --esp-1: 4px;
+  --esp-2: 8px;
+  --esp-3: 12px;
+  --esp-4: 16px;
+  --esp-5: 24px;
+  --esp-6: 32px;
+
+  /* Estados semânticos: saturada para traço e texto, tinta para bloco, borda para o contorno.
+     A saturada NUNCA é superfície de texto — quem preenche é o par `-fundo`/`-borda`.
+     `--tone-good`/`--tone-bad` já eram os tons de variação dos cards; agora têm família. */
+  --tone-good: #2f5a41;
+  --tone-bad: #8c2f2f;
+  --sucesso: var(--tone-good);
+  --sucesso-fundo: #e6f1ea;
+  --sucesso-borda: #b9d8c6;
+  --alerta: #8a5620;
+  --alerta-fundo: #fdf1e3;
+  --alerta-borda: #e8c8a0;
+  --erro: var(--tone-bad);
+  --erro-fundo: #fbe9e9;
+  --erro-borda: #e9bcbc;
+  --info: #3a5a8c;
+  --info-fundo: #e8eef7;
+  --info-borda: #bfd0e6;
+
+  /* Paleta CATEGÓRICA das séries de gráfico (issue #83).
+
+     Família PRÓPRIA, de propósito: `--listing`, `--development` e `--anchor` codificam
+     camada do mapa, e reusá-las num gráfico ensinaria uma associação falsa — azul viraria
+     "anúncio" na cabeça de quem acabou de ler a legenda do mapa.
+
+     Consome-se por ÍNDICE (`--cat-3`), nunca por nome de cor: a definição do gráfico diz
+     `cat: 3` e não sabe que cor é essa, que é o que permite trocar o tema sem tocar em
+     módulo puro. O índice 8 é o slot neutro, reservado para resíduo/"Outros" — nunca para
+     a série principal. Todas passam de 3:1 sobre `--bg` e `--panel` nos dois temas, que é
+     o mínimo de contraste para elemento gráfico. */
+  --cat-1: #24563d;
+  --cat-2: #3478b9;
+  --cat-3: #a86a12;
+  --cat-4: #7252a3;
+  --cat-5: #2e8a86;
+  --cat-6: #b2503f;
+  --cat-7: #6d7f45;
+  --cat-8: #6f7b75;
+
   --font-sans: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
   /* Reforça o caráter de dado (preço, m², contagens) sem depender de fonte
      externa — pilha só com fontes já instaladas no sistema. */
@@ -68,6 +162,39 @@
     --accent-text: #57b57e;
     --chart-bar: #57b57e;
     --shadow: 0 10px 30px #00000066;
+
+    /* Mesmas escalas, cromática de interface trocada (issue #83). Os apelidos
+       (`--texto-base`, `--borda-base`, `--superficie-base`) seguem o token que já muda
+       aqui em cima e não precisam ser repetidos. */
+    --texto-forte: #f4f7f4;
+    --texto-fraco: #7b8a80;
+    --borda-sutil: #1f2822;
+    --borda-forte: #3b473f;
+    --superficie-hover: #1d2520;
+    --superficie-elevada: #1c231e;
+    --sombra-1: 0 1px 2px #00000059;
+
+    --tone-good: #8fd6ac;
+    --tone-bad: #f0a3a3;
+    --sucesso-fundo: #163524;
+    --sucesso-borda: #29553c;
+    --alerta: #f0b877;
+    --alerta-fundo: #3a2a12;
+    --alerta-borda: #5c4526;
+    --erro-fundo: #3a1a1a;
+    --erro-borda: #5c2c2c;
+    --info: #8fb4e8;
+    --info-fundo: #1a2536;
+    --info-borda: #2e415c;
+
+    --cat-1: #57b57e;
+    --cat-2: #8eb8ff;
+    --cat-3: #e0b055;
+    --cat-4: #b498e8;
+    --cat-5: #63c9c3;
+    --cat-6: #eb9182;
+    --cat-7: #adc46f;
+    --cat-8: #8fa196;
   }
 }
 
@@ -830,6 +957,14 @@ select:focus, input[type="number"]:focus {
     height: auto;
   }
 
+  /* Com o `body` rolando, uma segunda barra de rolagem dentro da tela do Mercado seria
+     rolagem aninhada — e a altura fixa estaria errada de todo jeito, porque aqui a topbar
+     quebra em linhas e cresce além de `--topbar-h`. */
+  .market {
+    height: auto;
+    overflow-y: visible;
+  }
+
   .panel {
     width: 100%;
     flex: none;
@@ -892,10 +1027,19 @@ select:focus, input[type="number"]:focus {
 .view-tab:disabled { opacity: .4; cursor: not-allowed; }
 .view-tab:focus-visible { outline: 2px solid #fff; outline-offset: 2px; }
 
+/* A view do Mercado é IRMÃ do mapa dentro do mesmo `body`, e o `body` corta o overflow
+   porque o mapa ocupa a viewport por definição (`:85`). O mapa resolve a própria altura em
+   `.layout`; esta tela não resolvia nenhuma, então herdava o corte sem herdar a rolagem:
+   no desktop, tudo abaixo da dobra ficava inalcançável — sem barra, sem erro, com a tela
+   apenas parecendo curta. Cada view declara a própria altura e o próprio overflow (R8.73).
+   Em ≤860px o `body` volta a rolar sozinho e esta altura é desfeita, porque lá a topbar
+   quebra em várias linhas e `--topbar-h` deixa de descrever a altura real dela. */
 .market {
   max-width: 1100px;
+  height: calc(100% - var(--topbar-h));
   margin: 0 auto;
   padding: 24px 16px 48px;
+  overflow-y: auto;
 }
 .market-head h1 { margin: 0 0 8px; font-size: 22px; }
 
@@ -914,44 +1058,77 @@ select:focus, input[type="number"]:focus {
 
 .market-filters {
   display: grid;
-  grid-template-columns: minmax(180px, 1.4fr) repeat(2, minmax(140px, 1fr));
-  gap: 12px;
-  align-items: end;
-  margin: 0 0 18px;
-  padding: 14px;
-  border: 1px solid var(--line);
-  border-radius: 10px;
-  background: var(--panel);
+  gap: var(--esp-3);
+  margin: 0 0 var(--esp-5);
+  padding: var(--esp-3) var(--esp-4);
+  border: 1px solid var(--borda-base);
+  border-radius: var(--raio-lg);
+  background: var(--superficie-base);
 }
-.market-filters label { display: grid; gap: 5px; }
-.market-filters label > span {
-  font-size: 11px;
-  color: var(--muted);
+
+/* Pílulas de período: o conjunto inteiro à vista, e a escolhida marcada por
+   `aria-pressed` — que já é o que o leitor de tela consulta. Um `.is-active` paralelo
+   seria uma segunda verdade sobre a mesma coisa. */
+.market-chips { display: flex; flex-wrap: wrap; gap: var(--esp-2); }
+.market-chip {
+  padding: 5px 12px;
+  border: 1px solid var(--borda-forte);
+  border-radius: var(--raio-pill);
+  background: var(--superficie-sutil);
+  font: inherit;
+  font-size: var(--tipo-sm);
+  color: var(--texto-sec);
+  cursor: pointer;
+}
+.market-chip:hover { border-color: var(--accent-text); color: var(--texto-base); }
+.market-chip[aria-pressed="true"] {
+  border-color: var(--sucesso);
+  background: var(--sucesso-fundo);
+  color: var(--sucesso);
+  font-weight: 600;
+}
+.market-chip:focus-visible { outline: 2px solid var(--accent-text); outline-offset: 2px; }
+
+.market-campos {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: var(--esp-3);
+  align-items: end;
+}
+.market-campos label { display: grid; gap: 5px; }
+.market-campos label > span {
+  font-size: var(--tipo-xs);
+  font-weight: 700;
+  color: var(--texto-sec);
   text-transform: uppercase;
   letter-spacing: .04em;
 }
-.market-filters select,
-.market-filters input[type="month"] {
+.market-campos select,
+.market-campos input[type="month"] {
   width: 100%;
   min-height: 38px;
   padding: 7px 9px;
-  border: 1px solid var(--line);
-  border-radius: 7px;
-  background: var(--bg);
-  color: var(--ink);
+  border: 1px solid var(--borda-forte);
+  border-radius: var(--raio-md);
+  background: var(--superficie-sutil);
+  color: var(--texto-base);
+  font: inherit;
+  font-size: var(--tipo-md);
 }
-.market-custom-range {
-  grid-column: 1 / -1;
-  display: grid;
-  grid-template-columns: repeat(2, minmax(160px, 1fr));
-  gap: 12px;
+.market-campos select:focus-visible,
+.market-campos input[type="month"]:focus-visible {
+  outline: 2px solid var(--accent-text);
+  outline-offset: 1px;
 }
-.market-custom-range[hidden] { display: none; }
+/* Campo que o período não usa fica apagado, NÃO escondido: o motivo mora no `title`. */
+.market-campos :disabled { opacity: .5; cursor: not-allowed; }
+.market-campos label:has(:disabled) > span { color: var(--texto-fraco); }
+
 .market-period-label {
-  grid-column: 1 / -1;
   margin: 0;
-  font-size: 12px;
-  color: var(--muted);
+  font-size: var(--tipo-sm);
+  font-weight: 600;
+  color: var(--texto-base);
 }
 
 .market-history { margin-top: 30px; }
@@ -967,28 +1144,126 @@ select:focus, input[type="number"]:focus {
   min-width: 0;
   padding: 14px;
   border: 1px solid var(--line);
-  border-radius: 10px;
+  border-radius: var(--raio-lg);
   background: var(--panel);
 }
-.market-chart h3 { margin: 0 0 8px; font-size: 13px; font-weight: 600; }
-.market-chart svg { display: block; width: 100%; height: auto; overflow: visible; }
-.chart-grid-line { stroke: var(--line); stroke-width: 1; }
+.market-chart h3 { margin: 0 0 2px; font-size: var(--tipo-base); font-weight: 600; }
+
+/* A pergunta que o gráfico responde, embaixo do título. É ela que transforma
+   "VGV por mês" em algo que a pessoa sabe por que está olhando. */
+.market-chart-pergunta {
+  margin: 0 0 var(--esp-2);
+  font-size: var(--tipo-xs);
+  color: var(--texto-sec);
+}
+
+.market-chart-svg {
+  display: block;
+  width: 100%;
+  height: auto;
+  overflow: visible;
+}
+.chart-grid-line { stroke: var(--borda-base); stroke-width: 1; }
+.chart-zero-line { stroke: var(--borda-forte); stroke-width: 1; stroke-opacity: .6; }
 .chart-axis-value,
-.chart-axis-month { fill: var(--muted); font-size: 10px; }
+.chart-axis-month { fill: var(--texto-sec); font-size: var(--tipo-2xs); }
 .chart-axis-value { text-anchor: end; }
+
+/* Cor de série: UMA declaração por índice, herdada pelo grupo.
+
+   `stroke="var(--cat-1)"` como ATRIBUTO de apresentação é aceito pelo parser e descartado
+   em silêncio pelo browser — a série some do gráfico sem erro nenhum (R8.70). Por isso a
+   cor entra por classe, e a mesma classe serve o quadradinho da legenda: assim traço e
+   legenda não têm como divergir. */
+.serie-1 { --serie-cor: var(--cat-1); }
+.serie-2 { --serie-cor: var(--cat-2); }
+.serie-3 { --serie-cor: var(--cat-3); }
+.serie-4 { --serie-cor: var(--cat-4); }
+.serie-5 { --serie-cor: var(--cat-5); }
+.serie-6 { --serie-cor: var(--cat-6); }
+.serie-7 { --serie-cor: var(--cat-7); }
+.serie-8 { --serie-cor: var(--cat-8); }
+
+.market-serie-linha {
+  fill: none;
+  stroke: var(--serie-cor);
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.market-serie-area { fill: var(--serie-cor); fill-opacity: .18; stroke: none; }
+.market-serie-coluna { fill: var(--serie-cor); }
+.market-serie-marcador { fill: var(--serie-cor); }
+
 .market-chart-legend {
   display: flex;
   flex-wrap: wrap;
-  gap: 8px 16px;
-  margin: 8px 0 0;
+  gap: var(--esp-1) var(--esp-4);
+  margin: var(--esp-2) 0 0;
   padding: 0;
   list-style: none;
-  color: var(--muted);
-  font-size: 11px;
+  color: var(--texto-sec);
+  font-size: var(--tipo-xs);
 }
 .market-chart-legend li { display: inline-flex; align-items: center; gap: 6px; }
-.market-chart-legend span { width: 14px; height: 3px; border-radius: 2px; }
-.market-chart-empty { min-height: 120px; margin: 0; color: var(--muted); font-size: 12px; }
+.market-legenda-cor {
+  width: 10px;
+  height: 10px;
+  border-radius: var(--raio-xs);
+  background: var(--serie-cor);
+}
+
+/* Os mesmos números em tabela, recolhidos: acima de 24 meses o gráfico não desenha
+   marcador, e sem marcador não há `title` para consultar o valor de um mês. */
+.market-chart-valores { margin-top: var(--esp-2); }
+.market-chart-valores > summary {
+  cursor: pointer;
+  font-size: var(--tipo-xs);
+  color: var(--texto-sec);
+}
+.market-chart-valores > summary:hover { color: var(--texto-base); }
+.market-chart-valores > summary:focus-visible {
+  outline: 2px solid var(--accent-text);
+  outline-offset: 2px;
+}
+.market-chart-valores table {
+  width: 100%;
+  margin-top: var(--esp-2);
+  border-collapse: collapse;
+  font-size: var(--tipo-xs);
+  font-variant-numeric: tabular-nums;
+}
+.market-chart-valores th,
+.market-chart-valores td {
+  padding: 4px 6px;
+  border-bottom: 1px solid var(--borda-sutil);
+  text-align: right;
+}
+.market-chart-valores thead th {
+  text-align: right;
+  color: var(--texto-sec);
+  font-size: var(--tipo-2xs);
+  font-weight: 700;
+  letter-spacing: .04em;
+  text-transform: uppercase;
+}
+.market-chart-valores tbody th,
+.market-chart-valores thead th:first-child { text-align: left; color: var(--texto-sec); font-weight: 500; }
+
+.market-chart-empty {
+  min-height: 120px;
+  margin: 0;
+  color: var(--texto-sec);
+  font-size: var(--tipo-sm);
+}
+
+/* O sparkline não tem eixo nem legenda: só a forma do movimento, ao lado do número. */
+.market-spark-svg {
+  display: block;
+  width: 100%;
+  height: 32px;
+  overflow: visible;
+}
 
 .market-provenance { margin-top: 24px; }
 .market-provenance > summary {
@@ -1009,8 +1284,7 @@ select:focus, input[type="number"]:focus {
   .view-switch { order: 3; width: 100%; }
   .view-tab { flex: 1; }
   .market { padding: 16px 12px 32px; }
-  .market-filters { grid-template-columns: 1fr 1fr; }
-  .market-filters > label:first-child { grid-column: 1 / -1; }
+  .market-campos { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .market-chart-grid { grid-template-columns: 1fr; }
 }
 
@@ -1023,35 +1297,70 @@ select:focus, input[type="number"]:focus {
    Os tons reusam os mesmos pares de `--tone-*` do selo de status do dataset, para a
    aplicação não ter dois vocabulários de "bom/ruim". E o tom NUNCA viaja sozinho: cada
    variação leva ícone e rótulo, para quem não distingue as cores e para quem imprime. */
-:root {
-  --tone-good: #2f5a41;
-  --tone-bad: #8c2f2f;
+/* Destaques: quatro indicadores em corpo grande, com sparkline e a variação principal.
+   O rótulo em caixa-alta miúda e o valor em corpo 26 são a anatomia de KPI do contrato de
+   UI — a hierarquia vem do TAMANHO, e a cor continua reservada ao tom da variação. */
+.market-destaques {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: var(--esp-3);
+  margin-bottom: var(--esp-5);
 }
-@media (prefers-color-scheme: dark) {
-  :root {
-    --tone-good: #8fd6ac;
-    --tone-bad: #f0a3a3;
-  }
+.market-kpi {
+  min-width: 0;
+  padding: var(--esp-4);
+  border: 1px solid var(--borda-base);
+  border-radius: var(--raio-lg);
+  background: var(--superficie-base);
+  box-shadow: var(--sombra-1);
+}
+.market-kpi-rotulo {
+  margin: 0 0 var(--esp-1);
+  font-size: var(--tipo-2xs);
+  font-weight: 700;
+  letter-spacing: .04em;
+  text-transform: uppercase;
+  color: var(--texto-sec);
+  line-height: 1.35;
+}
+.market-kpi-valor {
+  margin: 0;
+  font-size: var(--tipo-2xl);
+  font-weight: 600;
+  line-height: 1.1;
+  color: var(--texto-forte);
 }
 
-.market-row {
+/* Grupos: o restante dos indicadores, sob o rótulo do que eles compõem. */
+.market-grupo { margin-bottom: var(--esp-5); }
+.market-grupo-titulo {
+  margin: 0 0 var(--esp-3);
+  padding-bottom: var(--esp-2);
+  border-bottom: 1px solid var(--borda-sutil);
+  font-size: var(--tipo-2xs);
+  font-weight: 700;
+  letter-spacing: .04em;
+  text-transform: uppercase;
+  color: var(--texto-sec);
+}
+.market-tiles {
   display: grid;
-  grid-template-columns: repeat(4, 1fr);
-  gap: 12px;
-  margin-bottom: 12px;
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  gap: var(--esp-3);
 }
 
 .market-card {
-  padding: 14px;
-  border: 1px solid var(--line);
-  border-radius: 10px;
-  background: var(--panel);
+  min-width: 0;
+  padding: var(--esp-3);
+  border: 1px solid var(--borda-base);
+  border-radius: var(--raio-lg);
+  background: var(--superficie-base);
 }
 .market-card-label {
   margin: 0 0 6px;
-  font-size: 12px;
+  font-size: var(--tipo-sm);
   font-weight: 500;
-  color: var(--muted);
+  color: var(--texto-sec);
   line-height: 1.3;
 }
 
@@ -1060,10 +1369,10 @@ select:focus, input[type="number"]:focus {
    variações, que são coluna e precisam alinhar. */
 .market-card-value {
   margin: 0 0 10px;
-  font-size: 24px;
+  font-size: var(--tipo-xl);
   font-weight: 600;
   line-height: 1.15;
-  color: var(--ink);
+  color: var(--texto-forte);
 }
 
 .market-card-absent {
@@ -1073,7 +1382,11 @@ select:focus, input[type="number"]:focus {
   color: var(--muted);
 }
 
-.market-deltas { margin: 0; padding: 0; list-style: none; }
+.market-deltas { margin: var(--esp-2) 0 0; padding: 0; list-style: none; }
+
+/* A variação que a pessoa veio ver, no destaque. Ganha corpo, e só ela. */
+.market-delta-principal { font-size: var(--tipo-base); }
+.market-delta-principal .market-delta-value { font-weight: 600; }
 .market-delta {
   display: grid;
   grid-template-columns: 12px 1fr auto;
@@ -1092,23 +1405,36 @@ select:focus, input[type="number"]:focus {
 .market-delta-ruim .market-delta-value { color: var(--tone-bad); }
 .market-delta-neutro .market-delta-icon { color: var(--muted); }
 
-.market-card-note {
-  margin: 8px 0 0;
-  font-size: 11px;
-  line-height: 1.4;
-  color: var(--muted);
+.market-period-base {
+  margin: -6px 0 0;
+  font-size: var(--tipo-sm);
+  color: var(--texto-sec);
 }
 
 @media (max-width: 900px) {
-  .market-row { grid-template-columns: repeat(2, 1fr); }
+  .market-destaques { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
 @media (max-width: 560px) {
-  /* Em 390 px os cards empilham. Duas colunas ali dariam ~170 px por card, e
-     "R$ 12.071,92/m²" não cabe sem quebrar no meio do número. */
-  .market-row { grid-template-columns: 1fr; }
-  .market-card-value { font-size: 22px; }
-  .market-filters,
-  .market-custom-range { grid-template-columns: 1fr; }
-  .market-filters > label,
-  .market-custom-range { grid-column: 1; }
+  /* Em 390 px os indicadores empilham. Duas colunas ali dariam ~170 px por card, e
+     "R$ 12.071,92/m²" não cabe sem quebrar no meio do número.
+
+     O destaque vira PÍLULA: rótulo à esquerda, valor à direita na mesma linha de base, e
+     o sparkline abaixo, na largura toda. Empilhado como no desktop, cada destaque comeria
+     meia tela e os quatro exigiriam rolagem antes do primeiro grupo. */
+  .market-destaques { grid-template-columns: 1fr; gap: var(--esp-2); }
+  .market-kpi {
+    display: grid;
+    grid-template-columns: 1fr auto;
+    align-items: baseline;
+    gap: var(--esp-1) var(--esp-2);
+    padding: var(--esp-2) var(--esp-3);
+  }
+  .market-kpi-rotulo { margin: 0; }
+  .market-kpi-valor { font-size: var(--tipo-lg); white-space: nowrap; }
+  .market-kpi > .market-spark-svg,
+  .market-kpi > .market-deltas,
+  .market-kpi > .market-card-absent { grid-column: 1 / -1; }
+  .market-tiles { grid-template-columns: 1fr; }
+  .market-card-value { font-size: var(--tipo-xl); }
+  .market-campos { grid-template-columns: 1fr; }
 }

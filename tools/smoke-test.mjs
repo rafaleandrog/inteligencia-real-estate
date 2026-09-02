@@ -14,6 +14,12 @@
 // KPIs são verificados normalmente; erros de rede de tile são filtrados do console.
 
 import { chromium } from 'playwright';
+// Contagens vêm do módulo que as DECLARA, nunca digitadas aqui (R8.72): um `4` literal
+// deixaria o teste verde subtestando quando o quinto gráfico chegasse, e vermelho sem
+// nada ter quebrado quando um saísse.
+import { CARD_DESTAQUES, CARD_GRUPOS, dashboardMetricKeys } from '../src/ivv/cards.js';
+import { HISTORY_CHARTS } from '../src/ivv/history.js';
+import { PERIOD_MODE_OPTIONS } from '../src/ivv/period.js';
 
 const errors = [];
 const ok = [];
@@ -1090,52 +1096,173 @@ noMercado.botaoAtivo === 'mercado'
   ? pass('a tela declara o escopo do DF inteiro, sem recorte por RA')
   : fail('escopo não declarado: ' + noMercado.escopo);
 
-// Cards do Mercado (issue #59). O fixture da demo tem UM mês da semente v1.0.0, e é
-// pouco para exercitar variação — por isso a série é substituída por dois meses com os
-// campos de variação preenchidos, na mesma interceptação que o resto do smoke já usa.
-const cards = await viewPage.evaluate(() => {
-  const linhas = [...document.querySelectorAll('#marketBody .market-row')];
+// A tela precisa ROLAR (issue #83). `body { overflow: hidden }` é decisão do mapa, que
+// ocupa a viewport por definição; a view do Mercado é irmã dele e herdava o corte sem
+// herdar altura nenhuma — no desktop, tudo abaixo da dobra ficava inalcançável, sem barra
+// e sem erro. Só medição prova isso: o atributo confirma a intenção, o layout confirma o
+// resultado (R8.67).
+const rolagem = await viewPage.evaluate(() => {
+  const view = document.querySelector('#marketView');
+  const antes = view.scrollTop;
+  view.scrollTop = 1e6;
+  const desceu = view.scrollTop > antes;
+  view.scrollTop = antes;
   return {
-    linhas: linhas.length,
-    porLinha: linhas.map((l) => l.querySelectorAll('.market-card').length),
-    primeiros: [...document.querySelectorAll('#marketBody .market-card-label')]
-      .slice(0, 4).map((n) => n.textContent),
-    ausentes: document.querySelectorAll('#marketBody .market-card-absent').length,
-    travessoes: [...document.querySelectorAll('#marketBody .market-card-value')]
-      .filter((n) => n.textContent.trim() === '\u2014').length,
+    overflow: getComputedStyle(view).overflowY,
+    maiorQueAJanela: view.scrollHeight > view.clientHeight + 1,
+    desceu,
   };
 });
-cards.linhas === 3 && cards.porLinha.every((n) => n === 4)
-  ? pass('a grade tem três linhas de quatro cards')
-  : fail('grade errada: ' + JSON.stringify(cards));
-/Preço de venda/.test(cards.primeiros[0] || '') && /Preço pedido/.test(cards.primeiros[1] || '')
-  ? pass('preços abrem a tela, antes de qualquer outro indicador')
-  : fail('ordem dos cards: ' + JSON.stringify(cards.primeiros));
+rolagem.maiorQueAJanela && rolagem.desceu
+  ? pass('a tela do Mercado rola no desktop: o fim do conteúdo é alcançável')
+  : fail('a view do Mercado não rola: ' + JSON.stringify(rolagem));
+
+// Hierarquia dos indicadores (issues #59 e #83). O fixture da demo tem UM mês da semente
+// v1.0.0, e é pouco para exercitar variação — por isso a série é substituída por dois
+// meses com os campos de variação preenchidos, na mesma interceptação que o resto do
+// smoke já usa.
+const cards = await viewPage.evaluate(() => ({
+  destaques: [...document.querySelectorAll('#marketDestaques .market-kpi')].map((n) => n.dataset.metrica),
+  grupos: [...document.querySelectorAll('#marketBody .market-grupo')].map((n) => ({
+    key: n.dataset.grupo,
+    titulo: n.querySelector('.market-grupo-titulo')?.textContent ?? '',
+    tiles: n.querySelectorAll('.market-card').length,
+  })),
+  sparks: document.querySelectorAll('#marketDestaques .market-spark-svg').length,
+  ausentes: document.querySelectorAll('#marketView .market-card-absent').length,
+  travessoes: [...document.querySelectorAll('#marketView .market-kpi-valor, #marketView .market-card-value')]
+    .filter((n) => n.textContent.trim() === '\u2014').length,
+  corpoDestaque: Math.round(parseFloat(
+    getComputedStyle(document.querySelector('#marketDestaques .market-kpi-valor')).fontSize)),
+  corpoTile: Math.round(parseFloat(
+    getComputedStyle(document.querySelector('#marketBody .market-card-value')).fontSize)),
+}));
+JSON.stringify(cards.destaques) === JSON.stringify([...CARD_DESTAQUES])
+  ? pass(`os ${CARD_DESTAQUES.length} indicadores em destaque abrem a tela, na ordem declarada`)
+  : fail('destaques fora do declarado: ' + JSON.stringify(cards.destaques));
+cards.grupos.length === CARD_GRUPOS.length
+  && cards.grupos.every((g, i) => g.tiles === CARD_GRUPOS[i].metricas.length && g.titulo.length > 0)
+  ? pass(`os ${CARD_GRUPOS.length} grupos trazem o restante dos indicadores, cada um sob seu rótulo`)
+  : fail('grupos fora do declarado: ' + JSON.stringify(cards.grupos));
+(cards.destaques.length + cards.grupos.reduce((t, g) => t + g.tiles, 0)) === dashboardMetricKeys().length
+  ? pass('nenhum indicador se perdeu na reorganização')
+  : fail('a soma de destaques e tiles não bate com o declarado');
+// A hierarquia tem que existir no PIXEL, não só na marcação (R8.67).
+cards.corpoDestaque > cards.corpoTile
+  ? pass(`o destaque é maior que o tile na tela (${cards.corpoDestaque}px × ${cards.corpoTile}px)`)
+  : fail(`destaque e tile com o mesmo corpo: ${cards.corpoDestaque}px`);
+cards.sparks > 0
+  ? pass(`${cards.sparks} destaque(s) trazem o sparkline do movimento recente`)
+  : fail('nenhum sparkline renderizado nos destaques');
 cards.travessoes === 0
-  ? pass('nenhum card mostra travessão no lugar do valor')
-  : fail(`${cards.travessoes} card(s) com travessão`);
+  ? pass('nenhum indicador mostra travessão no lugar do valor')
+  : fail(`${cards.travessoes} indicador(es) com travessão`);
 cards.ausentes > 0
-  ? pass(`${cards.ausentes} card(s) sem dado dizem isso por escrito, em vez de zero`)
-  : pass('todos os cards têm valor nesta série');
+  ? pass(`${cards.ausentes} indicador(es) sem dado dizem isso por escrito, em vez de zero`)
+  : pass('todos os indicadores têm valor nesta série');
 
 const filtrosEGraficos = await viewPage.evaluate(() => ({
-  modo: document.querySelector('#marketPeriodMode')?.value,
+  chips: [...document.querySelectorAll('#marketPeriodChips .market-chip')].map((c) => c.dataset.mode),
+  pressionados: [...document.querySelectorAll('#marketPeriodChips .market-chip[aria-pressed="true"]')]
+    .map((c) => c.dataset.mode),
   anos: document.querySelector('#marketYear')?.options.length ?? 0,
   meses: document.querySelector('#marketMonth')?.options.length ?? 0,
   periodo: document.querySelector('#marketPeriodLabel')?.textContent ?? '',
+  base: document.querySelector('#marketPeriodBase')?.textContent ?? '',
   graficos: document.querySelectorAll('#marketCharts .market-chart').length,
   svgs: document.querySelectorAll('#marketCharts .market-chart-svg').length,
-  pontos: document.querySelectorAll('#marketCharts circle').length,
+  vazios: document.querySelectorAll('#marketCharts .market-chart-empty').length,
+  semAria: [...document.querySelectorAll('#marketCharts .market-chart-svg')]
+    .filter((s) => s.getAttribute('role') !== 'img' || !s.getAttribute('aria-label')).length,
+  marcas: document.querySelectorAll('#marketCharts .market-serie-marcador').length,
+  colunas: document.querySelectorAll('#marketCharts .market-serie-coluna').length,
+  tabelas: [...document.querySelectorAll('#marketCharts .market-chart-valores tbody')]
+    .map((t) => t.querySelectorAll('tr').length),
+  categorias: [...document.querySelectorAll('#marketCharts .market-chart')].length,
 }));
-filtrosEGraficos.modo === 'ytd' && filtrosEGraficos.anos >= 1 && filtrosEGraficos.meses >= 1
-  ? pass('os filtros abrem no acumulado do ano e expõem ano e mês disponíveis')
+JSON.stringify(filtrosEGraficos.chips) === JSON.stringify(PERIOD_MODE_OPTIONS.map((o) => o.value))
+  ? pass('os períodos aparecem como pílulas, na ordem declarada')
+  : fail('pílulas de período: ' + JSON.stringify(filtrosEGraficos.chips));
+filtrosEGraficos.pressionados.length === 1 && filtrosEGraficos.pressionados[0] === 'ytd'
+  ? pass('exatamente uma pílula está marcada, e a tela abre no acumulado do ano')
+  : fail('estado das pílulas: ' + JSON.stringify(filtrosEGraficos.pressionados));
+filtrosEGraficos.anos >= 1 && filtrosEGraficos.meses >= 1
+  ? pass('os campos de ano e mês expõem o que a série tem')
   : fail('filtros temporais incompletos: ' + JSON.stringify(filtrosEGraficos));
-filtrosEGraficos.periodo.length > 0
-  ? pass('a tela declara explicitamente o intervalo aplicado aos cards')
-  : fail('rótulo do período ficou vazio');
-filtrosEGraficos.graficos === 4 && filtrosEGraficos.svgs === 4 && filtrosEGraficos.pontos > 0
-  ? pass('o dashboard renderiza quatro gráficos históricos com dados')
-  : fail('gráficos históricos incompletos: ' + JSON.stringify(filtrosEGraficos));
+/\d+\s+m[êe]s/.test(filtrosEGraficos.periodo)
+  ? pass('a tela declara o intervalo aplicado e conta os meses')
+  : fail('resumo do período: ' + filtrosEGraficos.periodo);
+/Varia(ç|c)ões referentes a/.test(filtrosEGraficos.base)
+  ? pass('a base de comparação está escrita uma vez, junto do período')
+  : fail('base de comparação: ' + filtrosEGraficos.base);
+// Gráfico sem dado na série não vira desenho vazio: vira frase (R5.7). Por isso a conta
+// é `desenhados + declaradamente vazios === declarados`, e não `svgs === gráficos`.
+filtrosEGraficos.graficos === HISTORY_CHARTS.length + 1
+  && filtrosEGraficos.svgs + filtrosEGraficos.vazios === filtrosEGraficos.graficos
+  && filtrosEGraficos.svgs > 0
+  ? pass(`o dashboard renderiza ${filtrosEGraficos.graficos} gráficos (histórico + sazonalidade)`)
+  : fail('gráficos incompletos: ' + JSON.stringify(filtrosEGraficos));
+filtrosEGraficos.semAria === 0
+  ? pass('todo gráfico se anuncia como imagem, com descrição')
+  : fail(`${filtrosEGraficos.semAria} gráfico(s) sem role/aria-label`);
+filtrosEGraficos.marcas > 0 && filtrosEGraficos.colunas > 0
+  ? pass('linha e coluna coexistem: o tipo de cada gráfico é o declarado')
+  : fail('formas dos gráficos: ' + JSON.stringify(filtrosEGraficos));
+filtrosEGraficos.tabelas.length === filtrosEGraficos.svgs
+  && filtrosEGraficos.tabelas.every((n) => n > 0)
+  ? pass('cada gráfico desenhado traz os valores mês a mês em tabela')
+  : fail('tabelas de valores: ' + JSON.stringify(filtrosEGraficos.tabelas));
+
+// A cor da série CHEGA — e chega por CSS. `stroke="var(--cat-1)"` como atributo de
+// apresentação é aceito pelo parser e descartado em silêncio pelo browser: a série some
+// sem erro nenhum. Só o valor COMPUTADO prova que ela está lá (R8.70).
+const cores = await viewPage.evaluate(() => {
+  const grafico = [...document.querySelectorAll('#marketCharts .market-chart')]
+    .find((c) => c.querySelectorAll('.market-chart-legend li').length > 1);
+  if (!grafico) return null;
+  const swatches = [...grafico.querySelectorAll('.market-legenda-cor')]
+    .map((n) => getComputedStyle(n).backgroundColor);
+  const tracos = [...grafico.querySelectorAll('.market-serie-linha, .market-serie-coluna')]
+    .map((n) => getComputedStyle(n).stroke + '|' + getComputedStyle(n).fill);
+  return { swatches, tracos };
+});
+cores && cores.swatches.length > 1 && new Set(cores.swatches).size === cores.swatches.length
+  && cores.swatches.every((c) => c && c !== 'rgba(0, 0, 0, 0)')
+  ? pass('a legenda pinta cada série com uma cor própria, resolvida pelo CSS')
+  : fail('cores da legenda: ' + JSON.stringify(cores));
+cores && cores.tracos.every((t) => !t.includes('none|none'))
+  ? pass('o traço da série recebeu cor — nenhuma série sumiu por atributo descartado')
+  : fail('traços sem cor: ' + JSON.stringify(cores));
+
+// Campo que o período não usa fica APAGADO, com o motivo escrito, e nunca some (R8.64).
+await viewPage.click('.market-chip[data-mode="all"]');
+await viewPage.waitForTimeout(250);
+const apagados = await viewPage.evaluate(() => ['#marketYear', '#marketMonth', '#marketStart', '#marketEnd']
+  .map((sel) => {
+    const campo = document.querySelector(sel);
+    return {
+      sel,
+      existe: !!campo,
+      visivel: campo.getBoundingClientRect().height > 0,
+      desabilitado: campo.disabled,
+      motivo: campo.title,
+    };
+  }));
+apagados.every((c) => c.existe && c.visivel && c.desabilitado && c.motivo.length > 0)
+  ? pass('no histórico completo, os campos ficam apagados COM o motivo, e nenhum some')
+  : fail('campos do período: ' + JSON.stringify(apagados));
+await viewPage.click('.market-chip[data-mode="custom"]');
+await viewPage.waitForTimeout(250);
+const intervalo = await viewPage.evaluate(() => ({
+  de: document.querySelector('#marketStart').disabled,
+  ate: document.querySelector('#marketEnd').disabled,
+  ano: document.querySelector('#marketYear').disabled,
+}));
+!intervalo.de && !intervalo.ate && intervalo.ano
+  ? pass('no intervalo personalizado, De/Até ligam e o ano desliga')
+  : fail('intervalo personalizado: ' + JSON.stringify(intervalo));
+await viewPage.click('.market-chip[data-mode="ytd"]');
+await viewPage.waitForTimeout(250);
 
 const proveniencia = await viewPage.evaluate(() => ({
   linhas: document.querySelectorAll('#marketProvenanceList dt').length,
@@ -1184,9 +1311,10 @@ await tomPage.goto('http://localhost:8080/#mercado', { waitUntil: 'networkidle' 
 await tomPage.waitForTimeout(1400);
 
 const tons = await tomPage.evaluate(() => {
-  const ler = (rotulo) => {
-    const card = [...document.querySelectorAll('#marketBody .market-card')]
-      .find((c) => c.querySelector('.market-card-label')?.textContent.includes(rotulo));
+  // O endereço do indicador é a CHAVE da métrica, não o rótulo: rótulo muda, chave não —
+  // e o mesmo seletor serve destaque e tile.
+  const ler = (metrica) => {
+    const card = document.querySelector(`#marketView [data-metrica="${metrica}"]`);
     if (!card) return null;
     return [...card.querySelectorAll('.market-delta')].map((d) => ({
       classe: d.className,
@@ -1196,10 +1324,10 @@ const tons = await tomPage.evaluate(() => {
     }));
   };
   return {
-    vendas: ler('Unidades vendidas'),
-    distratos: ler('Unidades distratadas'),
-    preco: ler('Preço de venda'),
-    ivv: ler('IVV'),
+    vendas: ler('sales_units'),
+    distratos: ler('cancellations_units'),
+    preco: ler('sale_price_brl_m2'),
+    ivv: ler('ivv_pct'),
   };
 });
 
@@ -1218,8 +1346,10 @@ tons.vendas?.[0]?.icone && tons.distratos?.[0]?.icone !== tons.vendas?.[0]?.icon
 
 const rotulosIvv = (tons.ivv || []).map((d) => d.label);
 const valoresIvv = (tons.ivv || []).map((d) => d.valor);
-rotulosIvv.includes('vs mês anterior') && rotulosIvv.includes('vs mês anterior, em %')
-  ? pass('o IVV separa pontos percentuais de variação percentual')
+// O rótulo NOMEIA o mês comparado (R8.66): "vs abr./2026", e a versão em % ao lado.
+rotulosIvv.some((r) => /^vs \w{3}\.\/\d{4}$/.test(r))
+  && rotulosIvv.some((r) => /^vs \w{3}\.\/\d{4}, em %$/.test(r))
+  ? pass('o IVV separa pontos percentuais de variação percentual, e nomeia o mês comparado')
   : fail('rótulos do IVV: ' + JSON.stringify(rotulosIvv));
 valoresIvv.some((v) => /p\.p\./.test(v)) && valoresIvv.some((v) => /%$/.test(v) && !/p\.p\./.test(v))
   ? pass('as duas grandezas do IVV saem com unidades distintas na tela')
@@ -1228,19 +1358,19 @@ valoresIvv.some((v) => /p\.p\./.test(v)) && valoresIvv.some((v) => /%$/.test(v) 
 // A mesma série precisa mudar de soma YTD para leitura pontual quando o usuário escolhe
 // um mês. O gráfico mantém o contexto histórico, sem somar pontos mensais entre si.
 const lerVendasEPeriodo = (alvo) => alvo.evaluate(() => {
-  const card = [...document.querySelectorAll('#marketBody .market-card')]
-    .find((item) => item.querySelector('.market-card-label')?.textContent.includes('Unidades vendidas'));
+  const card = document.querySelector('#marketView [data-metrica="sales_units"]');
   return {
-    valor: card?.querySelector('.market-card-value')?.textContent ?? '',
+    valor: card?.querySelector('.market-kpi-valor, .market-card-value')?.textContent ?? '',
     periodo: document.querySelector('#marketPeriodLabel')?.textContent ?? '',
-    pontosVendas: document.querySelectorAll('[data-chart="activity"] circle').length,
+    // Vendas e lançamentos são COLUNAS: contagem de evento do mês não é linha.
+    colunasAtividade: document.querySelectorAll('[data-chart="atividade"] .market-serie-coluna').length,
   };
 });
 const vendasYtd = await lerVendasEPeriodo(tomPage);
 /800/.test(vendasYtd.valor)
   ? pass('o acumulado do ano soma os fluxos mensais')
   : fail('vendas YTD não somadas: ' + JSON.stringify(vendasYtd));
-await tomPage.selectOption('#marketPeriodMode', 'month');
+await tomPage.click('.market-chip[data-mode="month"]');
 await tomPage.selectOption('#marketYear', '2026');
 await tomPage.selectOption('#marketMonth', '4');
 await tomPage.waitForTimeout(250);
@@ -1248,27 +1378,46 @@ const vendasAbril = await lerVendasEPeriodo(tomPage);
 /400/.test(vendasAbril.valor) && /abr\./i.test(vendasAbril.periodo)
   ? pass('selecionar abril troca os cards para o valor mensal correto')
   : fail('filtro mensal incorreto: ' + JSON.stringify(vendasAbril));
-vendasAbril.pontosVendas >= 2
+vendasAbril.colunasAtividade >= 2
   ? pass('no modo mensal, o gráfico preserva contexto histórico anterior')
   : fail('o gráfico perdeu o histórico ao filtrar um mês: ' + JSON.stringify(vendasAbril));
 
-// 390 px: os cards empilham em uma coluna.
+// 390 px: os destaques empilham em uma coluna e viram pílula (rótulo e valor na mesma
+// linha de base). Empilhados como no desktop, os quatro comeriam a tela toda antes do
+// primeiro grupo.
 await tomPage.setViewportSize({ width: 390, height: 844 });
 await tomPage.waitForTimeout(400);
 const empilha = await tomPage.evaluate(() => {
-  const cards = [...document.querySelectorAll('#marketBody .market-row:first-child .market-card')];
-  if (cards.length < 2) return null;
-  const [a, b] = cards.map((c) => c.getBoundingClientRect());
-  return { empilhado: b.top >= a.bottom - 1, largura: Math.round(a.width) };
+  const kpis = [...document.querySelectorAll('#marketDestaques .market-kpi')];
+  if (kpis.length < 2) return null;
+  const [a, b] = kpis.map((c) => c.getBoundingClientRect());
+  const rotulo = kpis[0].querySelector('.market-kpi-rotulo').getBoundingClientRect();
+  const valor = kpis[0].querySelector('.market-kpi-valor').getBoundingClientRect();
+  return {
+    empilhado: b.top >= a.bottom - 1,
+    pilula: Math.abs(rotulo.bottom - valor.bottom) < 6 && valor.left > rotulo.left,
+    largura: Math.round(a.width),
+  };
 });
 empilha?.empilhado
-  ? pass('em 390px os cards empilham em uma coluna')
-  : fail('cards não empilharam em 390px: ' + JSON.stringify(empilha));
+  ? pass('em 390px os destaques empilham em uma coluna')
+  : fail('destaques não empilharam em 390px: ' + JSON.stringify(empilha));
+empilha?.pilula
+  ? pass('em 390px o destaque vira pílula: rótulo e valor na mesma linha de base')
+  : fail('destaque não virou pílula em 390px: ' + JSON.stringify(empilha));
 const overflowCards = await tomPage.evaluate(
   () => document.documentElement.scrollWidth - document.documentElement.clientWidth);
 overflowCards <= 1
-  ? pass('os cards não estouram a largura em 390px')
-  : fail(`overflow de ${overflowCards}px nos cards`);
+  ? pass('os indicadores não estouram a largura em 390px')
+  : fail(`overflow de ${overflowCards}px nos indicadores`);
+const graficoEstreito = await tomPage.evaluate(() => ({
+  viewBox: document.querySelector('#marketCharts .market-chart-svg')?.getAttribute('viewBox') ?? '',
+  overflow: document.querySelector('#marketCharts')?.scrollWidth
+    - document.querySelector('#marketCharts')?.clientWidth,
+}));
+graficoEstreito.viewBox.startsWith('0 0 360') && graficoEstreito.overflow <= 1
+  ? pass('em 390px o gráfico troca para o desenho estreito, sem estourar a largura')
+  : fail('gráfico em 390px: ' + JSON.stringify(graficoEstreito));
 await tomPage.close();
 
 // Voltar para o mapa: o Leaflet precisa remedir o container.

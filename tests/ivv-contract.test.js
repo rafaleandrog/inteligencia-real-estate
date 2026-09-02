@@ -21,7 +21,7 @@ import {
 } from '../src/ivv/normalize-ivv.js';
 import {
   METRIC_BY_KEY, METRIC_KEYS, LEGACY_COLUMN_ALIASES, PUBLISHED_COLUMN_ALIASES,
-  classifyColumn, COLUMN_ROLES,
+  IVV_DERIVED_SERIES, classifyColumn, COLUMN_ROLES,
 } from '../src/ivv/metrics.js';
 import { aggregatePeriod } from '../src/ivv/aggregate.js';
 
@@ -136,6 +136,24 @@ test('toda coluna derivada declarada resolve para uma métrica do registro', () 
     'avg_offer_ticket_brl', 'avg_sale_ticket_brl', 'avg_sold_area_m2',
     'cancellations_to_sales_pct', 'sale_price_diff_pct',
   ]);
+});
+
+test('toda série derivada plotável fecha o triângulo — e NÃO é métrica agregável', () => {
+  // O registro de séries derivadas (issue #83) existe para desenhar razão publicada por mês
+  // sem torná-la agregável. Ele fecha nos mesmos três sentidos do resto: se a coluna sumir do
+  // normalizador ou do contrato, o gráfico plotaria `undefined` e a série apareceria vazia sem
+  // ninguém saber por quê; se ela entrar no registro de métricas, o motor passa a poder somá-la,
+  // que é exatamente a média de razões que a política de agregação impede.
+  const declaradas = new Set(contractColumnsOfSection());
+  for (const serie of IVV_DERIVED_SERIES) {
+    assert.ok(IVV_COLUMN_BY_KEY[serie.key], `${serie.key} fora do normalizador`);
+    assert.ok(declaradas.has(serie.key), `${serie.key} fora do contrato`);
+    assert.equal(METRIC_BY_KEY[serie.key], undefined,
+      `${serie.key} está nos DOIS registros — decida qual dos dois`);
+    assert.equal('kind' in serie, false,
+      `${serie.key} declarou natureza de agregação: é o que a torna somável por engano`);
+    assert.ok(serie.label && serie.unit, `${serie.key} sem rótulo ou sem unidade`);
+  }
 });
 
 test('a coluna de acumulado que cada métrica declara está no contrato e no normalizador', () => {

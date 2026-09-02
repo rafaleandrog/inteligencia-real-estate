@@ -212,20 +212,26 @@
     <p class="market-scope" id="marketScope"></p>
   </header>
 
+  <!-- Filtro de período (issue #83): os presets são PÍLULAS, não um `select`.
+
+       O `select` escondia as seis opções atrás de um clique e não dizia qual estava
+       valendo sem abrir; a pílula mostra o conjunto inteiro e marca a escolhida com
+       `aria-pressed` — que é o que o leitor de tela já consulta. Chips E `select` seriam
+       duas verdades sobre o mesmo estado, e divergiriam no primeiro bug.
+
+       Os campos abaixo NUNCA somem: o período que não usa um deles o deixa desabilitado,
+       com o motivo no `title` (R8.64). -->
   <section class="market-filters" aria-label="Período dos indicadores">
-    <label>
-      <span>Período</span>
-      <select id="marketPeriodMode"></select>
-    </label>
-    <label>
-      <span>Ano de referência</span>
-      <select id="marketYear"></select>
-    </label>
-    <label>
-      <span>Mês de referência</span>
-      <select id="marketMonth"></select>
-    </label>
-    <div class="market-custom-range" id="marketCustomRange" hidden>
+    <div class="market-chips" id="marketPeriodChips" role="group" aria-label="Período"></div>
+    <div class="market-campos">
+      <label>
+        <span>Ano de referência</span>
+        <select id="marketYear"></select>
+      </label>
+      <label>
+        <span>Mês de referência</span>
+        <select id="marketMonth"></select>
+      </label>
       <label>
         <span>De</span>
         <input type="month" id="marketStart">
@@ -236,7 +242,13 @@
       </label>
     </div>
     <p class="market-period-label" id="marketPeriodLabel" aria-live="polite"></p>
+    <p class="market-period-base" id="marketPeriodBase"></p>
   </section>
+
+  <!-- Hierarquia dos indicadores (issue #83): quatro destaques com sparkline abrem a tela,
+       o restante vem agrupado pelo que compõe. Doze cards do mesmo tamanho não são
+       hierarquia — são doze coisas igualmente importantes, o que é nenhuma. -->
+  <section class="market-destaques" id="marketDestaques" aria-label="Indicadores principais"></section>
 
   <div class="market-body" id="marketBody"></div>
 

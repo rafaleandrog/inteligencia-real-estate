@@ -9,7 +9,7 @@
 import { toNumber, toDateISO } from '../normalize.js';
 import {
   METRIC_KINDS, METRIC_KEYS, METRIC_BY_KEY, IVV_PCT_SCALE, DIVERGENCE_TOLERANCE,
-  classifyColumn, COLUMN_ROLES,
+  DERIVED_SERIES_BY_KEY, classifyColumn, COLUMN_ROLES,
 } from './metrics.js';
 
 /** Origem do valor agregado — o que a tela precisa saber para não mentir sobre o número. */
@@ -560,6 +560,24 @@ export function aggregatePeriod(rows, options = {}) {
     unsupported,
     warnings: collected,
   };
+}
+
+/**
+ * Série mensal de uma coluna DERIVADA declarada em `IVV_DERIVED_SERIES` (issue #83).
+ *
+ * Espelha `monthlySeries`, com um registro diferente e a mesma intransigência: coluna
+ * que ninguém declarou não vira série. A separação é o que garante que uma razão
+ * publicada por mês possa ser desenhada sem ficar, no mesmo movimento, agregável.
+ */
+export function derivedSeries(rows, key) {
+  if (!DERIVED_SERIES_BY_KEY[key]) {
+    throw new IvvAggregationError(
+      `Série derivada \`${key}\` não está declarada em src/ivv/metrics.js.`,
+      { code: 'SERIE_DERIVADA_NAO_DECLARADA', metric: key },
+    );
+  }
+  const { rows: prepared } = prepareRows(rows);
+  return prepared.map((item) => ({ month: item.month, value: numberAt(item, key) }));
 }
 
 /** Série mensal de uma métrica, para gráfico. Não agrega — só ordena e converte. */

@@ -11,12 +11,14 @@ import { loadDataset, flattenEntities } from './data.js';
 import { isApproximateLocation, appMetaRows } from './normalize.js';
 import { ivvProvenance, IVV_SCOPE_NOTICE } from './ivv/scope.js';
 import { aggregatePeriod } from './ivv/aggregate.js';
-import { buildMarketCards, formatMetricValue } from './ivv/cards.js';
+import { buildMarketDashboard, formatMetricValue } from './ivv/cards.js';
 import {
-  PERIOD_MODE_OPTIONS, PERIOD_MODES, availableYears, availableMonths,
-  defaultPeriodSelection, selectIvvPeriod, chartRowsForSelection, periodLabel,
+  PERIOD_MODE_OPTIONS, availableYears, availableMonths, controlDisabledReason,
+  defaultPeriodSelection, selectIvvPeriod, chartRowsForSelection, periodSummary,
+  monthYearLabel, mesAnterior, mesmoMesAnoAnterior,
 } from './ivv/period.js';
-import { buildHistoryCharts } from './ivv/history.js';
+import { buildHistoryCharts, buildSeasonality, buildSparkline } from './ivv/history.js';
+import { chartGeometry, chartViewport, VIEWPORTS } from './ivv/chart-layout.js';
 import {
   anchorLegendGroups, applyFilters, computeKpis, createFilterState, distinctAnchorGroups,
   distinctAnchorSegments, distinctLocalities, distinctPropertyTypes, distinctRegions,
@@ -61,10 +63,11 @@ const dom = {
   viewSwitch: el('viewSwitch'), marketTab: el('marketTab'),
   mapView: el('mapView'), marketView: el('marketView'),
   marketScope: el('marketScope'), marketBody: el('marketBody'),
-  marketPeriodMode: el('marketPeriodMode'), marketYear: el('marketYear'),
-  marketMonth: el('marketMonth'), marketCustomRange: el('marketCustomRange'),
+  marketPeriodChips: el('marketPeriodChips'), marketYear: el('marketYear'),
+  marketMonth: el('marketMonth'),
   marketStart: el('marketStart'), marketEnd: el('marketEnd'),
-  marketPeriodLabel: el('marketPeriodLabel'), marketCharts: el('marketCharts'),
+  marketPeriodLabel: el('marketPeriodLabel'), marketPeriodBase: el('marketPeriodBase'),
+  marketDestaques: el('marketDestaques'), marketCharts: el('marketCharts'),
   marketHistoryNote: el('marketHistoryNote'),
   marketProvenance: el('marketProvenance'), marketProvenanceList: el('marketProvenanceList'),
   marketSource: el('marketSource'),
@@ -1262,23 +1265,26 @@ function marketDeltaRow(delta) {
 }
 
 /**
- * Um card do Mercado (issue #59).
+ * Um indicador do Mercado (issues #59 e #83).
  *
  * O valor usa figuras PROPORCIONAIS, não tabulares: `tabular-nums` dá a todo dígito a
  * largura de um zero, e num número grande isso deixa o texto frouxo. Tabular é para
  * coluna que precisa alinhar verticalmente — as variações, aqui.
+ *
+ * `data-metrica` é o endereço estável do card: rótulo muda, chave de métrica não.
  */
-function marketCard(card) {
+function marketCard(card, { destaque = false, spark = null } = {}) {
   const box = document.createElement('article');
-  box.className = 'market-card';
+  box.className = destaque ? 'market-kpi' : 'market-card';
+  box.dataset.metrica = card.key;
 
-  const label = document.createElement('h2');
-  label.className = 'market-card-label';
+  const label = document.createElement('h3');
+  label.className = destaque ? 'market-kpi-rotulo' : 'market-card-label';
   label.textContent = card.label;
   box.append(label);
 
   if (card.value === null) {
-    // Ausência é uma frase, não um travessão: travessão numa grade de doze cards é
+    // Ausência é uma frase, não um travessão: travessão numa grade de indicadores é
     // indistinguível de um card que não carregou.
     const ausente = document.createElement('p');
     ausente.className = 'market-card-absent';
@@ -1288,48 +1294,63 @@ function marketCard(card) {
   }
 
   const value = document.createElement('p');
-  value.className = 'market-card-value';
+  value.className = destaque ? 'market-kpi-valor' : 'market-card-value';
   value.textContent = card.value;
   box.append(value);
+
+  if (spark && !spark.vazio) box.append(marketSpark(spark));
 
   if (card.deltas.length > 0) {
     const list = document.createElement('ul');
     list.className = 'market-deltas';
-    for (const delta of card.deltas) list.append(marketDeltaRow(delta));
-    box.append(list);
-
-    if (card.referenceMonth) {
-      // Sem nomear o mês, "vs mês anterior" sobre um período de 66 meses parece variação
-      // do período e é variação do último mês — ambíguo de um jeito caro.
-      const nota = document.createElement('p');
-      nota.className = 'market-card-note';
-      nota.textContent = `Variações referentes a ${card.referenceMonth}.`;
-      box.append(nota);
+    for (const [indice, delta] of card.deltas.entries()) {
+      const linha = marketDeltaRow(delta);
+      // No destaque, a primeira variação é a que a pessoa veio ver e ganha corpo; as
+      // outras continuam legíveis abaixo dela, menores.
+      if (destaque && indice === 0) linha.classList.add('market-delta-principal');
+      list.append(linha);
     }
+    box.append(list);
   }
 
   return box;
 }
 
+function marketGrupo(grupo) {
+  const section = document.createElement('section');
+  section.className = 'market-grupo';
+  section.dataset.grupo = grupo.key;
+
+  const titulo = document.createElement('h2');
+  titulo.className = 'market-grupo-titulo';
+  titulo.textContent = grupo.label;
+  section.append(titulo);
+
+  const grade = document.createElement('div');
+  grade.className = 'market-tiles';
+  for (const card of grupo.cards) grade.append(marketCard(card));
+  section.append(grade);
+  return section;
+}
+
 /**
- * A grade de cards do Mercado: preços e volume de vendas primeiro (issue #59).
+ * Os indicadores do Mercado: destaques primeiro, depois os grupos (issue #83).
  *
  * Toda agregação passa pelo motor da issue #57 — nenhum card soma estoque por conta
- * própria, que é o erro caro que aquele motor existe para impedir.
+ * própria, que é o erro caro que aquele motor existe para impedir. O sparkline vem da
+ * janela de contexto, não do período agregado: ele mostra a FORMA do movimento recente,
+ * e um período de um mês só teria forma nenhuma.
  */
-function renderMarketCards(months) {
+function renderMarketCards(months, janela) {
   const aggregated = aggregatePeriod(months);
-  const rows = buildMarketCards(aggregated, months);
+  const { destaques, grupos, mesReferencia } = buildMarketDashboard(aggregated, months);
 
-  const frag = document.createDocumentFragment();
-  for (const row of rows) {
-    const section = document.createElement('div');
-    section.className = 'market-row';
-    for (const card of row) section.append(marketCard(card));
-    frag.append(section);
-  }
-  dom.marketBody.replaceChildren(frag);
-  return aggregated.warnings;
+  dom.marketDestaques.replaceChildren(...destaques.map((card) => marketCard(card, {
+    destaque: true,
+    spark: buildSparkline(janela, card.key),
+  })));
+  dom.marketBody.replaceChildren(...grupos.map(marketGrupo));
+  return { warnings: aggregated.warnings, mesReferencia };
 }
 
 function option(value, label) {
@@ -1347,21 +1368,49 @@ function populateMarketMonths(year, preferred) {
     ? wanted : String(months.at(-1)?.value || '');
 }
 
-function syncMarketFilterVisibility() {
+/**
+ * Marca a pílula do período escolhido e apaga os campos que ele não usa (issue #83).
+ *
+ * Nenhum `if` de modo mora aqui: quem sabe que campo cada período usa é
+ * `PERIOD_MODE_CONTROLS`, e o motivo do campo apagado sai de `controlDisabledReason` —
+ * campo desabilitado sem motivo escrito é indistinguível de campo quebrado (R8.64).
+ */
+function syncMarketFilterState() {
   const mode = state.marketSelection.mode;
-  const custom = mode === PERIOD_MODES.CUSTOM;
-  const all = mode === PERIOD_MODES.ALL;
-  dom.marketCustomRange.hidden = !custom;
-  dom.marketYear.disabled = custom || all;
-  dom.marketMonth.disabled = custom || all || mode === PERIOD_MODES.YEAR;
+
+  for (const chip of dom.marketPeriodChips.querySelectorAll('.market-chip')) {
+    chip.setAttribute('aria-pressed', String(chip.dataset.mode === mode));
+  }
+
+  const campos = [
+    ['ano', [dom.marketYear]],
+    ['mes', [dom.marketMonth]],
+    ['intervalo', [dom.marketStart, dom.marketEnd]],
+  ];
+  for (const [controle, alvos] of campos) {
+    const motivo = controlDisabledReason(mode, controle);
+    for (const alvo of alvos) {
+      alvo.disabled = motivo !== null;
+      alvo.title = motivo || '';
+    }
+  }
+}
+
+function periodChip(item) {
+  const botao = document.createElement('button');
+  botao.type = 'button';
+  botao.className = 'market-chip';
+  botao.dataset.mode = item.value;
+  // O texto curto cabe na pílula; o leitor de tela recebe a frase inteira.
+  botao.textContent = item.chip;
+  botao.setAttribute('aria-label', item.label);
+  botao.setAttribute('aria-pressed', 'false');
+  return botao;
 }
 
 function initializeMarketFilters() {
   state.marketSelection = defaultPeriodSelection(state.ivvMonthly);
-  dom.marketPeriodMode.replaceChildren(
-    ...PERIOD_MODE_OPTIONS.map((item) => option(item.value, item.label)),
-  );
-  dom.marketPeriodMode.value = state.marketSelection.mode;
+  dom.marketPeriodChips.replaceChildren(...PERIOD_MODE_OPTIONS.map(periodChip));
 
   const years = availableYears(state.ivvMonthly);
   dom.marketYear.replaceChildren(...years.map((year) => option(year, String(year))));
@@ -1376,7 +1425,7 @@ function initializeMarketFilters() {
   }
   dom.marketStart.value = state.marketSelection.start || first;
   dom.marketEnd.value = state.marketSelection.end || last;
-  syncMarketFilterVisibility();
+  syncMarketFilterState();
 }
 
 const SVG_NS = 'http://www.w3.org/2000/svg';
@@ -1387,102 +1436,224 @@ function svgNode(name, attributes = {}) {
   return node;
 }
 
-function marketChart(model) {
+/**
+ * Desenha um modelo de gráfico (issue #83).
+ *
+ * A função NÃO calcula nada: recebe a geometria pronta de `chart-layout.js` e só cria
+ * nós. Foi assim que a última parte não testável do gráfico virou o `createElementNS`.
+ *
+ * COR NÃO PASSA POR AQUI. `stroke="var(--cat-1)"` como atributo de apresentação é aceito
+ * pelo parser, descartado em silêncio pelo browser e o resultado é a série sumir do
+ * gráfico — sem erro no console, sem nada. Cada série sai num `<g class="serie-N">`, a
+ * classe define `--serie-cor`, e as classes de forma consomem. A legenda usa a MESMA
+ * classe do traço, então as duas não têm como divergir.
+ */
+function chartSvg(model, viewport) {
+  const geometria = chartGeometry(model, viewport);
+  const svg = svgNode('svg', {
+    viewBox: geometria.viewBox,
+    class: 'market-chart-svg',
+    preserveAspectRatio: 'none',
+    role: 'img',
+    'aria-label': model.ariaLabel,
+  });
+
+  for (const linha of geometria.grade) {
+    svg.append(svgNode('line', {
+      x1: geometria.plot.x,
+      x2: geometria.plot.x + geometria.plot.largura,
+      y1: linha.y,
+      y2: linha.y,
+      class: 'chart-grid-line',
+    }));
+    const texto = svgNode('text', { x: geometria.plot.x - 6, y: linha.y + 3.5, class: 'chart-axis-value' });
+    texto.textContent = linha.rotulo || '';
+    svg.append(texto);
+  }
+
+  if (geometria.zeroY !== null) {
+    svg.append(svgNode('line', {
+      x1: geometria.plot.x,
+      x2: geometria.plot.x + geometria.plot.largura,
+      y1: geometria.zeroY,
+      y2: geometria.zeroY,
+      class: 'chart-zero-line',
+    }));
+  }
+
+  for (const serie of geometria.series) {
+    const grupo = svgNode('g', { class: `market-serie serie-${serie.cat}` });
+    for (const area of serie.areas) grupo.append(svgNode('path', { d: area, class: 'market-serie-area' }));
+    for (const segmento of serie.segmentos) {
+      grupo.append(svgNode('path', { d: segmento, class: 'market-serie-linha' }));
+    }
+    for (const coluna of serie.colunas) {
+      const barra = svgNode('rect', {
+        x: coluna.x, y: coluna.y, width: coluna.largura, height: coluna.altura,
+        rx: 2, class: 'market-serie-coluna',
+      });
+      barra.append(tituloSvg(coluna.titulo));
+      grupo.append(barra);
+    }
+    for (const marcador of serie.marcadores) {
+      const ponto = svgNode('circle', {
+        cx: marcador.cx, cy: marcador.cy, r: 3.5, class: 'market-serie-marcador',
+      });
+      ponto.append(tituloSvg(marcador.titulo));
+      grupo.append(ponto);
+    }
+    svg.append(grupo);
+  }
+
+  for (const rotulo of geometria.eixoX) {
+    const texto = svgNode('text', {
+      x: rotulo.x, y: geometria.eixoXBaseY, 'text-anchor': rotulo.ancora, class: 'chart-axis-month',
+    });
+    texto.textContent = rotulo.texto;
+    svg.append(texto);
+  }
+
+  return svg;
+}
+
+function tituloSvg(texto) {
+  const titulo = svgNode('title');
+  titulo.textContent = texto;
+  return titulo;
+}
+
+/**
+ * A legenda. O quadradinho recebe a mesma classe de série do traço — nada de cor por
+ * `style`, que era a segunda verdade sobre a cor da série e divergiria no primeiro tema
+ * novo.
+ */
+function marketChartLegend(model) {
+  const legenda = document.createElement('ul');
+  legenda.className = 'market-chart-legend';
+  for (const serie of model.series) {
+    const item = document.createElement('li');
+    const cor = document.createElement('span');
+    cor.className = `market-legenda-cor serie-${serie.cat}`;
+    cor.setAttribute('aria-hidden', 'true');
+    item.append(cor, document.createTextNode(serie.rotulo));
+    legenda.append(item);
+  }
+  return legenda;
+}
+
+/**
+ * Os mesmos números em tabela, recolhidos.
+ *
+ * Existe por duas razões que se somam: acima de 24 meses o gráfico não desenha marcador,
+ * e sem marcador não há `title` para consultar o valor de um mês; e quem lê por leitor de
+ * tela recebe do `<svg role="img">` uma frase, não a série.
+ */
+function marketChartTable(model) {
+  const bloco = document.createElement('details');
+  bloco.className = 'market-chart-valores';
+  const resumo = document.createElement('summary');
+  resumo.textContent = 'Valores mês a mês';
+  bloco.append(resumo);
+
+  const tabela = document.createElement('table');
+  const cabecalho = document.createElement('tr');
+  for (const coluna of model.tabela.colunas) {
+    const celula = document.createElement('th');
+    celula.setAttribute('scope', 'col');
+    celula.textContent = coluna;
+    cabecalho.append(celula);
+  }
+  const topo = document.createElement('thead');
+  topo.append(cabecalho);
+  tabela.append(topo);
+
+  const corpo = document.createElement('tbody');
+  for (const linha of model.tabela.linhas) {
+    const tr = document.createElement('tr');
+    for (const [indice, valor] of linha.entries()) {
+      const celula = document.createElement(indice === 0 ? 'th' : 'td');
+      if (indice === 0) celula.setAttribute('scope', 'row');
+      celula.textContent = valor;
+      tr.append(celula);
+    }
+    corpo.append(tr);
+  }
+  tabela.append(corpo);
+  bloco.append(tabela);
+  return bloco;
+}
+
+function marketChart(model, viewport) {
   const article = document.createElement('article');
   article.className = 'market-chart';
   article.dataset.chart = model.key;
 
   const title = document.createElement('h3');
-  title.textContent = model.title;
+  title.textContent = model.titulo;
   article.append(title);
 
-  if (model.empty || model.months.length === 0) {
+  if (model.pergunta) {
+    const pergunta = document.createElement('p');
+    pergunta.className = 'market-chart-pergunta';
+    pergunta.textContent = model.pergunta;
+    article.append(pergunta);
+  }
+
+  if (model.vazio) {
+    // Ausência é frase, não gráfico vazio: um desenho sem traço é indistinguível de um
+    // gráfico que não carregou (R5.7).
     const empty = document.createElement('p');
     empty.className = 'market-chart-empty';
-    empty.textContent = 'Sem valores mensais para este período.';
+    empty.textContent = model.mensagemVazio;
     article.append(empty);
     return article;
   }
 
-  const width = 640;
-  const height = 230;
-  const plot = { left: 64, right: 18, top: 18, bottom: 38 };
-  const plotWidth = width - plot.left - plot.right;
-  const plotHeight = height - plot.top - plot.bottom;
-  const monthIndex = new Map(model.months.map((month, index) => [month, index]));
-  const x = (month) => plot.left + (model.months.length === 1 ? plotWidth / 2
-    : (monthIndex.get(month) / (model.months.length - 1)) * plotWidth);
-  const y = (value) => plot.top + ((model.max - value) / (model.max - model.min || 1)) * plotHeight;
-
-  const svg = svgNode('svg', {
-    viewBox: `0 0 ${width} ${height}`,
-    role: 'img',
-    'aria-label': `${model.title}, de ${model.startLabel} a ${model.endLabel}`,
-  });
-
-  for (const [value, label] of [[model.max, model.maxLabel], [model.min, model.minLabel]]) {
-    const lineY = y(value);
-    svg.append(svgNode('line', {
-      x1: plot.left, x2: width - plot.right, y1: lineY, y2: lineY, class: 'chart-grid-line',
-    }));
-    const text = svgNode('text', { x: plot.left - 8, y: lineY + 4, class: 'chart-axis-value' });
-    text.textContent = label || '';
-    svg.append(text);
-  }
-
-  for (const series of model.series) {
-    if (series.points.length === 0) continue;
-    const points = series.points.map((point) => `${x(point.month)},${y(point.value)}`).join(' ');
-    svg.append(svgNode('polyline', {
-      points, fill: 'none', stroke: series.color, 'stroke-width': 3,
-      'stroke-linecap': 'round', 'stroke-linejoin': 'round',
-    }));
-    if (series.points.length <= 24) {
-      for (const point of series.points) {
-        const circle = svgNode('circle', {
-          cx: x(point.month), cy: y(point.value), r: 3.5, fill: series.color,
-        });
-        const tooltip = svgNode('title');
-        tooltip.textContent = `${series.label} · ${point.month}: ${formatMetricValue(series.key, point.value)}`;
-        circle.append(tooltip);
-        svg.append(circle);
-      }
-    }
-  }
-
-  const start = svgNode('text', { x: plot.left, y: height - 10, class: 'chart-axis-month' });
-  start.textContent = model.startLabel;
-  const end = svgNode('text', {
-    x: width - plot.right, y: height - 10, class: 'chart-axis-month', 'text-anchor': 'end',
-  });
-  end.textContent = model.endLabel;
-  svg.append(start, end);
-  article.append(svg);
-
-  const legend = document.createElement('ul');
-  legend.className = 'market-chart-legend';
-  for (const series of model.series) {
-    const item = document.createElement('li');
-    const swatch = document.createElement('span');
-    swatch.style.backgroundColor = series.color;
-    swatch.setAttribute('aria-hidden', 'true');
-    item.append(swatch, document.createTextNode(series.label));
-    legend.append(item);
-  }
-  article.append(legend);
+  article.append(chartSvg(model, viewport), marketChartLegend(model), marketChartTable(model));
   return article;
+}
+
+/** O sparkline não é gráfico: é a forma do movimento ao lado do número. */
+function marketSpark(model) {
+  const svg = chartSvg(model, VIEWPORTS.SPARK);
+  svg.setAttribute('class', 'market-spark-svg');
+  // O valor e a variação já estão em texto no card; repetir a série no leitor de tela
+  // só atrapalharia.
+  svg.setAttribute('aria-hidden', 'true');
+  svg.removeAttribute('role');
+  svg.removeAttribute('aria-label');
+  return svg;
 }
 
 function renderMarketDashboard() {
   const selected = selectIvvPeriod(state.ivvMonthly, state.marketSelection);
-  dom.marketPeriodLabel.textContent = `Indicadores: ${periodLabel(selected)}`;
+  const resumo = periodSummary(selected);
+  dom.marketPeriodLabel.textContent = resumo.meses > 0
+    ? `Indicadores de ${resumo.intervalo} · ${resumo.meses} ${resumo.meses === 1 ? 'mês' : 'meses'}`
+    : resumo.intervalo;
 
-  const warnings = renderMarketCards(selected.rows);
-  const chartRows = chartRowsForSelection(state.ivvMonthly, selected);
+  // Os três recortes que os gráficos declaram consumir (issue #83). Montá-los aqui é o
+  // que permite às definições serem puras: `sazonalidade` precisa de anos inteiros, e
+  // pedir isso ao módulo de definição obrigaria ele a conhecer `state`.
+  const janela = chartRowsForSelection(state.ivvMonthly, selected);
+  const fontes = { periodo: selected.rows, janela, completa: state.ivvMonthly };
+  const viewport = chartViewport(dom.marketCharts.clientWidth || window.innerWidth);
+
+  const { warnings, mesReferencia } = renderMarketCards(selected.rows, janela);
+
+  // A base de comparação fica escrita UMA vez, junto do período, em vez de repetida em
+  // doze cards. Os rótulos das variações já nomeiam o mês; esta frase diz de onde ele vem.
+  dom.marketPeriodBase.textContent = mesReferencia
+    ? `Variações referentes a ${monthYearLabel(mesReferencia)}, comparado com `
+      + `${monthYearLabel(mesAnterior(mesReferencia))} e com `
+      + `${monthYearLabel(mesmoMesAnoAnterior(mesReferencia))}.`
+    : '';
   dom.marketHistoryNote.textContent = selected.rows.length === 1
-    ? `Os cards mostram ${periodLabel(selected)}; os gráficos dão contexto com até 12 meses anteriores.`
-    : `Valores mensais no mesmo recorte dos indicadores: ${periodLabel(selected)}.`;
-  dom.marketCharts.replaceChildren(...buildHistoryCharts(chartRows).map(marketChart));
+    ? `Os indicadores mostram ${resumo.intervalo}; os gráficos dão contexto com até 12 meses anteriores.`
+    : `Valores mensais no mesmo recorte dos indicadores: ${resumo.intervalo}.`;
+
+  const graficos = [...buildHistoryCharts(fontes), buildSeasonality(state.ivvMonthly)];
+  dom.marketCharts.replaceChildren(...graficos.map((model) => marketChart(model, viewport)));
   return warnings.map((item) => `Mercado (${item.metric || 'período'}): ${item.message}`);
 }
 
@@ -1610,10 +1781,13 @@ function bindEvents() {
   dom.closeDetail.addEventListener('click', closeDetail);
   dom.retryBtn.addEventListener('click', () => { load().catch(reportFatal); });
 
-  dom.marketPeriodMode.addEventListener('change', () => {
-    if (!state.marketSelection) return;
-    state.marketSelection.mode = dom.marketPeriodMode.value;
-    syncMarketFilterVisibility();
+  // Delegação: as pílulas são geradas a cada carga da série, e ouvir no container evita
+  // reamarrar seis ouvintes toda vez.
+  dom.marketPeriodChips.addEventListener('click', (event) => {
+    const chip = event.target.closest('.market-chip');
+    if (!chip || !state.marketSelection) return;
+    state.marketSelection.mode = chip.dataset.mode;
+    syncMarketFilterState();
     refreshMarketView();
   });
   dom.marketYear.addEventListener('change', () => {
@@ -1636,6 +1810,13 @@ function bindEvents() {
       refreshMarketView();
     });
   }
+
+  // A geometria do gráfico é calculada em JS a partir da largura disponível, e JS não
+  // reage a media query sozinho: sem este ouvinte, girar o telefone ou estreitar a janela
+  // deixaria o desenho de 640 pontos preso numa tela de 390 (issue #83).
+  window.matchMedia('(max-width: 560px)').addEventListener('change', () => {
+    if (state.marketSelection) refreshMarketView();
+  });
 
   // Troca de view (issue #58). O hash é a fonte da verdade: o clique escreve nele e o
   // `hashchange` aplica. Assim o botão e a barra de endereço nunca discordam, e
