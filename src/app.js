@@ -10,6 +10,9 @@
 import { loadDataset, flattenEntities } from './data.js';
 import { isApproximateLocation, appMetaRows } from './normalize.js';
 import { ivvProvenance, IVV_SCOPE_NOTICE } from './ivv/scope.js';
+import {
+  buildRegionRanking, faixasDisponiveis, regionMonths, REGIAO_TOTAL, FAIXA_TOTAL,
+} from './ivv/region.js';
 import { aggregatePeriod } from './ivv/aggregate.js';
 import { buildMarketDashboard, formatMetricValue } from './ivv/cards.js';
 import {
@@ -33,7 +36,7 @@ import {
   formatPropertyType, formatSpatialPrecision, formatBuildingOrientation, safeExternalUrl,
   hostnameOf, anchorColor, anchorLegendEntries, formatAnchorCategory, formatAnchorGroup,
   formatAnchorSegment, formatSalesStage, formatRegularizationStatus, formatPercent,
-  raAgeBands, polygonStyle, sortPolygonsForDraw, raProfileEssentials,
+  percentFromPoints, raAgeBands, polygonStyle, sortPolygonsForDraw, raProfileEssentials,
   raProfileUnavailability, polygonEssentials, polygonPropertyTiers, polygonEssentialKeys,
   polygonEntityType,
 } from './format.js';
@@ -72,6 +75,9 @@ const dom = {
   marketPeriodLabel: el('marketPeriodLabel'), marketPeriodBase: el('marketPeriodBase'),
   marketDestaques: el('marketDestaques'), marketCharts: el('marketCharts'),
   marketSeriesMode: el('marketSeriesMode'),
+  marketRegioes: el('marketRegioes'), marketRegioesFaixa: el('marketRegioesFaixa'),
+  marketRegioesLista: el('marketRegioesLista'), marketRegioesNote: el('marketRegioesNote'),
+  marketRegioesAusentes: el('marketRegioesAusentes'),
   marketHistoryNote: el('marketHistoryNote'),
   marketProvenance: el('marketProvenance'), marketProvenanceList: el('marketProvenanceList'),
   marketSource: el('marketSource'),
@@ -89,7 +95,12 @@ const state = {
   // Série mensal do IVV (issue #56). Lista vazia significa "a aba não veio", que é
   // estado normal — o botão do Mercado fica desabilitado, com o motivo escrito.
   ivvMonthly: [],
+  // IVV por Região Administrativa (issue #87). Lista vazia é estado normal: a aba pode não
+  // vir, e a seção territorial simplesmente não aparece.
+  ivvRegion: [],
+  marketRegionBucket: null,
   marketSelection: null,
+  marketSeriesMode: null,
   baseWarnings: [],
   // Contornos importados de KML/KMZ (issue #28). Lista vazia é o estado normal de
   // quem ainda não importou nenhum arquivo — a camada só não aparece.
@@ -1903,6 +1914,105 @@ function prepararSpark(svg) {
   svg.removeAttribute('aria-label');
 }
 
+/**
+ * IVV por Região Administrativa (issue #87).
+ *
+ * Barra horizontal, não gráfico de linha: a aba publica UM mês, e a pergunta que ela
+ * responde é "onde gira mais rápido?", que é comparação entre regiões.
+ *
+ * `DF Total` sai da lista e vira RÉGUA: ele é a soma do território, e uma barra dele junto
+ * das partes contaria o mesmo mercado duas vezes — além de esmagar a escala, já que o
+ * agregado quase sempre é maior que cada parte.
+ */
+function marketRegiaoBarra(item, maximo, referencia) {
+  const linha = document.createElement('li');
+  linha.className = 'market-regiao';
+  linha.dataset.regiao = item.region;
+
+  const nome = document.createElement('span');
+  nome.className = 'market-regiao-nome';
+  nome.textContent = item.region;
+
+  const trilho = document.createElement('span');
+  trilho.className = 'market-regiao-trilho';
+  const barra = document.createElement('span');
+  barra.className = 'market-regiao-barra';
+  // A barra é proporcional ao MAIOR valor da faixa, não a 100%: um IVV de 12,5% contra um
+  // teto de 100 daria um fiapo em toda região, e a comparação entre elas some.
+  barra.style.width = `${maximo > 0 ? Math.max(2, (item.ivvPct / maximo) * 100) : 0}%`;
+  if (referencia && item.ivvPct >= referencia.ivvPct) barra.classList.add('market-regiao-acima');
+  trilho.append(barra);
+
+  const valor = document.createElement('span');
+  valor.className = 'market-regiao-valor';
+  valor.textContent = formatPercent(percentFromPoints(item.ivvPct));
+
+  const detalhe = document.createElement('span');
+  detalhe.className = 'market-regiao-detalhe';
+  detalhe.textContent = item.soldUnits !== null && item.offeredUnits !== null
+    ? `${formatNumber(item.soldUnits)} de ${formatNumber(item.offeredUnits)} em oferta`
+    : 'contagem não publicada';
+
+  linha.append(nome, trilho, valor, detalhe);
+  return linha;
+}
+
+function renderMarketRegioes() {
+  const linhas = state.ivvRegion || [];
+  // Aba ausente não deixa uma seção vazia na tela: a seção inteira some, e o aviso do
+  // carregamento já disse por quê (R2.5).
+  dom.marketRegioes.hidden = linhas.length === 0;
+  if (linhas.length === 0) return;
+
+  const faixas = faixasDisponiveis(linhas);
+  if (dom.marketRegioesFaixa.childElementCount === 0) {
+    dom.marketRegioesFaixa.replaceChildren(...faixas.map((faixa) => {
+      const botao = periodChip({
+        value: faixa,
+        chip: faixa === FAIXA_TOTAL ? 'Todas' : faixa,
+        label: faixa === FAIXA_TOTAL ? 'Todas as faixas de quartos' : `Apartamentos de ${faixa}`,
+      });
+      botao.dataset.faixa = faixa;
+      delete botao.dataset.mode;
+      return botao;
+    }));
+  }
+  const faixa = faixas.includes(state.marketRegionBucket) ? state.marketRegionBucket : faixas[0];
+  state.marketRegionBucket = faixa;
+  for (const chip of dom.marketRegioesFaixa.querySelectorAll('.market-chip')) {
+    chip.setAttribute('aria-pressed', String(chip.dataset.faixa === faixa));
+  }
+
+  const ranking = buildRegionRanking(linhas, { bucket: faixa });
+  const meses = regionMonths(linhas);
+  const quando = ranking.mes ? monthYearLabel(ranking.mes.slice(0, 7)) : 'mês não publicado';
+  dom.marketRegioesNote.textContent = meses.length > 1
+    ? `Retrato de ${quando}, o mês mais recente publicado por região.`
+    : `Retrato de ${quando} — a fonte publica um único mês por região, não uma série.`;
+
+  const lista = document.createElement('ul');
+  lista.className = 'market-regioes-lista';
+  for (const item of ranking.regioes) {
+    lista.append(marketRegiaoBarra(item, ranking.maximo, ranking.referencia));
+  }
+  dom.marketRegioesLista.replaceChildren(lista);
+
+  if (ranking.referencia) {
+    const regua = document.createElement('p');
+    regua.className = 'market-regioes-regua';
+    regua.textContent = `${REGIAO_TOTAL}: `
+      + `${formatPercent(percentFromPoints(ranking.referencia.ivvPct))} — as barras acima dessa `
+      + 'marca giram mais rápido que o DF inteiro.';
+    dom.marketRegioesLista.append(regua);
+  }
+
+  // Região sem valor é NOMEADA, não some e não vira barra de zero: "não publicou" e
+  // "vendeu nada" são afirmações diferentes (R5.7).
+  dom.marketRegioesAusentes.textContent = ranking.semValor.length > 0
+    ? `Sem IVV publicado nesta faixa: ${ranking.semValor.join(', ')}.`
+    : '';
+}
+
 function renderMarketDashboard() {
   const selected = selectIvvPeriod(state.ivvMonthly, state.marketSelection);
   const resumo = periodSummary(selected);
@@ -1935,6 +2045,8 @@ function renderMarketDashboard() {
   dom.marketHistoryNote.textContent = modo === SERIES_MODES.ACUMULADO
     ? `Acumulado no ano, mês a mês, em ${recorte}.`
     : `Valores de cada mês em ${recorte}.`;
+
+  renderMarketRegioes();
 
   const graficos = [
     ...buildHistoryCharts(fontes, modo),
@@ -2071,6 +2183,7 @@ async function load() {
   state.records = flattenEntities(result.entities);
   state.raProfiles = result.raProfiles || {};
   state.ivvMonthly = result.ivvMonthly || [];
+  state.ivvRegion = result.ivvRegion || [];
   state.marketSelection = null;
   state.baseWarnings = [...result.warnings, ...result.errors];
   state.polygons = result.polygons || [];
@@ -2126,6 +2239,13 @@ function bindEvents() {
 
   // Delegação: as pílulas são geradas a cada carga da série, e ouvir no container evita
   // reamarrar seis ouvintes toda vez.
+  dom.marketRegioesFaixa.addEventListener('click', (event) => {
+    const chip = event.target.closest('.market-chip');
+    if (!chip) return;
+    state.marketRegionBucket = chip.dataset.faixa;
+    renderMarketRegioes();
+  });
+
   dom.marketSeriesMode.addEventListener('click', (event) => {
     const chip = event.target.closest('.market-chip');
     if (!chip) return;

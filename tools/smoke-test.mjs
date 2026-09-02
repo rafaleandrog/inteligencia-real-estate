@@ -1317,6 +1317,66 @@ const intervalo = await viewPage.evaluate(() => ({
 await viewPage.click('.market-chip[data-mode="ytd"]');
 await viewPage.waitForTimeout(250);
 
+// IVV por Região Administrativa (issue #87). A aba estava na planilha desde o começo e
+// nunca era buscada; o que se prova aqui é que ela chegou, que o agregado NÃO virou barra e
+// que região sem valor é nomeada em vez de virar barra de zero.
+const regioes = await viewPage.evaluate(() => {
+  const secao = document.querySelector('#marketRegioes');
+  const itens = [...document.querySelectorAll('#marketRegioesLista .market-regiao')];
+  const valores = itens.map((n) => n.querySelector('.market-regiao-valor').textContent);
+  return {
+    visivel: !secao.hidden,
+    nomes: itens.map((n) => n.dataset.regiao),
+    valores,
+    faixas: [...document.querySelectorAll('#marketRegioesFaixa .market-chip')].map((c) => c.dataset.faixa),
+    regua: document.querySelector('.market-regioes-regua')?.textContent ?? '',
+    nota: document.querySelector('#marketRegioesNote')?.textContent ?? '',
+    ausentes: document.querySelector('#marketRegioesAusentes')?.textContent ?? '',
+    larguras: itens.map((n) => n.querySelector('.market-regiao-barra').style.width),
+  };
+});
+regioes.visivel && regioes.nomes.length > 5
+  ? pass(`a seção territorial traz ${regioes.nomes.length} regiões`)
+  : fail('IVV por região não renderizou: ' + JSON.stringify(regioes));
+!regioes.nomes.includes('DF Total')
+  ? pass('o agregado do DF fica de fora do ranking — o mesmo mercado não é contado duas vezes')
+  : fail('DF Total virou barra: ' + JSON.stringify(regioes.nomes));
+/DF Total/.test(regioes.regua)
+  ? pass('o agregado aparece como régua, dizendo quem gira mais rápido que o DF inteiro')
+  : fail('régua ausente: ' + regioes.regua);
+// A ordenação é por IVV decrescente, e o valor sai em ponto percentual (12,5% e não 1250%).
+regioes.valores.length > 1 && /^\d{1,2},\d%$/.test(regioes.valores[0])
+  ? pass(`a escala é ponto percentual, como a aba publica (${regioes.valores[0]})`)
+  : fail('escala do IVV por região: ' + JSON.stringify(regioes.valores.slice(0, 3)));
+regioes.larguras.every((w) => w && w !== '0%')
+  ? pass('nenhuma barra tem largura zero — ausência virou frase, não barra vazia')
+  : fail('barra de tamanho zero: ' + JSON.stringify(regioes.larguras));
+/um único mês|Retrato de/.test(regioes.nota)
+  ? pass('a seção declara que é retrato de um mês, e não promete série por região')
+  : fail('nota da seção: ' + regioes.nota);
+
+await viewPage.click('#marketRegioesFaixa .market-chip[data-faixa="1Q"]');
+await viewPage.waitForTimeout(300);
+const umQuarto = await viewPage.evaluate(() => ({
+  nomes: [...document.querySelectorAll('#marketRegioesLista .market-regiao')].map((n) => n.dataset.regiao),
+  ausentes: document.querySelector('#marketRegioesAusentes')?.textContent ?? '',
+}));
+JSON.stringify(umQuarto.nomes) !== JSON.stringify(regioes.nomes)
+  ? pass('trocar a faixa de quartos troca o recorte de verdade')
+  : fail('a faixa não mudou o ranking');
+umQuarto.ausentes.length > 0
+  ? pass('região sem IVV na faixa é NOMEADA, em vez de sumir ou virar zero')
+  : pass('todas as regiões têm IVV nesta faixa');
+await viewPage.click('#marketRegioesFaixa .market-chip[data-faixa="TOTAL"]');
+await viewPage.waitForTimeout(250);
+
+// A declaração de escopo mudou de conteúdo: ela precisa dizer o que EXISTE por RA e o que
+// não existe. A frase antiga ("a fonte não publica por RA") virou falsa com esta aba.
+const escopo = await viewPage.evaluate(() => document.querySelector('#marketScope').textContent);
+/série mensal/i.test(escopo) && /retrato de um mês/i.test(escopo)
+  ? pass('o escopo separa o que existe por RA do que não existe')
+  : fail('escopo desatualizado: ' + escopo);
+
 const proveniencia = await viewPage.evaluate(() => ({
   linhas: document.querySelectorAll('#marketProvenanceList dt').length,
   temFonte: !document.querySelector('#marketSource').hidden,

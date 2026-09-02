@@ -814,6 +814,10 @@ export const PERCENT_SCALES = Object.freeze({
 export const DATASET_PERCENT_SCALE = Object.freeze({
   RA_PROFILES: PERCENT_SCALES.POINTS,
   IVV_MONTHLY: PERCENT_SCALES.DECIMAL,
+  // A mesma grandeza, a escala OPOSTA, na mesma planilha: `IVV_REGION` publica `12.5` para
+  // 12,5% enquanto `IVV_MONTHLY` publica `0.057` para 5,7%. É por isso que a escala mora
+  // aqui, declarada por dataset — nenhuma heurística distingue `0,54` decimal de `0,54%`.
+  IVV_REGION: PERCENT_SCALES.POINTS,
 });
 
 /**

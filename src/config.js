@@ -106,6 +106,14 @@ window.APP_CONFIG = {
   ivvMonthlySheet: 'IVV_MONTHLY',
 
   /**
+   * Aba `IVV_REGION` (issue #87): IVV por Região Administrativa e faixa de quartos.
+   *
+   * Buscada porque a tela a renderiza. Um mês só, 95 linhas — é retrato, não série. Ausência
+   * ou falha vira aviso, nunca erro: a tela do Mercado continua inteira sem ela (R2.5).
+   */
+  ivvRegionSheet: 'IVV_REGION',
+
+  /**
    * Abas previstas para as próximas fases.
    *
    * A tela da V1 não lê PRIMARY_OFFERS/IVV_REGION, e por isso não são buscadas no
@@ -116,13 +124,13 @@ window.APP_CONFIG = {
    *
    * RA_PROFILES saiu daqui porque passou a ser buscada de verdade — ver
    * `raProfilesSheet` acima. IVV_MONTHLY saiu pelo mesmo motivo (issue #56) — ver
-   * `ivvMonthlySheet`.
+   * `ivvMonthlySheet`. IVV_REGION saiu na issue #87 — ver `ivvRegionSheet`.
    *
    * Quando uma das restantes entrar na interface, ela é buscada aqui e sua ausência
    * vira aviso — nunca erro, porque a aplicação não pode cair por causa de aba futura
    * vazia (R2.5).
    */
-  optionalSheets: ['PRIMARY_OFFERS', 'IVV_REGION'],
+  optionalSheets: ['PRIMARY_OFFERS'],
 
   /** Centro inicial do mapa: Distrito Federal. */
   defaultCenter: [-15.78, -47.93],

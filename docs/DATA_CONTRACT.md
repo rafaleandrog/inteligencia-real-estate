@@ -275,15 +275,15 @@ livre pelo mesmo motivo de LISTINGS.
 ## Abas opcionais
 
 Ausência gera **warning**, nunca erro. A aplicação não pode cair porque uma aba futura está
-vazia (R2.5). `PRIMARY_OFFERS` e `IVV_REGION` não são lidas pela tela ainda. `RA_PROFILES` passou a
-ser lida a partir da issue #33/#34 e `IVV_MONTHLY` a partir da issue #56 — ver as seções dedicadas
-abaixo.
+vazia (R2.5). `PRIMARY_OFFERS` não é lida pela tela ainda. `RA_PROFILES` passou a ser lida a partir
+da issue #33/#34, `IVV_MONTHLY` a partir da issue #56 e `IVV_REGION` a partir da issue #87 — ver as
+seções dedicadas abaixo.
 
 | Aba | Chave | Linhas | Papel |
 |---|---|---|---|
 | `PRIMARY_OFFERS` | `observation_id` | 29 | Observações unitárias do mercado primário, previstas para uma fase futura |
 | `IVV_MONTHLY` | `reference_date` | 1 na semente, 66 na planilha | Série mensal do mercado residencial do DF (IVV) — **lida pela tela** |
-| `IVV_REGION` | `reference_month` + `market_region` + `bedroom_bucket` | 95 | IVV por região e faixa de quartos |
+| `IVV_REGION` | `reference_month` + `market_region` + `bedroom_bucket` | 95 | IVV por região e faixa de quartos — **lida pela tela** |
 | `RA_PROFILES` | `ra_geo_id` | 35 | Indicadores territoriais por Região Administrativa (censo + PDAD) — **lida pela tela** |
 | `POLYGONS` | `polygon_id` | 0 | Contornos: KML/KMZ, Regiões Administrativas e rodovias — criada pelo `setupProject()` v2.0.0, ampliada para A:AP na v2.2.1 |
 | `ROAD_SEGMENTS` | `road_segment_id` | 0 | Trecho rodoviário oficial do DER/DF — criada pelo `setupProject()` v2.2.1 |
@@ -292,7 +292,47 @@ abaixo.
 
 > **Divergência D2 — `IVV_REGION` tem `ivv_pct` e `ivv_pct_published`.** `ivv_pct` é alias de
 > compatibilidade consumido pelo Apps Script; `ivv_pct_published` é o valor do dataset original.
-> Manter os dois em sincronia é responsabilidade de quem edita a aba.
+> Manter os dois em sincronia é responsabilidade de quem edita a aba. O normalizador lê a
+> **publicada** primeiro e só cai no alias quando ela não vem (issue #87).
+
+### IVV_REGION — IVV por Região Administrativa e faixa de quartos (issue #87)
+
+Aba **opcional**, sem contrato de cabeçalho no `Code.gs`: como a `IVV_MONTHLY`, ela não está em
+`REQUIRED_HEADERS` nem em `FIELD_SCHEMA`, então a rede de teste é o triângulo schema
+(`src/ivv/region.js`) ↔ semente (`migration/imob-intelligence-backend.xlsx`) ↔ esta seção, fechado
+por `tests/ivv-region.test.js`.
+
+**Forma do dado.** 95 linhas, **um único mês** (mai/2026 na semente), 19 regiões — incluindo a
+linha agregada `DF Total` — e 5 faixas de quartos: `1Q`, `2Q`, `3Q`, `4+Q` e a agregada `TOTAL`.
+É **retrato, não série**: a tela compara regiões entre si e não promete histórico por RA.
+
+| Coluna | Tipo | Papel |
+|---|---|---|
+| `reference_month` | data | Mês do retrato |
+| `market_region` | texto | Região Administrativa, ou `DF Total` para a linha agregada |
+| `bedroom_bucket` | texto | Faixa de quartos, ou `TOTAL` para a linha agregada |
+| `offered_units` | inteiro | Unidades em oferta no recorte |
+| `sold_units` | inteiro | Unidades vendidas no recorte |
+| `ivv_pct_published` | **ponto percentual** | IVV publicado — `12.5` significa 12,5% |
+| `ivv_pct` | **ponto percentual** | Alias de compatibilidade da coluna acima (divergência D2) |
+| `ivv_pct_check` | ponto percentual | Recálculo do backend: SINALIZA divergência, nunca substitui |
+| `ivv_variance_pp` | número | Diferença entre publicado e recálculo, em pontos percentuais |
+| `offer_price_brl_m2` | número | Preço pedido por m² no recorte |
+| `sale_price_brl_m2` | número | Preço de venda por m² no recorte |
+| `source_id` | texto | Procedência da linha |
+
+> **A escala é OPOSTA à da `IVV_MONTHLY`.** Aqui `ivv_pct = 12.5` significa 12,5%; lá `0.057`
+> significa 5,7%. As duas convivem na mesma planilha e **nunca se unificam**: a conversão "de
+> conveniência" entre elas erra por 100× em silêncio, e nem 1250% nem 0,125% parecem bug de código
+> (R8.44/R8.60). A escala é declarada por dataset em `DATASET_PERCENT_SCALE` (`src/format.js`),
+> nunca inferida do valor.
+
+> **`DF Total` e `TOTAL` são agregados misturados com as partes.** Ranquear ou somar sem
+> separá-los conta o mesmo mercado duas vezes. O normalizador os marca (`isRegiaoTotal`,
+> `isFaixaTotal`) e a tela usa `DF Total` como **régua**, não como barra.
+
+Célula vazia é frequente — há região sem nenhuma unidade ofertada numa faixa — e vira **frase de
+ausência**, nunca zero: "não publicou" e "vendeu nada" são afirmações diferentes (R5.7).
 
 ### RA_PROFILES — indicadores por Região Administrativa (issues #33, #34, #35)
 
