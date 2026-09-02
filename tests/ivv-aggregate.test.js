@@ -7,7 +7,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import {
-  aggregatePeriod, aggregateMetric, monthlySeries, prepareRows,
+  aggregatePeriod, aggregateMetric, monthlySeries, runningSeries, prepareRows,
   IvvAggregationError, VALUE_ORIGINS,
 } from '../src/ivv/aggregate.js';
 import { IVV_METRICS, METRIC_KEYS, METRIC_KINDS, METRIC_BY_KEY } from '../src/ivv/metrics.js';
@@ -15,6 +15,7 @@ import { IVV_METRICS, METRIC_KEYS, METRIC_KINDS, METRIC_BY_KEY } from '../src/iv
 const fixture = JSON.parse(readFileSync(new URL('./fixtures/ivv-monthly.json', import.meta.url)));
 const rows = fixture.rows;
 const year2024 = rows.filter((row) => row.reference_month.startsWith('2024'));
+const year2025 = rows.filter((row) => row.reference_month.startsWith('2025'));
 const close = (actual, expected, tolerance = 1e-9) => {
   assert.ok(Math.abs(actual - expected) <= tolerance,
     `esperado ${expected}, recebido ${actual}`);
@@ -507,4 +508,73 @@ test('#68 · no caminho do acumulado, monthsWithData descreve o período, não o
   assert.equal(result.origin, VALUE_ORIGINS.YTD_BACKEND);
   assert.equal(result.monthsWithData, 12);
   assert.equal(result.monthsInPeriod, 12);
+});
+
+// --- Série acumulada no ano (issue #85) -----------------------------------------------
+
+test('a curva acumulada zera em janeiro, e é SOMA só onde somar faz sentido', () => {
+  const serie = runningSeries(rows, 'sales_units');
+  const porMes = Object.fromEntries(serie.map((p) => [p.month, p.value]));
+  const jan24 = Number(rows[0].sales_units);
+
+  assert.equal(porMes['2024-01'], jan24, 'janeiro é o próprio mês');
+  assert.equal(porMes['2024-02'], jan24 + Number(rows[1].sales_units), 'fevereiro soma janeiro');
+  assert.equal(porMes['2025-01'], Number(year2025[0].sales_units),
+    'a curva RECOMEÇA em janeiro — acumulado do ano civil não atravessa o ano');
+  assert.ok(porMes['2024-12'] > porMes['2025-01'], 'dezembro do ano cheio supera janeiro do seguinte');
+});
+
+test('estoque acumula por MÉDIA, nunca por soma', () => {
+  // Somar doze fotografias do estoque devolve doze vezes o estoque real: um número
+  // plausível, bem formatado e errado. É a armadilha que dá nome ao motor.
+  const serie = runningSeries(rows, 'offers_units').filter((p) => p.month.startsWith('2024'));
+  const mensais = monthlySeries(rows, 'offers_units')
+    .filter((p) => p.month.startsWith('2024')).map((p) => p.value);
+  const soma = mensais.reduce((a, b) => a + b, 0);
+  const media = soma / mensais.length;
+
+  close(serie.at(-1).value, media, 1e-6);
+  assert.ok(serie.at(-1).value < soma / 2, 'o acumulado do estoque virou soma');
+  assert.ok(serie.every((p) => p.value < Math.max(...mensais) * 1.2),
+    'nenhum ponto da curva escapa da ordem de grandeza do estoque');
+});
+
+test('preço e taxa refazem a razão ponderada, em vez de somar razões', () => {
+  for (const key of ['sale_price_brl_m2', 'ivv_pct']) {
+    const serie = runningSeries(rows, key).filter((p) => p.month.startsWith('2024'));
+    const mensais = monthlySeries(rows, key).filter((p) => p.month.startsWith('2024'));
+    const maior = Math.max(...mensais.map((p) => p.value));
+    const menor = Math.min(...mensais.map((p) => p.value));
+    assert.ok(serie.every((p) => p.value <= maior * 1.001 && p.value >= menor * 0.999),
+      `${key}: a curva saiu da faixa dos valores mensais — virou soma`);
+  }
+});
+
+test('o último ponto do ano é EXATAMENTE o valor agregado do ano', () => {
+  // É o que amarra a curva ao card: se divergirem, a tela mostra dois números para a mesma
+  // coisa e nenhum dos dois se explica.
+  for (const key of ['sales_units', 'offers_units', 'sale_price_brl_m2', 'vgv_brl_million']) {
+    const ultimo = runningSeries(rows, key).filter((p) => p.month.startsWith('2025')).at(-1);
+    close(ultimo.value, aggregateMetric(year2025, key).value, 1e-9);
+  }
+});
+
+test('a curva herda a origem do motor — inclusive o acumulado publicado', () => {
+  const serie = runningSeries(rows, 'sales_units').filter((p) => p.month.startsWith('2025'));
+  assert.ok(serie.every((p) => typeof p.origin === 'string' && p.origin !== 'indisponivel'));
+  // Onde o backend publica `*_ytd`, ele vence o recálculo (R8.54) e a curva diz isso.
+  assert.ok(serie.slice(1).some((p) => p.origin === VALUE_ORIGINS.YTD_BACKEND),
+    'nenhum ponto veio do acumulado publicado');
+});
+
+test('mês sem dado não vira degrau falso na curva', () => {
+  const comBuraco = rows.filter((row) => !String(row.reference_month).startsWith('2024-03'));
+  const serie = runningSeries(comBuraco, 'sales_units').filter((p) => p.month.startsWith('2024'));
+  assert.equal(serie.length, 11, 'o mês ausente não inventa ponto');
+  assert.ok(serie.every((p) => Number.isFinite(p.value)), 'buraco não zerou a curva');
+});
+
+test('série vazia e métrica desconhecida não estouram', () => {
+  assert.deepEqual(runningSeries([], 'sales_units'), []);
+  assert.throws(() => runningSeries(rows, 'coluna_inventada'), IvvAggregationError);
 });

@@ -253,9 +253,15 @@
   <div class="market-body" id="marketBody"></div>
 
   <section class="market-history" aria-labelledby="marketHistoryTitle">
-    <header>
-      <h2 id="marketHistoryTitle">Histórico mensal</h2>
-      <p id="marketHistoryNote"></p>
+    <header class="market-history-head">
+      <div>
+        <h2 id="marketHistoryTitle">Histórico</h2>
+        <p id="marketHistoryNote"></p>
+      </div>
+      <!-- Mês a mês × acumulado no ano (issue #85): um controle só, acima de TODOS os
+           gráficos. Por gráfico, dois cards vizinhos poderiam estar respondendo perguntas
+           diferentes sem avisar. -->
+      <div class="market-chips" id="marketSeriesMode" role="group" aria-label="Modo da série"></div>
     </header>
     <div class="market-chart-grid" id="marketCharts"></div>
   </section>

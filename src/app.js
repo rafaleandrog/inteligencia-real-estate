@@ -13,11 +13,13 @@ import { ivvProvenance, IVV_SCOPE_NOTICE } from './ivv/scope.js';
 import { aggregatePeriod } from './ivv/aggregate.js';
 import { buildMarketDashboard, formatMetricValue } from './ivv/cards.js';
 import {
-  PERIOD_MODE_OPTIONS, availableYears, availableMonths, controlDisabledReason,
+  PERIOD_MODE_OPTIONS, PERIOD_MODES, availableYears, availableMonths, controlDisabledReason,
   defaultPeriodSelection, selectIvvPeriod, chartRowsForSelection, periodSummary,
   monthYearLabel, mesAnterior, mesmoMesAnoAnterior,
 } from './ivv/period.js';
-import { buildHistoryCharts, buildSeasonality, buildSparkline } from './ivv/history.js';
+import {
+  buildHistoryCharts, buildSeasonality, buildSparkline, SERIES_MODES,
+} from './ivv/history.js';
 import { CHART_TYPES } from './ivv/chart-model.js';
 import { chartGeometry, chartViewport, sparkViewport } from './ivv/chart-layout.js';
 import {
@@ -69,6 +71,7 @@ const dom = {
   marketStart: el('marketStart'), marketEnd: el('marketEnd'),
   marketPeriodLabel: el('marketPeriodLabel'), marketPeriodBase: el('marketPeriodBase'),
   marketDestaques: el('marketDestaques'), marketCharts: el('marketCharts'),
+  marketSeriesMode: el('marketSeriesMode'),
   marketHistoryNote: el('marketHistoryNote'),
   marketProvenance: el('marketProvenance'), marketProvenanceList: el('marketProvenanceList'),
   marketSource: el('marketSource'),
@@ -1659,6 +1662,14 @@ function marketChart(model) {
     pergunta.textContent = model.pergunta;
     titulos.append(pergunta);
   }
+  if (model.notaModo) {
+    // Que série está na tela é informação do gráfico, não do controle lá em cima: quem
+    // rola até aqui não vê mais a pílula que escolheu o modo.
+    const nota = document.createElement('p');
+    nota.className = 'market-chart-modo';
+    nota.textContent = model.notaModo;
+    titulos.append(nota);
+  }
   cabecalho.append(titulos);
 
   // O valor no canto responde de relance a pergunta que o desenho responde devagar — e diz
@@ -1918,7 +1929,13 @@ function renderMarketDashboard() {
     ? `Os indicadores mostram ${resumo.intervalo}; os gráficos dão contexto com até 12 meses anteriores.`
     : `Valores mensais no mesmo recorte dos indicadores: ${resumo.intervalo}.`;
 
-  const graficos = [...buildHistoryCharts(fontes), buildSeasonality(state.ivvMonthly)];
+  const modo = state.marketSeriesMode || modoPadraoDaSerie(state.marketSelection);
+  state.marketSeriesMode = modo;
+  sincronizarModoDaSerie(modo);
+  const graficos = [
+    ...buildHistoryCharts(fontes, modo),
+    buildSeasonality(state.ivvMonthly, { modo }),
+  ];
   const cards = graficos.map(marketChart);
   dom.marketCharts.replaceChildren(...cards.map((item) => item.article));
 
@@ -1928,6 +1945,36 @@ function renderMarketDashboard() {
   cardsNaTela = [...cards, ...sparks];
   desenharGraficos(cardsNaTela);
   return warnings.map((item) => `Mercado (${item.metric || 'período'}): ${item.message}`);
+}
+
+const MODOS_DE_SERIE = Object.freeze([
+  { value: SERIES_MODES.MENSAL, chip: 'Mês a mês', label: 'Valores de cada mês' },
+  { value: SERIES_MODES.ACUMULADO, chip: 'Acumulado no ano', label: 'Acumulado no ano até cada mês' },
+]);
+
+/**
+ * O modo em que os gráficos abrem SEGUE O PERÍODO escolhido (issue #85).
+ *
+ * Quem pediu "Acumulado do ano" nos indicadores está perguntando como está o ano; abrir os
+ * gráficos em mês a mês faria as duas metades da tela responderem perguntas diferentes sem
+ * ninguém ter pedido isso. Nos demais períodos o mês a mês é o que responde.
+ */
+function modoPadraoDaSerie(selecao) {
+  return selecao?.mode === PERIOD_MODES.YTD ? SERIES_MODES.ACUMULADO : SERIES_MODES.MENSAL;
+}
+
+function sincronizarModoDaSerie(modo) {
+  if (dom.marketSeriesMode.childElementCount === 0) {
+    dom.marketSeriesMode.replaceChildren(...MODOS_DE_SERIE.map((item) => {
+      const botao = periodChip(item);
+      botao.dataset.serieModo = item.value;
+      delete botao.dataset.mode;
+      return botao;
+    }));
+  }
+  for (const chip of dom.marketSeriesMode.querySelectorAll('.market-chip')) {
+    chip.setAttribute('aria-pressed', String(chip.dataset.serieModo === modo));
+  }
 }
 
 /** O que está desenhado na tela agora, para o redesenho por mudança de largura. */
@@ -2075,10 +2122,20 @@ function bindEvents() {
 
   // Delegação: as pílulas são geradas a cada carga da série, e ouvir no container evita
   // reamarrar seis ouvintes toda vez.
+  dom.marketSeriesMode.addEventListener('click', (event) => {
+    const chip = event.target.closest('.market-chip');
+    if (!chip) return;
+    state.marketSeriesMode = chip.dataset.serieModo;
+    refreshMarketView();
+  });
+
   dom.marketPeriodChips.addEventListener('click', (event) => {
     const chip = event.target.closest('.market-chip');
     if (!chip || !state.marketSelection) return;
     state.marketSelection.mode = chip.dataset.mode;
+    // Trocar de período reajusta o modo dos gráficos: quem sai do acumulado do ano para
+    // "Mês" está mudando de pergunta, e a tela acompanha em vez de manter a resposta velha.
+    state.marketSeriesMode = modoPadraoDaSerie(state.marketSelection);
     syncMarketFilterState();
     refreshMarketView();
   });

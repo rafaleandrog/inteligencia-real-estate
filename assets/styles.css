@@ -1169,10 +1169,17 @@ select:focus, input[type="number"]:focus {
   color: var(--texto-base);
 }
 
-.market-history { margin-top: 30px; }
-.market-history > header { margin-bottom: 12px; }
-.market-history h2 { font-size: 18px; }
-.market-history header p { margin: 5px 0 0; font-size: 12px; color: var(--muted); }
+.market-history { margin-top: var(--esp-6); }
+.market-history-head {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: var(--esp-3);
+  flex-wrap: wrap;
+  margin-bottom: var(--esp-3);
+}
+.market-history h2 { font-size: var(--tipo-lg); }
+.market-history-head p { margin: var(--esp-1) 0 0; font-size: var(--tipo-sm); color: var(--texto-sec); }
 .market-chart-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -1200,6 +1207,14 @@ select:focus, input[type="number"]:focus {
   margin: 0;
   font-size: var(--tipo-xs);
   color: var(--texto-sec);
+}
+
+/* Qual série está na tela — dito no gráfico, porque quem rolou até aqui não vê mais a
+   pílula que escolheu o modo. */
+.market-chart-modo {
+  margin: 2px 0 0;
+  font-size: var(--tipo-2xs);
+  color: var(--texto-fraco);
 }
 
 /* O valor no canto: o que o desenho diz devagar, dito de relance — com a operação que o
