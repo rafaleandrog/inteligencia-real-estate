@@ -5,7 +5,7 @@
 // pondera é o motor (issue #57). Este arquivo decide APRESENTAÇÃO: o que aparece
 // primeiro, o que a variação significa, e o que fazer quando o dado não existe.
 
-import { METRIC_BY_KEY, METRIC_KEYS } from './metrics.js';
+import { METRIC_BY_KEY, METRIC_KEYS, getPlottable } from './metrics.js';
 import {
   formatNumber, formatM2, formatPriceM2, formatPercent, percentFromDecimal,
 } from '../format.js';
@@ -72,7 +72,10 @@ export function deltaTone(metricKey, delta) {
 /** Valor formatado pela unidade declarada no registro. Ausência devolve `null`. */
 export function formatMetricValue(metricKey, value) {
   if (value === null || value === undefined || !Number.isFinite(value)) return null;
-  const metric = METRIC_BY_KEY[metricKey];
+  // Série derivada (issue #83) tem unidade declarada como qualquer métrica, e é aqui que
+  // ela precisa ser conhecida: o gráfico de distratos não pode cair no formato padrão de
+  // contagem e mostrar "0" onde o dado diz 12,4%.
+  const metric = getPlottable(metricKey);
   switch (metric && metric.unit) {
     case 'brl_m2': return formatPriceM2(value);
     case 'm2': return formatM2(value);

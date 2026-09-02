@@ -14,15 +14,15 @@
 //     Fora dela existem literais legítimos e antigos — `.view-tab` vive SOBRE `--brand` e
 //     usa `#fff`, o Leaflet quer cor resolvida — e uma varredura global viraria uma lista
 //     de perdão que envelhece calada.
-//   - no JS, a guarda equivalente para `src/ivv/` entra junto com a limpeza das quatro
-//     cores (mesma issue): proibição TOTAL, sem exceção e sem lista. `src/format.js`
-//     mapeia categoria do mapa para cor porque o Leaflet exige valor resolvido em JS; os
-//     módulos do IVV não pintam nada, então não têm por que conhecer cor nenhuma — e
-//     proibição sem exceção é o eixo que não envelhece.
+//   - no JS, só `src/ivv/`, e ali a proibição é TOTAL. `src/format.js` mapeia categoria do
+//     mapa para cor porque o Leaflet exige valor resolvido em JS; os módulos do IVV não
+//     pintam nada, então não têm por que conhecer cor nenhuma. Proibição sem exceção não
+//     precisa de lista — e é justamente por não precisar de lista que este é o eixo certo:
+//     lista de perdão envelhece calada, proibição total não tem como envelhecer.
 
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
+import { readFileSync, readdirSync } from 'node:fs';
 
 const read = (p) => readFileSync(new URL(p, import.meta.url), 'utf8');
 
@@ -107,6 +107,19 @@ test('todo var(--x) do CSS nomeia um token definido, e nenhum usa fallback', () 
 
 test('as regras da tela do Mercado não trazem literal de cor nem de raio', () => {
   assert.deepEqual(violacoesCss(read('../assets/styles.css')), []);
+});
+
+test('nenhum módulo de src/ivv conhece cor — sem exceção e sem lista', () => {
+  const dir = new URL('../src/ivv/', import.meta.url);
+  const achados = [];
+  for (const arquivo of readdirSync(dir).filter((n) => n.endsWith('.js'))) {
+    const fonte = readFileSync(new URL(arquivo, dir), 'utf8')
+      .replace(/\/\*[\s\S]*?\*\//g, '')
+      .replace(/\/\/[^\n]*/g, '');
+    const cor = fonte.match(RE_COR_LITERAL);
+    if (cor) achados.push(`${arquivo}: ${cor[0]}`);
+  }
+  assert.deepEqual(achados, []);
 });
 
 test('o guard sabe falhar', () => {

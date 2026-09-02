@@ -1114,25 +1114,123 @@ select:focus, input[type="number"]:focus {
   border-radius: var(--raio-lg);
   background: var(--panel);
 }
-.market-chart h3 { margin: 0 0 8px; font-size: 13px; font-weight: 600; }
-.market-chart svg { display: block; width: 100%; height: auto; overflow: visible; }
-.chart-grid-line { stroke: var(--line); stroke-width: 1; }
+.market-chart h3 { margin: 0 0 2px; font-size: var(--tipo-base); font-weight: 600; }
+
+/* A pergunta que o gráfico responde, embaixo do título. É ela que transforma
+   "VGV por mês" em algo que a pessoa sabe por que está olhando. */
+.market-chart-pergunta {
+  margin: 0 0 var(--esp-2);
+  font-size: var(--tipo-xs);
+  color: var(--texto-sec);
+}
+
+.market-chart-svg {
+  display: block;
+  width: 100%;
+  height: auto;
+  overflow: visible;
+}
+.chart-grid-line { stroke: var(--borda-base); stroke-width: 1; }
+.chart-zero-line { stroke: var(--borda-forte); stroke-width: 1; stroke-opacity: .6; }
 .chart-axis-value,
-.chart-axis-month { fill: var(--muted); font-size: 10px; }
+.chart-axis-month { fill: var(--texto-sec); font-size: var(--tipo-2xs); }
 .chart-axis-value { text-anchor: end; }
+
+/* Cor de série: UMA declaração por índice, herdada pelo grupo.
+
+   `stroke="var(--cat-1)"` como ATRIBUTO de apresentação é aceito pelo parser e descartado
+   em silêncio pelo browser — a série some do gráfico sem erro nenhum (R8.70). Por isso a
+   cor entra por classe, e a mesma classe serve o quadradinho da legenda: assim traço e
+   legenda não têm como divergir. */
+.serie-1 { --serie-cor: var(--cat-1); }
+.serie-2 { --serie-cor: var(--cat-2); }
+.serie-3 { --serie-cor: var(--cat-3); }
+.serie-4 { --serie-cor: var(--cat-4); }
+.serie-5 { --serie-cor: var(--cat-5); }
+.serie-6 { --serie-cor: var(--cat-6); }
+.serie-7 { --serie-cor: var(--cat-7); }
+.serie-8 { --serie-cor: var(--cat-8); }
+
+.market-serie-linha {
+  fill: none;
+  stroke: var(--serie-cor);
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.market-serie-area { fill: var(--serie-cor); fill-opacity: .18; stroke: none; }
+.market-serie-coluna { fill: var(--serie-cor); }
+.market-serie-marcador { fill: var(--serie-cor); }
+
 .market-chart-legend {
   display: flex;
   flex-wrap: wrap;
-  gap: 8px 16px;
-  margin: 8px 0 0;
+  gap: var(--esp-1) var(--esp-4);
+  margin: var(--esp-2) 0 0;
   padding: 0;
   list-style: none;
-  color: var(--muted);
-  font-size: 11px;
+  color: var(--texto-sec);
+  font-size: var(--tipo-xs);
 }
 .market-chart-legend li { display: inline-flex; align-items: center; gap: 6px; }
-.market-chart-legend span { width: 14px; height: 3px; border-radius: var(--raio-xs); }
-.market-chart-empty { min-height: 120px; margin: 0; color: var(--muted); font-size: 12px; }
+.market-legenda-cor {
+  width: 10px;
+  height: 10px;
+  border-radius: var(--raio-xs);
+  background: var(--serie-cor);
+}
+
+/* Os mesmos números em tabela, recolhidos: acima de 24 meses o gráfico não desenha
+   marcador, e sem marcador não há `title` para consultar o valor de um mês. */
+.market-chart-valores { margin-top: var(--esp-2); }
+.market-chart-valores > summary {
+  cursor: pointer;
+  font-size: var(--tipo-xs);
+  color: var(--texto-sec);
+}
+.market-chart-valores > summary:hover { color: var(--texto-base); }
+.market-chart-valores > summary:focus-visible {
+  outline: 2px solid var(--accent-text);
+  outline-offset: 2px;
+}
+.market-chart-valores table {
+  width: 100%;
+  margin-top: var(--esp-2);
+  border-collapse: collapse;
+  font-size: var(--tipo-xs);
+  font-variant-numeric: tabular-nums;
+}
+.market-chart-valores th,
+.market-chart-valores td {
+  padding: 4px 6px;
+  border-bottom: 1px solid var(--borda-sutil);
+  text-align: right;
+}
+.market-chart-valores thead th {
+  text-align: right;
+  color: var(--texto-sec);
+  font-size: var(--tipo-2xs);
+  font-weight: 700;
+  letter-spacing: .04em;
+  text-transform: uppercase;
+}
+.market-chart-valores tbody th,
+.market-chart-valores thead th:first-child { text-align: left; color: var(--texto-sec); font-weight: 500; }
+
+.market-chart-empty {
+  min-height: 120px;
+  margin: 0;
+  color: var(--texto-sec);
+  font-size: var(--tipo-sm);
+}
+
+/* O sparkline não tem eixo nem legenda: só a forma do movimento, ao lado do número. */
+.market-spark-svg {
+  display: block;
+  width: 100%;
+  height: 32px;
+  overflow: visible;
+}
 
 .market-provenance { margin-top: 24px; }
 .market-provenance > summary {

@@ -133,6 +133,11 @@ export function chartRowsForSelection(rows, selected) {
   return prepared.slice(Math.max(0, endIndex - 11), endIndex + 1).map((item) => item.row);
 }
 
+/** Rótulo curto do mês do ano (`1` → `jan.`). O eixo da sazonalidade não tem ano. */
+export function monthShortLabel(numero) {
+  return MONTH_LABELS[Number(numero) - 1] || '';
+}
+
 export function monthYearLabel(month) {
   if (!/^\d{4}-\d{2}$/.test(month || '')) return '';
   const [year, number] = month.split('-').map(Number);

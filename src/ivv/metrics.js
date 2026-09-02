@@ -221,6 +221,33 @@ export const METRIC_BY_KEY = Object.freeze(
 export const METRIC_KEYS = Object.freeze(IVV_METRICS.map((metric) => metric.key));
 
 /**
+ * Séries DERIVADAS plotáveis — issue #83.
+ *
+ * Registro separado, e separado de propósito. `cancellations_to_sales_pct` é razão que o
+ * backend publica mês a mês: dá uma linha honesta no gráfico e NÃO dá um card de período,
+ * porque agregar razão de meses diferentes é a armadilha que `METRIC_KINDS` existe para
+ * impedir. Colocá-la em `IVV_METRICS` exigiria inventar um `kind` para ela, e o motor
+ * passaria a poder somá-la; deixá-la solta faria o gráfico ler coluna não declarada.
+ *
+ * Por isso a entrada não tem `kind`: é o que declara, na própria forma do dado, que a
+ * série existe para ser DESENHADA e nunca agregada.
+ */
+export const IVV_DERIVED_SERIES = Object.freeze([
+  {
+    key: 'cancellations_to_sales_pct',
+    label: 'Distratos sobre vendas',
+    unit: 'fracao',
+    note: 'Razão publicada por mês. Agregá-la entre meses produziria média de razões — '
+      + 'exatamente o erro que a política de agregação por natureza impede.',
+  },
+]);
+
+/** Índice das séries derivadas, por chave. */
+export const DERIVED_SERIES_BY_KEY = Object.freeze(
+  Object.fromEntries(IVV_DERIVED_SERIES.map((serie) => [serie.key, serie])),
+);
+
+/**
  * Colunas não numéricas / de procedência. Declaradas para que a checagem de cobertura
  * distinga "não é métrica" de "ninguém classificou".
  */
@@ -431,6 +458,15 @@ export function isDeclaredColumn(column) {
 /** Métrica por chave, ou `null`. Não inventa entrada. */
 export function getMetric(key) {
   return METRIC_BY_KEY[key] || null;
+}
+
+/**
+ * Métrica OU série derivada, por chave — o que um gráfico precisa saber para rotular e
+ * formatar. Existe para que quem desenha não aprenda dois registros (mesma família da
+ * R8.68: a tradução acontece num lugar só).
+ */
+export function getPlottable(key) {
+  return METRIC_BY_KEY[key] || DERIVED_SERIES_BY_KEY[key] || null;
 }
 
 /** Métricas de uma natureza. */
