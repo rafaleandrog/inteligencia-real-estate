@@ -133,6 +133,25 @@ export function chartRowsForSelection(rows, selected) {
   return prepared.slice(Math.max(0, endIndex - 11), endIndex + 1).map((item) => item.row);
 }
 
+/**
+ * O mês anterior a `2026-06` é `2026-05`, e o mesmo mês do ano anterior é `2025-06`.
+ *
+ * Existem para que o rótulo da variação possa NOMEAR o mês com que está comparando
+ * (issue #83). "vs mês anterior" sob um agregado de 66 meses parece variação do período
+ * inteiro e é variação do último mês — ambíguo de um jeito caro (R8.66).
+ */
+export function mesAnterior(mesISO) {
+  if (!/^\d{4}-\d{2}$/.test(mesISO || '')) return null;
+  const [ano, mes] = mesISO.split('-').map(Number);
+  return mes === 1 ? `${ano - 1}-12` : `${ano}-${String(mes - 1).padStart(2, '0')}`;
+}
+
+export function mesmoMesAnoAnterior(mesISO) {
+  if (!/^\d{4}-\d{2}$/.test(mesISO || '')) return null;
+  const [ano, mes] = mesISO.split('-');
+  return `${Number(ano) - 1}-${mes}`;
+}
+
 /** Rótulo curto do mês do ano (`1` → `jan.`). O eixo da sazonalidade não tem ano. */
 export function monthShortLabel(numero) {
   return MONTH_LABELS[Number(numero) - 1] || '';

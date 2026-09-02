@@ -6,21 +6,52 @@
 // primeiro, o que a variação significa, e o que fazer quando o dado não existe.
 
 import { METRIC_BY_KEY, METRIC_KEYS, getPlottable } from './metrics.js';
+import { monthYearLabel, mesAnterior, mesmoMesAnoAnterior } from './period.js';
 import {
   formatNumber, formatM2, formatPriceM2, formatPercent, percentFromDecimal,
 } from '../format.js';
 
 /**
- * As três linhas de cards, na ordem de leitura pedida pelo dono do repositório:
- * **preços e volume de vendas primeiro**, ao longo do período inteiro.
+ * Os quatro indicadores que ABREM a tela (issue #83).
  *
- * A ordem é dado, não `if`. Mudar a prioridade da tela é editar esta lista, e não
- * caçar a ordem em que alguém escreveu os `append` no DOM.
+ * Doze cards do mesmo tamanho não são hierarquia: são doze coisas igualmente importantes,
+ * o que na prática é nenhuma. Estes quatro respondem, juntos, "como está o mercado" —
+ * quanto custa, quanto vendeu, quão rápido girou e quanto de dinheiro isso moveu — e são
+ * os únicos que ganham corpo grande, variação em destaque e sparkline.
+ *
+ * A ordem continua sendo a pedida pelo dono do repositório: **preço e volume de vendas
+ * primeiro**. E continua sendo DADO: mudar a prioridade da tela é editar esta lista, não
+ * caçar a ordem dos `append` no DOM.
  */
-export const CARD_ROWS = Object.freeze([
-  Object.freeze(['sale_price_brl_m2', 'asking_price_brl_m2', 'sales_units', 'sold_area_m2']),
-  Object.freeze(['ivv_pct', 'offers_units', 'launches_units', 'vgv_brl_million']),
-  Object.freeze(['vgo_brl_million', 'vgl_brl_million', 'cancellations_units', 'offer_area_m2']),
+export const CARD_DESTAQUES = Object.freeze([
+  'sale_price_brl_m2', 'sales_units', 'ivv_pct', 'vgv_brl_million',
+]);
+
+/**
+ * O restante, agrupado pelo que a métrica COMPÕE — não por afinidade de nome.
+ *
+ * `asking_price_brl_m2` mora em oferta porque é VGO sobre área ofertada: o grupo é
+ * literalmente o numerador, o denominador e a razão entre eles. Ler os três juntos explica
+ * o preço pedido; lê-los separados obriga quem olha a remontar a conta de cabeça.
+ */
+export const CARD_GRUPOS = Object.freeze([
+  Object.freeze({
+    key: 'oferta',
+    label: 'Oferta e estoque',
+    metricas: Object.freeze([
+      'asking_price_brl_m2', 'offers_units', 'offer_area_m2', 'vgo_brl_million',
+    ]),
+  }),
+  Object.freeze({
+    key: 'vendas',
+    label: 'Vendas e distratos',
+    metricas: Object.freeze(['sold_area_m2', 'cancellations_units']),
+  }),
+  Object.freeze({
+    key: 'lancamentos',
+    label: 'Lançamentos',
+    metricas: Object.freeze(['launches_units', 'vgl_brl_million']),
+  }),
 ]);
 
 /**
@@ -136,16 +167,22 @@ export function metricDeltas(metricKey, lastMonth) {
     deltas.push({ label, value: texto, tone: deltaTone(metricKey, bruto) });
   };
 
+  // O rótulo nomeia o mês comparado. Sem o nome, "vs mês anterior" sob um agregado de 66
+  // meses parece variação do período e é variação do último mês (R8.66). Quando a linha
+  // não tem data utilizável, o rótulo genérico volta — é vago, mas não é falso.
+  const rotuloMoM = mes ? `vs ${monthYearLabel(mesAnterior(mes))}` : 'vs mês anterior';
+  const rotuloYoY = mes ? `vs ${monthYearLabel(mesmoMesAnoAnterior(mes))}` : 'vs mesmo mês do ano anterior';
+
   if (metricKey === 'ivv_pct') {
-    push('vs mês anterior', formatPoints(numberAt(lastMonth, 'ivv_mom_pp')), numberAt(lastMonth, 'ivv_mom_pp'));
-    push('vs mês anterior, em %', formatChange(numberAt(lastMonth, 'ivv_mom_pct_change')),
+    push(rotuloMoM, formatPoints(numberAt(lastMonth, 'ivv_mom_pp')), numberAt(lastMonth, 'ivv_mom_pp'));
+    push(`${rotuloMoM}, em %`, formatChange(numberAt(lastMonth, 'ivv_mom_pct_change')),
       numberAt(lastMonth, 'ivv_mom_pct_change'));
-    push('vs mesmo mês do ano anterior', formatPoints(numberAt(lastMonth, 'ivv_yoy_pp')),
+    push(rotuloYoY, formatPoints(numberAt(lastMonth, 'ivv_yoy_pp')),
       numberAt(lastMonth, 'ivv_yoy_pp'));
   } else {
-    push('vs mês anterior', formatChange(numberAt(lastMonth, `${metricKey}_mom_pct_change`)),
+    push(rotuloMoM, formatChange(numberAt(lastMonth, `${metricKey}_mom_pct_change`)),
       numberAt(lastMonth, `${metricKey}_mom_pct_change`));
-    push('vs mesmo mês do ano anterior', formatChange(numberAt(lastMonth, `${metricKey}_yoy_pct_change`)),
+    push(rotuloYoY, formatChange(numberAt(lastMonth, `${metricKey}_yoy_pct_change`)),
       numberAt(lastMonth, `${metricKey}_yoy_pct_change`));
   }
 
@@ -161,7 +198,7 @@ export function metricDeltas(metricKey, lastMonth) {
 }
 
 /**
- * O modelo completo dos cards (issue #59).
+ * Um indicador: rótulo, valor, variações e o que dizer quando o valor não existe.
  *
  * Métrica sem valor no período aparece como AUSENTE, com o motivo, nunca como zero:
  * "0 unidades vendidas" e "não publicado" são afirmações diferentes, e a segunda é a
@@ -170,31 +207,63 @@ export function metricDeltas(metricKey, lastMonth) {
  * Métrica que o motor RECUSA agregar (`launches_developments` entre meses) não vira card
  * silenciosamente vazio: ela carrega a mensagem da recusa.
  */
-export function buildMarketCards(aggregated, months) {
+function cardDe(key, aggregated, lastMonth) {
+  const metric = METRIC_BY_KEY[key];
+  const result = aggregated && aggregated.values ? aggregated.values[key] : null;
+  const recusa = aggregated && aggregated.unsupported ? aggregated.unsupported[key] : null;
+
+  const valor = result ? formatMetricValue(key, result.value) : null;
+  const { deltas, mes } = valor === null ? { deltas: [], mes: null } : metricDeltas(key, lastMonth);
+
+  return {
+    key,
+    label: metric ? metric.label : key,
+    value: valor,
+    origin: result ? result.origin : null,
+    monthsWithData: result ? result.monthsWithData : 0,
+    deltas,
+    referenceMonth: mes,
+    // Uma frase, não um travessão: travessão numa grade de indicadores é indistinguível
+    // de um card que não carregou.
+    absent: valor !== null ? null
+      : (recusa ? recusa.message : 'Sem valor publicado para o período selecionado.'),
+  };
+}
+
+/**
+ * O modelo da tela: destaques primeiro, o resto em grupos (issues #59 e #83).
+ *
+ * O destaque leva a variação PRINCIPAL separada das demais — no card grande ela ganha
+ * corpo, e as outras ficam abaixo, menores. A separação é aqui, e não no renderizador,
+ * porque "qual é a variação principal" é decisão de leitura, não de marcação.
+ */
+export function buildMarketDashboard(aggregated, months) {
   const lastMonth = (months || []).length > 0 ? months[months.length - 1] : null;
 
-  return CARD_ROWS.map((row) => row.map((key) => {
-    const metric = METRIC_BY_KEY[key];
-    const result = aggregated && aggregated.values ? aggregated.values[key] : null;
-    const recusa = aggregated && aggregated.unsupported ? aggregated.unsupported[key] : null;
-
-    const valor = result ? formatMetricValue(key, result.value) : null;
-    const { deltas, mes } = valor === null ? { deltas: [], mes: null } : metricDeltas(key, lastMonth);
-
+  const destaques = CARD_DESTAQUES.map((key) => {
+    const card = cardDe(key, aggregated, lastMonth);
     return {
-      key,
-      label: metric ? metric.label : key,
-      value: valor,
-      origin: result ? result.origin : null,
-      monthsWithData: result ? result.monthsWithData : 0,
-      deltas,
-      referenceMonth: mes,
-      // Uma frase, não um travessão: travessão numa grade de doze cards é indistinguível
-      // de um card que não carregou.
-      absent: valor !== null ? null
-        : (recusa ? recusa.message : 'Sem valor publicado para o período selecionado.'),
+      ...card,
+      destaque: true,
+      deltaPrincipal: card.deltas[0] || null,
+      deltasSecundarios: card.deltas.slice(1),
     };
-  }));
+  });
+
+  return {
+    destaques,
+    grupos: CARD_GRUPOS.map((grupo) => ({
+      key: grupo.key,
+      label: grupo.label,
+      cards: grupo.metricas.map((key) => cardDe(key, aggregated, lastMonth)),
+    })),
+    mesReferencia: destaques.find((card) => card.referenceMonth)?.referenceMonth || null,
+  };
+}
+
+/** Toda métrica exibida na tela, na ordem de leitura. Usado por teste e pelo renderizador. */
+export function dashboardMetricKeys() {
+  return [...CARD_DESTAQUES, ...CARD_GRUPOS.flatMap((grupo) => grupo.metricas)];
 }
 
 /** Toda métrica do registro tem sentimento declarado? Usado por teste. */

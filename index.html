@@ -236,7 +236,13 @@
       </label>
     </div>
     <p class="market-period-label" id="marketPeriodLabel" aria-live="polite"></p>
+    <p class="market-period-base" id="marketPeriodBase"></p>
   </section>
+
+  <!-- Hierarquia dos indicadores (issue #83): quatro destaques com sparkline abrem a tela,
+       o restante vem agrupado pelo que compõe. Doze cards do mesmo tamanho não são
+       hierarquia — são doze coisas igualmente importantes, o que é nenhuma. -->
+  <section class="market-destaques" id="marketDestaques" aria-label="Indicadores principais"></section>
 
   <div class="market-body" id="marketBody"></div>
 

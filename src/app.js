@@ -11,10 +11,11 @@ import { loadDataset, flattenEntities } from './data.js';
 import { isApproximateLocation, appMetaRows } from './normalize.js';
 import { ivvProvenance, IVV_SCOPE_NOTICE } from './ivv/scope.js';
 import { aggregatePeriod } from './ivv/aggregate.js';
-import { buildMarketCards, formatMetricValue } from './ivv/cards.js';
+import { buildMarketDashboard, formatMetricValue } from './ivv/cards.js';
 import {
   PERIOD_MODE_OPTIONS, PERIOD_MODES, availableYears, availableMonths,
   defaultPeriodSelection, selectIvvPeriod, chartRowsForSelection, periodLabel,
+  monthYearLabel, mesAnterior, mesmoMesAnoAnterior,
 } from './ivv/period.js';
 import { buildHistoryCharts, buildSeasonality, buildSparkline } from './ivv/history.js';
 import { chartGeometry, chartViewport, VIEWPORTS } from './ivv/chart-layout.js';
@@ -65,7 +66,8 @@ const dom = {
   marketPeriodMode: el('marketPeriodMode'), marketYear: el('marketYear'),
   marketMonth: el('marketMonth'), marketCustomRange: el('marketCustomRange'),
   marketStart: el('marketStart'), marketEnd: el('marketEnd'),
-  marketPeriodLabel: el('marketPeriodLabel'), marketCharts: el('marketCharts'),
+  marketPeriodLabel: el('marketPeriodLabel'), marketPeriodBase: el('marketPeriodBase'),
+  marketDestaques: el('marketDestaques'), marketCharts: el('marketCharts'),
   marketHistoryNote: el('marketHistoryNote'),
   marketProvenance: el('marketProvenance'), marketProvenanceList: el('marketProvenanceList'),
   marketSource: el('marketSource'),
@@ -1263,23 +1265,26 @@ function marketDeltaRow(delta) {
 }
 
 /**
- * Um card do Mercado (issue #59).
+ * Um indicador do Mercado (issues #59 e #83).
  *
  * O valor usa figuras PROPORCIONAIS, não tabulares: `tabular-nums` dá a todo dígito a
  * largura de um zero, e num número grande isso deixa o texto frouxo. Tabular é para
  * coluna que precisa alinhar verticalmente — as variações, aqui.
+ *
+ * `data-metrica` é o endereço estável do card: rótulo muda, chave de métrica não.
  */
-function marketCard(card) {
+function marketCard(card, { destaque = false, spark = null } = {}) {
   const box = document.createElement('article');
-  box.className = 'market-card';
+  box.className = destaque ? 'market-kpi' : 'market-card';
+  box.dataset.metrica = card.key;
 
-  const label = document.createElement('h2');
-  label.className = 'market-card-label';
+  const label = document.createElement('h3');
+  label.className = destaque ? 'market-kpi-rotulo' : 'market-card-label';
   label.textContent = card.label;
   box.append(label);
 
   if (card.value === null) {
-    // Ausência é uma frase, não um travessão: travessão numa grade de doze cards é
+    // Ausência é uma frase, não um travessão: travessão numa grade de indicadores é
     // indistinguível de um card que não carregou.
     const ausente = document.createElement('p');
     ausente.className = 'market-card-absent';
@@ -1289,48 +1294,63 @@ function marketCard(card) {
   }
 
   const value = document.createElement('p');
-  value.className = 'market-card-value';
+  value.className = destaque ? 'market-kpi-valor' : 'market-card-value';
   value.textContent = card.value;
   box.append(value);
+
+  if (spark && !spark.vazio) box.append(marketSpark(spark));
 
   if (card.deltas.length > 0) {
     const list = document.createElement('ul');
     list.className = 'market-deltas';
-    for (const delta of card.deltas) list.append(marketDeltaRow(delta));
-    box.append(list);
-
-    if (card.referenceMonth) {
-      // Sem nomear o mês, "vs mês anterior" sobre um período de 66 meses parece variação
-      // do período e é variação do último mês — ambíguo de um jeito caro.
-      const nota = document.createElement('p');
-      nota.className = 'market-card-note';
-      nota.textContent = `Variações referentes a ${card.referenceMonth}.`;
-      box.append(nota);
+    for (const [indice, delta] of card.deltas.entries()) {
+      const linha = marketDeltaRow(delta);
+      // No destaque, a primeira variação é a que a pessoa veio ver e ganha corpo; as
+      // outras continuam legíveis abaixo dela, menores.
+      if (destaque && indice === 0) linha.classList.add('market-delta-principal');
+      list.append(linha);
     }
+    box.append(list);
   }
 
   return box;
 }
 
+function marketGrupo(grupo) {
+  const section = document.createElement('section');
+  section.className = 'market-grupo';
+  section.dataset.grupo = grupo.key;
+
+  const titulo = document.createElement('h2');
+  titulo.className = 'market-grupo-titulo';
+  titulo.textContent = grupo.label;
+  section.append(titulo);
+
+  const grade = document.createElement('div');
+  grade.className = 'market-tiles';
+  for (const card of grupo.cards) grade.append(marketCard(card));
+  section.append(grade);
+  return section;
+}
+
 /**
- * A grade de cards do Mercado: preços e volume de vendas primeiro (issue #59).
+ * Os indicadores do Mercado: destaques primeiro, depois os grupos (issue #83).
  *
  * Toda agregação passa pelo motor da issue #57 — nenhum card soma estoque por conta
- * própria, que é o erro caro que aquele motor existe para impedir.
+ * própria, que é o erro caro que aquele motor existe para impedir. O sparkline vem da
+ * janela de contexto, não do período agregado: ele mostra a FORMA do movimento recente,
+ * e um período de um mês só teria forma nenhuma.
  */
-function renderMarketCards(months) {
+function renderMarketCards(months, janela) {
   const aggregated = aggregatePeriod(months);
-  const rows = buildMarketCards(aggregated, months);
+  const { destaques, grupos, mesReferencia } = buildMarketDashboard(aggregated, months);
 
-  const frag = document.createDocumentFragment();
-  for (const row of rows) {
-    const section = document.createElement('div');
-    section.className = 'market-row';
-    for (const card of row) section.append(marketCard(card));
-    frag.append(section);
-  }
-  dom.marketBody.replaceChildren(frag);
-  return aggregated.warnings;
+  dom.marketDestaques.replaceChildren(...destaques.map((card) => marketCard(card, {
+    destaque: true,
+    spark: buildSparkline(janela, card.key),
+  })));
+  dom.marketBody.replaceChildren(...grupos.map(marketGrupo));
+  return { warnings: aggregated.warnings, mesReferencia };
 }
 
 function option(value, label) {
@@ -1585,7 +1605,15 @@ function renderMarketDashboard() {
   const fontes = { periodo: selected.rows, janela, completa: state.ivvMonthly };
   const viewport = chartViewport(dom.marketCharts.clientWidth || window.innerWidth);
 
-  const warnings = renderMarketCards(selected.rows);
+  const { warnings, mesReferencia } = renderMarketCards(selected.rows, janela);
+
+  // A base de comparação fica escrita UMA vez, junto do período, em vez de repetida em
+  // doze cards. Os rótulos das variações já nomeiam o mês; esta frase diz de onde ele vem.
+  dom.marketPeriodBase.textContent = mesReferencia
+    ? `Variações referentes a ${monthYearLabel(mesReferencia)}, comparado com `
+      + `${monthYearLabel(mesAnterior(mesReferencia))} e com `
+      + `${monthYearLabel(mesmoMesAnoAnterior(mesReferencia))}.`
+    : '';
   dom.marketHistoryNote.textContent = selected.rows.length === 1
     ? `Os cards mostram ${periodLabel(selected)}; os gráficos dão contexto com até 12 meses anteriores.`
     : `Valores mensais no mesmo recorte dos indicadores: ${periodLabel(selected)}.`;
