@@ -18,7 +18,7 @@ import {
   monthYearLabel, mesAnterior, mesmoMesAnoAnterior,
 } from './ivv/period.js';
 import { buildHistoryCharts, buildSeasonality, buildSparkline } from './ivv/history.js';
-import { chartGeometry, chartViewport, VIEWPORTS } from './ivv/chart-layout.js';
+import { chartGeometry, chartViewport, sparkViewport } from './ivv/chart-layout.js';
 import {
   anchorLegendGroups, applyFilters, computeKpis, createFilterState, distinctAnchorGroups,
   distinctAnchorSegments, distinctLocalities, distinctPropertyTypes, distinctRegions,
@@ -1273,7 +1273,7 @@ function marketDeltaRow(delta) {
  *
  * `data-metrica` é o endereço estável do card: rótulo muda, chave de métrica não.
  */
-function marketCard(card, { destaque = false, spark = null } = {}) {
+function marketCard(card, { destaque = false, spark = null, sparks = [] } = {}) {
   const box = document.createElement('article');
   box.className = destaque ? 'market-kpi' : 'market-card';
   box.dataset.metrica = card.key;
@@ -1298,7 +1298,12 @@ function marketCard(card, { destaque = false, spark = null } = {}) {
   value.textContent = card.value;
   box.append(value);
 
-  if (spark && !spark.vazio) box.append(marketSpark(spark));
+  if (spark && !spark.vazio) {
+    const caixa = document.createElement('div');
+    caixa.className = 'market-kpi-spark';
+    box.append(caixa);
+    sparks.push({ plot: caixa, model: spark, spark: true });
+  }
 
   if (card.deltas.length > 0) {
     const list = document.createElement('ul');
@@ -1345,12 +1350,17 @@ function renderMarketCards(months, janela) {
   const aggregated = aggregatePeriod(months);
   const { destaques, grupos, mesReferencia } = buildMarketDashboard(aggregated, months);
 
+  // Os sparklines seguem a mesma regra dos gráficos: caixa vazia agora, desenho depois de
+  // medir (issue #85). Antes disso o spark tinha `viewBox` de 120×32 esticado à força num
+  // card de ~250px — 2,1× na horizontal, com o traço deformando junto.
+  const sparks = [];
   dom.marketDestaques.replaceChildren(...destaques.map((card) => marketCard(card, {
     destaque: true,
     spark: buildSparkline(janela, card.key),
+    sparks,
   })));
   dom.marketBody.replaceChildren(...grupos.map(marketGrupo));
-  return { warnings: aggregated.warnings, mesReferencia };
+  return { warnings: aggregated.warnings, mesReferencia, sparks };
 }
 
 function option(value, label) {
@@ -1450,10 +1460,12 @@ function svgNode(name, attributes = {}) {
  */
 function chartSvg(model, viewport) {
   const geometria = chartGeometry(model, viewport);
+  // Sem `preserveAspectRatio="none"`: com o `viewBox` na medida da caixa a escala é 1:1 e
+  // uniforme. Forçar o preenchimento não-uniforme era o que achatava o traço do sparkline
+  // e transformava o marcador redondo em elipse.
   const svg = svgNode('svg', {
     viewBox: geometria.viewBox,
     class: 'market-chart-svg',
-    preserveAspectRatio: 'none',
     role: 'img',
     'aria-label': model.ariaLabel,
   });
@@ -1583,7 +1595,19 @@ function marketChartTable(model) {
   return bloco;
 }
 
-function marketChart(model, viewport) {
+/**
+ * O card do gráfico, montado SEM o desenho (issue #85).
+ *
+ * O SVG entra numa segunda passada, depois que o card já está no DOM e dá para MEDIR a
+ * caixa. Enquanto o `viewBox` era um número fixo (640) e a caixa real tinha ~498px, o
+ * navegador escalava a arte inteira por 0,78 — rótulo de 10px chegando com 7,8px, traço
+ * de 2px com 1,56px — e nada denunciava (R8.74).
+ *
+ * Medir é melhor que calcular: deduzir a largura pelo número de colunas obrigaria a repetir
+ * em JS os pontos de quebra que já estão no CSS, e duas verdades sobre a mesma grade
+ * divergem no primeiro ajuste.
+ */
+function marketChart(model) {
   const article = document.createElement('article');
   article.className = 'market-chart';
   article.dataset.chart = model.key;
@@ -1606,23 +1630,48 @@ function marketChart(model, viewport) {
     empty.className = 'market-chart-empty';
     empty.textContent = model.mensagemVazio;
     article.append(empty);
-    return article;
+    return { article, plot: null, model };
   }
 
-  article.append(chartSvg(model, viewport), marketChartLegend(model), marketChartTable(model));
-  return article;
+  const plot = document.createElement('div');
+  plot.className = 'market-chart-plot';
+  article.append(plot, marketChartLegend(model), marketChartTable(model));
+  return { article, plot, model };
 }
 
+/**
+ * Segunda passada: mede a caixa e desenha dentro dela.
+ *
+ * `clientWidth` de um elemento fora do DOM é 0 — daí a ordem obrigatória: inserir, medir,
+ * desenhar. Quando a medida vem 0 mesmo assim (container oculto), o viewport cai no
+ * fallback do perfil em vez de produzir um `viewBox` degenerado.
+ */
+function desenharGraficos(cards) {
+  for (const card of cards) {
+    if (!card.plot) continue;
+    const largura = card.plot.clientWidth;
+    // Redesenhar com a mesma medida é trabalho jogado fora — e, dentro do observador de
+    // tamanho, é o que realimentaria o laço.
+    if (Math.abs(largura - (card.larguraDesenhada || 0)) < TOLERANCIA_DE_REDESENHO) continue;
+    card.larguraDesenhada = largura;
+    const viewport = card.spark ? sparkViewport(largura) : chartViewport(largura);
+    const svg = chartSvg(card.model, viewport);
+    if (card.spark) prepararSpark(svg);
+    card.plot.replaceChildren(svg);
+  }
+}
+
+/** Abaixo disto a diferença de largura não muda o desenho o bastante para valer o reflow. */
+const TOLERANCIA_DE_REDESENHO = 8;
+
 /** O sparkline não é gráfico: é a forma do movimento ao lado do número. */
-function marketSpark(model) {
-  const svg = chartSvg(model, VIEWPORTS.SPARK);
+function prepararSpark(svg) {
   svg.setAttribute('class', 'market-spark-svg');
   // O valor e a variação já estão em texto no card; repetir a série no leitor de tela
   // só atrapalharia.
   svg.setAttribute('aria-hidden', 'true');
   svg.removeAttribute('role');
   svg.removeAttribute('aria-label');
-  return svg;
 }
 
 function renderMarketDashboard() {
@@ -1637,9 +1686,8 @@ function renderMarketDashboard() {
   // pedir isso ao módulo de definição obrigaria ele a conhecer `state`.
   const janela = chartRowsForSelection(state.ivvMonthly, selected);
   const fontes = { periodo: selected.rows, janela, completa: state.ivvMonthly };
-  const viewport = chartViewport(dom.marketCharts.clientWidth || window.innerWidth);
 
-  const { warnings, mesReferencia } = renderMarketCards(selected.rows, janela);
+  const { warnings, mesReferencia, sparks } = renderMarketCards(selected.rows, janela);
 
   // A base de comparação fica escrita UMA vez, junto do período, em vez de repetida em
   // doze cards. Os rótulos das variações já nomeiam o mês; esta frase diz de onde ele vem.
@@ -1653,8 +1701,34 @@ function renderMarketDashboard() {
     : `Valores mensais no mesmo recorte dos indicadores: ${resumo.intervalo}.`;
 
   const graficos = [...buildHistoryCharts(fontes), buildSeasonality(state.ivvMonthly)];
-  dom.marketCharts.replaceChildren(...graficos.map((model) => marketChart(model, viewport)));
+  const cards = graficos.map(marketChart);
+  dom.marketCharts.replaceChildren(...cards.map((item) => item.article));
+
+  // Inserido primeiro, medido depois, desenhado por último. Guardar o que está na tela é o
+  // que permite redesenhar só os SVGs quando a janela muda de largura, sem refazer a
+  // agregação inteira.
+  cardsNaTela = [...cards, ...sparks];
+  desenharGraficos(cardsNaTela);
   return warnings.map((item) => `Mercado (${item.metric || 'período'}): ${item.message}`);
+}
+
+/** O que está desenhado na tela agora, para o redesenho por mudança de largura. */
+let cardsNaTela = [];
+
+/**
+ * Redesenha os SVGs quando a caixa muda de largura (issue #85).
+ *
+ * A geometria é calculada em JS a partir da medida, e JS não reage a mudança de layout
+ * sozinho: sem isto, estreitar a janela deixaria um desenho de 528 pontos preso numa caixa
+ * de 300. O redesenho acontece DENTRO do observador de tamanho, então a guarda de
+ * `TOLERANCIA_DE_REDESENHO` em `desenharGraficos` é o que impede o laço — cada card só é
+ * redesenhado quando a própria caixa dele mudou de verdade.
+ */
+function observarLarguraDosGraficos() {
+  if (typeof ResizeObserver !== 'function') return;
+  const observador = new ResizeObserver(() => desenharGraficos(cardsNaTela));
+  observador.observe(dom.marketCharts);
+  observador.observe(dom.marketDestaques);
 }
 
 function renderMarketView() {
@@ -1811,12 +1885,10 @@ function bindEvents() {
     });
   }
 
-  // A geometria do gráfico é calculada em JS a partir da largura disponível, e JS não
-  // reage a media query sozinho: sem este ouvinte, girar o telefone ou estreitar a janela
-  // deixaria o desenho de 640 pontos preso numa tela de 390 (issue #83).
-  window.matchMedia('(max-width: 560px)').addEventListener('change', () => {
-    if (state.marketSelection) refreshMarketView();
-  });
+  // A largura do desenho é medida, então quem avisa que ela mudou é o observador de
+  // tamanho — e não um `matchMedia`, que só dispararia no ponto de quebra e deixaria
+  // passar toda mudança de largura entre eles (issue #85).
+  observarLarguraDosGraficos();
 
   // Troca de view (issue #58). O hash é a fonte da verdade: o clique escreve nele e o
   // `hashchange` aplica. Assim o botão e a barra de endereço nunca discordam, e

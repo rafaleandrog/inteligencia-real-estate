@@ -1213,6 +1213,27 @@ filtrosEGraficos.tabelas.length === filtrosEGraficos.svgs
   ? pass('cada gráfico desenhado traz os valores mês a mês em tabela')
   : fail('tabelas de valores: ' + JSON.stringify(filtrosEGraficos.tabelas));
 
+// O desenho tem que ter a LARGURA DA CAIXA (R8.74). Um `viewBox` fixo dentro de uma caixa
+// menor não dá erro: o navegador escala a arte inteira e a tipografia encolhe junto, em
+// silêncio. Só medindo os dois lados dá para saber.
+const medidorDeGrafico = () => {
+  const plot = document.querySelector('#marketCharts .market-chart-plot');
+  const svg = plot?.querySelector('.market-chart-svg');
+  const caixa = plot ? Math.round(plot.clientWidth) : 0;
+  const viewBoxLargura = Number((svg?.getAttribute('viewBox') || '').split(' ')[2] || 0);
+  const grade = document.querySelector('#marketCharts');
+  return {
+    caixa,
+    viewBoxLargura,
+    casa: caixa > 0 && Math.abs(caixa - viewBoxLargura) <= 8,
+    overflow: grade ? grade.scrollWidth - grade.clientWidth : 0,
+  };
+};
+const graficoLargo = await viewPage.evaluate(medidorDeGrafico);
+graficoLargo.casa
+  ? pass(`o desenho sai na medida da caixa (${graficoLargo.caixa}px), não reduzido de um viewBox fixo`)
+  : fail('viewBox fora da medida da caixa: ' + JSON.stringify(graficoLargo));
+
 // A cor da série CHEGA — e chega por CSS. `stroke="var(--cat-1)"` como atributo de
 // apresentação é aceito pelo parser e descartado em silêncio pelo browser: a série some
 // sem erro nenhum. Só o valor COMPUTADO prova que ela está lá (R8.70).
@@ -1410,13 +1431,9 @@ const overflowCards = await tomPage.evaluate(
 overflowCards <= 1
   ? pass('os indicadores não estouram a largura em 390px')
   : fail(`overflow de ${overflowCards}px nos indicadores`);
-const graficoEstreito = await tomPage.evaluate(() => ({
-  viewBox: document.querySelector('#marketCharts .market-chart-svg')?.getAttribute('viewBox') ?? '',
-  overflow: document.querySelector('#marketCharts')?.scrollWidth
-    - document.querySelector('#marketCharts')?.clientWidth,
-}));
-graficoEstreito.viewBox.startsWith('0 0 360') && graficoEstreito.overflow <= 1
-  ? pass('em 390px o gráfico troca para o desenho estreito, sem estourar a largura')
+const graficoEstreito = await tomPage.evaluate(medidorDeGrafico);
+graficoEstreito.casa && graficoEstreito.overflow <= 1
+  ? pass(`em 390px o desenho tem a largura da caixa (${graficoEstreito.viewBoxLargura}px), sem estourar`)
   : fail('gráfico em 390px: ' + JSON.stringify(graficoEstreito));
 await tomPage.close();
 

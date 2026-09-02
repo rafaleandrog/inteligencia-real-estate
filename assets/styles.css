@@ -1195,6 +1195,9 @@ select:focus, input[type="number"]:focus {
   color: var(--texto-sec);
 }
 
+/* A caixa que o desenho mede. Ela existe para ser MEDIDA: o `viewBox` do SVG sai da
+   largura dela, então o gráfico é desenhado no tamanho em que vai aparecer (R8.74). */
+.market-chart-plot { min-width: 0; }
 .market-chart-svg {
   display: block;
   width: 100%;
@@ -1301,11 +1304,14 @@ select:focus, input[type="number"]:focus {
   font-size: var(--tipo-sm);
 }
 
-/* O sparkline não tem eixo nem legenda: só a forma do movimento, ao lado do número. */
+/* O sparkline não tem eixo nem legenda: só a forma do movimento, ao lado do número.
+   A altura vem da proporção do `viewBox` (medido), não de um valor fixo brigando com ele —
+   era essa briga que esticava o desenho 2,1× na horizontal. */
+.market-kpi-spark { min-width: 0; margin: var(--esp-2) 0; }
 .market-spark-svg {
   display: block;
   width: 100%;
-  height: 32px;
+  height: auto;
   overflow: visible;
 }
 
@@ -1475,7 +1481,7 @@ select:focus, input[type="number"]:focus {
   }
   .market-kpi-rotulo { margin: 0; }
   .market-kpi-valor { font-size: var(--tipo-lg); white-space: nowrap; }
-  .market-kpi > .market-spark-svg,
+  .market-kpi > .market-kpi-spark,
   .market-kpi > .market-deltas,
   .market-kpi > .market-card-absent { grid-column: 1 / -1; }
   .market-tiles { grid-template-columns: 1fr; }
