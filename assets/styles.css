@@ -1433,6 +1433,69 @@ select:focus, input[type="number"]:focus {
   overflow: visible;
 }
 
+/* IVV por Região Administrativa (issue #87).
+
+   Barra horizontal, não gráfico de linha: a aba publica um mês só, e a pergunta que ela
+   responde é "onde gira mais rápido?", que é comparação entre regiões. O nome da região
+   fica à esquerda porque nome longo em rótulo vertical é ilegível, e a comparação se faz
+   correndo o olho por uma coluna de barras que começam todas no mesmo lugar. */
+.market-regioes { margin-top: var(--esp-6); }
+.market-regioes[hidden] { display: none; }
+.market-regioes-lista {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  border-top: 1px solid var(--borda-sutil);
+}
+.market-regiao {
+  display: grid;
+  grid-template-columns: minmax(96px, 148px) minmax(0, 1fr) auto;
+  align-items: center;
+  gap: var(--esp-1) var(--esp-3);
+  padding: var(--esp-2) 0;
+  border-bottom: 1px solid var(--borda-sutil);
+}
+.market-regiao-nome {
+  font-size: var(--tipo-sm);
+  color: var(--texto-base);
+  overflow-wrap: anywhere;
+}
+.market-regiao-trilho {
+  height: 10px;
+  border-radius: var(--raio-pill);
+  background: var(--superficie-hover);
+}
+.market-regiao-barra {
+  display: block;
+  height: 100%;
+  border-radius: var(--raio-pill);
+  background: var(--cat-8);
+}
+/* Acima da régua do DF a barra ganha a cor da série principal: quem está acima do
+   território inteiro é a informação que a seção existe para dar. */
+.market-regiao-acima { background: var(--cat-1); }
+.market-regiao-valor {
+  font-size: var(--tipo-base);
+  font-weight: 600;
+  color: var(--texto-forte);
+  font-variant-numeric: tabular-nums;
+}
+.market-regiao-detalhe {
+  grid-column: 2 / -1;
+  font-size: var(--tipo-2xs);
+  color: var(--texto-sec);
+}
+.market-regioes-regua {
+  margin: var(--esp-3) 0 0;
+  font-size: var(--tipo-sm);
+  color: var(--texto-sec);
+}
+.market-regioes-ausentes {
+  margin: var(--esp-2) 0 0;
+  font-size: var(--tipo-xs);
+  color: var(--texto-sec);
+}
+
 .market-provenance { margin-top: var(--esp-5); }
 .market-provenance > summary {
   cursor: pointer;
@@ -1620,4 +1683,9 @@ select:focus, input[type="number"]:focus {
      hierarquia se inverte justamente onde há menos espaço para reconstruí-la. */
   .market-card-value { font-size: var(--tipo-lg); }
   .market-campos { grid-template-columns: 1fr; }
+  /* Em 390px o nome da região ocupa a linha inteira: 96px de coluna deixariam "Jardim
+     Botânico" em três linhas ao lado de uma barra de 40px. */
+  .market-regiao { grid-template-columns: 1fr auto; }
+  .market-regiao-nome { grid-column: 1 / -1; }
+  .market-regiao-trilho { grid-column: 1; }
 }

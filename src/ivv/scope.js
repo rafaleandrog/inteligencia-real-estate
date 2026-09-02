@@ -82,7 +82,13 @@ export function ivvProvenance(months) {
  * vindo de um mapa com filtro de Região Administrativa espera, por continuidade, que os
  * números respondam ao mesmo recorte. Eles não respondem, e nada além desta frase diz
  * isso.
+ *
+ * REESCRITA NA ISSUE #87, e a precisão aqui é o ponto. A frase antiga dizia que a fonte
+ * "não publica por Região Administrativa" — e isso virou falso quando a aba `IVV_REGION`
+ * entrou: ela publica IVV por RA, para UM mês. O que não existe por RA é a SÉRIE MENSAL,
+ * e é isso que a frase precisa dizer. Frase errada é pior que frase ausente: a antiga
+ * mandaria alguém procurar noutro lugar um dado que está logo abaixo, na mesma tela.
  */
-export const IVV_SCOPE_NOTICE = 'Estes números descrevem o Distrito Federal inteiro. '
-  + 'A fonte não publica a série por Região Administrativa, então os filtros do mapa '
-  + 'não se aplicam aqui.';
+export const IVV_SCOPE_NOTICE = 'A série mensal descreve o Distrito Federal inteiro: a fonte '
+  + 'não a publica por Região Administrativa, então os filtros do mapa não se aplicam a ela. '
+  + 'O IVV por RA existe como retrato de um mês, na seção ao fim desta tela.';

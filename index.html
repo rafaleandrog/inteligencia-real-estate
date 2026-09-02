@@ -266,6 +266,20 @@
     <div class="market-chart-grid" id="marketCharts"></div>
   </section>
 
+  <!-- IVV por Região Administrativa (issue #87). É retrato de UM mês, não série: a aba
+       publica um mês só, e prometer histórico aqui seria prometer o que não existe. -->
+  <section class="market-regioes" id="marketRegioes" aria-labelledby="marketRegioesTitle" hidden>
+    <header class="market-history-head">
+      <div>
+        <h2 id="marketRegioesTitle">IVV por Região Administrativa</h2>
+        <p id="marketRegioesNote"></p>
+      </div>
+      <div class="market-chips" id="marketRegioesFaixa" role="group" aria-label="Faixa de quartos"></div>
+    </header>
+    <div id="marketRegioesLista"></div>
+    <p class="market-regioes-ausentes" id="marketRegioesAusentes"></p>
+  </section>
+
   <details class="market-provenance" id="marketProvenance">
     <summary>Origem do dado</summary>
     <dl class="detail-list" id="marketProvenanceList"></dl>

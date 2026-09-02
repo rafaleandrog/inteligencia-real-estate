@@ -16,6 +16,7 @@ import {
 } from './traffic/normalize.js';
 import { linkTrafficDataset } from './traffic/link.js';
 import { normalizeIvvMonthly } from './ivv/normalize-ivv.js';
+import { normalizeIvvRegion } from './ivv/region.js';
 
 /** Entidades obrigatórias na V1. Ausência de qualquer uma é erro. */
 export const REQUIRED_ENTITIES = ['listings', 'developments', 'anchors'];
@@ -180,6 +181,7 @@ async function loadFromGviz(config) {
   const polygonsPromise = fetchPolygonsFromGviz(config);
   const trafficPromise = fetchTrafficSheetsFromGviz(config);
   const ivvPromise = fetchIvvMonthlyFromGviz(config);
+  const regiaoPromise = fetchIvvRegionFromGviz(config);
 
   const settled = await Promise.allSettled(
     entries.map(([, sheetName]) => fetchGvizSheet(config.spreadsheetId, sheetName))
@@ -202,17 +204,20 @@ async function loadFromGviz(config) {
   const { segments, aliases, trafficRecords, warnings: trafficWarnings } = await trafficPromise;
   const traffic = linkTrafficDataset(segments, polygons, trafficRecords, aliases);
   const { ivvMonthly, warnings: ivvWarnings } = await ivvPromise;
+  const { ivvRegion, warnings: regiaoWarnings } = await regiaoPromise;
   return {
     raw,
     errors,
     warnings: [
       ...warnings, ...raProfileWarnings, ...polygonWarnings, ...trafficWarnings, ...ivvWarnings,
+      ...regiaoWarnings,
     ],
     meta: { spreadsheetId: config.spreadsheetId, ...meta },
     raProfiles,
     polygons,
     traffic,
     ivvMonthly,
+    ivvRegion,
   };
 }
 
@@ -250,6 +255,34 @@ async function fetchIvvMonthlyFromGviz(config) {
     return {
       ivvMonthly: EMPTY_IVV_MONTHLY,
       warnings: [`Série de mercado indisponível (${sheetName}): ${error?.message || error}`],
+    };
+  }
+}
+
+/**
+ * Lê a aba `IVV_REGION` (issue #87): IVV por Região Administrativa e faixa de quartos.
+ *
+ * Mesmo tratamento das demais abas fora do lote obrigatório: teto de tempo curto e
+ * dedicado, e falha ou ausência virando **aviso, nunca erro** (R2.5). A tela do Mercado
+ * continua inteira sem ela — o que some é a seção territorial, e ela some dizendo por quê.
+ */
+async function fetchIvvRegionFromGviz(config) {
+  const sheetName = config.ivvRegionSheet;
+  if (!sheetName) return { ivvRegion: [], warnings: [] };
+
+  try {
+    const rows = await fetchGvizSheet(config.spreadsheetId, sheetName, {
+      timeoutMs: META_FETCH_TIMEOUT_MS,
+    });
+    const { rows: regioes, warnings } = normalizeIvvRegion(rows);
+    return {
+      ivvRegion: regioes,
+      warnings: (warnings || []).map((texto) => `Mercado (IVV_REGION): ${texto}`),
+    };
+  } catch (error) {
+    return {
+      ivvRegion: [],
+      warnings: [`IVV por região indisponível (${sheetName}): ${error?.message || error}`],
     };
   }
 }
@@ -410,11 +443,16 @@ async function loadFromDemo(config) {
   // "Validado em —"), destruindo a distinção entre não publicado e valor inválido.
   // Os campos de geração do demo ficam num ramo à parte, fora do vocabulário APP_META.
   const demoIvv = normalizeIvvMonthly(payload.ivv_monthly || []);
+  const demoRegiao = normalizeIvvRegion(payload.ivv_region || []);
 
   return {
     raw,
     errors: [],
-    warnings: [...metaConflictWarnings(payload.meta), ...ivvWarningTexts(demoIvv.warnings)],
+    warnings: [
+      ...metaConflictWarnings(payload.meta),
+      ...ivvWarningTexts(demoIvv.warnings),
+      ...demoRegiao.warnings.map((texto) => `Mercado (IVV_REGION): ${texto}`),
+    ],
     meta: { ...normalizeAppMeta(payload.meta), demo: payload.meta || {} },
     // Mesmo tratamento de `raw`: aba ausente no demo.json vira mapa vazio, não erro.
     raProfiles: normalizeRaProfiles(payload.ra_profiles || []),
@@ -433,6 +471,8 @@ async function loadFromDemo(config) {
     // ponto percentual, então o caminho de demo exercita de verdade a tradução de alias
     // e a conversão de escala — inclusive os avisos que elas produzem.
     ivvMonthly: demoIvv.months,
+    // Aba ausente no demo.json vira lista vazia, e a seção territorial some dizendo por quê.
+    ivvRegion: demoRegiao.rows,
   };
 }
 
@@ -455,6 +495,7 @@ async function loadFromAppsScript(config) {
   const polygonsPromise = fetchPolygonsFromAppsScript(config);
   const trafficPromise = fetchTrafficSheetsFromAppsScript(config);
   const ivvPromise = fetchIvvMonthlyFromAppsScript(config);
+  const regiaoPromise = fetchIvvRegionFromAppsScript(config);
 
   const settled = await Promise.allSettled(
     entries.map(async ([, sheetName]) => {
@@ -508,9 +549,11 @@ async function loadFromAppsScript(config) {
   const traffic = linkTrafficDataset(segments, polygons, trafficRecords, aliases);
   const { ivvMonthly, warnings: ivvWarnings } = await ivvPromise;
   warnings.push(...ivvWarnings);
+  const { ivvRegion, warnings: regiaoWarnings } = await regiaoPromise;
+  warnings.push(...regiaoWarnings);
 
   return {
-    raw, errors, warnings, meta, raProfiles, polygons, traffic, ivvMonthly,
+    raw, errors, warnings, meta, raProfiles, polygons, traffic, ivvMonthly, ivvRegion,
   };
 }
 
@@ -587,6 +630,26 @@ async function fetchIvvMonthlyFromAppsScript(config) {
   }
 }
 
+/** IVV_REGION pelo endpoint read-only do Web App — mesmo contrato de `fetchIvvRegionFromGviz`. */
+async function fetchIvvRegionFromAppsScript(config) {
+  if (!config.ivvRegionSheet) return { ivvRegion: [], warnings: [] };
+
+  try {
+    const url = `${config.appsScriptUrl}?resource=dataset&name=${encodeURIComponent(config.ivvRegionSheet)}`;
+    const response = await fetchWithTimeout(url, { timeoutMs: META_FETCH_TIMEOUT_MS });
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    const payload = await response.json();
+    if (payload.error) throw new Error(payload.error);
+    const { rows, warnings } = normalizeIvvRegion(payload.rows || []);
+    return {
+      ivvRegion: rows,
+      warnings: (warnings || []).map((texto) => `Mercado (IVV_REGION): ${texto}`),
+    };
+  } catch (error) {
+    return { ivvRegion: [], warnings: [`IVV por região indisponível: ${error?.message || error}`] };
+  }
+}
+
 /** RA_PROFILES pelo endpoint read-only do Web App — mesmo formato de resposta que as abas obrigatórias. */
 async function fetchRaProfilesFromAppsScript(config) {
   if (!config.raProfilesSheet) return { raProfiles: {}, warnings: [] };
@@ -650,6 +713,7 @@ export async function loadDataset(config) {
       polygons: [],
       traffic: EMPTY_TRAFFIC,
       ivvMonthly: EMPTY_IVV_MONTHLY,
+      ivvRegion: [],
       source: strategy,
       warnings,
       errors: [error?.message || String(error)],
@@ -689,6 +753,7 @@ export async function loadDataset(config) {
     polygons: result.polygons || [],
     traffic: result.traffic || EMPTY_TRAFFIC,
     ivvMonthly: result.ivvMonthly || EMPTY_IVV_MONTHLY,
+    ivvRegion: result.ivvRegion || [],
     source: strategy,
     warnings,
     errors,

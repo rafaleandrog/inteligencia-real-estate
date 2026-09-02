@@ -127,6 +127,14 @@ payload.ivv_monthly = workbook.IVV_MONTHLY
   ? workbook.IVV_MONTHLY.rows.map(convertDates)
   : [];
 
+// IVV_REGION (issue #87). A semente tem as 95 linhas reais — um mês, 19 regiões, 5 faixas —
+// e elas entram no demo pelo mesmo motivo da IVV_MONTHLY: é dado publicado, e é o caminho
+// que exercita a escala em PONTO percentual (12,5 = 12,5%), oposta à da série mensal, mais
+// as linhas agregadas (`DF Total`, `TOTAL`) e as células vazias que viram frase.
+payload.ivv_region = workbook.IVV_REGION
+  ? workbook.IVV_REGION.rows.map(convertDates)
+  : [];
+
 mkdirSync(dirname(target), { recursive: true });
 writeFileSync(target, `${JSON.stringify(payload, null, 2)}\n`);
 
@@ -136,4 +144,5 @@ for (const [sheet, entity] of Object.entries(ENTITY_BY_SHEET)) {
 console.log(`RA_PROFILES     -> ra_profiles    ${payload.ra_profiles.length} linhas`);
 console.log(`POLYGONS        -> polygons       ${payload.polygons.length} linhas (vazio por decisão — ver comentário)`);
 console.log(`IVV_MONTHLY     -> ivv_monthly    ${payload.ivv_monthly.length} linhas`);
+console.log(`IVV_REGION      -> ivv_region     ${payload.ivv_region.length} linhas`);
 console.log(`\n${target} gerado.`);
