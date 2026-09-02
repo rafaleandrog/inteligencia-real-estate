@@ -46,6 +46,100 @@
   --panel-w: 300px;
   --detail-w: 360px;
 
+  /* Escalas de contrato de UI (issue #83).
+
+     Vieram do contrato do UrbiVerso — ênfase de texto em quatro degraus, borda em três,
+     superfície em três, e escalas fechadas de raio, tipo e espaço. O que NÃO veio é a
+     paleta: a identidade verde é herdada do modelo V3 e continua mandando. O ganho é
+     poder falar por PAPEL ("texto secundário", "borda sutil", "raio médio") em vez de
+     escolher um pixel por vez em cada regra nova.
+
+     O bloco é ADITIVO: nenhum token antigo foi renomeado, e onde o valor coincide o novo
+     nome é apelido do velho. Renomear em massa seria refatoração larga embutida numa
+     feature, que é exatamente o que a R5.2 proíbe. */
+
+  /* Ênfase do texto. `--texto-base` e `--texto-sec` são os de sempre com o nome do papel. */
+  --texto-forte: #0c120e;
+  --texto-base: var(--ink);
+  --texto-sec: var(--muted);
+  --texto-fraco: #7d8781;
+
+  /* Ênfase da borda. `--borda-base` é `--line`. */
+  --borda-sutil: #e9ede8;
+  --borda-base: var(--line);
+  --borda-forte: #c3ccc3;
+
+  /* Camadas de superfície sobre o fundo da página. */
+  --superficie-sutil: var(--bg);
+  --superficie-base: var(--panel);
+  --superficie-hover: #eef1ec;
+  --superficie-elevada: #fff;
+
+  /* Forma. `--radius` (10px) continua valendo para o que já o usa. */
+  --raio-xs: 4px;
+  --raio-sm: 6px;
+  --raio-md: 8px;
+  --raio-lg: 12px;
+  --raio-pill: 999px;
+  --sombra-1: 0 1px 2px #13251a14;
+  --sombra-2: var(--shadow);
+
+  /* Tipo. Sete degraus, do rótulo de eixo ao valor de destaque. */
+  --tipo-2xs: 10px;
+  --tipo-xs: 11px;
+  --tipo-sm: 12px;
+  --tipo-base: 13px;
+  --tipo-md: 14px;
+  --tipo-lg: 16px;
+  --tipo-xl: 20px;
+  --tipo-2xl: 26px;
+
+  /* Espaço. */
+  --esp-1: 4px;
+  --esp-2: 8px;
+  --esp-3: 12px;
+  --esp-4: 16px;
+  --esp-5: 24px;
+  --esp-6: 32px;
+
+  /* Estados semânticos: saturada para traço e texto, tinta para bloco, borda para o contorno.
+     A saturada NUNCA é superfície de texto — quem preenche é o par `-fundo`/`-borda`.
+     `--tone-good`/`--tone-bad` já eram os tons de variação dos cards; agora têm família. */
+  --tone-good: #2f5a41;
+  --tone-bad: #8c2f2f;
+  --sucesso: var(--tone-good);
+  --sucesso-fundo: #e6f1ea;
+  --sucesso-borda: #b9d8c6;
+  --alerta: #8a5620;
+  --alerta-fundo: #fdf1e3;
+  --alerta-borda: #e8c8a0;
+  --erro: var(--tone-bad);
+  --erro-fundo: #fbe9e9;
+  --erro-borda: #e9bcbc;
+  --info: #3a5a8c;
+  --info-fundo: #e8eef7;
+  --info-borda: #bfd0e6;
+
+  /* Paleta CATEGÓRICA das séries de gráfico (issue #83).
+
+     Família PRÓPRIA, de propósito: `--listing`, `--development` e `--anchor` codificam
+     camada do mapa, e reusá-las num gráfico ensinaria uma associação falsa — azul viraria
+     "anúncio" na cabeça de quem acabou de ler a legenda do mapa.
+
+     Consome-se por ÍNDICE (`--cat-3`), nunca por nome de cor: a definição do gráfico diz
+     `cat: 3` e não sabe que cor é essa, que é o que permite trocar o tema sem tocar em
+     módulo puro. O índice 8 é o slot neutro, reservado para resíduo/"Outros" — nunca para
+     a série principal. Todas passam de 3:1 sobre `--bg` e `--panel` nos dois temas, que é
+     o mínimo de contraste para elemento gráfico. */
+  --cat-1: #24563d;
+  --cat-2: #3478b9;
+  --cat-3: #a86a12;
+  --cat-4: #7252a3;
+  --cat-5: #2e8a86;
+  --cat-6: #b2503f;
+  --cat-7: #6d7f45;
+  --cat-8: #6f7b75;
+
   --font-sans: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
   /* Reforça o caráter de dado (preço, m², contagens) sem depender de fonte
      externa — pilha só com fontes já instaladas no sistema. */
@@ -68,6 +162,39 @@
     --accent-text: #57b57e;
     --chart-bar: #57b57e;
     --shadow: 0 10px 30px #00000066;
+
+    /* Mesmas escalas, cromática de interface trocada (issue #83). Os apelidos
+       (`--texto-base`, `--borda-base`, `--superficie-base`) seguem o token que já muda
+       aqui em cima e não precisam ser repetidos. */
+    --texto-forte: #f4f7f4;
+    --texto-fraco: #7b8a80;
+    --borda-sutil: #1f2822;
+    --borda-forte: #3b473f;
+    --superficie-hover: #1d2520;
+    --superficie-elevada: #1c231e;
+    --sombra-1: 0 1px 2px #00000059;
+
+    --tone-good: #8fd6ac;
+    --tone-bad: #f0a3a3;
+    --sucesso-fundo: #163524;
+    --sucesso-borda: #29553c;
+    --alerta: #f0b877;
+    --alerta-fundo: #3a2a12;
+    --alerta-borda: #5c4526;
+    --erro-fundo: #3a1a1a;
+    --erro-borda: #5c2c2c;
+    --info: #8fb4e8;
+    --info-fundo: #1a2536;
+    --info-borda: #2e415c;
+
+    --cat-1: #57b57e;
+    --cat-2: #8eb8ff;
+    --cat-3: #e0b055;
+    --cat-4: #b498e8;
+    --cat-5: #63c9c3;
+    --cat-6: #eb9182;
+    --cat-7: #adc46f;
+    --cat-8: #8fa196;
   }
 }
 
@@ -937,7 +1064,7 @@ select:focus, input[type="number"]:focus {
   margin: 0 0 18px;
   padding: 14px;
   border: 1px solid var(--line);
-  border-radius: 10px;
+  border-radius: var(--raio-lg);
   background: var(--panel);
 }
 .market-filters label { display: grid; gap: 5px; }
@@ -953,7 +1080,7 @@ select:focus, input[type="number"]:focus {
   min-height: 38px;
   padding: 7px 9px;
   border: 1px solid var(--line);
-  border-radius: 7px;
+  border-radius: var(--raio-sm);
   background: var(--bg);
   color: var(--ink);
 }
@@ -984,7 +1111,7 @@ select:focus, input[type="number"]:focus {
   min-width: 0;
   padding: 14px;
   border: 1px solid var(--line);
-  border-radius: 10px;
+  border-radius: var(--raio-lg);
   background: var(--panel);
 }
 .market-chart h3 { margin: 0 0 8px; font-size: 13px; font-weight: 600; }
@@ -1004,7 +1131,7 @@ select:focus, input[type="number"]:focus {
   font-size: 11px;
 }
 .market-chart-legend li { display: inline-flex; align-items: center; gap: 6px; }
-.market-chart-legend span { width: 14px; height: 3px; border-radius: 2px; }
+.market-chart-legend span { width: 14px; height: 3px; border-radius: var(--raio-xs); }
 .market-chart-empty { min-height: 120px; margin: 0; color: var(--muted); font-size: 12px; }
 
 .market-provenance { margin-top: 24px; }
@@ -1040,17 +1167,6 @@ select:focus, input[type="number"]:focus {
    Os tons reusam os mesmos pares de `--tone-*` do selo de status do dataset, para a
    aplicação não ter dois vocabulários de "bom/ruim". E o tom NUNCA viaja sozinho: cada
    variação leva ícone e rótulo, para quem não distingue as cores e para quem imprime. */
-:root {
-  --tone-good: #2f5a41;
-  --tone-bad: #8c2f2f;
-}
-@media (prefers-color-scheme: dark) {
-  :root {
-    --tone-good: #8fd6ac;
-    --tone-bad: #f0a3a3;
-  }
-}
-
 .market-row {
   display: grid;
   grid-template-columns: repeat(4, 1fr);
@@ -1061,7 +1177,7 @@ select:focus, input[type="number"]:focus {
 .market-card {
   padding: 14px;
   border: 1px solid var(--line);
-  border-radius: 10px;
+  border-radius: var(--raio-lg);
   background: var(--panel);
 }
 .market-card-label {
