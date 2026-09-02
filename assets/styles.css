@@ -830,6 +830,14 @@ select:focus, input[type="number"]:focus {
     height: auto;
   }
 
+  /* Com o `body` rolando, uma segunda barra de rolagem dentro da tela do Mercado seria
+     rolagem aninhada — e a altura fixa estaria errada de todo jeito, porque aqui a topbar
+     quebra em linhas e cresce além de `--topbar-h`. */
+  .market {
+    height: auto;
+    overflow-y: visible;
+  }
+
   .panel {
     width: 100%;
     flex: none;
@@ -892,10 +900,19 @@ select:focus, input[type="number"]:focus {
 .view-tab:disabled { opacity: .4; cursor: not-allowed; }
 .view-tab:focus-visible { outline: 2px solid #fff; outline-offset: 2px; }
 
+/* A view do Mercado é IRMÃ do mapa dentro do mesmo `body`, e o `body` corta o overflow
+   porque o mapa ocupa a viewport por definição (`:85`). O mapa resolve a própria altura em
+   `.layout`; esta tela não resolvia nenhuma, então herdava o corte sem herdar a rolagem:
+   no desktop, tudo abaixo da dobra ficava inalcançável — sem barra, sem erro, com a tela
+   apenas parecendo curta. Cada view declara a própria altura e o próprio overflow (R8.73).
+   Em ≤860px o `body` volta a rolar sozinho e esta altura é desfeita, porque lá a topbar
+   quebra em várias linhas e `--topbar-h` deixa de descrever a altura real dela. */
 .market {
   max-width: 1100px;
+  height: calc(100% - var(--topbar-h));
   margin: 0 auto;
   padding: 24px 16px 48px;
+  overflow-y: auto;
 }
 .market-head h1 { margin: 0 0 8px; font-size: 22px; }
 

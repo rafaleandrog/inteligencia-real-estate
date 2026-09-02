@@ -1416,6 +1416,7 @@ function marketChart(model) {
 
   const svg = svgNode('svg', {
     viewBox: `0 0 ${width} ${height}`,
+    class: 'market-chart-svg',
     role: 'img',
     'aria-label': `${model.title}, de ${model.startLabel} a ${model.endLabel}`,
   });
