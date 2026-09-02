@@ -186,7 +186,10 @@ const ROTULO_DA_ORIGEM = Object.freeze({
   [VALUE_ORIGINS.PUBLICADO]: 'no mês',
 });
 
-function resumoDe(definicao, rows) {
+function resumoDe(definicao, rows, acumulado) {
+  // No modo acumulado o último ponto da curva JÁ é esse número, e ele sai rotulado no
+  // gráfico: repetir no canto é o mesmo ruído que a linha "Acumulado do ano" era no card.
+  if (acumulado) return null;
   const principal = definicao.series[0];
   // Série derivada não tem natureza de agregação declarada — de propósito. Um resumo aqui
   // teria de inventar uma operação para ela.
@@ -234,7 +237,7 @@ function modeloDe(definicao, rows, modo) {
   return {
     ...modelo,
     pergunta: definicao.pergunta,
-    resumo: resumoDe(definicao, rows),
+    resumo: resumoDe(definicao, rows, acumulado),
     modo: acumulado ? SERIES_MODES.ACUMULADO : SERIES_MODES.MENSAL,
     notaModo: nota,
   };
