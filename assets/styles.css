@@ -102,6 +102,7 @@
   --esp-4: 16px;
   --esp-5: 24px;
   --esp-6: 32px;
+  --esp-7: 48px;
 
   /* Estados semânticos: saturada para traço e texto, tinta para bloco, borda para o contorno.
      A saturada NUNCA é superfície de texto — quem preenche é o par `-fundo`/`-borda`.
@@ -607,7 +608,7 @@ h1, h2 { margin: 0; font-size: 1rem; }
 
 select, input[type="number"] {
   width: 100%;
-  padding: 7px 9px;
+  padding: var(--esp-2);
   border: 1px solid var(--line);
   border-radius: 8px;
   background: var(--panel);
@@ -1077,7 +1078,7 @@ select:focus, input[type="number"]:focus {
   max-width: 1100px;
   height: calc(100% - var(--topbar-h));
   margin: 0 auto;
-  padding: 24px 16px 48px;
+  padding: var(--esp-5) var(--esp-4) var(--esp-7);
   overflow-y: auto;
 }
 .market-head h1 { margin: 0 0 var(--esp-2); font-size: var(--tipo-xl); }
@@ -1111,7 +1112,7 @@ select:focus, input[type="number"]:focus {
    seria uma segunda verdade sobre a mesma coisa. */
 .market-chips { display: flex; flex-wrap: wrap; gap: var(--esp-2); }
 .market-chip {
-  padding: 5px var(--esp-3);
+  padding: var(--esp-1) var(--esp-3);
   border: 1px solid var(--borda-forte);
   border-radius: var(--raio-pill);
   background: var(--superficie-sutil);
@@ -1135,7 +1136,7 @@ select:focus, input[type="number"]:focus {
   gap: var(--esp-3);
   align-items: end;
 }
-.market-campos label { display: grid; gap: 5px; }
+.market-campos label { display: grid; gap: var(--esp-1); }
 .market-campos label > span {
   font-size: var(--tipo-xs);
   font-weight: 700;
@@ -1147,7 +1148,7 @@ select:focus, input[type="number"]:focus {
 .market-campos input[type="month"] {
   width: 100%;
   min-height: 38px;
-  padding: 7px 9px;
+  padding: var(--esp-2);
   border: 1px solid var(--borda-forte);
   border-radius: var(--raio-md);
   background: var(--superficie-sutil);
@@ -1201,7 +1202,7 @@ select:focus, input[type="number"]:focus {
   gap: var(--esp-3);
   margin-bottom: var(--esp-2);
 }
-.market-chart h3 { margin: 0 0 2px; font-size: var(--tipo-base); font-weight: 600; }
+.market-chart h3 { margin: 0; font-size: var(--tipo-base); font-weight: 600; }
 
 /* A pergunta que o gráfico responde, embaixo do título. É ela que transforma
    "VGV por mês" em algo que a pessoa sabe por que está olhando. */
@@ -1214,7 +1215,7 @@ select:focus, input[type="number"]:focus {
 /* Qual série está na tela — dito no gráfico, porque quem rolou até aqui não vê mais a
    pílula que escolheu o modo. */
 .market-chart-modo {
-  margin: 2px 0 0;
+  margin: var(--esp-1) 0 0;
   font-size: var(--tipo-2xs);
   color: var(--texto-fraco);
 }
@@ -1339,7 +1340,7 @@ select:focus, input[type="number"]:focus {
   display: grid;
   grid-template-columns: 10px auto;
   align-items: baseline;
-  gap: 2px var(--esp-2);
+  gap: var(--esp-1) var(--esp-2);
   font-size: var(--tipo-sm);
 }
 .market-chart-tooltip strong {
@@ -1370,7 +1371,7 @@ select:focus, input[type="number"]:focus {
   color: var(--texto-sec);
   font-size: var(--tipo-xs);
 }
-.market-chart-legend li { display: inline-flex; align-items: center; gap: 6px; }
+.market-chart-legend li { display: inline-flex; align-items: center; gap: var(--esp-2); }
 /* A chave espelha a marca: traço para linha, bloco para área e coluna. Um quadrado ao lado
    de uma linha faz procurar no gráfico uma forma que não está lá. */
 .market-legenda-cor { background: var(--serie-cor); border-radius: var(--raio-xs); }
@@ -1399,7 +1400,7 @@ select:focus, input[type="number"]:focus {
 }
 .market-chart-valores th,
 .market-chart-valores td {
-  padding: 4px 6px;
+  padding: var(--esp-1) var(--esp-2);
   border-bottom: 1px solid var(--borda-sutil);
   text-align: right;
 }
@@ -1450,7 +1451,7 @@ select:focus, input[type="number"]:focus {
      busca, em vez de espremerem o campo de busca a ponto de ele não caber um endereço. */
   .view-switch { order: 3; width: 100%; }
   .view-tab { flex: 1; }
-  .market { padding: 16px 12px 32px; }
+  .market { padding: var(--esp-4) var(--esp-3) var(--esp-6); }
   .market-campos { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .market-chart-grid { grid-template-columns: 1fr; }
 }
@@ -1553,7 +1554,7 @@ select:focus, input[type="number"]:focus {
 
 .market-card-absent {
   margin: 0;
-  font-size: 12px;
+  font-size: var(--tipo-sm);
   line-height: 1.45;
   color: var(--muted);
 }
@@ -1569,7 +1570,7 @@ select:focus, input[type="number"]:focus {
   display: grid;
   grid-template-columns: 12px 1fr auto;
   align-items: baseline;
-  gap: var(--esp-1) 6px;
+  gap: var(--esp-1) var(--esp-2);
   font-size: var(--tipo-xs);
   line-height: 1.55;
 }
@@ -1584,7 +1585,7 @@ select:focus, input[type="number"]:focus {
 .market-delta-neutro .market-delta-icon { color: var(--muted); }
 
 .market-period-base {
-  margin: -6px 0 0;
+  margin: 0;
   font-size: var(--tipo-sm);
   color: var(--texto-sec);
 }

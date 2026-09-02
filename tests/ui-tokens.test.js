@@ -27,6 +27,8 @@ import { readFileSync, readdirSync } from 'node:fs';
 const read = (p) => readFileSync(new URL(p, import.meta.url), 'utf8');
 
 const RE_COR_LITERAL = /#[0-9a-fA-F]{3,8}\b|\b(?:rgba?|hsla?)\s*\(/;
+/** Propriedades cujo valor tem escala declarada — literal aqui é densidade improvisada. */
+const PROPRIEDADES_DE_ESCALA = /(?:^|[;{\s])(font-size|padding|margin|gap|row-gap|column-gap)\s*:\s*([^;}]+)/g;
 const RE_VAR_COM_FALLBACK = /var\(\s*--[\w-]+\s*,/;
 const SELETORES_DA_TELA = /(^|[\s,>+~])[.](market|chart|serie)[-\w]*/;
 
@@ -70,6 +72,30 @@ export function tokensConsumidos(css) {
   return [...semComentarios(css).matchAll(/var\(\s*(--[\w-]+)/g)].map((m) => m[1]);
 }
 
+/**
+ * Densidade também é contrato (issue #85).
+ *
+ * O guard nasceu proibindo cor e raio, e a tipografia escapou: sobraram ~20 literais de
+ * `font-size` e `padding` no bloco da tela, e foi por aí que a hierarquia se inverteu sem
+ * ninguém perceber — rótulo do tile em 12px contra 10px do destaque, variação principal um
+ * pixel maior que a secundária. Escala existe para que esses degraus sejam decididos uma
+ * vez, não a cada regra nova.
+ *
+ * O que passa: `0`, `auto`, `inherit`, valores relativos e qualquer `var(--tipo-*)` /
+ * `var(--esp-*)`. O que não passa: pixel cravado.
+ */
+function medidaSemEscala(propriedade, valor) {
+  if (/^(0|auto|inherit|initial|unset|revert)$/.test(valor)) return false;
+  const partes = valor.split(/\s+/).filter(Boolean);
+  return partes.some((parte) => {
+    if (/^0$|^auto$/.test(parte)) return false;
+    if (/^-?\d*\.?\d+(?:em|rem|%|ch|vh|vw)$/.test(parte)) return false;
+    if (/^var\(--(?:tipo|esp)-/.test(parte)) return false;
+    if (/^calc\(/.test(valor)) return !/var\(--(?:tipo|esp)-/.test(valor);
+    return /^-?\d*\.?\d+px$/.test(parte);
+  });
+}
+
 /** Achados do guard: uma frase por violação, com o seletor que a carrega. */
 export function violacoesCss(css) {
   const achados = [];
@@ -91,6 +117,13 @@ export function violacoesCss(css) {
       const valor = m[1].trim();
       if (!valor.startsWith('var(--raio-') && valor !== '50%') {
         achados.push(`raio literal em "${seletor}": ${valor}`);
+      }
+    }
+    for (const m of declaracoes.matchAll(PROPRIEDADES_DE_ESCALA)) {
+      const [, propriedade, bruto] = m;
+      const valor = bruto.trim();
+      if (medidaSemEscala(propriedade, valor)) {
+        achados.push(`medida literal em "${seletor}": ${propriedade}: ${valor}`);
       }
     }
   }
@@ -130,6 +163,7 @@ test('o guard sabe falhar', () => {
     .chart-z { background: rgba(0, 0, 0, .5); }
     .market-w { color: var(--nao-existe); }
     .market-v { color: var(--raio-md, #fff); }
+    .market-u { font-size: 13px; padding: 4px 8px; }
   `;
   const achados = violacoesCss(plantado);
   assert.ok(achados.some((a) => a.includes('literal de cor em ".market-x"')), achados.join(' · '));
@@ -137,7 +171,13 @@ test('o guard sabe falhar', () => {
   assert.ok(achados.some((a) => a.includes('literal de cor em ".chart-z"')), achados.join(' · '));
   assert.ok(achados.some((a) => a.includes('--nao-existe')), achados.join(' · '));
   assert.ok(achados.some((a) => a.includes('fallback')), achados.join(' · '));
+  assert.ok(achados.some((a) => a.includes('font-size: 13px')), achados.join(' · '));
+  assert.ok(achados.some((a) => a.includes('padding: 4px 8px')), achados.join(' · '));
 
   // E sabe passar: o mesmo bloco sem os defeitos não produz achado nenhum.
-  assert.deepEqual(violacoesCss(':root { --raio-md: 8px; }\n.market-x { border-radius: var(--raio-md); }'), []);
+  assert.deepEqual(violacoesCss(
+    ':root { --raio-md: 8px; --esp-2: 8px; --tipo-sm: 12px; }\n'
+    + '.market-x { border-radius: var(--raio-md); padding: var(--esp-2); font-size: var(--tipo-sm);'
+    + ' margin: 0; line-height: 1.4; width: 10px; }',
+  ), [], 'o guard não pode reclamar de medida que não é de escala, nem de valor tokenizado');
 });
