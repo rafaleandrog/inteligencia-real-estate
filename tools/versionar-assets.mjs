@@ -24,9 +24,14 @@
 
 import { createHash } from 'node:crypto';
 import { readFileSync, writeFileSync, readdirSync, statSync } from 'node:fs';
-import { join, relative } from 'node:path';
+import { join, relative, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 
-const RAIZ = new URL('..', import.meta.url).pathname;
+// fileURLToPath, não `.pathname`: no Windows `new URL('..', import.meta.url).pathname` devolve
+// `/C:/Users/...` — a barra antes da letra da unidade quebra todo `path.join` feito a partir
+// daqui (a raiz vira `\C:\Users\...`, que o Windows resolve contra a unidade atual e duplica em
+// `C:\C:\Users\...`). `fileURLToPath` já lida com essa diferença entre plataformas.
+const RAIZ = fileURLToPath(new URL('..', import.meta.url));
 const GERADO = 'gerado por tools/versionar-assets.mjs — não editar à mão';
 const MARCADORES = Object.freeze({
   // Dois blocos, e a divisão não é estética: folhas de estilo e o import map PRECISAM estar
@@ -127,7 +132,12 @@ export function conferir() {
     .map((r) => r.arquivo);
 }
 
-if (import.meta.url === `file://${process.argv[1]}`) {
+// fileURLToPath + path.resolve, não a comparação de string `file://${argv[1]}`: no Windows
+// `argv[1]` chega com contrabarra e sem `/` antes da letra da unidade
+// (`C:\Users\...\tools\versionar-assets.mjs`), enquanto `import.meta.url` usa barra normal e
+// percent-encoding (`file:///C:/Users/...`) — a comparação de string nunca bate, e o bloco
+// inteiro (escrita E `--check`) vira no-op silencioso, saindo com código 0 sem avisar nada.
+if (process.argv[1] && fileURLToPath(import.meta.url) === resolve(process.argv[1])) {
   const versao = versaoDosAssets();
   const somenteConferir = process.argv.includes('--check');
   const defasados = [];
