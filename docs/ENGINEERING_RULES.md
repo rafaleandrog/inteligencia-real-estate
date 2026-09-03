@@ -798,3 +798,24 @@ Cada uma nasce de um erro que aconteceu de verdade.
   unidades relativas e `var(--tipo-*)`/`var(--esp-*)`. Escala existe para que o degrau seja
   decidido uma vez.
 
+- **R8.78** *(2026-09-02, versionamento de assets, issue #89)* **Página composta de arquivos
+  com cache independente serve MISTURA de versões, e `?v=` na entrada de um módulo ES não
+  alcança o grafo.** Depois de um deploy, a tela publicada continuou sendo a antiga no
+  navegador de quem já a tinha aberto — e o custo real não é o atraso, que se corrige
+  sozinho: é `index.html`, `src/app.js`, os 25 módulos que ele importa e o CSS expirarem
+  cada um no seu relógio, de modo que nada garante que as peças na tela sejam da mesma
+  versão. HTML novo com `cards.js` velho é `undefined is not a function` num estado que
+  nunca existiu em teste algum. A correção óbvia é uma armadilha: pôr a query no
+  `<script type="module" src="./src/app.js">` versiona UM arquivo, porque `import
+  './data.js'` é especificador estático e não herda a query — o problema parece resolvido e
+  continua inteiro. Mecanismo, sem etapa de build: um gerador que ENUMERA o diretório (lista
+  à mão erra por ausência, e a peça esquecida é justamente a que fica velha) e escreve um
+  **import map** mapeando cada módulo para a URL versionada, mais a query nas folhas de
+  estilo e nos scripts clássicos; um hash único do conjunto, porque a pergunta é "esta
+  página é toda a mesma versão?" e não "cada arquivo mudou?"; e um teste que recalcula o
+  hash e falha quando o HTML sai de sincronia — sem ele o gerador vira ritual que se esquece
+  de rodar. O import map fica no `<head>` porque precisa preceder qualquer módulo; o
+  Leaflet, que é clássico e pesado, continua no fim do `<body>` para não bloquear a
+  renderização. Navegador sem suporte a import map ignora o bloco e carrega como antes:
+  degrada para o comportamento anterior, não quebra.
+

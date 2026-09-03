@@ -34,6 +34,7 @@ import {
 import {
   formatBRL, formatBRLCompact, formatM2, formatNumber, formatPriceM2, formatDate,
   formatPropertyType, formatSpatialPrecision, formatBuildingOrientation, safeExternalUrl,
+  datasetSourceLink,
   hostnameOf, anchorColor, anchorLegendEntries, formatAnchorCategory, formatAnchorGroup,
   formatAnchorSegment, formatSalesStage, formatRegularizationStatus, formatPercent,
   percentFromPoints, raAgeBands, polygonStyle, sortPolygonsForDraw, raProfileEssentials,
@@ -1193,12 +1194,31 @@ function renderDatasetMeta(meta) {
   dom.datasetMeta.hidden = false;
 }
 
-/** Rótulo da origem dos dados. Modo demo precisa ser óbvio na tela (R2.3). */
+/**
+ * Rótulo da origem dos dados. Modo demo precisa ser óbvio na tela (R2.3).
+ *
+ * Quando a origem é a planilha, o selo vira LINK para ela (issue #90) — conferir a fonte é
+ * o ponto de um projeto de dado público. Quem decide se há link é `datasetSourceLink`, que
+ * é pura e testada: `demo` e `appsscript` não linkam, porque apontar para a planilha ali
+ * seria a tela afirmando uma procedência que aquele dado não tem.
+ */
 function showSourceBadge(source) {
-  const label = { demo: 'Modo demonstração', gviz: 'Dados: Google Sheets', appsscript: 'Dados: Apps Script' };
-  dom.sourceBadge.textContent = label[source] || source;
+  const { label, href } = datasetSourceLink(source, window.APP_CONFIG || {});
   dom.sourceBadge.dataset.source = source;
   dom.sourceBadge.hidden = false;
+
+  if (!href) {
+    dom.sourceBadge.replaceChildren(document.createTextNode(label));
+    return;
+  }
+
+  const link = document.createElement('a');
+  link.href = href;
+  link.target = '_blank';
+  link.rel = 'noopener noreferrer';
+  link.textContent = label;
+  link.title = 'Abrir a planilha de origem numa aba nova';
+  dom.sourceBadge.replaceChildren(link);
 }
 
 // --- Carregamento ---------------------------------------------------------

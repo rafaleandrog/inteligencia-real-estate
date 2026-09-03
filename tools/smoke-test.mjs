@@ -84,6 +84,21 @@ consoleWarnings.some((message) => message.includes('[imob] avisos:'))
   ? pass('avisos técnicos continuam disponíveis no console')
   : fail('avisos técnicos sumiram também do console');
 
+// Selo de origem do dado (issue #90). Em modo demo ele NÃO pode virar link: apontar para a
+// planilha aqui seria a tela afirmando uma procedência que este dado não tem.
+const seloDemo = await page.evaluate(() => {
+  const selo = document.querySelector('#sourceBadge');
+  const link = selo?.querySelector('a');
+  return {
+    texto: selo?.textContent ?? '',
+    origem: selo?.dataset.source ?? '',
+    temLink: !!link,
+  };
+});
+seloDemo.origem === 'demo' && seloDemo.texto.includes('demonstração') && !seloDemo.temLink
+  ? pass('em modo demo o selo diz "Modo demonstração" e NÃO linka a planilha')
+  : fail('selo em modo demo: ' + JSON.stringify(seloDemo));
+
 console.log('\n== 4. Mapa e marcadores ==');
 const markers = await page.locator('#map path.marker').count();
 markers > 0 ? pass(`mapa renderizou ${markers} marcadores`) : fail('nenhum marcador no mapa');
@@ -1640,6 +1655,34 @@ overflowMercado <= 1
   ? pass('a view do Mercado não estoura em 390px')
   : fail(`overflow de ${overflowMercado}px na view do Mercado`);
 await viewPage.close();
+
+// A origem `gviz` VIRA link. Esta página não força o modo demo, então o selo assume a
+// estratégia configurada — e o que se afirma aqui é a marcação do link, não a rede: o GViz
+// não é alcançável do ambiente de teste, e o selo é escrito antes de qualquer resposta.
+const seloReal = await browser.newPage({ viewport: { width: 1440, height: 900 } });
+await seloReal.goto('http://localhost:8080/', { waitUntil: 'domcontentloaded' });
+await seloReal.waitForTimeout(1500);
+const selo = await seloReal.evaluate(() => {
+  const link = document.querySelector('#sourceBadge a');
+  return link ? {
+    texto: link.textContent,
+    href: link.getAttribute('href'),
+    target: link.getAttribute('target'),
+    rel: link.getAttribute('rel'),
+    id: window.APP_CONFIG?.spreadsheetId ?? '',
+  } : { ausente: true, origem: document.querySelector('#sourceBadge')?.dataset.source ?? '' };
+});
+await seloReal.close();
+
+selo.ausente
+  ? fail('o selo de origem não virou link: ' + JSON.stringify(selo))
+  : pass('a origem Google Sheets vira link para a planilha');
+!selo.ausente && selo.href.includes(selo.id)
+  ? pass('o link aponta para o id da planilha que a configuração declara')
+  : fail('href fora do id configurado: ' + JSON.stringify(selo));
+!selo.ausente && selo.target === '_blank' && /noopener/.test(selo.rel) && /noreferrer/.test(selo.rel)
+  ? pass('o link externo abre em aba nova com rel="noopener noreferrer" (R4.5)')
+  : fail('atributos do link: ' + JSON.stringify(selo));
 
 console.log('\n== 13. Mobile 390px ==');
 await page.click('#closeDetail').catch(()=>{});

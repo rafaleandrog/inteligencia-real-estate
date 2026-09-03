@@ -15,6 +15,15 @@ window.APP_CONFIG = {
   spreadsheetId: '1sYwfgAiXBUwpY5P4PZzRDVNLnhDwpxMmW-UJTHxoR-A',
 
   /**
+   * Aba que o link do selo de origem abre (issue #90).
+   *
+   * É ponteiro de aba, não identificador: `gid` que não existe mais é ignorado pelo Google,
+   * que abre a primeira aba. Degradação inofensiva — e é por isso que o link não precisa ser
+   * mantido em sincronia com a estrutura da planilha.
+   */
+  spreadsheetGid: '2026090203',
+
+  /**
    * Origem dos dados:
    *   'gviz'       Google Visualization Query direto na planilha — caminho principal
    *   'demo'       data/demo.json — demonstração e desenvolvimento offline

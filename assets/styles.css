@@ -334,6 +334,16 @@ h1, h2 { margin: 0; font-size: 1rem; }
 }
 .source-badge[data-source="demo"] { background: var(--primary-on-fill); }
 
+/* O link da planilha vive SOBRE a barra escura (`--brand`), como `.admin-link` — por isso
+   branco literal e não token de texto, que daria escuro sobre escuro nos dois temas. */
+.source-badge a {
+  color: #fff;
+  text-decoration: none;
+}
+.source-badge a:hover,
+.source-badge a:focus-visible { text-decoration: underline; }
+.source-badge a:focus-visible { outline: 2px solid #fff; outline-offset: 2px; }
+
 .admin-link {
   /* O `margin-left: auto` passou para `.view-switch`, que agora é o primeiro item do
      bloco à direita da barra. Manter os dois empurraria as abas para longe do link. */

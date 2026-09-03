@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
   formatBRL, formatBRLCompact, formatM2, formatPriceM2, formatNumber, formatDate,
-  escapeHtml, safeExternalUrl, hostnameOf, formatPropertyType, formatSpatialPrecision,
+  escapeHtml, safeExternalUrl, hostnameOf, datasetSourceLink, formatPropertyType, formatSpatialPrecision,
   formatBuildingOrientation, formatAnchorGroup, formatAnchorSegment, formatAnchorCategory,
   anchorColor, anchorLegendColor, anchorLegendEntries, ANCHOR_FALLBACK_COLOR,
   formatSalesStage, formatRegularizationStatus, formatPercent, raAgeBands,
@@ -404,4 +404,53 @@ test('raAgeBands ignora valor não numérico sem quebrar', () => {
     population_age_45_59_pct: undefined,
   }));
   assert.deepEqual(bands.map((b) => b.label), ['0–14']);
+});
+
+// --- Selo de origem do dado (issue #90) ------------------------------------------------
+
+const CONFIG = Object.freeze({
+  spreadsheetId: '1sYwfgAiXBUwpY5P4PZzRDVNLnhDwpxMmW-UJTHxoR-A',
+  spreadsheetGid: '2026090203',
+});
+
+test('só a origem `gviz` linka — as outras duas não podem apontar para a planilha', () => {
+  // `demo` lê data/demo.json e `appsscript` lê o /exec: linkar a planilha ali seria a tela
+  // AFIRMANDO uma procedência que aquele dado não tem, que é o oposto do que o selo faz.
+  assert.equal(datasetSourceLink('demo', CONFIG).href, null);
+  assert.equal(datasetSourceLink('appsscript', CONFIG).href, null);
+  assert.ok(datasetSourceLink('gviz', CONFIG).href);
+});
+
+test('o link é MONTADO a partir do id da configuração, nunca escrito por extenso', () => {
+  const { href } = datasetSourceLink('gviz', { spreadsheetId: 'OUTRO_ID', spreadsheetGid: '7' });
+  assert.match(href, /^https:\/\/docs\.google\.com\/spreadsheets\/d\/OUTRO_ID\/edit#gid=7$/);
+  // O mesmo identificador em dois lugares diverge, e o sintoma seria um link abrindo a
+  // planilha errada — plausível e silencioso.
+  assert.ok(datasetSourceLink('gviz', CONFIG).href.includes(CONFIG.spreadsheetId));
+});
+
+test('os rótulos são os que a tela mostra', () => {
+  assert.equal(datasetSourceLink('gviz', CONFIG).label, 'Dados: Google Sheets');
+  assert.equal(datasetSourceLink('demo', CONFIG).label, 'Modo demonstração');
+  assert.equal(datasetSourceLink('appsscript', CONFIG).label, 'Dados: Apps Script');
+});
+
+test('configuração incompleta não produz link quebrado', () => {
+  assert.equal(datasetSourceLink('gviz', {}).href, null, 'sem id não há link');
+  assert.equal(datasetSourceLink('gviz', { spreadsheetId: '   ' }).href, null);
+  assert.equal(datasetSourceLink('gviz').href, null);
+  // Sem `gid` o link continua válido: ele abre a primeira aba.
+  const semGid = datasetSourceLink('gviz', { spreadsheetId: 'ABC' });
+  assert.equal(semGid.href, 'https://docs.google.com/spreadsheets/d/ABC/edit');
+});
+
+test('origem desconhecida vira texto, nunca link', () => {
+  assert.deepEqual(datasetSourceLink('inventada', CONFIG), { label: 'inventada', href: null });
+  assert.equal(datasetSourceLink(null, CONFIG).href, null);
+});
+
+test('o href passa pelo saneador de URL, como qualquer link externo', () => {
+  // Abrir exceção para "a nossa própria URL" é como as exceções começam (R4.6).
+  const { href } = datasetSourceLink('gviz', CONFIG);
+  assert.equal(safeExternalUrl(href), href);
 });

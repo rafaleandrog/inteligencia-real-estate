@@ -49,6 +49,21 @@ git push -u origin minha-mudanca
 
 Não há etapa de build: o que está no repositório é o que o GitHub Pages serve.
 
+## Versão dos assets
+
+`index.html` e `admin.html` têm dois blocos **gerados** — as folhas de estilo com `?v=`, o
+import map dos módulos, e os scripts. Quem os escreve é `npm run versionar`, e o resultado é
+commitado como qualquer outro arquivo.
+
+Rode-o **sempre que mexer em `src/` ou em `assets/`**. Esquecer não passa despercebido:
+`tests/asset-version.test.js` recalcula o hash e falha, nomeando a página defasada — e a CI
+roda `npm test`.
+
+Isso existe porque as peças da página têm cache independente. Sem a versão, um navegador que
+já abriu o site pode montar a tela com HTML novo e módulo velho depois de um deploy, que é
+uma combinação que nunca existiu em teste (R8.78). E a query só na entrada não bastaria: as
+importações dentro de `app.js` não a herdam — daí o import map.
+
 ## 4. Ative GitHub Pages
 
 No repositório:
