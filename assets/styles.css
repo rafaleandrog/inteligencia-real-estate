@@ -1198,6 +1198,18 @@ select:focus, input[type="number"]:focus {
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: var(--esp-3);
 }
+.market-fipezap-group + .market-fipezap-group { margin-top: var(--esp-5); }
+.market-fipezap-group-title {
+  font-size: var(--tipo-sm);
+  text-transform: uppercase;
+  letter-spacing: .04em;
+  color: var(--texto-sec);
+  margin: 0 0 var(--esp-2);
+}
+.market-fipezap-ra select {
+  max-width: 320px;
+  margin-bottom: var(--esp-4);
+}
 .market-chart {
   min-width: 0;
   padding: var(--esp-4);

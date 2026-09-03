@@ -26,6 +26,10 @@ import {
 import { CHART_TYPES } from './ivv/chart-model.js';
 import { chartGeometry, chartViewport, sparkViewport } from './ivv/chart-layout.js';
 import {
+  buildFipezapHistoryCharts, fipezapMonthlyIndex, fipezapRowsInRange,
+} from './fipezap/history.js';
+import { localitiesAvailable, buildLocalityCharts, FIPEZAP_SEGMENTS } from './fipezap/locality.js';
+import {
   anchorLegendGroups, applyFilters, computeKpis, createFilterState, distinctAnchorGroups,
   distinctAnchorSegments, distinctLocalities, distinctPropertyTypes, distinctRegions,
   distinctRegularizationStatuses, distinctSalesStages, LAYERS,
@@ -82,6 +86,15 @@ const dom = {
   marketHistoryNote: el('marketHistoryNote'),
   marketProvenance: el('marketProvenance'), marketProvenanceList: el('marketProvenanceList'),
   marketSource: el('marketSource'),
+  fipezapSection: el('fipezapSection'), fipezapHistoryNote: el('fipezapHistoryNote'),
+  fipezapPeriodChips: el('fipezapPeriodChips'), fipezapYear: el('fipezapYear'),
+  fipezapStart: el('fipezapStart'), fipezapEnd: el('fipezapEnd'),
+  fipezapPeriodLabel: el('fipezapPeriodLabel'),
+  fipezapChartsResidencial: el('fipezapChartsResidencial'),
+  fipezapChartsComercial: el('fipezapChartsComercial'),
+  fipezapRaSection: el('fipezapRaSection'), fipezapRaNote: el('fipezapRaNote'),
+  fipezapSegment: el('fipezapSegment'), fipezapLocality: el('fipezapLocality'),
+  fipezapLocalityChart: el('fipezapLocalityChart'),
 };
 
 const state = {
@@ -102,6 +115,14 @@ const state = {
   marketRegionBucket: null,
   marketSelection: null,
   marketSeriesMode: null,
+  // Preço FipeZap — DF inteiro (issue pendente de registro) e por localidade. Listas vazias
+  // são o estado normal enquanto a aba não veio; as duas seções somem dizendo por quê,
+  // mesmo tratamento de `ivvRegion` (R2.5).
+  fipezapMonthly: [],
+  fipezapLocality: [],
+  fipezapSelection: null,
+  fipezapLocalitySegment: null,
+  fipezapLocalityChoice: null,
   baseWarnings: [],
   // Contornos importados de KML/KMZ (issue #28). Lista vazia é o estado normal de
   // quem ainda não importou nenhum arquivo — a camada só não aparece.
@@ -1473,6 +1494,63 @@ function initializeMarketFilters() {
   syncMarketFilterState();
 }
 
+/**
+ * Período do FipeZap: só os três modos que fazem sentido numa série de década — "1 mês" ou
+ * "12 meses" são conceitos do card do IVV, não de um gráfico de preço de longo prazo.
+ * "Desde o início" É o preset "tudo" (`PERIOD_MODES.ALL`): preço não é grandeza que se
+ * acumula mês a mês, então não existe curva acumulada honesta para esta série — o pedido
+ * "acumulado desde o início" virou "mostra a série inteira, sem corte".
+ */
+const FIPEZAP_PERIOD_MODE_OPTIONS = Object.freeze([
+  { value: PERIOD_MODES.YEAR, chip: 'Ano fechado', label: 'Ano completo' },
+  { value: PERIOD_MODES.ALL, chip: 'Desde o início', label: 'Toda a série publicada' },
+  { value: PERIOD_MODES.CUSTOM, chip: 'Personalizado', label: 'Intervalo personalizado' },
+]);
+
+/** Mesmos padrões de `defaultPeriodSelection`, com o modo padrão trocado para "tudo". */
+function defaultFipezapSelection(indice) {
+  return { ...defaultPeriodSelection(indice), mode: PERIOD_MODES.ALL };
+}
+
+/** Mesmo papel de `syncMarketFilterState`, para o filtro de período do FipeZap. */
+function syncFipezapFilterState() {
+  const mode = state.fipezapSelection.mode;
+  for (const chip of dom.fipezapPeriodChips.querySelectorAll('.market-chip')) {
+    chip.setAttribute('aria-pressed', String(chip.dataset.mode === mode));
+  }
+  const campos = [
+    ['ano', [dom.fipezapYear]],
+    ['intervalo', [dom.fipezapStart, dom.fipezapEnd]],
+  ];
+  for (const [controle, alvos] of campos) {
+    const motivo = controlDisabledReason(mode, controle);
+    for (const alvo of alvos) {
+      alvo.disabled = motivo !== null;
+      alvo.title = motivo || '';
+    }
+  }
+}
+
+function initializeFipezapFilters() {
+  const indice = fipezapMonthlyIndex(state.fipezapMonthly);
+  state.fipezapSelection = defaultFipezapSelection(indice);
+  dom.fipezapPeriodChips.replaceChildren(...FIPEZAP_PERIOD_MODE_OPTIONS.map(periodChip));
+
+  const years = availableYears(indice);
+  dom.fipezapYear.replaceChildren(...years.map((year) => option(year, String(year))));
+  dom.fipezapYear.value = String(state.fipezapSelection.year || '');
+
+  const first = indice[0]?.reference_date?.slice(0, 7) || '';
+  const last = indice.at(-1)?.reference_date?.slice(0, 7) || '';
+  for (const input of [dom.fipezapStart, dom.fipezapEnd]) {
+    input.min = first;
+    input.max = last;
+  }
+  dom.fipezapStart.value = state.fipezapSelection.start || first;
+  dom.fipezapEnd.value = state.fipezapSelection.end || last;
+  syncFipezapFilterState();
+}
+
 const SVG_NS = 'http://www.w3.org/2000/svg';
 
 function svgNode(name, attributes = {}) {
@@ -2033,6 +2111,116 @@ function renderMarketRegioes() {
     : '';
 }
 
+/**
+ * Preços FipeZap — Distrito Federal: os oito gráficos de `src/fipezap/history.js`,
+ * dentro da janela do período próprio desta seção (não o do IVV, acima — ver comentário em
+ * `index.html`). Residencial e comercial saem em DUAS grades separadas — você pediu para
+ * nunca misturar os dois temas na tela, e uma grade só faria alguém precisar ler cada
+ * título para separar o que é residencial do que é comercial. Devolve os cards para
+ * `desenharGraficos`/`cardsNaTela`, mesmo protocolo dos cards do IVV.
+ */
+function renderFipezapDF() {
+  const disponivel = state.fipezapMonthly.length > 0;
+  dom.fipezapSection.hidden = !disponivel;
+  if (!disponivel) return [];
+
+  if (!state.fipezapSelection) initializeFipezapFilters();
+  const indice = fipezapMonthlyIndex(state.fipezapMonthly);
+  const selected = selectIvvPeriod(indice, state.fipezapSelection);
+  const resumo = periodSummary(selected);
+  dom.fipezapPeriodLabel.textContent = resumo.meses > 0
+    ? `Preços de ${resumo.intervalo} · ${resumo.meses} ${resumo.meses === 1 ? 'mês' : 'meses'}`
+    : resumo.intervalo;
+  dom.fipezapHistoryNote.textContent =
+    'Preço de venda e locação por m² publicados pelo FipeZap para o Distrito Federal.';
+  syncFipezapFilterState();
+
+  const janela = fipezapRowsInRange(state.fipezapMonthly, selected.start, selected.end);
+  const cards = buildFipezapHistoryCharts(janela).map(marketChart);
+  const residencial = cards.filter((card) => card.model.segmento === 'RESIDENCIAL');
+  const comercial = cards.filter((card) => card.model.segmento === 'COMERCIAL');
+  dom.fipezapChartsResidencial.replaceChildren(...residencial.map((item) => item.article));
+  dom.fipezapChartsComercial.replaceChildren(...comercial.map((item) => item.article));
+  return cards;
+}
+
+/**
+ * Opções do seletor de localidade, agrupadas por RA quando `raName` sozinho não
+ * identifica a linha (issue pendente de registro — várias localidades do FipeZap caem
+ * na mesma RA, ex. Asa Sul e Asa Norte são as duas "Plano Piloto"). `localidades` já vem
+ * ordenada por RA e depois por nome, então grupos consecutivos ficam juntos numa
+ * passada só. Localidade sem ambiguidade fica solta, fora de `<optgroup>` — dezoito
+ * grupos de um item só seriam ruído visual maior que o problema que resolvem.
+ */
+function localityOptionNodes(localidades) {
+  const nodes = [];
+  let grupoAtual = null;
+  let raAtual = null;
+  for (const item of localidades) {
+    if (!item.ambiguous) {
+      grupoAtual = null;
+      raAtual = null;
+      nodes.push(option(item.locality, item.raName));
+      continue;
+    }
+    if (raAtual !== item.raName) {
+      grupoAtual = document.createElement('optgroup');
+      grupoAtual.label = item.raName;
+      nodes.push(grupoAtual);
+      raAtual = item.raName;
+    }
+    grupoAtual.append(option(item.locality, item.displayName));
+  }
+  return nodes;
+}
+
+/**
+ * Preço FipeZap por Região Administrativa: dois gráficos (venda, locação) da localidade
+ * escolhida — comparar é trocar o seletor (você escolheu esse modelo em vez de sobrepor
+ * várias RAs no mesmo gráfico). Venda e locação não dividem um gráfico só: são ordens de
+ * grandeza diferentes (R$/m² × R$/m²/mês) — ver `buildLocalityCharts`.
+ */
+function renderFipezapLocalidade() {
+  const disponivel = state.fipezapLocality.length > 0;
+  dom.fipezapRaSection.hidden = !disponivel;
+  if (!disponivel) return [];
+
+  if (dom.fipezapSegment.childElementCount === 0) {
+    dom.fipezapSegment.replaceChildren(...FIPEZAP_SEGMENTS.map((item) => {
+      const botao = periodChip({ value: item.value, chip: item.label, label: item.label });
+      botao.dataset.segmento = item.value;
+      delete botao.dataset.mode;
+      return botao;
+    }));
+  }
+  const segmento = FIPEZAP_SEGMENTS.some((item) => item.value === state.fipezapLocalitySegment)
+    ? state.fipezapLocalitySegment : FIPEZAP_SEGMENTS[0].value;
+  state.fipezapLocalitySegment = segmento;
+  for (const chip of dom.fipezapSegment.querySelectorAll('.market-chip')) {
+    chip.setAttribute('aria-pressed', String(chip.dataset.segmento === segmento));
+  }
+
+  const localidades = localitiesAvailable(state.fipezapLocality, segmento);
+  dom.fipezapLocality.replaceChildren(...localityOptionNodes(localidades));
+  const escolha = localidades.some((item) => item.locality === state.fipezapLocalityChoice)
+    ? state.fipezapLocalityChoice : (localidades[0]?.locality || null);
+  state.fipezapLocalityChoice = escolha;
+  dom.fipezapLocality.value = escolha || '';
+
+  dom.fipezapRaNote.textContent = escolha
+    ? 'Série completa publicada para a localidade escolhida — sem corte de período.'
+    : 'Nenhuma localidade publicada para este segmento ainda.';
+
+  if (!escolha) {
+    dom.fipezapLocalityChart.replaceChildren();
+    return [];
+  }
+  const cards = buildLocalityCharts(state.fipezapLocality, { locality: escolha, segmentScope: segmento })
+    .map(marketChart);
+  dom.fipezapLocalityChart.replaceChildren(...cards.map((item) => item.article));
+  return cards;
+}
+
 function renderMarketDashboard() {
   const selected = selectIvvPeriod(state.ivvMonthly, state.marketSelection);
   const resumo = periodSummary(selected);
@@ -2075,10 +2263,16 @@ function renderMarketDashboard() {
   const cards = graficos.map(marketChart);
   dom.marketCharts.replaceChildren(...cards.map((item) => item.article));
 
+  // Preço FipeZap (DF e por Região Administrativa) — outro dataset, outro filtro de
+  // período, mesma tela: as duas seções entram na MESMA lista de cards que o observador de
+  // largura redesenha, sem duplicar a lógica de "meça e desenhe" (issue #85).
+  const fipezapCards = renderFipezapDF();
+  const fipezapLocalidadeCards = renderFipezapLocalidade();
+
   // Inserido primeiro, medido depois, desenhado por último. Guardar o que está na tela é o
   // que permite redesenhar só os SVGs quando a janela muda de largura, sem refazer a
   // agregação inteira.
-  cardsNaTela = [...cards, ...sparks];
+  cardsNaTela = [...cards, ...sparks, ...fipezapCards, ...fipezapLocalidadeCards];
   desenharGraficos(cardsNaTela);
   return warnings.map((item) => `Mercado (${item.metric || 'período'}): ${item.message}`);
 }
@@ -2130,6 +2324,9 @@ function observarLarguraDosGraficos() {
   const observador = new ResizeObserver(() => desenharGraficos(cardsNaTela));
   observador.observe(dom.marketCharts);
   observador.observe(dom.marketDestaques);
+  observador.observe(dom.fipezapChartsResidencial);
+  observador.observe(dom.fipezapChartsComercial);
+  observador.observe(dom.fipezapLocalityChart);
 }
 
 function renderMarketView() {
@@ -2204,6 +2401,11 @@ async function load() {
   state.raProfiles = result.raProfiles || {};
   state.ivvMonthly = result.ivvMonthly || [];
   state.ivvRegion = result.ivvRegion || [];
+  state.fipezapMonthly = result.fipezapMonthly || [];
+  state.fipezapLocality = result.fipezapLocality || [];
+  state.fipezapSelection = null;
+  state.fipezapLocalitySegment = null;
+  state.fipezapLocalityChoice = null;
   state.marketSelection = null;
   state.baseWarnings = [...result.warnings, ...result.errors];
   state.polygons = result.polygons || [];
@@ -2303,6 +2505,43 @@ function bindEvents() {
       refreshMarketView();
     });
   }
+
+  // Preço FipeZap — DF: mesmo padrão de delegação/listener do bloco do IVV acima, filtro
+  // de período próprio (ver comentário em `index.html`).
+  dom.fipezapPeriodChips.addEventListener('click', (event) => {
+    const chip = event.target.closest('.market-chip');
+    if (!chip || !state.fipezapSelection) return;
+    state.fipezapSelection.mode = chip.dataset.mode;
+    refreshMarketView();
+  });
+  dom.fipezapYear.addEventListener('change', () => {
+    if (!state.fipezapSelection) return;
+    state.fipezapSelection.year = Number(dom.fipezapYear.value);
+    refreshMarketView();
+  });
+  for (const input of [dom.fipezapStart, dom.fipezapEnd]) {
+    input.addEventListener('change', () => {
+      if (!state.fipezapSelection) return;
+      state.fipezapSelection.start = dom.fipezapStart.value;
+      state.fipezapSelection.end = dom.fipezapEnd.value;
+      refreshMarketView();
+    });
+  }
+
+  // Preço FipeZap — por Região Administrativa: trocar o segmento reseta a localidade
+  // escolhida, porque a lista de opções muda (Residencial e Comercial não publicam as
+  // mesmas 29 localidades) e a escolhida pode não existir mais no novo segmento.
+  dom.fipezapSegment.addEventListener('click', (event) => {
+    const chip = event.target.closest('.market-chip');
+    if (!chip) return;
+    state.fipezapLocalitySegment = chip.dataset.segmento;
+    state.fipezapLocalityChoice = null;
+    refreshMarketView();
+  });
+  dom.fipezapLocality.addEventListener('change', () => {
+    state.fipezapLocalityChoice = dom.fipezapLocality.value;
+    refreshMarketView();
+  });
 
   // A largura do desenho é medida, então quem avisa que ela mudou é o observador de
   // tamanho — e não um `matchMedia`, que só dispararia no ponto de quebra e deixaria

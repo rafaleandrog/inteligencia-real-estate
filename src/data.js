@@ -17,6 +17,7 @@ import {
 import { linkTrafficDataset } from './traffic/link.js';
 import { normalizeIvvMonthly } from './ivv/normalize-ivv.js';
 import { normalizeIvvRegion } from './ivv/region.js';
+import { normalizeFipezapMonthly, normalizeFipezapLocality } from './fipezap/normalize-fipezap.js';
 
 /** Entidades obrigatórias na V1. Ausência de qualquer uma é erro. */
 export const REQUIRED_ENTITIES = ['listings', 'developments', 'anchors'];
@@ -182,6 +183,8 @@ async function loadFromGviz(config) {
   const trafficPromise = fetchTrafficSheetsFromGviz(config);
   const ivvPromise = fetchIvvMonthlyFromGviz(config);
   const regiaoPromise = fetchIvvRegionFromGviz(config);
+  const fipezapMonthlyPromise = fetchFipezapMonthlyFromGviz(config);
+  const fipezapLocalityPromise = fetchFipezapLocalityFromGviz(config);
 
   const settled = await Promise.allSettled(
     entries.map(([, sheetName]) => fetchGvizSheet(config.spreadsheetId, sheetName))
@@ -205,12 +208,14 @@ async function loadFromGviz(config) {
   const traffic = linkTrafficDataset(segments, polygons, trafficRecords, aliases);
   const { ivvMonthly, warnings: ivvWarnings } = await ivvPromise;
   const { ivvRegion, warnings: regiaoWarnings } = await regiaoPromise;
+  const { fipezapMonthly, warnings: fipezapMonthlyWarnings } = await fipezapMonthlyPromise;
+  const { fipezapLocality, warnings: fipezapLocalityWarnings } = await fipezapLocalityPromise;
   return {
     raw,
     errors,
     warnings: [
       ...warnings, ...raProfileWarnings, ...polygonWarnings, ...trafficWarnings, ...ivvWarnings,
-      ...regiaoWarnings,
+      ...regiaoWarnings, ...fipezapMonthlyWarnings, ...fipezapLocalityWarnings,
     ],
     meta: { spreadsheetId: config.spreadsheetId, ...meta },
     raProfiles,
@@ -218,6 +223,8 @@ async function loadFromGviz(config) {
     traffic,
     ivvMonthly,
     ivvRegion,
+    fipezapMonthly,
+    fipezapLocality,
   };
 }
 
@@ -283,6 +290,58 @@ async function fetchIvvRegionFromGviz(config) {
     return {
       ivvRegion: [],
       warnings: [`IVV por região indisponível (${sheetName}): ${error?.message || error}`],
+    };
+  }
+}
+
+/**
+ * Lê a aba `FIPEZAP_MONTHLY`: preço de venda/locação por m², residencial e comercial,
+ * DF inteiro e por localidade, desde 2011. Mesmo tratamento de `IVV_REGION`: teto de
+ * tempo curto e dedicado, e falha ou ausência virando **aviso, nunca erro** (R2.5) — a
+ * tela do Mercado continua inteira sem ela, só sem a seção de preço FipeZap.
+ */
+async function fetchFipezapMonthlyFromGviz(config) {
+  const sheetName = config.fipezapMonthlySheet;
+  if (!sheetName) return { fipezapMonthly: [], warnings: [] };
+
+  try {
+    const rows = await fetchGvizSheet(config.spreadsheetId, sheetName, {
+      timeoutMs: META_FETCH_TIMEOUT_MS,
+    });
+    const { rows: months, warnings } = normalizeFipezapMonthly(rows);
+    return {
+      fipezapMonthly: months,
+      warnings: (warnings || []).map((texto) => `Mercado (${sheetName}): ${texto}`),
+    };
+  } catch (error) {
+    return {
+      fipezapMonthly: [],
+      warnings: [`Preço FipeZap (DF) indisponível (${sheetName}): ${error?.message || error}`],
+    };
+  }
+}
+
+/**
+ * Lê a aba `FIPEZAP_LOCALITY_MONTHLY`: venda × locação pareadas por localidade/Região
+ * Administrativa, desde 2019. Mesmo tratamento das demais abas opcionais do Mercado.
+ */
+async function fetchFipezapLocalityFromGviz(config) {
+  const sheetName = config.fipezapLocalitySheet;
+  if (!sheetName) return { fipezapLocality: [], warnings: [] };
+
+  try {
+    const rows = await fetchGvizSheet(config.spreadsheetId, sheetName, {
+      timeoutMs: META_FETCH_TIMEOUT_MS,
+    });
+    const { rows: locality, warnings } = normalizeFipezapLocality(rows);
+    return {
+      fipezapLocality: locality,
+      warnings: (warnings || []).map((texto) => `Mercado (${sheetName}): ${texto}`),
+    };
+  } catch (error) {
+    return {
+      fipezapLocality: [],
+      warnings: [`Preço FipeZap por RA indisponível (${sheetName}): ${error?.message || error}`],
     };
   }
 }
@@ -444,6 +503,8 @@ async function loadFromDemo(config) {
   // Os campos de geração do demo ficam num ramo à parte, fora do vocabulário APP_META.
   const demoIvv = normalizeIvvMonthly(payload.ivv_monthly || []);
   const demoRegiao = normalizeIvvRegion(payload.ivv_region || []);
+  const demoFipezapMonthly = normalizeFipezapMonthly(payload.fipezap_monthly || []);
+  const demoFipezapLocality = normalizeFipezapLocality(payload.fipezap_locality_monthly || []);
 
   return {
     raw,
@@ -452,6 +513,8 @@ async function loadFromDemo(config) {
       ...metaConflictWarnings(payload.meta),
       ...ivvWarningTexts(demoIvv.warnings),
       ...demoRegiao.warnings.map((texto) => `Mercado (IVV_REGION): ${texto}`),
+      ...demoFipezapMonthly.warnings.map((texto) => `Mercado (FIPEZAP_MONTHLY): ${texto}`),
+      ...demoFipezapLocality.warnings.map((texto) => `Mercado (FIPEZAP_LOCALITY_MONTHLY): ${texto}`),
     ],
     meta: { ...normalizeAppMeta(payload.meta), demo: payload.meta || {} },
     // Mesmo tratamento de `raw`: aba ausente no demo.json vira mapa vazio, não erro.
@@ -473,6 +536,8 @@ async function loadFromDemo(config) {
     ivvMonthly: demoIvv.months,
     // Aba ausente no demo.json vira lista vazia, e a seção territorial some dizendo por quê.
     ivvRegion: demoRegiao.rows,
+    fipezapMonthly: demoFipezapMonthly.rows,
+    fipezapLocality: demoFipezapLocality.rows,
   };
 }
 
@@ -496,6 +561,8 @@ async function loadFromAppsScript(config) {
   const trafficPromise = fetchTrafficSheetsFromAppsScript(config);
   const ivvPromise = fetchIvvMonthlyFromAppsScript(config);
   const regiaoPromise = fetchIvvRegionFromAppsScript(config);
+  const fipezapMonthlyPromise = fetchFipezapMonthlyFromAppsScript(config);
+  const fipezapLocalityPromise = fetchFipezapLocalityFromAppsScript(config);
 
   const settled = await Promise.allSettled(
     entries.map(async ([, sheetName]) => {
@@ -551,9 +618,14 @@ async function loadFromAppsScript(config) {
   warnings.push(...ivvWarnings);
   const { ivvRegion, warnings: regiaoWarnings } = await regiaoPromise;
   warnings.push(...regiaoWarnings);
+  const { fipezapMonthly, warnings: fipezapMonthlyWarnings } = await fipezapMonthlyPromise;
+  warnings.push(...fipezapMonthlyWarnings);
+  const { fipezapLocality, warnings: fipezapLocalityWarnings } = await fipezapLocalityPromise;
+  warnings.push(...fipezapLocalityWarnings);
 
   return {
     raw, errors, warnings, meta, raProfiles, polygons, traffic, ivvMonthly, ivvRegion,
+    fipezapMonthly, fipezapLocality,
   };
 }
 
@@ -650,6 +722,46 @@ async function fetchIvvRegionFromAppsScript(config) {
   }
 }
 
+/** FIPEZAP_MONTHLY pelo endpoint read-only do Web App — mesmo contrato de `fetchFipezapMonthlyFromGviz`. */
+async function fetchFipezapMonthlyFromAppsScript(config) {
+  if (!config.fipezapMonthlySheet) return { fipezapMonthly: [], warnings: [] };
+
+  try {
+    const url = `${config.appsScriptUrl}?resource=dataset&name=${encodeURIComponent(config.fipezapMonthlySheet)}`;
+    const response = await fetchWithTimeout(url, { timeoutMs: META_FETCH_TIMEOUT_MS });
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    const payload = await response.json();
+    if (payload.error) throw new Error(payload.error);
+    const { rows, warnings } = normalizeFipezapMonthly(payload.rows || []);
+    return {
+      fipezapMonthly: rows,
+      warnings: (warnings || []).map((texto) => `Mercado (${config.fipezapMonthlySheet}): ${texto}`),
+    };
+  } catch (error) {
+    return { fipezapMonthly: [], warnings: [`Preço FipeZap (DF) indisponível: ${error?.message || error}`] };
+  }
+}
+
+/** FIPEZAP_LOCALITY_MONTHLY pelo endpoint read-only do Web App — mesmo contrato de `fetchFipezapLocalityFromGviz`. */
+async function fetchFipezapLocalityFromAppsScript(config) {
+  if (!config.fipezapLocalitySheet) return { fipezapLocality: [], warnings: [] };
+
+  try {
+    const url = `${config.appsScriptUrl}?resource=dataset&name=${encodeURIComponent(config.fipezapLocalitySheet)}`;
+    const response = await fetchWithTimeout(url, { timeoutMs: META_FETCH_TIMEOUT_MS });
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    const payload = await response.json();
+    if (payload.error) throw new Error(payload.error);
+    const { rows, warnings } = normalizeFipezapLocality(payload.rows || []);
+    return {
+      fipezapLocality: rows,
+      warnings: (warnings || []).map((texto) => `Mercado (${config.fipezapLocalitySheet}): ${texto}`),
+    };
+  } catch (error) {
+    return { fipezapLocality: [], warnings: [`Preço FipeZap por RA indisponível: ${error?.message || error}`] };
+  }
+}
+
 /** RA_PROFILES pelo endpoint read-only do Web App — mesmo formato de resposta que as abas obrigatórias. */
 async function fetchRaProfilesFromAppsScript(config) {
   if (!config.raProfilesSheet) return { raProfiles: {}, warnings: [] };
@@ -714,6 +826,8 @@ export async function loadDataset(config) {
       traffic: EMPTY_TRAFFIC,
       ivvMonthly: EMPTY_IVV_MONTHLY,
       ivvRegion: [],
+      fipezapMonthly: [],
+      fipezapLocality: [],
       source: strategy,
       warnings,
       errors: [error?.message || String(error)],
@@ -754,6 +868,8 @@ export async function loadDataset(config) {
     traffic: result.traffic || EMPTY_TRAFFIC,
     ivvMonthly: result.ivvMonthly || EMPTY_IVV_MONTHLY,
     ivvRegion: result.ivvRegion || [],
+    fipezapMonthly: result.fipezapMonthly || [],
+    fipezapLocality: result.fipezapLocality || [],
     source: strategy,
     warnings,
     errors,

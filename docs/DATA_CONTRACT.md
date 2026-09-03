@@ -277,7 +277,10 @@ livre pelo mesmo motivo de LISTINGS.
 Ausência gera **warning**, nunca erro. A aplicação não pode cair porque uma aba futura está
 vazia (R2.5). `PRIMARY_OFFERS` não é lida pela tela ainda. `RA_PROFILES` passou a ser lida a partir
 da issue #33/#34, `IVV_MONTHLY` a partir da issue #56 e `IVV_REGION` a partir da issue #87 — ver as
-seções dedicadas abaixo.
+seções dedicadas abaixo. `FIPEZAP_MONTHLY`/`FIPEZAP_LOCALITY_MONTHLY` passaram a ser lidas nesta
+mudança (preço de venda/locação do FipeZap) — ver `§FIPEZAP_MONTHLY` e `§FIPEZAP_LOCALITY_MONTHLY`
+abaixo. `FIPEZAP_LOCALITY_MAP`/`FIPEZAP_SOURCES`/`FIPEZAP_NOTES` existem na planilha
+(procedência/metodologia) mas não são lidas ainda, mesmo tratamento de `PRIMARY_OFFERS`.
 
 | Aba | Chave | Linhas | Papel |
 |---|---|---|---|
@@ -289,6 +292,11 @@ seções dedicadas abaixo.
 | `ROAD_SEGMENTS` | `road_segment_id` | 0 | Trecho rodoviário oficial do DER/DF — criada pelo `setupProject()` v2.2.1 |
 | `ROAD_SEGMENT_ALIASES` | `alias_id` | 0 | Ponte entre o código de trecho da fonte de tráfego e o `road_segment_id` |
 | `TRAFFIC_DAILY_TEST` | `traffic_daily_id` | 0 | Contagem diária de tráfego por trecho |
+| `FIPEZAP_MONTHLY` | `fipezap_id` | 0 na semente, 3369 na planilha | Preço de venda/locação FipeZap, DF inteiro e por localidade, desde 2011 — **lida pela tela** |
+| `FIPEZAP_LOCALITY_MONTHLY` | `locality_monthly_id` | 0 na semente, 1714 na planilha | Venda × locação pareadas por localidade/RA, desde 2019 — **lida pela tela** |
+| `FIPEZAP_LOCALITY_MAP` | `locality_map_id` | 0 na semente, 30 na planilha | De-para localidade → RA e metodologia de classificação — não lida ainda |
+| `FIPEZAP_SOURCES` | `source_id` | 0 na semente, 1214 na planilha | Procedência por período/segmento dos relatórios FipeZap — não lida ainda |
+| `FIPEZAP_NOTES` | `note_id` | 0 na semente, 33 na planilha | Notas metodológicas referenciadas por `note_id` — não lida ainda |
 
 > **Divergência D2 — `IVV_REGION` tem `ivv_pct` e `ivv_pct_published`.** `ivv_pct` é alias de
 > compatibilidade consumido pelo Apps Script; `ivv_pct_published` é o valor do dataset original.
@@ -790,6 +798,94 @@ decimal (`0.12` = 12%), como todo `*_pct` desta aba.
 > **`*_calc_*`, `*_check` e `*_diff_*` sinalizam divergência; não substituem o valor publicado.**
 > `ivv_pct` vence `ivv_calc_pct` sempre (R8.54). E `ivv_mom_pp` e `ivv_mom_pct_change` são grandezas
 > **diferentes**, que nunca se misturam: +1 p.p. e +20% podem descrever o mesmo movimento.
+
+---
+
+### FIPEZAP_MONTHLY — preço de venda/locação FipeZap, DF e por localidade
+
+Aba **opcional**, sem contrato no Apps Script — mesmo tratamento de `IVV_MONTHLY`: não está em
+`REQUIRED_HEADERS`/`FIELD_SCHEMA`, `setupProject()` não a provisiona e `validateAll()` nunca a
+valida. Ausência ou falha vira aviso, nunca erro (R2.5); o mapa e o IVV continuam funcionando sem
+ela.
+
+Chave: `fipezap_id`. 3369 linhas na planilha viva, jan/2011 a jun/2026 conforme o segmento (a
+série residencial de venda é a mais longa; comercial começa em 2019). Cabeçalhos confirmados **ao
+vivo** contra o GViz da planilha em 2026-09-03 — batem exatamente com o `.xlsx` de referência,
+sem divergência de nomes conhecida (diferente do histórico do IVV_MONTHLY).
+
+**Duas linhas por mês, por segmento e por âmbito geográfico**: `geography_scope = DF_TOTAL`
+(agregado do Distrito Federal — o único âmbito que forma série temporal utilizável) e
+`geography_scope = LOCALIDADE` (uma linha por localidade, mesmo dado que
+`FIPEZAP_LOCALITY_MONTHLY` republica em formato largo — ver seção seguinte). `segment_scope`
+(`RESIDENCIAL`/`COMERCIAL`) × `transaction_type` (`VENDA`/`LOCACAO`) formam os quatro cortes de
+`DF_TOTAL`: 187 meses (venda residencial, 2011+), 139 (locação residencial, 2015+), 91 e 91
+(venda e locação comercial, ambas 2019+).
+
+| Coluna | Tipo | Papel |
+|---|---|---|
+| `fipezap_id` | texto | chave |
+| `reference_date` | data | eixo temporal canônico — mesmo tratamento de `IVV_MONTHLY`, normalizado para o dia 1º do mês |
+| `segment_scope` | texto | `RESIDENCIAL` / `COMERCIAL` |
+| `transaction_type` | texto | `VENDA` / `LOCACAO` |
+| `geography_scope` | texto | `DF_TOTAL` / `LOCALIDADE` |
+| `source_locality_name`, `ra_name`, `ra_geo_id` | texto | preenchidos só quando `geography_scope = LOCALIDADE` |
+| `price_unit` | texto | `BRL_M2` (venda) ou `BRL_M2_MES` (locação) |
+| `price_brl_m2` | número | preço publicado do mês — venda ou locação, conforme `transaction_type` |
+| `official_yield_monthly_pct`, `official_yield_annual_pct` | fração decimal | **só preenchidos em linhas `LOCACAO`** (confirmado: 0/187 em VENDA, 137–139/139 em LOCACAO) — é onde a razão aluguel/preço existe, não ausência de dado |
+| `calculated_yield_monthly_pct`, `calculated_yield_annual_pct` | fração decimal | recálculo do backend FipeZap; mesmo escopo de `LOCACAO` |
+| `price_mom_pct_change`, `price_ytd_pct_change`, `price_yoy_pct_change` | fração decimal | variações já publicadas |
+| `price_to_rent_months` | número | meses de aluguel para pagar o imóvel — só em `LOCACAO` |
+| `diff_vs_df_pct` | fração decimal | diferença da localidade contra o `DF_TOTAL` do mesmo mês/segmento/transação — só em linhas `LOCALIDADE` |
+| `rank_price`, `rank_yoy` | inteiro | ranking entre localidades do mesmo mês — só em linhas `LOCALIDADE` |
+| `sample_n`, `source_publisher`, `source_type`, `source_url`, `source_page`, `notes`, `quality_flag`, `source_workbook`, `source_id`, `note_id` | texto/url | procedência — `source_id`/`note_id` apontam para `FIPEZAP_SOURCES`/`FIPEZAP_NOTES`, não lidas ainda |
+
+> **Escala do yield é fração DECIMAL** (`0.042` = 4,2%) — confirmado nos dados reais, mesma
+> convenção de `IVV_MONTHLY` (oposta à de `IVV_REGION`, que é ponto percentual). As duas escalas
+> nunca se unificam (R8.44/R8.60): o normalizador (`src/fipezap/normalize-fipezap.js`) sinaliza,
+> nunca converte às cegas, todo valor de fração fora da faixa plausível.
+
+O normalizador nomeia em aviso toda coluna que a aba trouxer e esta seção não declare
+(`COLUNA_NAO_DECLARADA`), mesmo mecanismo do IVV_MONTHLY.
+
+### FIPEZAP_LOCALITY_MONTHLY — venda × locação por localidade/RA
+
+Aba **opcional**, mesmo tratamento de `FIPEZAP_MONTHLY`. Chave: `locality_monthly_id`. 1714
+linhas, 2019–2026, 29 localidades (26 com dado residencial, algumas só comercial — `SIA` é zona
+comercial/industrial e não tem série residencial, por exemplo).
+
+**Diferente de `FIPEZAP_MONTHLY`**, que publica venda e locação em LINHAS separadas
+(`transaction_type`), esta aba já vem **rebuilt** (`rebuilt_at`) num formato largo — uma linha por
+localidade/mês/segmento com `sale_price_brl_m2` e `rent_price_brl_m2_month` lado a lado —
+justamente para permitir o gráfico de duas séries pareadas sem juntar linhas em tempo de execução.
+
+| Coluna | Tipo | Papel |
+|---|---|---|
+| `locality_monthly_id` | texto | chave |
+| `reference_date` | data | eixo temporal canônico, mesmo tratamento das demais abas mensais |
+| `segment_scope` | texto | `RESIDENCIAL` / `COMERCIAL` |
+| `source_locality_name`, `ra_name`, `ra_geo_id` | texto | identidade territorial |
+| `geography_classification` | texto | `RA_OU_LOCALIDADE_FIPE` ou `SUBMERCADO_FIPE` — ver nota abaixo |
+| `sale_price_brl_m2` | número | preço de venda do mês |
+| `rent_price_brl_m2_month` | número | preço de locação do mês |
+| `calculated_yield_monthly_pct`, `calculated_yield_annual_pct` | fração decimal | mesma escala decimal de `FIPEZAP_MONTHLY` |
+| `sale_yoy_pct_change`, `rent_yoy_pct_change` | fração decimal | variação ano contra ano |
+| `sale_diff_vs_df_pct`, `rent_diff_vs_df_pct` | fração decimal | diferença contra o `DF_TOTAL` de `FIPEZAP_MONTHLY` |
+| `sale_price_rank`, `rent_price_rank` | inteiro | ranking entre localidades do mesmo mês |
+| `quality_flag`, `source_workbook`, `rebuilt_at` | texto/data | procedência |
+
+Este é o único dataset do projeto com **série temporal por Região Administrativa** — `IVV_REGION`
+é retrato de um mês só. É por isso que ele abre a comparação "como o preço evoluiu nesta RA?", que
+o IVV_REGION não pode responder.
+
+> **`source_locality_name` mistura dois níveis geográficos, e `ra_name` sozinho não desambigua.**
+> Das 29 localidades, 11 são a RA inteira (`geography_classification = RA_OU_LOCALIDADE_FIPE`,
+> ex.: Gama, Lago Sul, SIA) e 18 são submercado DENTRO de uma RA
+> (`SUBMERCADO_FIPE`) — Asa Sul, Asa Norte, Setor Noroeste e Vila Planalto são as quatro dentro do
+> Plano Piloto, por exemplo. Sete valores de `ra_name` cobrem essas 18 localidades: agrupar ou
+> listar por `ra_name` sem tratar isso mostra "Plano Piloto" repetido quatro vezes, indistinguível.
+> `src/fipezap/locality.js` (`localitiesAvailable`) resolve isso agrupando por `ra_name` só quando
+> ambíguo e rotulando pelo nome do submercado (`source_locality_name`) nesses casos — nunca infere
+> a hierarquia por conta própria; lê o que `geography_classification` já declara.
 
 ---
 

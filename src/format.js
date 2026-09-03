@@ -849,6 +849,10 @@ export const DATASET_PERCENT_SCALE = Object.freeze({
   // 12,5% enquanto `IVV_MONTHLY` publica `0.057` para 5,7%. É por isso que a escala mora
   // aqui, declarada por dataset — nenhuma heurística distingue `0,54` decimal de `0,54%`.
   IVV_REGION: PERCENT_SCALES.POINTS,
+  // FipeZap publica yield e variações em fração decimal (`0.042` = 4,2%) — confirmado nos
+  // dados reais. Mais um dataset com escala própria convivendo na mesma planilha; nunca se
+  // unifica com a de `IVV_REGION` (R8.44).
+  FIPEZAP: PERCENT_SCALES.DECIMAL,
 });
 
 /**

@@ -123,6 +123,19 @@ window.APP_CONFIG = {
   ivvRegionSheet: 'IVV_REGION',
 
   /**
+   * Abas `FIPEZAP_MONTHLY` e `FIPEZAP_LOCALITY_MONTHLY`: preço de venda e locação por m²,
+   * residencial e comercial, publicado pelo FipeZap. A primeira é a série DF inteiro desde
+   * 2011; a segunda é a série por localidade/Região Administrativa desde 2019 — mesmo
+   * tratamento das demais abas opcionais: ausência ou falha vira aviso, nunca erro (R2.5).
+   * `FIPEZAP_LOCALITY_MAP`, `FIPEZAP_SOURCES` e `FIPEZAP_NOTES` existem na planilha
+   * (procedência/metodologia) mas não são buscadas ainda — mesmo tratamento de
+   * `PRIMARY_OFFERS` em `optionalSheets` abaixo. As abas `_FIPEZAP_SCRATCH_*` são staging
+   * interno da importação e nunca devem ser lidas pela tela.
+   */
+  fipezapMonthlySheet: 'FIPEZAP_MONTHLY',
+  fipezapLocalitySheet: 'FIPEZAP_LOCALITY_MONTHLY',
+
+  /**
    * Abas previstas para as próximas fases.
    *
    * A tela da V1 não lê PRIMARY_OFFERS/IVV_REGION, e por isso não são buscadas no

@@ -135,6 +135,17 @@ payload.ivv_region = workbook.IVV_REGION
   ? workbook.IVV_REGION.rows.map(convertDates)
   : [];
 
+// FIPEZAP_MONTHLY / FIPEZAP_LOCALITY_MONTHLY: preço de venda e locação por m² do FipeZap,
+// DF inteiro (2011+) e por localidade/RA (2019+). Mesmo motivo de IVV_MONTHLY/IVV_REGION:
+// é dado publicado — não um número inventado para o modo de demonstração — e exercita o
+// mesmo caminho de normalização (`src/fipezap/normalize-fipezap.js`) que a planilha real.
+payload.fipezap_monthly = workbook.FIPEZAP_MONTHLY
+  ? workbook.FIPEZAP_MONTHLY.rows.map(convertDates)
+  : [];
+payload.fipezap_locality_monthly = workbook.FIPEZAP_LOCALITY_MONTHLY
+  ? workbook.FIPEZAP_LOCALITY_MONTHLY.rows.map(convertDates)
+  : [];
+
 mkdirSync(dirname(target), { recursive: true });
 writeFileSync(target, `${JSON.stringify(payload, null, 2)}\n`);
 
@@ -145,4 +156,6 @@ console.log(`RA_PROFILES     -> ra_profiles    ${payload.ra_profiles.length} lin
 console.log(`POLYGONS        -> polygons       ${payload.polygons.length} linhas (vazio por decisão — ver comentário)`);
 console.log(`IVV_MONTHLY     -> ivv_monthly    ${payload.ivv_monthly.length} linhas`);
 console.log(`IVV_REGION      -> ivv_region     ${payload.ivv_region.length} linhas`);
+console.log(`FIPEZAP_MONTHLY -> fipezap_monthly ${payload.fipezap_monthly.length} linhas`);
+console.log(`FIPEZAP_LOCALITY_MONTHLY -> fipezap_locality_monthly ${payload.fipezap_locality_monthly.length} linhas`);
 console.log(`\n${target} gerado.`);
