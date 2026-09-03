@@ -114,6 +114,37 @@ export function safeExternalUrl(value) {
   return parsed.href;
 }
 
+/**
+ * O selo de origem do dado: o texto e, quando existe, o link (issue #90).
+ *
+ * Só a estratégia `gviz` linka, e a distinção é o ponto. `demo` lê `data/demo.json` e
+ * `appsscript` lê o `/exec` do Web App — nos dois casos apontar para a planilha seria a tela
+ * AFIRMANDO uma procedência que aquele dado não tem, que é o oposto do que este selo existe
+ * para fazer (R2.3).
+ *
+ * A URL é montada a partir do `spreadsheetId` da configuração, nunca escrita por extenso:
+ * o mesmo identificador em dois lugares diverge no primeiro dia em que a planilha mudar, e
+ * o sintoma seria um link que abre a planilha errada — plausível, silencioso e caro.
+ */
+export function datasetSourceLink(source, config = {}) {
+  const rotulos = {
+    demo: 'Modo demonstração',
+    gviz: 'Dados: Google Sheets',
+    appsscript: 'Dados: Apps Script',
+  };
+  const label = rotulos[source] || String(source ?? '');
+  if (source !== 'gviz') return { label, href: null };
+
+  const id = String(config.spreadsheetId || '').trim();
+  if (id === '') return { label, href: null };
+
+  const gid = String(config.spreadsheetGid || '').trim();
+  const base = `https://docs.google.com/spreadsheets/d/${encodeURIComponent(id)}/edit`;
+  // Mesmo sendo URL que este arquivo montou, ela passa pelo saneador: é ele que garante o
+  // protocolo (R4.6), e abrir exceção para "a nossa própria" é como as exceções começam.
+  return { label, href: safeExternalUrl(gid === '' ? base : `${base}#gid=${encodeURIComponent(gid)}`) };
+}
+
 /** Domínio de uma URL, para rotular o link da fonte. */
 export function hostnameOf(value) {
   const safe = safeExternalUrl(value);
