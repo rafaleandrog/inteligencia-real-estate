@@ -153,6 +153,64 @@ test('buildPolygonFields devolve null quando o desenho não é válido', () => {
   assert.equal(buildPolygonFields({ name: 'X', latlngs: [ll(-15.8, -47.9)] }), null);
 });
 
+// --- tipo de contorno: rodovia/trecho importante (issue pendente de registro) -----------
+//
+// Sem estes campos, um contorno desenhado à mão não tem como o mapa reconhecer "isto é uma
+// via" — cai em "Outros" na legenda em vez de "Malha rodoviária" (src/filters.js,
+// src/format.js). `kind: 'road'` é o que faltava no formulário para produzir esses campos.
+
+test('kind: "road" soma layer_group/entity_type/geometry_role — o que o mapa usa para agrupar', () => {
+  const fields = buildPolygonFields({ name: 'Trecho X', latlngs: TRIANGULO, kind: 'road' });
+  assert.equal(fields.layer_group, 'road_network');
+  assert.equal(fields.entity_type, 'road_segment');
+  assert.equal(fields.geometry_role, 'display_corridor');
+});
+
+test('kind: "road" NUNCA usa a procedência da sincronização oficial do DER', () => {
+  // Um contorno traçado à mão no navegador não tem geometria oficial do eixo do DER —
+  // afirmar `rodovia_der`/`DER_DF` aqui mentiria sobre a origem do dado.
+  const fields = buildPolygonFields({ name: 'Trecho X', latlngs: TRIANGULO, kind: 'road' });
+  assert.equal(fields.subcategory, 'trecho_importante_manual');
+  assert.equal(fields.source_system, 'user_upload');
+  assert.notEqual(fields.subcategory, 'rodovia_der');
+  assert.notEqual(fields.source_system, 'DER_DF');
+});
+
+test('kind ausente ou "area" não envia nenhum campo de classificação de via', () => {
+  for (const kind of [undefined, 'area', 'lixo']) {
+    const fields = buildPolygonFields({ name: 'Área X', latlngs: TRIANGULO, kind });
+    for (const key of ['layer_group', 'entity_type', 'geometry_role', 'subcategory', 'source_system']) {
+      assert.equal(key in fields, false, `kind=${kind}: ${key} não deveria estar presente`);
+    }
+  }
+});
+
+test('o payload de kind: "road" também é aceito pelo servidor de ponta a ponta', () => {
+  const fields = buildPolygonFields({
+    name: 'Trecho de teste', color: '#c2410c', latlngs: TRIANGULO, kind: 'road',
+  });
+
+  const headers = [
+    ...POLYGON_HEADERS, 'layer_group', 'subcategory', 'entity_type', 'geometry_role',
+    'source_system', 'confidence_flag', 'quality_flag',
+  ];
+  const { context, sheets } = createAppsScriptSandbox({
+    sheets: { POLYGONS: [headers], APP_META: [['key', 'value', 'updated_at']] },
+    scriptProperties: { ADMIN_TOKEN: 'secret-token', DATASET_VERSION: '1' },
+  });
+  const res = readJsonOutput(context.doPost({
+    postData: {
+      contents: JSON.stringify({
+        token: 'secret-token', action: 'create', sheet: 'POLYGONS',
+        expected_version: '1', fields,
+      }),
+    },
+  }));
+
+  assert.equal(res.ok, true, `esperado sucesso, veio ${JSON.stringify(res.error)}`);
+  assert.equal(sheets.POLYGONS._rows.length, 2, 'a linha precisa ter sido gravada');
+});
+
 test('o payload montado pelo cliente é aceito pelo servidor de ponta a ponta', () => {
   const fields = buildPolygonFields({
     name: 'Setor de teste', category: 'estudo', color: '#336699',

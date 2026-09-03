@@ -47,7 +47,7 @@ test('estilo declarado pelo backend chega inteiro ao mapa', () => {
     fill_color: '#2f6f4f', stroke_color: '#123456', fill_opacity: 0.28, stroke_width: 1.2,
   }));
   assert.deepEqual(style, {
-    color: '#123456', fillColor: '#2f6f4f', fillOpacity: 0.28, weight: 1.2,
+    color: '#123456', fillColor: '#2f6f4f', fillOpacity: 0.28, weight: 1.2, dashArray: null,
   });
 });
 
@@ -99,9 +99,22 @@ test('polygonStyle lê o que normalizePolygon produz, não um formato inventado'
   });
   assert.equal(polygonLayerGroup(normalized), 'road_network');
   assert.deepEqual(polygonStyle(normalized), {
-    color: '#374151', fillColor: '#53606b', fillOpacity: 0.35, weight: 1.5,
+    color: '#374151', fillColor: '#53606b', fillOpacity: 0.35, weight: 1.5, dashArray: null,
   });
   assert.equal(normalized.z_index, 40);
+});
+
+// --- Tracejado: distinguir corredor desenhado à mão do sincronizado oficialmente ----
+
+test('trecho_importante_manual sai tracejado — nunca confundível com rodovia oficial do DER', () => {
+  const manual = polygonStyle(poly({ subcategory: 'trecho_importante_manual' }));
+  assert.equal(manual.dashArray, '6,4');
+
+  // A rodovia sincronizada de verdade (`rodovia_der`, gravada por `upsertRoadPolygon_`) e
+  // qualquer contorno sem essa subcategory continuam sólidos.
+  assert.equal(polygonStyle(poly({ subcategory: 'rodovia_der' })).dashArray, null);
+  assert.equal(polygonStyle(poly({ layer_group: 'road_network' })).dashArray, null);
+  assert.equal(polygonStyle(poly()).dashArray, null);
 });
 
 // --- Ordem de desenho ---------------------------------------------------------------

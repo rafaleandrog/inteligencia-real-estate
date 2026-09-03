@@ -908,9 +908,9 @@ Chave: `road_segment_id`, canônico `ROADSEG_<código do trecho normalizado>`.
 |---|---|---|---|
 | `road_segment_id` | texto | **sim** | chave |
 | `current_polygon_id` | texto | não | aponta para a linha vigente em `POLYGONS` |
-| `source_segment_code` | texto | não | `codtrechorodov` do DER |
+| `source_segment_code` | texto | não | código do posto de contagem em `TRAFFIC_DAILY_TEST.trecho` (DER-DF/DNIT) — **não** é `codtrechorodov` do DER, ver nota abaixo |
 | `road_name` | texto | não | nome da rodovia |
-| `road_code` | texto | não | sigla (ex.: `DF-075`) |
+| `road_code` | texto | não | sigla (ex.: `DF-075`); extraída do código do posto quando `sigla` não vem da camada (sempre o caso hoje) |
 | `segment_type` | texto | não | tipo do trecho |
 | `jurisdiction` | texto | não | jurisdição |
 | `administration` | texto | não | administração |
@@ -925,6 +925,21 @@ Chave: `road_segment_id`, canônico `ROADSEG_<código do trecho normalizado>`.
 | `confidence_flag` | texto | não | confiança na geometria |
 | `quality_flag` | texto | não | qualidade |
 | `last_synced_at` | texto | não | última sincronização |
+
+> **Casamento por rota, não por trecho exato (2026-09).** `fetchDerRoadByCode_`
+> (`optional-apps-script/Code.gs`) tentava casar `TRAFFIC_DAILY_TEST.trecho` contra
+> `codtrechorodov` na camada `SISTEMA_VIARIO` do DER. Confirmado por consulta direta à camada
+> ao vivo: **`codtrechorodov` está vazio em todos os registros** — o casamento exato nunca
+> encontra nada, para nenhum código. `routeCodeFromPostoCode_` extrai o número da rota embutido
+> no código do posto de contagem (`001EDF0070` → `DF-007`) e busca por `nome LIKE '%DF-NNN%'`;
+> como uma rota tem muitos trechos pequenos na camada, todos os trechos encontrados são
+> juntados num corredor só — corredor da ROTA, não do posto específico (não há como saber qual
+> trecho exato é o do posto sem a coordenada dele). Essa aproximação fica declarada em
+> `quality_flag: route_matched_by_heuristic_code` / `confidence_flag:
+> medium_route_level_not_segment_level` (tanto aqui quanto na linha correspondente de
+> `POLYGONS`) — o casamento exato por `codtrechorodov`, se algum dia voltar a funcionar do lado
+> do DER, continua sendo tentado primeiro e produz `official_centerline_synced` /
+> `high_official_der_geometry`, sem precisar mudar código.
 
 ### ROAD_SEGMENT_ALIASES — ponte entre códigos
 

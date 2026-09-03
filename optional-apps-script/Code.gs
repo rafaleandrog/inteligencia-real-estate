@@ -259,6 +259,14 @@ var MAX_IMPORTED_POLYGONS = 1000;
 /** Teto de códigos de trecho por sincronização rodoviária — uma chamada HTTP por código. */
 var MAX_ROAD_SYNC_CODES = 200;
 
+/**
+ * Teto de feições por consulta ao DER. O casamento exato por `codtrechorodov` devolve uma
+ * feição; o casamento por rota (ver `routeCodeFromPostoCode_`) pode devolver centenas — uma
+ * rota inteira tem muitos trechos pequenos na camada. Sem teto, uma rota muito longa vira uma
+ * única chamada HTTP e um MultiPolygon com centenas de anéis.
+ */
+var MAX_ROAD_SYNC_ROUTE_FEATURES = 500;
+
 /** Buffer visual padrão, por lado, do corredor rodoviário derivado do eixo oficial. */
 var DEFAULT_ROAD_DISPLAY_BUFFER_M = 8;
 
@@ -2410,7 +2418,58 @@ function roadCodesFromTraffic_() {
   return Object.keys(seen).sort();
 }
 
+/**
+ * `codtrechorodov` (o campo que a sincronização usava para casar) está vazio em TODA a
+ * camada ao vivo do DER — confirmado por consulta direta em 2026-09; não é uma falha
+ * pontual, é um campo que essa camada nunca preenche. O casamento exato é mantido como
+ * primeira tentativa (barato de verificar, e volta a funcionar sozinho se o DER um dia
+ * preencher o campo), mas na prática hoje ele sempre cai para o segundo caminho: extrair o
+ * número da rota do código do posto de contagem (`routeCodeFromPostoCode_`) e buscar todos
+ * os trechos daquela rota na camada, juntando-os num corredor só — não há como saber qual
+ * trecho exato pertence ao posto sem a coordenada dele, e um corredor da rota inteira é a
+ * aproximação mais honesta que dá para fazer com o dado disponível. A diferença de precisão
+ * fica marcada em `quality_flag`/`confidence_flag`, nunca escondida.
+ */
 function fetchDerRoadByCode_(code, bufferM) {
+  var exact = queryDerRoadFeatures_("codtrechorodov='" + escapeDerSql_(code) + "'");
+  if (exact.length) {
+    return buildDerRoadRecord_(code, exact, bufferM, {
+      quality_flag: 'official_centerline_synced',
+      confidence_flag: 'high_official_der_geometry',
+    });
+  }
+
+  var route = routeCodeFromPostoCode_(code);
+  if (!route) return null;
+  var byRoute = queryDerRoadFeatures_("nome LIKE '%" + escapeDerSql_(route) + "%'");
+  if (!byRoute.length) return null;
+  return buildDerRoadRecord_(code, byRoute, bufferM, {
+    quality_flag: 'route_matched_by_heuristic_code',
+    confidence_flag: 'medium_route_level_not_segment_level',
+  });
+}
+
+/**
+ * "001EDF0070" -> "DF-007". O código do posto de contagem embute o número da rota: os três
+ * dígitos logo após "DF" são a rota, e o quarto dígito é variante (sub-trecho/marco) que não
+ * importa para achar a rota na camada do DER.
+ *
+ * Testado contra a camada ao vivo em 2026-09: `DF-007`/`DF-009`/`DF-011` existem de verdade
+ * (337 feições encontradas ao todo); `DF-013` não apareceu — o que é o resultado honesto
+ * quando a rota extraída não existe na camada, não um bug desta função.
+ */
+function routeCodeFromPostoCode_(code) {
+  var match = String(code || '').toUpperCase().match(/DF(\d{3})\d*$/);
+  return match ? 'DF-' + match[1] : null;
+}
+
+/** Aspas simples são o terminador do literal SQL do ArcGIS: dobrar impede um valor vindo da
+ * planilha de virar cláusula `where` de outra pessoa. */
+function escapeDerSql_(value) {
+  return String(value).replace(/'/g, "''");
+}
+
+function queryDerRoadFeatures_(whereClause) {
   var fields = [
     'objectid', 'id', 'nome', 'sigla', 'codtrechorodov', 'geometriaaproximada',
     'tipotrechorod', 'jurisdicao', 'administracao', 'concessionaria', 'revestimento',
@@ -2418,15 +2477,13 @@ function fetchDerRoadByCode_(code, bufferM) {
     'limitevelocidade', 'trechoemperimetrourbano', 'acostamento', 'tipopavimentacao',
     'st_length_geometry_'
   ];
-  // Aspas simples são o terminador do literal SQL do ArcGIS: dobrar é o que impede um
-  // código de trecho vindo da planilha de virar cláusula `where` de outra pessoa.
-  var safeCode = String(code).replace(/'/g, "''");
   var params = {
-    where: "codtrechorodov='" + safeCode + "'",
+    where: whereClause,
     outFields: fields.join(','),
     returnGeometry: 'true',
     returnTrueCurves: 'false',
     outSR: '4326',
+    resultRecordCount: String(MAX_ROAD_SYNC_ROUTE_FEATURES),
     f: 'json'
   };
   var response = UrlFetchApp.fetch(DER_ROAD_LAYER_URL + '/query?' + encodeQueryParams_(params), {
@@ -2438,9 +2495,10 @@ function fetchDerRoadByCode_(code, bufferM) {
   }
   var payload = JSON.parse(response.getContentText('UTF-8'));
   if (payload.error) throw new Error('ArcGIS: ' + (payload.error.message || JSON.stringify(payload.error)));
-  var features = payload.features || [];
-  if (!features.length) return null;
+  return payload.features || [];
+}
 
+function buildDerRoadRecord_(code, features, bufferM, flags) {
   var paths = [];
   var objectIds = [];
   features.forEach(function (feature) {
@@ -2469,7 +2527,7 @@ function fetchDerRoadByCode_(code, bufferM) {
     road_segment_id: canonicalRoadSegmentId_(code),
     source_segment_code: code,
     road_name: sanitizePlainText_(attrs0.nome),
-    road_code: sanitizePlainText_(attrs0.sigla),
+    road_code: sanitizePlainText_(attrs0.sigla) || routeCodeFromPostoCode_(code) || '',
     segment_type: sanitizePlainText_(attrs0.tipotrechorod),
     jurisdiction: sanitizePlainText_(attrs0.jurisdicao),
     administration: sanitizePlainText_(attrs0.administracao),
@@ -2482,7 +2540,9 @@ function fetchDerRoadByCode_(code, bufferM) {
     geometry_hash: sha256Hex_(sourceJson),
     attributes: attrs0,
     feature_count: features.length,
-    synced_at: nowISO_()
+    synced_at: nowISO_(),
+    quality_flag: flags.quality_flag,
+    confidence_flag: flags.confidence_flag
   };
 }
 
@@ -2723,8 +2783,12 @@ function upsertRoadSegment_(road) {
     valid_to: '',
     is_current: true,
     properties_json: JSON.stringify(props),
-    confidence_flag: 'high_official_der_geometry',
-    quality_flag: 'official_centerline_synced',
+    // Vem de `fetchDerRoadByCode_`: 'high_official_der_geometry'/'official_centerline_synced'
+    // no casamento exato (hoje nunca acontece — ver comentário lá), ou os valores de
+    // confiança mais baixa do casamento por rota. Nunca hardcoded aqui — quem decidiu a
+    // precisão foi quem buscou o dado, não quem grava a linha.
+    confidence_flag: road.confidence_flag,
+    quality_flag: road.quality_flag,
     last_synced_at: road.synced_at
   };
   if (found) applyUpdate_(sheet, headers, found.rowNumber, values);
@@ -2785,13 +2849,23 @@ function upsertRoadPolygon_(road, bufferM) {
     native_source_crs: 'EPSG:31983'
   };
 
+  // Casamento por rota junta VÁRIOS trechos da camada num corredor só (não há como saber
+  // qual trecho exato é o do posto sem a coordenada dele) — a descrição avisa disso em vez
+  // de deixar a linha parecer o corredor exato de um único trecho.
+  var descricao = road.quality_flag === 'route_matched_by_heuristic_code'
+    ? 'Trecho rodoviário DER/DF. Corredor aproximado: junta todos os ' + road.feature_count +
+      ' trecho(s) da rota ' + (road.road_code || road.source_segment_code) +
+      ' encontrados na camada oficial (casamento por rota, não pelo trecho exato do posto de ' +
+      'contagem) — buffer de ' + bufferM + ' m por lado.'
+    : 'Trecho rodoviário DER/DF. Corredor visual derivado do eixo oficial com buffer de ' + bufferM + ' m por lado.';
+
   var values = {
     polygon_id: polygonId,
     name: (road.road_code || road.road_name || road.source_segment_code) + ' · ' + road.source_segment_code,
     category: 'poligonal',
     geometry_geojson: road.display_geometry_json,
     color: '#53606B',
-    description: 'Trecho rodoviário DER/DF. Corredor visual derivado do eixo oficial com buffer de ' + bufferM + ' m por lado.',
+    description: descricao,
     properties_json: JSON.stringify(properties),
     source_url: DER_ROAD_LAYER_URL,
     source_file: '',
@@ -2811,8 +2885,10 @@ function upsertRoadPolygon_(road, bufferM) {
     stroke_width: 1.5,
     z_index: '',
     source_page_verified_at: today,
-    confidence_flag: 'high_official_der_geometry',
-    quality_flag: 'display_buffer_from_official_centerline',
+    // Mesma origem de `upsertRoadSegment_`: reflete se o casamento foi exato ou por rota,
+    // nunca hardcoded (R5.7 — precisão que o dado não tem não pode virar texto fixo).
+    confidence_flag: road.confidence_flag,
+    quality_flag: road.quality_flag,
     entity_type: 'road_segment',
     entity_id: road.road_segment_id,
     geometry_type: road.display_geometry.type,

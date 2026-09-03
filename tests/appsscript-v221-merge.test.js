@@ -233,7 +233,8 @@ test('as duas sincronizações e seus helpers existem depois da fusão', () => {
   for (const fn of [
     'syncAdministrativeRegions_', 'syncRoadSegmentsFromTraffic_', 'validateGeoJsonSourceGeometry_',
     'sha256Hex_', 'sanitizePlainText_', 'canonicalRoadSegmentId_', 'polygonMetricsApprox_',
-    'bufferLineGeometry_', 'supersedePolygonsOfEntity_',
+    'bufferLineGeometry_', 'supersedePolygonsOfEntity_', 'routeCodeFromPostoCode_',
+    'queryDerRoadFeatures_', 'buildDerRoadRecord_',
   ]) {
     assert.equal(typeof context[fn], 'function', `${fn} não sobreviveu à fusão`);
   }
@@ -243,6 +244,30 @@ test('canonicalRoadSegmentId_ é estável e recusa código vazio', () => {
   const { context } = createAppsScriptSandbox();
   assert.equal(context.canonicalRoadSegmentId_('df-075/01'), 'ROADSEG_DF_075_01');
   assert.equal(context.canonicalRoadSegmentId_('  '), '');
+});
+
+// routeCodeFromPostoCode_ — extrai o número da rota do código do posto de contagem, porque
+// `codtrechorodov` (o campo que a sincronização usava antes) está vazio em toda a camada ao
+// vivo do DER (confirmado por consulta direta em 2026-09) e nunca casa nada. Os cinco valores
+// abaixo são os códigos reais do piloto em TRAFFIC_DAILY_TEST — não são inventados para o
+// teste.
+test('routeCodeFromPostoCode_ extrai a rota dos cinco códigos reais do piloto', () => {
+  const { context } = createAppsScriptSandbox();
+  assert.equal(context.routeCodeFromPostoCode_('001EDF0070'), 'DF-007');
+  assert.equal(context.routeCodeFromPostoCode_('001EDF0090'), 'DF-009');
+  assert.equal(context.routeCodeFromPostoCode_('001EDF0110'), 'DF-011');
+  // Mesma rota do anterior (011), quarto dígito diferente — dois postos na mesma rota,
+  // marcos/sub-trechos diferentes. O casamento por rota junta os dois no mesmo corredor.
+  assert.equal(context.routeCodeFromPostoCode_('001EDF0116'), 'DF-011');
+  assert.equal(context.routeCodeFromPostoCode_('001EDF0130'), 'DF-013');
+});
+
+test('routeCodeFromPostoCode_ é tolerante a caixa e devolve null sem "DF" seguido de dígitos', () => {
+  const { context } = createAppsScriptSandbox();
+  assert.equal(context.routeCodeFromPostoCode_('001edf0070'), 'DF-007');
+  assert.equal(context.routeCodeFromPostoCode_('codigo-sem-rota'), null);
+  assert.equal(context.routeCodeFromPostoCode_(''), null);
+  assert.equal(context.routeCodeFromPostoCode_(null), null);
 });
 
 test('sanitizePlainText_ tira marcação de texto vindo de API externa', () => {

@@ -38,6 +38,8 @@ const dom = {
   polygonColor: el('polygonColor'), polygonDescription: el('polygonDescription'),
   polygonError: el('polygonError'), polygonSave: el('polygonSave'),
   polygonUndo: el('polygonUndo'), polygonClear: el('polygonClear'),
+  polygonKindGroup: el('polygonKindGroup'), polygonKindRoad: el('polygonKindRoad'),
+  polygonHint: el('polygonHint'),
   tableWrapOuter: document.querySelector('.admin-table-wrap-outer'),
 };
 
@@ -305,7 +307,14 @@ function showPolygonScreen() {
     dom.polygonUndo?.addEventListener('click', () => polygonDrawer.undo());
     dom.polygonClear?.addEventListener('click', () => { polygonDrawer.clear(); setPolygonError(null); });
     dom.polygonSave?.addEventListener('click', savePolygon);
-    dom.polygonColor?.addEventListener('input', () => polygonDrawer.setColor(dom.polygonColor.value));
+    dom.polygonColor?.addEventListener('input', () => {
+      // Marca que o operador escolheu a cor de propósito — a partir daqui, trocar o tipo
+      // de contorno não pisa mais na escolha dele com o padrão sugerido.
+      dom.polygonColor.dataset.touched = 'true';
+      polygonDrawer.setColor(dom.polygonColor.value);
+    });
+    dom.polygonKindGroup?.addEventListener('change', syncPolygonKindUI);
+    syncPolygonKindUI();
   }
   // O Leaflet mede o container na criação. Como a seção estava `hidden`, ele mediu
   // zero e o mapa nasceria em branco — daí o refresh depois de exibir.
@@ -323,6 +332,38 @@ function setPolygonError(message) {
   if (!dom.polygonError) return;
   dom.polygonError.textContent = message || '';
   dom.polygonError.hidden = !message;
+}
+
+const AREA_POLYGON_HINT =
+  'Clique no mapa para marcar cada canto do contorno. São necessários pelo ' +
+  'menos 3 cantos em posições diferentes.';
+const ROAD_POLYGON_HINT =
+  'Desenhe os DOIS LADOS do trecho para formar um corredor (não dá para traçar uma linha ' +
+  'só — o mapa só desenha área). Clique nos cantos de um lado, depois do outro, fechando o ' +
+  'contorno. É uma aproximação desenhada à mão, não a geometria oficial do DER.';
+/** Cor padrão de rodovia oficial (`upsertRoadPolygon_` em Code.gs) — nunca usada aqui, de
+ * propósito: um corredor desenhado à mão tem que parecer diferente de um sincronizado. */
+const ROAD_KIND_DEFAULT_COLOR = '#c2410c';
+const AREA_KIND_DEFAULT_COLOR = '#5b6b8c';
+
+/** `'road'` ou `'area'` — nunca `null`: o rádio sempre tem uma opção marcada (HTML `checked`). */
+function polygonKind() {
+  return dom.polygonKindRoad?.checked ? 'road' : 'area';
+}
+
+/**
+ * Texto de apoio e cor padrão mudam com o tipo — a cor é só sugestão inicial (o operador
+ * pode trocar), mas o tracejado que `polygonStyle()` aplica a `trecho_importante_manual`
+ * não depende da cor escolhida, então mesmo quem ignora a sugestão sai com um contorno
+ * visualmente distinto de uma rodovia oficial.
+ */
+function syncPolygonKindUI() {
+  const road = polygonKind() === 'road';
+  if (dom.polygonHint) dom.polygonHint.textContent = road ? ROAD_POLYGON_HINT : AREA_POLYGON_HINT;
+  if (dom.polygonColor && !dom.polygonColor.dataset.touched) {
+    dom.polygonColor.value = road ? ROAD_KIND_DEFAULT_COLOR : AREA_KIND_DEFAULT_COLOR;
+    polygonDrawer?.setColor(dom.polygonColor.value);
+  }
 }
 
 function onPolygonChange(change) {
@@ -352,6 +393,7 @@ async function savePolygon() {
     color: dom.polygonColor?.value,
     description: dom.polygonDescription?.value,
     latlngs: polygonDrawer.latlngs(),
+    kind: polygonKind(),
   });
   if (!fields) {
     // A mensagem exata já veio do `onChange`; aqui só garantimos que o botão não
@@ -381,6 +423,15 @@ async function savePolygon() {
     polygonDrawer.clear();
     if (dom.polygonName) dom.polygonName.value = '';
     if (dom.polygonDescription) dom.polygonDescription.value = '';
+    // Volta para "Área genérica": manter "Rodovia" marcado depois de salvar faria o
+    // PRÓXIMO desenho (provavelmente um lote comum) herdar a classificação de via sem
+    // ninguém ter escolhido isso de novo.
+    if (dom.polygonKindGroup) {
+      const areaRadio = dom.polygonKindGroup.querySelector('#polygonKindArea');
+      if (areaRadio) areaRadio.checked = true;
+    }
+    if (dom.polygonColor) delete dom.polygonColor.dataset.touched;
+    syncPolygonKindUI();
   } catch (error) {
     // O servidor revalida a geometria; se ele recusar mesmo assim, a mensagem dele é
     // a que vale — nunca um "erro ao salvar" genérico por cima de um diagnóstico bom.

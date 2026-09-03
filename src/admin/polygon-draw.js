@@ -96,13 +96,41 @@ export function buildPolygonGeoJSON(latlngs) {
 }
 
 /**
+ * Os campos que classificam um contorno desenhado à mão como via/trecho importante —
+ * exatamente o que faltava para o mapa reconhecer "isto é uma rodovia" (issue pendente de
+ * registro). `layer_group`/`entity_type`/`geometry_role` são os três campos que
+ * `src/filters.js`/`src/format.js` realmente usam para agrupar, estilizar e desenhar na
+ * profundidade certa — sem eles o contorno cai em "Outros" mesmo tendo sido desenhado como
+ * via.
+ *
+ * `subcategory`/`source_system` são DELIBERADAMENTE diferentes dos que a sincronização DER
+ * grava (`rodovia_der`/`DER_DF`): esses dois afirmam geometria oficial do eixo do DER, que
+ * um contorno traçado à mão no navegador não tem. Usar os mesmos valores aqui mentiria
+ * sobre a procedência — mesma disciplina que `confidence_flag`/`coordinate_precision` já
+ * seguem no resto do projeto.
+ */
+const ROAD_KIND_FIELDS = Object.freeze({
+  layer_group: 'road_network',
+  entity_type: 'road_segment',
+  geometry_role: 'display_corridor',
+  subcategory: 'trecho_importante_manual',
+  source_system: 'user_upload',
+  confidence_flag: 'manual_corridor_hand_drawn',
+  quality_flag: 'manual_corridor_not_official_geometry',
+});
+
+/**
  * Campos da linha de POLYGONS a partir do desenho e do formulário.
  *
  * `polygon_id`, `imported_at` e `source_file` ficam de fora de propósito: quem os
  * define é o servidor (ver `doWrite_` em Code.gs). Mandá-los daqui seria o cliente
  * disputando com o backend a autoria de campo que não é dele.
+ *
+ * `kind: 'road'` soma os campos de `ROAD_KIND_FIELDS` — nada os sobrescreve, porque nenhum
+ * deles tem input próprio no formulário. `kind` ausente ou qualquer outro valor mantém o
+ * comportamento de sempre: contorno genérico, sem camada declarada.
  */
-export function buildPolygonFields({ name, category, color, description, latlngs }) {
+export function buildPolygonFields({ name, category, color, description, latlngs, kind }) {
   const geometry = buildPolygonGeoJSON(latlngs);
   if (!geometry) return null;
 
@@ -114,5 +142,6 @@ export function buildPolygonFields({ name, category, color, description, latlngs
   if (category) fields.category = String(category).trim();
   if (color) fields.color = String(color).trim();
   if (description) fields.description = String(description).trim();
+  if (kind === 'road') Object.assign(fields, ROAD_KIND_FIELDS);
   return fields;
 }

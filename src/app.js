@@ -217,6 +217,8 @@ function renderPolygons() {
           opacity: 0.9,
           fillColor: style.fillColor,
           fillOpacity: style.fillOpacity,
+          // `null`/`undefined` já significa "sólido" para o Leaflet — não precisa de `if`.
+          dashArray: style.dashArray,
         },
       });
     } catch (error) {

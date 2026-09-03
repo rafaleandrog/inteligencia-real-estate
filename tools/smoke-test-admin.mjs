@@ -341,6 +341,54 @@ if (!polygonCall) {
   ? pass('depois de salvar, o desenho é limpo e salvar desabilita')
   : fail('o desenho não foi limpo depois de salvar');
 
+console.log('\n== 9c. Tipo de contorno: Rodovia / trecho importante ==');
+
+// A primeira gravação (acima) já limpou o formulário e voltou o rádio para "área" — é
+// esse reset que este bloco confere primeiro, antes de trocar para "rodovia".
+(await page.locator('#polygonKindArea').isChecked())
+  ? pass('depois de salvar, o tipo volta a "área genérica"')
+  : fail('o rádio de tipo não voltou para "área" depois de salvar');
+
+await page.click('#polygonKindRoad');
+await page.waitForTimeout(150);
+
+(await page.locator('#polygonHint').innerText()).includes('DOIS LADOS')
+  ? pass('o texto de apoio muda para a orientação de rodovia')
+  : fail('o texto de apoio não mudou ao selecionar "rodovia"');
+(await page.locator('#polygonColor').inputValue()) === '#c2410c'
+  ? pass('a cor sugerida muda para a cor padrão de rodovia (sem tocar no seletor)')
+  : fail('a cor não mudou para o padrão de rodovia');
+
+await clickAt(160, 140);
+await clickAt(300, 140);
+await clickAt(300, 280);
+await page.fill('#polygonName', 'Trecho de teste');
+await page.click('#polygonSave');
+await page.waitForTimeout(600);
+
+const roadCalls = writeCalls.filter((c) => c.sheet === 'POLYGONS');
+const roadCall = roadCalls[roadCalls.length - 1];
+if (!roadCall || roadCall === polygonCall) {
+  fail('nenhuma nova chamada de escrita para POLYGONS ao salvar um trecho de rodovia');
+} else {
+  const f = roadCall.fields || {};
+  f.layer_group === 'road_network'
+    ? pass('rodovia manual grava layer_group: road_network')
+    : fail('layer_group ausente ou errado: ' + f.layer_group);
+  f.entity_type === 'road_segment'
+    ? pass('rodovia manual grava entity_type: road_segment')
+    : fail('entity_type ausente ou errado: ' + f.entity_type);
+  f.geometry_role === 'display_corridor'
+    ? pass('rodovia manual grava geometry_role: display_corridor')
+    : fail('geometry_role ausente ou errado: ' + f.geometry_role);
+  f.subcategory === 'trecho_importante_manual' && f.source_system === 'user_upload'
+    ? pass('rodovia manual declara procedência própria (trecho_importante_manual / user_upload)')
+    : fail('subcategory/source_system inesperados: ' + JSON.stringify({ subcategory: f.subcategory, source_system: f.source_system }));
+  (f.subcategory !== 'rodovia_der' && f.source_system !== 'DER_DF')
+    ? pass('rodovia manual NUNCA se declara como sincronização oficial do DER')
+    : fail('um desenho à mão se declarou como rodovia_der/DER_DF');
+}
+
 console.log('\n== 10. Console e XSS ==');
 const real = consoleErrors.filter((e) => !/ERR_TUNNEL|net::/i.test(e));
 real.length === 0 ? pass('console sem erro de aplicação') : fail('erros no console: ' + JSON.stringify(real.slice(0, 3)));

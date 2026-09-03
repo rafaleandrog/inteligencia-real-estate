@@ -712,7 +712,20 @@ export function polygonStyle(polygon) {
     ? rawWeight
     : POLYGON_FALLBACK_STYLE.weight;
 
-  return { color: stroke, fillColor: fill, fillOpacity, weight };
+  return { color: stroke, fillColor: fill, fillOpacity, weight, dashArray: polygonDashArray(polygon) };
+}
+
+/**
+ * Traço tracejado, ou `null` para traço sólido.
+ *
+ * Um caso hoje: corredor de "trecho importante" desenhado à mão no admin
+ * (`subcategory: 'trecho_importante_manual'`, ver `src/admin/polygon-draw.js`) nunca pode
+ * ficar visualmente indistinguível de um corredor oficial sincronizado do DER. É tracejado
+ * — estrutural, não só cor — porque cor é fácil de esquecer de trocar no formulário e um
+ * padrão de traço derivado do dado não depende de ninguém lembrar.
+ */
+function polygonDashArray(polygon) {
+  return polygon && polygon.subcategory === 'trecho_importante_manual' ? '6,4' : null;
 }
 
 /**
