@@ -45,6 +45,7 @@ import {
   raProfileUnavailability, polygonEssentials, polygonPropertyTiers, polygonEssentialKeys,
   polygonEntityType,
 } from './format.js';
+import { trafficPanelRows } from './traffic/panel.js';
 
 const CONFIG = window.APP_CONFIG || {};
 
@@ -71,6 +72,7 @@ const dom = {
   anchorLegend: el('anchorLegend'),
   polygonLayers: el('polygonLayers'), polygonLayerLabel: el('polygonLayerLabel'),
   polygonMasterLayer: el('polygonMasterLayer'), countPolygon: el('countPolygon'),
+  trafficSection: el('trafficSection'), trafficList: el('trafficList'),
   viewSwitch: el('viewSwitch'), marketTab: el('marketTab'),
   mapView: el('mapView'), marketView: el('marketView'),
   marketScope: el('marketScope'), marketBody: el('marketBody'),
@@ -127,6 +129,9 @@ const state = {
   // Contornos importados de KML/KMZ (issue #28). Lista vazia é o estado normal de
   // quem ainda não importou nenhum arquivo — a camada só não aparece.
   polygons: [],
+  // Trechos rodoviários com tráfego ligado (issue #62/#63). `bySegmentId` vazio é o
+  // estado normal enquanto ROAD_SEGMENTS não vier — o painel simplesmente não aparece.
+  traffic: { bySegmentId: new Map(), orphaned: [], unmatchedSegmentIds: [] },
 };
 
 let map = null;
@@ -1070,6 +1075,147 @@ function polygonLegendRow({ attribute, value, label, count, sample, className })
   labelEl.append(input, dot, text, countEl);
   li.append(labelEl);
   return li;
+}
+
+/**
+ * Painel de trechos rodoviários com tráfego (issue #63).
+ *
+ * Montado uma vez, no carregamento — como a legenda de contornos —, e não a cada
+ * `render()`: os números vêm de `TRAFFIC_DAILY_TEST`, que os filtros do mapa não tocam.
+ *
+ * Some por completo quando não há nenhum trecho (ROAD_SEGMENTS ausente ou vazia), o
+ * mesmo tratamento das outras abas opcionais (R2.5). Um trecho sem geometria sincronizada
+ * aparece mesmo assim, com o motivo escrito — Recomendação 8 do backend proíbe desenhar
+ * traço inventado no MAPA, mas isto aqui é uma tabela, não um traço.
+ */
+function renderTrafficPanel() {
+  const rows = trafficPanelRows(state.traffic.bySegmentId);
+  dom.trafficSection.hidden = rows.length === 0;
+  if (rows.length === 0) {
+    dom.trafficList.replaceChildren();
+    return;
+  }
+
+  const frag = document.createDocumentFragment();
+  for (const row of rows) frag.append(trafficItemNode(row));
+  dom.trafficList.replaceChildren(frag);
+}
+
+/** Um sentido do trecho: rótulo, fluxo médio (com a ressalva de dias parciais) e o mais recente. */
+function trafficDirectionRow(label, resumo) {
+  const li = document.createElement('li');
+  li.className = 'traffic-direction';
+
+  const nome = document.createElement('span');
+  nome.className = 'traffic-direction-label';
+  nome.textContent = label;
+  li.append(nome);
+
+  if (resumo.avgDailyFlow === null) {
+    const vazio = document.createElement('span');
+    vazio.className = 'traffic-direction-empty';
+    vazio.textContent = 'sem medição válida';
+    li.append(vazio);
+    return li;
+  }
+
+  const media = document.createElement('span');
+  media.className = 'traffic-direction-value';
+  media.textContent = `${formatNumber(Math.round(resumo.avgDailyFlow))} veíc./dia`;
+  if (resumo.partialDaysUsed > 0) {
+    media.title = `Média sobre ${resumo.daysUsed} dia(s), sendo ${resumo.partialDaysUsed} parcial(is) — `
+      + 'dia parcial tem cobertura menor que 24h e a média não compensa isso (ver issue #64).';
+  }
+  li.append(media);
+  return li;
+}
+
+/**
+ * Um trecho no painel. Trecho com geometria vira botão que leva ao corredor no mapa
+ * (issue #63); sem geometria, a linha explica que a sincronização do DER ainda não
+ * rodou com sucesso para ele — nunca finge um link que não leva a lugar nenhum.
+ */
+function trafficItemNode(row) {
+  const li = document.createElement('li');
+  li.className = 'traffic-item';
+
+  const head = document.createElement(row.hasGeometry ? 'button' : 'div');
+  head.className = 'traffic-item-head';
+  if (row.hasGeometry) {
+    head.type = 'button';
+    head.addEventListener('click', () => focusTrafficSegment(row));
+  }
+
+  const nome = document.createElement('span');
+  nome.className = 'traffic-item-name';
+  nome.textContent = row.name || row.roadCode || row.id;
+  head.append(nome);
+
+  if (row.jurisdiction) {
+    const jurisdicao = document.createElement('span');
+    jurisdicao.className = 'traffic-item-jurisdiction';
+    jurisdicao.textContent = row.jurisdiction;
+    head.append(jurisdicao);
+  }
+  li.append(head);
+
+  if (!row.hasGeometry) {
+    const pendente = document.createElement('p');
+    pendente.className = 'traffic-item-pending';
+    pendente.textContent = 'Geometria pendente — a sincronização de trechos rodoviários '
+      + 'do DER ainda não rodou com sucesso para este trecho.';
+    li.append(pendente);
+  }
+
+  const stats = document.createElement('ul');
+  stats.className = 'traffic-stats';
+  if (row.porSentido.crescente) stats.append(trafficDirectionRow('Crescente', row.porSentido.crescente));
+  if (row.porSentido.decrescente) stats.append(trafficDirectionRow('Decrescente', row.porSentido.decrescente));
+  if (stats.children.length === 0) {
+    const vazio = document.createElement('li');
+    vazio.className = 'traffic-direction-empty';
+    vazio.textContent = 'Sem dias medidos.';
+    stats.append(vazio);
+  }
+  li.append(stats);
+
+  // A janela de datas é do trecho inteiro (os dois sentidos cobrem o mesmo período no
+  // piloto); o fluxo em si nunca vem daqui — isso é decisão por sentido, acima.
+  if (row.geral.windowStart) {
+    const janela = document.createElement('p');
+    janela.className = 'traffic-item-window';
+    janela.textContent = row.geral.windowStart === row.geral.windowEnd
+      ? `Medido em ${formatDate(row.geral.windowStart)}`
+      : `Medido de ${formatDate(row.geral.windowStart)} a ${formatDate(row.geral.windowEnd)}`;
+    li.append(janela);
+  }
+
+  return li;
+}
+
+/** Leva o mapa até o corredor do trecho e abre o mesmo painel de detalhe de um clique nele. */
+function focusTrafficSegment(row) {
+  const polygon = state.polygons.find((p) => p.id === row.polygonId);
+  if (!polygon) return;
+
+  setView('mapa');
+
+  let geometry = null;
+  try {
+    geometry = JSON.parse(polygon.geometry_geojson);
+  } catch (error) {
+    geometry = null;
+  }
+  if (geometry && map) {
+    try {
+      map.fitBounds(L.geoJSON(geometry).getBounds(), { padding: [40, 40] });
+    } catch (error) {
+      // coordenada fora de faixa: mesmo tratamento silencioso de renderPolygons — o
+      // detalhe abre igual, só sem o mapa se mover.
+    }
+  }
+
+  openPolygonDetail(polygon);
 }
 
 function populateSelect(select, values, formatter = (v) => v) {
@@ -2411,7 +2557,9 @@ async function load() {
   state.marketSelection = null;
   state.baseWarnings = [...result.warnings, ...result.errors];
   state.polygons = result.polygons || [];
+  state.traffic = result.traffic || { bySegmentId: new Map(), orphaned: [], unmatchedSegmentIds: [] };
   renderPolygonLegend();
+  renderTrafficPanel();
 
   populateSelect(dom.locality, distinctLocalities(state.records));
   populateSelect(dom.ptype, distinctPropertyTypes(state.records), formatPropertyType);

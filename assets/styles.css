@@ -789,6 +789,68 @@ select:focus, input[type="number"]:focus {
   border-top: 1px solid var(--line);
 }
 
+/* Trechos rodoviários com tráfego (issue #63) ---------------------------- */
+
+.traffic-panel[hidden] { display: none; }
+
+.traffic-list { list-style: none; margin: 0; padding: 0; }
+.traffic-item + .traffic-item {
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px solid var(--line);
+}
+
+/* Trecho com geometria vira botão (leva ao corredor no mapa); sem geometria é só
+   texto — nunca um link que não leva a lugar nenhum. */
+.traffic-item-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  width: 100%;
+  padding: 0;
+  border: 0;
+  background: none;
+  font: inherit;
+  text-align: left;
+  color: inherit;
+}
+button.traffic-item-head { cursor: pointer; }
+button.traffic-item-head:hover .traffic-item-name { color: var(--accent-text); }
+
+.traffic-item-name { font-size: 13px; font-weight: 600; color: var(--ink); }
+.traffic-item-jurisdiction { font-size: 11px; color: var(--muted); white-space: nowrap; }
+
+.traffic-item-pending {
+  margin: 4px 0 0;
+  font-size: 11px;
+  line-height: 1.4;
+  color: var(--muted);
+}
+
+.traffic-stats { list-style: none; margin: 6px 0 0; padding: 0; }
+.traffic-direction {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  font-size: 12px;
+  line-height: 1.6;
+}
+.traffic-direction-label { color: var(--muted); }
+.traffic-direction-value {
+  margin-left: auto;
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  color: var(--ink);
+}
+.traffic-direction-empty { margin-left: auto; color: var(--muted); font-size: 11px; }
+
+.traffic-item-window {
+  margin: 4px 0 0;
+  font-size: 11px;
+  color: var(--muted);
+}
+
 /* Estados --------------------------------------------------------------- */
 
 .state {
