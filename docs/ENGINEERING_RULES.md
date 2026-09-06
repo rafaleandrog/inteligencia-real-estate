@@ -244,7 +244,7 @@ Cada uma nasce de um erro que aconteceu de verdade.
   Use `tqx=out:json;responseHandler:<callback>`, timeout e limpeza do `<script>` após sucesso ou
   erro.
 
-- **R8.24** *(2026-08-20, exibição da APP_META)* **Aba de arquivo `.xlsx` se localiza por `r:id`,
+- **R8.79** *(2026-08-20, exibição da APP_META)* **Aba de arquivo `.xlsx` se localiza por `r:id`,
   nunca por `sheetId`.** Os dois coincidem só enquanto nenhuma aba for apagada: apagar deixa
   buraco na numeração dos ids, enquanto os arquivos `sheetN.xml` são renumerados sem buraco, e a
   partir dali cada aba devolve o conteúdo da anterior — em silêncio. Foi o que aconteceu ao
