@@ -49,6 +49,13 @@ export function normalizeRoadSegment(row) {
   return {
     roadSegmentId,
     name: toText(row?.road_name),
+    // Código da via (ex.: "DF-001") e código do trecho na fonte externa do DER — os
+    // dois campos que o painel da issue #63 precisa para identificar o trecho antes
+    // de qualquer geometria existir.
+    roadCode: toText(row?.road_code),
+    sourceSegmentCode: toText(row?.source_segment_code),
+    segmentType: toText(row?.segment_type),
+    jurisdiction: toText(row?.jurisdiction),
     // Referência para a geometria. Pode legitimamente estar vazia: um trecho sem
     // geometria sincronizada ainda é um trecho válido, só não tem onde ser desenhado
     // (issue #62, critério de aceite). road_sync_synced_count = 0 hoje.

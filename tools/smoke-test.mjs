@@ -1684,6 +1684,103 @@ selo.ausente
   ? pass('o link externo abre em aba nova com rel="noopener noreferrer" (R4.5)')
   : fail('atributos do link: ' + JSON.stringify(selo));
 
+// == Painel de trechos rodoviários com tráfego (issue #63) ==
+//
+// Cobre os dois estados que a issue pede: sem geometria sincronizada (o piloto real
+// hoje, road_sync_synced_count = 0) e com geometria injetada — o painel precisa ficar
+// clicável no segundo caso SEM mudança de código.
+console.log('\n== 12k. Painel de trechos rodoviários com tráfego (issue #63) ==');
+
+const trafficPage = await browser.newPage({ viewport: { width: 1440, height: 900 } });
+await trafficPage.addInitScript(() => {
+  Object.defineProperty(window, 'APP_CONFIG', {
+    configurable: true,
+    set(value) { delete window.APP_CONFIG; window.APP_CONFIG = value; if (value) value.demoMode = true; },
+    get() { return undefined; },
+  });
+});
+await trafficPage.route('**/data/demo.json', async (route) => {
+  const response = await route.fetch();
+  const payload = await response.json();
+  payload.road_segments = [
+    // Sem current_polygon_id: o estado real do piloto — geometria pendente.
+    { road_segment_id: 'RS-SMOKE-1', road_name: 'DF-995 · trecho sintético sem geometria', jurisdiction: 'DER-DF' },
+    // Com current_polygon_id apontando para um polígono que EXISTE em `polygons` abaixo.
+    { road_segment_id: 'RS-SMOKE-2', road_name: 'DF-996 · trecho sintético com geometria', jurisdiction: 'DER-DF', current_polygon_id: 'SMOKE_TRAFFIC_POLY' },
+  ];
+  payload.road_segment_aliases = [];
+  payload.traffic_daily = [
+    { road_segment_id: 'RS-SMOKE-1', dia: '2026-04-01', sentido: 'crescente', fluxo_total: 12000, intervalos_15min_observados: 96 },
+    { road_segment_id: 'RS-SMOKE-1', dia: '2026-04-02', sentido: 'crescente', fluxo_total: 14000, intervalos_15min_observados: 96 },
+    { road_segment_id: 'RS-SMOKE-1', dia: '2026-04-01', sentido: 'decrescente', fluxo_total: 9000, intervalos_15min_observados: 90 },
+    { road_segment_id: 'RS-SMOKE-2', dia: '2026-04-01', sentido: 'crescente', fluxo_total: 5000, intervalos_15min_observados: 96 },
+  ];
+  payload.polygons = [
+    {
+      polygon_id: 'SMOKE_TRAFFIC_POLY',
+      name: 'DF-996 · trecho sintético com geometria',
+      layer_group: 'road_network',
+      entity_type: 'road_segment',
+      geometry_geojson: JSON.stringify({
+        type: 'Polygon',
+        coordinates: [[[-47.5, -16.0], [-47.4, -16.0], [-47.4, -15.95], [-47.5, -16.0]]],
+      }),
+      fill_color: '#53606b',
+      stroke_color: '#374151',
+      status: 'active',
+    },
+  ];
+  await route.fulfill({ response, json: payload });
+});
+await trafficPage.goto('http://localhost:8080/', { waitUntil: 'networkidle' });
+await trafficPage.waitForTimeout(1200);
+
+(await trafficPage.locator('#trafficSection').isVisible())
+  ? pass('com ROAD_SEGMENTS na planilha, o painel de tráfego aparece')
+  : fail('painel de trechos rodoviários não apareceu');
+
+const trafficItems = await trafficPage.locator('#trafficList .traffic-item').count();
+trafficItems === 2
+  ? pass('os dois trechos do piloto aparecem no painel')
+  : fail(`trechos no painel: ${trafficItems}`);
+
+const trafficText = await trafficPage.textContent('#trafficList');
+/[Gg]eometria pendente/.test(trafficText || '')
+  ? pass('trecho sem geometria sincronizada declara a pendência, em vez de sumir')
+  : fail('trecho sem geometria não avisou a pendência: ' + trafficText);
+
+// Sentido crescente e decrescente não se somam: 12000 e 14000 são do crescente
+// (média 13.000), 9000 é do decrescente — nenhum dos três aparece somado.
+/13\.000/.test(trafficText || '') && /9\.000/.test(trafficText || '')
+  ? pass('crescente e decrescente aparecem com médias separadas, sem se somar')
+  : fail('médias por sentido não bateram: ' + trafficText);
+
+// Trecho SEM geometria não vira botão (não tem link nenhum). Trecho COM geometria vira.
+const semGeometriaEhBotao = await trafficPage.evaluate(() => {
+  const item = [...document.querySelectorAll('#trafficList .traffic-item')]
+    .find((li) => /RS-SMOKE-1|sem geometria/.test(li.textContent));
+  return item ? item.querySelector('.traffic-item-head')?.tagName : null;
+});
+semGeometriaEhBotao === 'DIV'
+  ? pass('trecho sem geometria não vira link para lugar nenhum')
+  : fail('trecho sem geometria virou elemento clicável: ' + semGeometriaEhBotao);
+
+// Clicar no trecho COM geometria leva ao corredor no mapa e abre o mesmo detalhe de um
+// clique nele — sem mudança de código quando a sincronização do DER rodar (critério de
+// aceite da issue #63).
+await trafficPage.click('#trafficList .traffic-item-head[type="button"]');
+await trafficPage.waitForTimeout(400);
+const trafficDetail = await trafficPage.textContent('#detail');
+/DF-996/.test(trafficDetail || '')
+  ? pass('clicar no trecho com geometria abre o mesmo painel de detalhe do mapa')
+  : fail('clique no trecho não abriu o detalhe do corredor: ' + trafficDetail);
+const mapaVisivelAposClique = await trafficPage.evaluate(() => !document.getElementById('mapView').hidden);
+mapaVisivelAposClique
+  ? pass('clicar no trecho leva de volta para a view do mapa')
+  : fail('a view do mapa não voltou ao clicar no trecho');
+
+await trafficPage.close();
+
 console.log('\n== 13. Mobile 390px ==');
 await page.click('#closeDetail').catch(()=>{});
 await page.setViewportSize({ width: 390, height: 844 });
