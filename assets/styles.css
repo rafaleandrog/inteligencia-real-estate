@@ -1147,7 +1147,10 @@ button.traffic-item-head:hover .traffic-item-name { color: var(--accent-text); }
    Em ≤860px o `body` volta a rolar sozinho e esta altura é desfeita, porque lá a topbar
    quebra em várias linhas e `--topbar-h` deixa de descrever a altura real dela. */
 .market {
-  max-width: 1100px;
+  /* A grade principal tem dois gráficos. Em tela ampla, 1.100 px deixava mais de 400 px
+     sem conteúdo de cada lado e comprimia os gráficos sem ganho de leitura. 1.440 px dá
+     largura útil às duas colunas, mas preserva uma linha de leitura confortável em desktop. */
+  max-width: 1440px;
   height: calc(100% - var(--topbar-h));
   margin: 0 auto;
   padding: var(--esp-5) var(--esp-4) var(--esp-7);
