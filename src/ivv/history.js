@@ -30,7 +30,7 @@ export const HISTORY_CHARTS = Object.freeze([
     key: 'ivv',
     acumulavel: true,
     titulo: 'Velocidade de vendas (IVV)',
-    tituloAcumulado: 'Velocidade de vendas no ano (IVV)',
+    tituloAcumulado: 'Velocidade de vendas no período (IVV)',
     pergunta: 'O mercado está mais rápido?',
     tipo: CHART_TYPES.AREA,
     fonte: CHART_SOURCES.JANELA,
@@ -41,7 +41,7 @@ export const HISTORY_CHARTS = Object.freeze([
     key: 'precos',
     acumulavel: true,
     titulo: 'Preço pedido × preço de venda',
-    tituloAcumulado: 'Preço pedido × preço de venda no ano',
+    tituloAcumulado: 'Preço pedido × preço de venda — ponderados no período',
     pergunta: 'Quanto se pede e quanto se realiza?',
     tipo: CHART_TYPES.LINHA,
     fonte: CHART_SOURCES.JANELA,
@@ -57,7 +57,7 @@ export const HISTORY_CHARTS = Object.freeze([
     key: 'atividade',
     acumulavel: true,
     titulo: 'Vendas e lançamentos por mês',
-    tituloAcumulado: 'Vendas e lançamentos no ano',
+    tituloAcumulado: 'Vendas e lançamentos acumulados no período',
     pergunta: 'Entra ou sai mais unidade do mercado?',
     // Contagem de evento do mês é coluna, não linha: a linha sugere continuidade entre
     // dois meses, e não há nada acontecendo entre eles.
@@ -73,7 +73,7 @@ export const HISTORY_CHARTS = Object.freeze([
     key: 'estoque',
     acumulavel: true,
     titulo: 'Unidades em oferta',
-    tituloAcumulado: 'Unidades em oferta — média no ano',
+    tituloAcumulado: 'Unidades em oferta — média do período',
     pergunta: 'Quanto sobra na prateleira?',
     tipo: CHART_TYPES.AREA,
     fonte: CHART_SOURCES.JANELA,
@@ -84,7 +84,7 @@ export const HISTORY_CHARTS = Object.freeze([
     key: 'vgv',
     acumulavel: true,
     titulo: 'VGV por mês',
-    tituloAcumulado: 'VGV no ano',
+    tituloAcumulado: 'VGV acumulado no período',
     pergunta: 'Quanto de dinheiro girou?',
     tipo: CHART_TYPES.COLUNAS,
     fonte: CHART_SOURCES.JANELA,
@@ -143,32 +143,32 @@ const NOTA_MENSAL = 'Valores do mês.';
 const NOTA_NAO_ACUMULA = 'Sempre mensal: razão publicada por mês não acumula.';
 
 /**
- * O que "no ano até aqui" significa depende da NATUREZA da métrica, e a nota diz qual é.
+ * O que "acumulado no período" significa depende da NATUREZA da métrica, e a nota diz qual é.
  *
  * Chamar tudo de "acumulado" seria mentira útil: estoque não se acumula — somar doze
  * fotografias devolve doze vezes o estoque real —, e preço é razão, não soma. Quem faz a
  * conta certa é o motor de agregação; esta tabela só traduz a mesma decisão para o leitor.
  */
-const NOTA_NO_ANO = Object.freeze({
-  [METRIC_KINDS.FLUXO]: 'Acumulado de janeiro até cada mês; zera a cada ano.',
-  [METRIC_KINDS.ESTOQUE]: 'Média do ano até cada mês; recomeça a cada ano.',
-  [METRIC_KINDS.PRECO]: 'Razão ponderada do ano até cada mês; recomeça a cada ano.',
-  [METRIC_KINDS.TAXA]: 'Razão ponderada do ano até cada mês; recomeça a cada ano.',
+const NOTA_ACUMULADO = Object.freeze({
+  [METRIC_KINDS.FLUXO]: 'Soma desde o início do período mostrado.',
+  [METRIC_KINDS.ESTOQUE]: 'Média desde o início do período mostrado.',
+  [METRIC_KINDS.PRECO]: 'Razão ponderada desde o início do período mostrado.',
+  [METRIC_KINDS.TAXA]: 'Razão ponderada desde o início do período mostrado.',
 });
 
 function notaDoModo(chave, acumulado) {
   if (!acumulado) return NOTA_MENSAL;
-  return NOTA_NO_ANO[getPlottable(chave)?.kind] || NOTA_NO_ANO[METRIC_KINDS.FLUXO];
+  return NOTA_ACUMULADO[getPlottable(chave)?.kind] || NOTA_ACUMULADO[METRIC_KINDS.FLUXO];
 }
 
 function rotuloDe(key) {
   return getPlottable(key)?.label || key;
 }
 
-function pontosDe(rows, { key, derivada }, acumulado = false) {
+function pontosDe(rows, { key, derivada }, acumulado = false, options = {}) {
   let serie;
   if (derivada) serie = derivedSeries(rows, key);
-  else if (acumulado) serie = runningSeries(rows, key);
+  else if (acumulado) serie = runningSeries(rows, key, options);
   else serie = monthlySeries(rows, key);
   return serie.map((ponto) => ({ categoria: ponto.month, valor: ponto.value }));
 }
@@ -233,7 +233,7 @@ function modeloDe(definicao, rows, modo) {
       chave: serie.key,
       rotulo: rotuloDe(serie.key),
       cat: serie.cat,
-      pontos: pontosDe(rows, serie, acumulado),
+      pontos: pontosDe(rows, serie, acumulado, { resetAtYearBoundary: false }),
     })),
   );
   // A pergunta viaja com o modelo: é ela que o card do gráfico mostra abaixo do título, e
