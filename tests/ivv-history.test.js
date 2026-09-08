@@ -82,7 +82,21 @@ test('modo acumulado respeita a natureza da métrica: soma fluxo, média estoque
     [250, 550]);
   assert.deepEqual(estoque.series[0].pontos.map((p) => p.valor), [4200, 4100]);
   assert.deepEqual(ivv.series[0].pontos.map((p) => p.valor), [0.05, 550 / 8200]);
-  assert.equal(estoque.titulo, 'Unidades em oferta — média no ano');
+  assert.equal(estoque.titulo, 'Unidades em oferta — média do período');
+});
+
+test('acumulado continua pelo período visível quando ele atravessa janeiro', () => {
+  const atravessandoAno = [
+    { reference_date: '2025-07-01', vgv_brl_million: 400 },
+    { reference_date: '2025-12-01', vgv_brl_million: 500 },
+    { reference_date: '2026-01-01', vgv_brl_million: 600 },
+  ];
+  const vgv = buildHistoryCharts(janela(atravessandoAno), SERIES_MODES.ACUMULADO)
+    .find((g) => g.key === 'vgv');
+
+  assert.deepEqual(vgv.series[0].pontos.map((p) => p.valor), [400, 900, 1500]);
+  assert.equal(vgv.titulo, 'VGV acumulado no período');
+  assert.equal(vgv.notaModo, 'Soma desde o início do período mostrado.');
 });
 
 test('a série derivada é plotada com a unidade dela, não com a de contagem', () => {
