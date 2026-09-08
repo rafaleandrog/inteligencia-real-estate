@@ -596,26 +596,41 @@ export function derivedSeries(rows, key) {
  * da curva passa a ser exatamente o número que o card mostra, em vez de uma segunda conta
  * que pode divergir da primeira sem ninguém perceber.
  *
- * A curva ZERA em janeiro, de propósito: acumulado do ano civil é o que o dataset publica, e
- * uma curva que atravessa o ano sem reiniciar afirmaria um acumulado que ninguém calculou.
+ * Por padrão a curva zera em janeiro, para os casos em que a pergunta é de ano civil. Quem
+ * desenha um intervalo contínuo pode passar `resetAtYearBoundary: false`: nesse caso, cada
+ * ponto agrega desde o começo do recorte visível e NÃO pode usar `*_ytd` do backend, pois
+ * esses campos sempre reiniciam em janeiro.
  */
 export function runningSeries(rows, key, options = {}) {
   const { rows: prepared } = prepareRows(rows);
-  const porAno = new Map();
-  for (const item of prepared) {
-    if (!porAno.has(item.year)) porAno.set(item.year, []);
-    porAno.get(item.year).push(item);
+  const resetAtYearBoundary = options.resetAtYearBoundary !== false;
+  const grupos = [];
+
+  if (resetAtYearBoundary) {
+    const porAno = new Map();
+    for (const item of prepared) {
+      if (!porAno.has(item.year)) porAno.set(item.year, []);
+      porAno.get(item.year).push(item);
+    }
+    grupos.push(...porAno.values());
+  } else {
+    grupos.push(prepared);
   }
 
+  // Um `*_ytd` do backend só descreve janeiro→mês do mesmo ano. Num intervalo contínuo
+  // (por exemplo, jul./2025→jun./2026), ele derrubaria a curva em janeiro e contraditaria
+  // o filtro que a pessoa escolheu.
+  const aggregationOptions = resetAtYearBoundary ? options : { ...options, preferYtd: false };
+
   const serie = [];
-  for (const doAno of porAno.values()) {
-    for (let i = 0; i < doAno.length; i += 1) {
+  for (const grupo of grupos) {
+    for (let i = 0; i < grupo.length; i += 1) {
       // As linhas CRUAS do recorte: `aggregateMetric` prepara de novo, o que é barato e
       // evita fabricar aqui um array "preparado" à mão — marca interna que só `prepareRows`
       // tem o direito de pôr.
-      const ateAqui = doAno.slice(0, i + 1).map((item) => item.row);
-      const { value, origin } = aggregateMetric(ateAqui, key, options);
-      serie.push({ month: doAno[i].month, value, origin });
+      const ateAqui = grupo.slice(0, i + 1).map((item) => item.row);
+      const { value, origin } = aggregateMetric(ateAqui, key, aggregationOptions);
+      serie.push({ month: grupo[i].month, value, origin });
     }
   }
   return serie;
