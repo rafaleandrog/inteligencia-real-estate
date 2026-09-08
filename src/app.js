@@ -2399,7 +2399,7 @@ function renderMarketDashboard() {
     ? `${resumo.intervalo}, com até 12 meses anteriores de contexto`
     : resumo.intervalo;
   dom.marketHistoryNote.textContent = modo === SERIES_MODES.ACUMULADO
-    ? `Acumulado no ano, mês a mês, em ${recorte}.`
+    ? `Acumulado desde o início do período mostrado, mês a mês, em ${recorte}.`
     : `Valores de cada mês em ${recorte}.`;
 
   renderMarketRegioes();
@@ -2427,7 +2427,7 @@ function renderMarketDashboard() {
 
 const MODOS_DE_SERIE = Object.freeze([
   { value: SERIES_MODES.MENSAL, chip: 'Mês a mês', label: 'Valores de cada mês' },
-  { value: SERIES_MODES.ACUMULADO, chip: 'Acumulado no ano', label: 'Acumulado no ano até cada mês' },
+  { value: SERIES_MODES.ACUMULADO, chip: 'Acumulado', label: 'Acumulado desde o início do período mostrado' },
 ]);
 
 /**
