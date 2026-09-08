@@ -3,7 +3,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  HISTORY_CHARTS, SEASONALITY_CHART, buildHistoryCharts, buildSeasonality, buildSparkline,
+  HISTORY_CHARTS, SEASONALITY_CHART, SERIES_MODES,
+  buildHistoryCharts, buildSeasonality, buildSparkline,
 } from '../src/ivv/history.js';
 import { CHART_TYPES, CHART_SOURCES } from '../src/ivv/chart-model.js';
 import { METRIC_BY_KEY, DERIVED_SERIES_BY_KEY } from '../src/ivv/metrics.js';
@@ -69,6 +70,19 @@ test('gráfico usa valor mensal ordenado, nunca acumulado repetido', () => {
   const vendas = atividade.series.find((s) => s.chave === 'sales_units');
   assert.deepEqual(vendas.pontos.map((p) => p.valor), [250, 300]);
   assert.deepEqual(atividade.categorias.map((c) => c.chave), ['2026-01', '2026-02']);
+});
+
+test('modo acumulado respeita a natureza da métrica: soma fluxo, média estoque e pondera IVV', () => {
+  const graficos = buildHistoryCharts(janela(), SERIES_MODES.ACUMULADO);
+  const atividade = graficos.find((g) => g.key === 'atividade');
+  const estoque = graficos.find((g) => g.key === 'estoque');
+  const ivv = graficos.find((g) => g.key === 'ivv');
+
+  assert.deepEqual(atividade.series.find((s) => s.chave === 'sales_units').pontos.map((p) => p.valor),
+    [250, 550]);
+  assert.deepEqual(estoque.series[0].pontos.map((p) => p.valor), [4200, 4100]);
+  assert.deepEqual(ivv.series[0].pontos.map((p) => p.valor), [0.05, 550 / 8200]);
+  assert.equal(estoque.titulo, 'Unidades em oferta — média no ano');
 });
 
 test('a série derivada é plotada com a unidade dela, não com a de contagem', () => {
