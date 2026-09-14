@@ -447,17 +447,37 @@ h1, h2 { margin: 0; font-size: 1rem; }
   min-height: 0;
 }
 
-/* O trilho fica sobre `--brand` nos dois temas — preenchimento sólido, como a identidade
-   registrada no topo deste arquivo prevê. Por isso tudo que vive nele é branco literal e
-   não token de texto: `--ink` daria escuro sobre escuro no tema claro, ilegível e sem
-   nenhum erro que denunciasse. É a mesma razão que já valia para `.admin-link`. */
+/* A casca de marca fica sobre `--brand` nos dois temas — preenchimento sólido, como a
+   identidade registrada no topo deste arquivo prevê. Por isso tudo que vive nela é branco
+   literal e não token de texto: `--ink` daria escuro sobre escuro no tema claro, ilegível
+   e sem nenhum erro que denunciasse. É a mesma razão que já valia para `.admin-link`.
+
+   ESTA REGRA É COMPARTILHADA COM O `admin.html`, que usa a mesma `.topbar` — e lá ela
+   continua sendo uma BARRA horizontal, porque aquela página não tem trilho nem grade de
+   casca. Foi assim que o trilho vazou para o admin quando a #95 entrou: o cabeçalho de lá
+   passou de 56px para 153px sem nenhum teste reclamar, porque nada mede a altura daquele
+   cabeçalho. Por isso o que é do trilho está abaixo, sob `.app > .topbar`, e não aqui. */
 .topbar {
   display: flex;
-  flex-direction: column;
-  gap: var(--esp-6);
-  padding: var(--esp-5) var(--esp-3);
+  align-items: center;
+  gap: var(--esp-4);
+  /* `min-height` e não `height`: a barra do admin carrega um parágrafo de três linhas, e
+     com altura travada em 56px ele transbordava para fora do verde — a lei do bloco,
+     desde antes da #95. Altura mínima preserva a barra de 56px quando o conteúdo cabe e
+     deixa crescer quando não cabe. */
+  min-height: 56px;
+  padding: var(--esp-2) var(--esp-4);
   background: var(--brand);
   color: #fff;
+}
+
+/* O trilho propriamente dito: só dentro da casca de duas colunas. */
+.app > .topbar {
+  flex-direction: column;
+  align-items: stretch;
+  height: auto;
+  gap: var(--esp-6);
+  padding: var(--esp-5) var(--esp-3);
   overflow-y: auto;
 }
 
@@ -2079,8 +2099,8 @@ button.traffic-item-head:hover .traffic-item-name { color: var(--accent-text); }
   .app { height: auto; min-height: 100vh; }
   body { overflow: auto; }
 
-  .topbar { padding: var(--esp-4) var(--esp-2); gap: var(--esp-5); }
-  .brand { justify-content: center; padding: 0; }
+  .app > .topbar { padding: var(--esp-4) var(--esp-2); gap: var(--esp-5); }
+  .app > .topbar .brand { justify-content: center; padding: 0; }
   .brand-text,
   .view-tab-tx,
   .rail-foot { display: none; }
@@ -2129,14 +2149,15 @@ button.traffic-item-head:hover .traffic-item-name { color: var(--accent-text); }
      horizontal cabe texto, e dois ícones sozinhos numa barra larga não dizem o que são. */
   .app { grid-template-columns: minmax(0, 1fr); }
 
-  .topbar {
+  .app > .topbar {
     flex-direction: row;
     align-items: center;
+    height: auto;
     gap: var(--esp-3);
     padding: var(--esp-3) var(--esp-4);
     overflow: visible;
   }
-  .brand { padding: 0; }
+  .app > .topbar .brand { padding: 0; }
   .view-switch { display: flex; gap: var(--esp-1); overflow-x: auto; }
   .view-tab { width: auto; white-space: nowrap; padding: var(--esp-2) var(--esp-3); }
   .view-tab-tx { display: inline; }
