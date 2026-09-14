@@ -1,12 +1,26 @@
 /* Imob Intelligence — área administrativa (issue #5).
    Reaproveita as variáveis e classes base de styles.css (.btn, .btn-ghost, .field,
-   .state); aqui só o que é específico de tabela/formulário administrativo. */
+   .state); aqui só o que é específico de tabela/formulário administrativo.
+
+   NOTA DA #95. Este arquivo era uma ilha: nenhum token de cor, doze literais cravados e
+   NENHUMA regra de tema escuro. Sob `prefers-color-scheme: dark` ele misturava token
+   tematizado (que trocava) com hex claro fixo (que não), e o resultado era texto escuro
+   sobre bloco escuro em metade dos avisos. Os doze literais viraram token, e com isso o
+   tema escuro passou a existir aqui de graça — sem nenhum bloco `@media` novo, porque não
+   é preciso: quem troca é o token.
+
+   O que NÃO foi feito, e por quê: `padding` e `margin` continuam em pixel. A escala tem
+   4/8/12/16/24/32/48, e este arquivo usa 6, 7, 9, 10, 14, 20 e 60 — encaixá-los não é
+   substituição mecânica, é decidir a densidade de quarenta regras uma a uma, numa tela
+   cuja única verificação é o smoke do admin. Isso é uma passada própria, não efeito
+   colateral de um redesenho de aparência (R5.2). Corpo de texto e raio, que mapeiam sem
+   ambiguidade, foram junto. */
 
 .admin-body { overflow: auto; height: auto; }
 
 .admin-token-note {
   margin: 0;
-  font-size: 12px;
+  font-size: var(--tipo-sm);
   color: var(--muted);
   max-width: 60ch;
 }
@@ -27,36 +41,47 @@
   box-shadow: var(--shadow);
 }
 .admin-login h1 { font-size: 1.2rem; margin-bottom: 8px; }
-.admin-login p { color: var(--muted); font-size: 13px; }
-.admin-login input { width: 100%; padding: 8px 10px; border: 1px solid var(--line); border-radius: 8px; }
+.admin-login p { color: var(--muted); font-size: var(--tipo-base); }
+/* Os campos de texto do admin não declaravam fundo nem cor: herdavam o branco do
+   navegador. Isso passou despercebido enquanto este arquivo não tinha tema escuro nenhum
+   — no escuro o campo ficava branco sólido no meio da tela, e o cursor escrevia preto
+   sobre branco enquanto todo o resto era claro sobre escuro. Tokenizar as cores
+   (issue #95) tornou o resto da tela escura e deixou esses três campos gritando. */
+.admin-login input,
+.admin-editor-field input,
+.admin-search input {
+  background: var(--panel);
+  color: var(--ink);
+}
+.admin-login input { width: 100%; padding: 8px 10px; border: 1px solid var(--line); border-radius: var(--raio-md); }
 
 .admin-error-text {
-  color: #8c2f2f;
-  background: #fbe9e9;
-  border-radius: 8px;
+  color: var(--tone-bad);
+  background: var(--erro-fundo);
+  border-radius: var(--raio-md);
   padding: 8px 10px;
-  font-size: 13px;
+  font-size: var(--tipo-base);
   margin: 10px 0;
 }
 
 /* Diagnóstico da implantação do Apps Script. Tom de aviso, não de erro fatal: a tela
    continua utilizável, e o texto explica o que precisa ser feito na planilha. */
 .admin-deployment-warning {
-  color: #6b4708;
-  background: #fdf3dd;
-  border: 1px solid #e6c983;
+  color: var(--alerta);
+  background: var(--alerta-fundo);
+  border: 1px solid var(--alerta-borda);
   border-left-width: 4px;
-  border-radius: 8px;
+  border-radius: var(--raio-md);
   padding: 12px 14px;
-  font-size: 13px;
+  font-size: var(--tipo-base);
   line-height: 1.5;
   margin: 0 0 20px;
 }
 
 .admin-deployment-warning strong { display: block; margin-bottom: 4px; }
 .admin-deployment-warning code {
-  background: #00000010;
-  border-radius: 4px;
+  background: var(--superficie-hover);
+  border-radius: var(--raio-xs);
   padding: 1px 4px;
 }
 
@@ -71,9 +96,9 @@
 .admin-tabs { display: flex; gap: 6px; flex-wrap: wrap; }
 .admin-tab {
   padding: 7px 14px;
-  border-radius: 999px;
+  border-radius: var(--raio-pill);
   border: 1px solid var(--line);
-  background: #fff;
+  background: var(--superficie-base);
   color: var(--muted);
   font: inherit;
   cursor: pointer;
@@ -88,20 +113,20 @@
   display: flex;
   flex-direction: column;
   gap: 4px;
-  font-size: 12px;
+  font-size: var(--tipo-sm);
   color: var(--muted);
   margin-left: auto;
 }
-.admin-editor-field input { padding: 6px 9px; border: 1px solid var(--line); border-radius: 8px; }
+.admin-editor-field input { padding: 6px 9px; border: 1px solid var(--line); border-radius: var(--raio-md); }
 
 .admin-status {
   padding: 8px 12px;
-  border-radius: 8px;
+  border-radius: var(--raio-md);
   background: var(--bg);
-  font-size: 13px;
+  font-size: var(--tipo-base);
   margin-bottom: 12px;
 }
-.admin-status[data-tone="ok"] { background: #e6f1ea; color: #2f5a41; }
+.admin-status[data-tone="ok"] { background: var(--sucesso-fundo); color: var(--tone-good); }
 
 .admin-table-toolbar {
   display: flex;
@@ -113,17 +138,17 @@
 }
 
 .admin-search { display: flex; align-items: center; gap: 8px; }
-.admin-search label { font-size: 12px; color: var(--muted); }
+.admin-search label { font-size: var(--tipo-sm); color: var(--muted); }
 .admin-search input {
   padding: 6px 10px;
   border: 1px solid var(--line);
-  border-radius: 8px;
+  border-radius: var(--raio-md);
   min-width: 220px;
   font: inherit;
 }
 
-.admin-pager { display: flex; align-items: center; gap: 10px; font-size: 13px; }
-.admin-pager button { margin: 0; padding: 5px 10px; font-size: 12px; }
+.admin-pager { display: flex; align-items: center; gap: 10px; font-size: var(--tipo-base); }
+.admin-pager button { margin: 0; padding: 5px 10px; font-size: var(--tipo-sm); }
 .admin-pager button:disabled { opacity: .4; cursor: default; }
 .admin-pager-info { color: var(--muted); white-space: nowrap; }
 
@@ -134,7 +159,7 @@
   margin: 0;
   font: inherit;
   font-weight: 600;
-  font-size: 11px;
+  font-size: var(--tipo-xs);
   text-transform: uppercase;
   color: inherit;
   cursor: pointer;
@@ -155,7 +180,7 @@
   background: var(--panel);
   border-radius: var(--radius);
   overflow: hidden;
-  font-size: 13px;
+  font-size: var(--tipo-base);
 }
 .admin-table th, .admin-table td {
   text-align: left;
@@ -166,18 +191,21 @@
   overflow: hidden;
   text-overflow: ellipsis;
 }
-.admin-table th { background: var(--bg); color: var(--muted); font-weight: 600; font-size: 11px; text-transform: uppercase; }
+.admin-table th { background: var(--bg); color: var(--muted); font-weight: 600; font-size: var(--tipo-xs); text-transform: uppercase; }
 .admin-table-actions { display: flex; gap: 6px; white-space: nowrap; }
-.admin-table-actions button { margin: 0; padding: 4px 10px; font-size: 12px; }
-.admin-btn-danger { color: #8c2f2f; border-color: #e3b8b8; }
-.admin-btn-danger:hover { border-color: #8c2f2f; color: #8c2f2f; }
+.admin-table-actions button { margin: 0; padding: 4px 10px; font-size: var(--tipo-sm); }
+.admin-btn-danger { color: var(--tone-bad); border-color: var(--erro-borda); }
+.admin-btn-danger:hover { border-color: var(--tone-bad); color: var(--tone-bad); }
 
 .admin-empty { color: var(--muted); padding: 20px; text-align: center; }
 
 .admin-form-dialog {
   position: fixed;
   inset: 0;
-  background: #17201966;
+  /* Escurecer E desfocar, como o overlay do drill-down do protótipo: o desfoque é o que
+     diz "isto aqui está inativo" sem precisar apagar a tela atrás. */
+  background: rgba(0, 0, 0, .55);
+  backdrop-filter: blur(3px);
   display: flex;
   align-items: flex-start;
   justify-content: center;
@@ -198,11 +226,11 @@
 
 .admin-form { display: grid; grid-template-columns: 1fr 1fr; gap: 4px 16px; }
 .admin-form-field { display: flex; flex-direction: column; margin: 6px 0; }
-.admin-form-field label { font-size: 12px; color: var(--muted); margin-bottom: 4px; }
+.admin-form-field label { font-size: var(--tipo-sm); color: var(--muted); margin-bottom: 4px; }
 .admin-form-field input, .admin-form-field select {
   padding: 7px 9px;
   border: 1px solid var(--line);
-  border-radius: 8px;
+  border-radius: var(--raio-md);
   font: inherit;
 }
 .admin-form-field input[type="checkbox"] { width: auto; align-self: flex-start; }
@@ -214,7 +242,7 @@
 
 .admin-form-note {
   grid-column: 1 / -1;
-  font-size: 12px;
+  font-size: var(--tipo-sm);
   color: var(--muted);
   margin: 4px 0 0;
 }
@@ -267,7 +295,7 @@
   font: inherit;
   padding: 7px 9px;
   border: 1px solid var(--line);
-  border-radius: 8px;
+  border-radius: var(--raio-md);
   background: var(--panel);
   color: var(--ink);
   resize: vertical;
