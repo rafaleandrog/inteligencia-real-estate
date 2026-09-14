@@ -19,4 +19,4 @@ meta.png
 # Configuração local do Claude Code (permissões por máquina). Nunca versionada:
 # conceder permissão é decisão de quem opera a máquina, não do repositório.
 .claude/
-shot.local.mjs
+*.local.mjs

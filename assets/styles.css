@@ -221,6 +221,12 @@
   --info: #3a5a8c;
   --info-fundo: #e8eef7;
   --info-borda: #bfd0e6;
+  /* "Rascunho" (dataset publicado com alteração pendente) era o único tom do selo de
+     status sem par na família — e por isso o único que obrigava a manter uma lista de
+     literais em paralelo, com um bloco de tema escuro só para ele. Com o par nomeado, o
+     bloco inteiro de `@media` do selo some: os tokens já trocam sozinhos (#95). */
+  --rascunho: #4f3f7a;
+  --rascunho-fundo: #eceaf5;
 
   /* Paleta CATEGÓRICA das séries de gráfico (issues #83 e #85).
 
@@ -355,6 +361,8 @@
     --info: #8fb4e8;
     --info-fundo: #1a2536;
     --info-borda: #2e415c;
+    --rascunho: #c3b3f5;
+    --rascunho-fundo: #241d3a;
 
     --cat-1: #3f9e68;
     --cat-2: #5b92d8;
@@ -736,25 +744,28 @@ h1, h2 { margin: 0; font-size: 1rem; }
 
 /* Indicador de estado da validação. `unknown` é deliberadamente neutro: status que o
    código não reconhece nunca pode ser pintado como aprovação (R8.16). */
+/* Selo de status no molde do protótipo: pílula em mono miúdo.
+
+   Os dez literais que estavam aqui — cinco no tema claro, quatro no escuro — repetiam à
+   mão os valores que `--sucesso-*`, `--alerta-*`, `--erro-*` e agora `--rascunho-*` já
+   carregam. Eram uma lista paralela, do tipo que envelhece calada: mexer no token não
+   mexia no selo, e ninguém notaria até a tela mostrar dois verdes diferentes. Com os
+   tokens no lugar, o `@media (prefers-color-scheme: dark)` que existia só para este selo
+   deixou de ter razão de ser e saiu inteiro — os tokens já trocam sozinhos (#95). */
 .meta-status {
   display: inline-block;
-  padding: 1px 7px;
-  border-radius: 999px;
-  font-size: 11px;
-  font-weight: 600;
+  padding: var(--esp-1) var(--esp-2);
+  border-radius: var(--raio-pill);
+  font-family: var(--font-mono);
+  font-size: var(--tipo-2xs);
+  letter-spacing: var(--track-label);
+  text-transform: uppercase;
 }
-.meta-status[data-tone="ok"]      { background: #e6f1ea; color: #2f5a41; }
-.meta-status[data-tone="warning"] { background: #fdf1e3; color: #8a5620; }
-.meta-status[data-tone="error"]   { background: #fbe9e9; color: #8c2f2f; }
-.meta-status[data-tone="dirty"]   { background: #eceaf5; color: #4f3f7a; }
-.meta-status[data-tone="unknown"] { background: var(--bg); color: var(--muted); }
-
-@media (prefers-color-scheme: dark) {
-  .meta-status[data-tone="ok"]      { background: #163524; color: #8fd6ac; }
-  .meta-status[data-tone="warning"] { background: #3a2a12; color: #f0b877; }
-  .meta-status[data-tone="error"]   { background: #3a1a1a; color: #f0a3a3; }
-  .meta-status[data-tone="dirty"]   { background: #241d3a; color: #c3b3f5; }
-}
+.meta-status[data-tone="ok"]      { background: var(--sucesso-fundo); color: var(--tone-good); }
+.meta-status[data-tone="warning"] { background: var(--alerta-fundo);  color: var(--alerta); }
+.meta-status[data-tone="error"]   { background: var(--erro-fundo);    color: var(--tone-bad); }
+.meta-status[data-tone="dirty"]   { background: var(--rascunho-fundo); color: var(--rascunho); }
+.meta-status[data-tone="unknown"] { background: var(--superficie-sutil); color: var(--muted); }
 
 /* Campos ---------------------------------------------------------------- */
 
@@ -1146,40 +1157,55 @@ button.traffic-item-head:hover .traffic-item-name { color: var(--accent-text); }
 
 /* Detalhe --------------------------------------------------------------- */
 
+/* Acabamento do drill-down do protótipo, mas o painel CONTINUA lateral: virar modal
+   sobreposto mudaria comportamento, não aparência, e o pedido é de aparência. O que veio
+   de lá é o título com peso, o botão de fechar como quadrado contornado, e a régua que
+   separa o cabeçalho do corpo. */
 .detail {
   width: var(--detail-w);
   flex: 0 0 var(--detail-w);
-  padding: 20px;
+  padding: var(--esp-5);
   background: var(--panel);
   border-left: 1px solid var(--line);
   overflow-y: auto;
   position: relative;
 }
 .detail[hidden] { display: none; }
-.detail h2 { font-size: 17px; padding-right: 28px; line-height: 1.3; }
+.detail h2 {
+  font-size: var(--tipo-lg);
+  font-weight: 800;
+  letter-spacing: var(--track-tight);
+  padding-right: var(--esp-6);
+  line-height: 1.25;
+}
 
+/* Quadrado contornado de 34px, como no protótipo. A borda vira a cor de erro no hover:
+   é o único controle desta tela que descarta o que está na frente da pessoa, e dizer isso
+   antes do clique custa uma borda. */
 .detail-close {
   position: absolute;
-  top: 12px; right: 12px;
-  width: 28px; height: 28px;
-  border: 0;
-  border-radius: 6px;
+  top: var(--esp-3); right: var(--esp-3);
+  width: 34px; height: 34px;
+  border: 1px solid var(--borda-base);
+  border-radius: var(--raio-md);
   background: transparent;
-  color: var(--muted);
-  font-size: 20px;
+  color: var(--texto-sec);
+  font-size: var(--tipo-lg);
   line-height: 1;
   cursor: pointer;
 }
-.detail-close:hover { background: var(--bg); color: var(--ink); }
+.detail-close:hover { color: var(--texto-base); border-color: var(--erro); }
+.detail-close:focus-visible { outline: 2px solid var(--accent-text); outline-offset: 2px; }
 
 .detail-kind {
   display: inline-block;
-  margin: 8px 0 14px;
-  padding: 3px 9px;
-  border-radius: 999px;
-  font-size: 11px;
+  margin: var(--esp-2) 0 var(--esp-4);
+  padding: var(--esp-1) var(--esp-2);
+  border-radius: var(--raio-pill);
+  font-family: var(--font-mono);
+  font-size: var(--tipo-2xs);
   text-transform: uppercase;
-  letter-spacing: .05em;
+  letter-spacing: var(--track-label);
   color: #fff;
 }
 .detail-kind[data-kind="listing"] { background: var(--listing); }
@@ -1191,13 +1217,14 @@ button.traffic-item-head:hover .traffic-item-name { color: var(--accent-text); }
    e competir em peso visual com a camada trocaria a hierarquia de leitura. */
 .detail-stage {
   display: inline-block;
-  margin: 8px 0 14px 6px;
-  padding: 2px 9px;
-  border: 1px solid var(--line);
-  border-radius: 999px;
-  font-size: 11px;
+  margin: var(--esp-2) 0 var(--esp-4) var(--esp-1);
+  padding: var(--esp-1) var(--esp-2);
+  border: 1px solid var(--borda-base);
+  border-radius: var(--raio-pill);
+  font-family: var(--font-mono);
+  font-size: var(--tipo-2xs);
   text-transform: uppercase;
-  letter-spacing: .05em;
+  letter-spacing: var(--track-label);
   color: var(--muted);
 }
 
@@ -1263,26 +1290,28 @@ button.traffic-item-head:hover .traffic-item-name { color: var(--accent-text); }
 
 /* Aviso de precisão espacial. Nunca apresentar coordenada aproximada como
    endereço exato — docs/ENGINEERING_RULES.md R3.6. */
+/* Aviso de precisão espacial: caixa de alerta quando a coordenada é aproximada, caixa de
+   sucesso quando é exata. Os oito literais que estavam aqui — quatro por tema — eram os
+   mesmos tons que `--alerta-*` e `--sucesso-*` já nomeavam, com um dígito de diferença.
+   Passar a consumir a família custa um ajuste imperceptível de matiz e devolve um
+   vocabulário só de "atenção/tudo certo" para a aplicação inteira; de quebra, o terceiro
+   e último `@media (prefers-color-scheme: dark)` de componente saiu com eles (#95). */
 .precision {
-  margin: 0 0 16px;
-  padding: 10px 12px;
-  border-radius: 8px;
+  margin: 0 0 var(--esp-4);
+  padding: var(--esp-3);
+  border-radius: var(--raio-md);
   border-left: 3px solid var(--primary);
-  background: #fdf6ef;
-  font-size: 12px;
+  background: var(--alerta-fundo);
+  font-size: var(--tipo-sm);
   line-height: 1.45;
-  color: #6b4a2a;
+  color: var(--alerta);
 }
 .precision.precision-exact {
   border-left-color: var(--anchor);
-  background: #f0f6f2;
-  color: #2f5a41;
+  background: var(--sucesso-fundo);
+  color: var(--tone-good);
 }
 
-@media (prefers-color-scheme: dark) {
-  .precision { background: #2c2116; color: #e3c9a4; }
-  .precision.precision-exact { background: #16261c; color: #a8d9bb; }
-}
 .precision code {
   font-size: 11px;
   color: inherit;
