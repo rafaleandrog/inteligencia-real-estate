@@ -1689,7 +1689,14 @@ button.traffic-item-head:hover .traffic-item-name { color: var(--accent-text); }
 .serie-7 { --serie-cor: var(--cat-7); }
 .serie-8 { --serie-cor: var(--cat-8); }
 
-/* Anos da sazonalidade: mesma mecânica das séries, rampa ordinal em vez de categórica. */
+/* Anos da sazonalidade: mesma mecânica das séries, rampa ordinal em vez de categórica.
+
+   Este comentário descreveu por duas issues algo que NÃO acontecia. A rampa entrou na #85
+   junto com os tokens, mas nada em JS emitia `ano-N` — o gráfico saía com `serie-N` e
+   pintava os anos com a paleta categórica, que é exatamente o que a R8.76 existe para
+   impedir. Só a #97 ligou o outro lado. Quantos degraus existem aqui é conferido contra
+   `SEASONALITY_CHART.anos` por contagem exata em `tests/ui-tokens.test.js`: degrau a mais é
+   código morto, degrau a menos é série que some da tela sem erro nenhum. */
 .ano-1 { --serie-cor: var(--ano-1); }
 .ano-2 { --serie-cor: var(--ano-2); }
 .ano-3 { --serie-cor: var(--ano-3); }

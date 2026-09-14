@@ -22,6 +22,26 @@ export const CHART_TYPES = Object.freeze({
 });
 
 /**
+ * Que tipo de dimensão as séries de um gráfico separam entre si.
+ *
+ * `CATEGORICA` é identidade — venda contra locação, vendidas contra lançadas: coisas
+ * diferentes, sem ordem entre elas, cada uma com matiz próprio. `ORDINAL` é ordem — 2023,
+ * 2024, 2025: a mesma coisa em momentos sucessivos, e aí um matiz só, mais escuro a cada
+ * passo, carrega a ordem que quatro matizes desperdiçariam (R8.76).
+ *
+ * É SIGNIFICADO, não aparência, e por isso mora aqui: dizer "esta dimensão é ordenada" é
+ * uma afirmação sobre o dado. Qual rampa e qual passo é decisão do CSS, e nenhum módulo
+ * desta pasta conhece cor (R8.71) — o renderizador traduz a dimensão em prefixo de classe.
+ *
+ * É propriedade do GRÁFICO e não da série, de propósito: uma série ordinal ao lado de uma
+ * categórica no mesmo plano é estado sem significado, e campo por série admitiria escrevê-lo.
+ */
+export const DIMENSOES = Object.freeze({
+  CATEGORICA: 'categorica',
+  ORDINAL: 'ordinal',
+});
+
+/**
  * De qual recorte de linhas o gráfico lê.
  *
  * É declaração, não busca: nenhum módulo puro conhece o estado da aplicação. Quem monta
@@ -104,7 +124,9 @@ function extremos(series, baseZero) {
 /**
  * Monta o modelo do gráfico.
  *
- * @param definicao `{ key, titulo, tipo, baseZero, formatar, rotuloCategoria, ticks }`
+ * @param definicao `{ key, titulo, tipo, dimensao, baseZero, formatar, rotuloCategoria, ticks }`
+ *   — `dimensao` diz se as séries separam IDENTIDADE ou ORDEM (ver `DIMENSOES`); ausente
+ *   significa identidade, que é o caso de todos os gráficos menos a sazonalidade.
  *   — `formatar(valor)` devolve o texto pt-BR do valor (é quem conhece a unidade da
  *   métrica), `rotuloCategoria(chave)` devolve o texto do eixo X.
  * @param series `[{ chave, rotulo, cat, pontos: [{ categoria, valor }] }]` — valor `null`
@@ -113,7 +135,7 @@ function extremos(series, baseZero) {
  */
 export function buildChartModel(definicao, series) {
   const {
-    key, titulo, tipo = CHART_TYPES.LINHA, baseZero = true,
+    key, titulo, tipo = CHART_TYPES.LINHA, dimensao = DIMENSOES.CATEGORICA, baseZero = true,
     formatar = (v) => String(v), rotuloCategoria = (c) => c, ticks = 4,
     // O EIXO usa a forma curta; ponto, balão e tabela continuam exatos. Quatro rótulos de
     // `509.218` empilhados viram parede de dígitos, e eixo serve para ler de relance.
@@ -161,6 +183,7 @@ export function buildChartModel(definicao, series) {
     key,
     titulo,
     tipo,
+    dimensao,
     categorias,
     series: seriesModelo,
     y: {

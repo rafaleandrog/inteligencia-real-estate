@@ -23,7 +23,7 @@ import {
 import {
   buildHistoryCharts, buildSeasonality, buildSparkline, SERIES_MODES,
 } from './ivv/history.js';
-import { CHART_TYPES } from './ivv/chart-model.js';
+import { CHART_TYPES, DIMENSOES } from './ivv/chart-model.js';
 import { chartGeometry, chartViewport, sparkViewport } from './ivv/chart-layout.js';
 import {
   buildFipezapHistoryCharts, fipezapMonthlyIndex, fipezapRowsInRange,
@@ -1701,6 +1701,38 @@ function initializeFipezapFilters() {
 
 const SVG_NS = 'http://www.w3.org/2000/svg';
 
+/**
+ * A dimensão do gráfico vira o prefixo da classe que carrega a cor — a única tradução de
+ * significado para aparência no caminho inteiro, e ela mora aqui porque aqui é a camada de
+ * DOM. `serie-N` puxa a paleta categórica (`--cat-N`); `ano-N` puxa a rampa ordinal
+ * (`--ano-N`). Nenhum desses nomes aparece nos módulos puros: eles dizem
+ * `dimensao: 'ordinal'` e param aí (R8.71).
+ *
+ * O DEFAULT ESTÁ NO VALOR, não na chave, e isso não é estilo. `PREFIXO[m.dimensao ?? 'x']`
+ * devolveria `undefined` para qualquer valor fora do mapa — um typo, ou um renomeio que
+ * esquecesse este arquivo —, a classe sairia `undefined-3`, nenhuma regra casaria,
+ * `--serie-cor` ficaria indefinido e a série sumiria da tela SEM ERRO NENHUM. É exatamente
+ * o modo de falha que esta correção existe para consertar; reintroduzi-lo no conserto seria
+ * irônico e caro. Com `?? 'serie'` depois da busca, valor desconhecido cai no categórico,
+ * que é feio mas visível.
+ */
+const PREFIXO_DA_DIMENSAO = Object.freeze({
+  [DIMENSOES.CATEGORICA]: 'serie',
+  [DIMENSOES.ORDINAL]: 'ano',
+});
+
+/**
+ * A classe de cor de uma série.
+ *
+ * Função, e não template repetido, porque são CINCO os lugares que pintam a mesma série:
+ * grupo, rótulo do último ponto, quadradinho da legenda, ponto em foco e chave do balão.
+ * Cinco cópias do mesmo literal é o arranjo em que alguém conserta quatro e esquece o
+ * quinto — e o quinto passa a divergir dos outros sem que nada acuse.
+ */
+function classeDaSerie(model, serie) {
+  return `${PREFIXO_DA_DIMENSAO[model.dimensao] ?? 'serie'}-${serie.cat}`;
+}
+
 function svgNode(name, attributes = {}) {
   const node = document.createElementNS(SVG_NS, name);
   for (const [key, value] of Object.entries(attributes)) node.setAttribute(key, String(value));
@@ -1757,7 +1789,7 @@ function chartSvg(model, viewport) {
   }
 
   for (const serie of geometria.series) {
-    const grupo = svgNode('g', { class: `market-serie serie-${serie.cat}` });
+    const grupo = svgNode('g', { class: `market-serie ${classeDaSerie(model, serie)}` });
     for (const area of serie.areas) grupo.append(svgNode('path', { d: area, class: 'market-serie-area' }));
     for (const segmento of serie.segmentos) {
       grupo.append(svgNode('path', { d: segmento, class: 'market-serie-linha' }));
@@ -1809,7 +1841,7 @@ function chartSvg(model, viewport) {
         x: serie.ultimoPonto.rotuloX,
         y: serie.ultimoPonto.rotuloY,
         'text-anchor': 'end',
-        class: `chart-rotulo-final serie-${serie.cat}`,
+        class: `chart-rotulo-final ${classeDaSerie(model, serie)}`,
       });
       texto.textContent = serie.ultimoPonto.rotulo;
       svg.append(texto);
@@ -1839,7 +1871,7 @@ function marketChartLegend(model) {
     // A chave espelha a marca: traço para linha, retângulo para área e coluna. Um quadrado
     // ao lado de uma linha faz procurar no gráfico uma forma que não está lá.
     const forma = model.tipo === CHART_TYPES.LINHA ? 'traco' : 'bloco';
-    cor.className = `market-legenda-cor market-legenda-${forma} serie-${serie.cat}`;
+    cor.className = `market-legenda-cor market-legenda-${forma} ${classeDaSerie(model, serie)}`;
     cor.setAttribute('aria-hidden', 'true');
     item.append(cor, document.createTextNode(serie.rotulo));
     legenda.append(item);
@@ -2022,7 +2054,7 @@ function ligarLeitura(plot, svg, model, geometria) {
   svg.append(guia);
 
   const focos = geometria.series.map((serie) => {
-    const foco = svgNode('circle', { class: `chart-foco serie-${serie.cat}`, r: 4.5, cx: 0, cy: 0 });
+    const foco = svgNode('circle', { class: `chart-foco ${classeDaSerie(model, serie)}`, r: 4.5, cx: 0, cy: 0 });
     foco.setAttribute('hidden', 'hidden');
     svg.append(foco);
     return { serie, foco };
@@ -2127,7 +2159,7 @@ function preencherBalao(balao, model, indice) {
     const ponto = serie.pontos[indice];
     const item = document.createElement('li');
     const chave = document.createElement('span');
-    chave.className = `market-tooltip-chave serie-${serie.cat}`;
+    chave.className = `market-tooltip-chave ${classeDaSerie(model, serie)}`;
     chave.setAttribute('aria-hidden', 'true');
     const valor = document.createElement('strong');
     valor.textContent = ponto.rotulo ?? 'sem valor publicado';

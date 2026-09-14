@@ -787,6 +787,13 @@ Cada uma nasce de um erro que aconteceu de verdade.
   matiz, mais escura a cada ano, resolve as duas — e o tema escuro inverte o sentido da rampa,
   porque lá é o passo mais claro que salta da superfície.
 
+  *(Emenda de 2026-09-14, issue #97: **esta regra foi escrita adiante da implementação.** O
+  commit da #85 tocou só `assets/styles.css` — os tokens e as classes `.ano-*` —, e nada em
+  JS chegou a emitir `ano-N`. A sazonalidade continuou saindo com `serie-N` e com a paleta
+  categórica por mais duas issues, enquanto três textos independentes — a mensagem do
+  commit, esta regra escrita no passado e o comentário do CSS — afirmavam que estava feito.
+  A regra vale; ela só passou a ser verdade na #97. Ver R8.83.)*
+
 - **R8.77** *(2026-09-02, acabamento do Mercado DF, issue #85)* **Densidade também é contrato:
   `font-size` e espaçamento literais são o caminho por onde a hierarquia se inverte.** O guard
   de tokens nasceu proibindo cor e raio, e a tipografia escapou — sobraram ~20 literais no
@@ -860,3 +867,23 @@ Cada uma nasce de um erro que aconteceu de verdade.
   teste de token pega isso. Mecanismo: depois de mexer em fonte ou em classe compartilhada,
   **renderizar as duas páginas e olhar** — é a razão de o passo 7 do fluxo de verificação
   (`docs/AI_WORKFLOW.md`) existir, e o único que encontra esta família.
+
+- **R8.83** *(2026-09-14, rampa ordinal dos anos, issue #97)* **Correção que atravessa duas
+  camadas precisa de um teste que atravesse as duas — e documentar a metade feita como se
+  fosse o todo é o que impede alguém de notar a metade que faltou.** A rampa ordinal dos
+  anos nasceu morta: o commit da #85 mexeu só no CSS, definiu `--ano-1..4` e as classes
+  `.ano-*`, e nenhum arquivo de `src/` passou a emitir essas classes. O gráfico continuou
+  pintando os anos com a paleta categórica por duas issues. O que fez o defeito sobreviver
+  não foi a falta de um teste — foi o **excesso de documentação correta sobre código
+  errado**: a mensagem do commit dizia "os anos saem da paleta categórica", a R8.76 foi
+  escrita no passado, como lição aprendida, e o comentário do CSS descrevia a mecânica como
+  se estivesse ligada. Quem fosse conferir leria os três, veria os tokens definidos, e
+  concluiria que estava feito. Documentação é o único tipo de prova que se pode escrever
+  antes do fato e que ninguém executa. Mecanismo: quando o conserto vai de um lado a outro
+  da fronteira CSS↔JS, a asserção que o prova tem que ler os **dois** lados — no caso, ler
+  `--ano-N` de `:root` e comparar com o `stroke` COMPUTADO do traço (R8.67/R8.70) —, e o
+  número que os dois lados compartilham fecha por contagem exata, nos dois sentidos: degrau
+  a mais é código morto, degrau a menos é série que some sem erro. Corolário barato: um
+  campo novo que atravessa camadas ganha o default no VALOR e não na chave
+  (`MAPA[x] ?? padrao`), senão um typo devolve `undefined`, a classe sai `undefined-3` e a
+  série some — o mesmo modo de falha, reintroduzido dentro do próprio conserto.

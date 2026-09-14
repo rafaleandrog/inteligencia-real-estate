@@ -3,7 +3,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  CHART_TYPES, CHART_SOURCES, buildChartModel, chartTable, niceTicks, thinLabels,
+  CHART_TYPES, CHART_SOURCES, DIMENSOES, buildChartModel, chartTable, niceTicks, thinLabels,
 } from '../src/ivv/chart-model.js';
 
 const definicao = {
@@ -117,6 +117,18 @@ test('a série declara índice de paleta, nunca cor', () => {
   const modelo = buildChartModel(definicao, [serie('a', [['2026-01', 1]], 3)]);
   assert.equal(modelo.series[0].cat, 3);
   assert.equal(JSON.stringify(modelo).includes('#'), false, 'cor literal vazou para o modelo');
+});
+
+// A dimensão é do GRÁFICO, não da série: uma série ordinal ao lado de uma categórica no
+// mesmo plano é estado sem significado, e campo por série admitiria escrevê-lo (issue #97).
+test('o gráfico declara a dimensão das séries, e o default é identidade', () => {
+  const pontos = [['2026-01', 1]];
+  assert.equal(buildChartModel(definicao, [serie('a', pontos)]).dimensao, DIMENSOES.CATEGORICA);
+  const ordinal = buildChartModel({ ...definicao, dimensao: DIMENSOES.ORDINAL }, [serie('a', pontos)]);
+  assert.equal(ordinal.dimensao, DIMENSOES.ORDINAL);
+  // Dimensão é semântica, não aparência: nenhum nome de token nem de classe entra no modelo.
+  assert.equal(/--(cat|ano)-|\bserie-\d|\bano-\d/.test(JSON.stringify(ordinal)), false,
+    'vocabulário de CSS vazou para o modelo');
 });
 
 test('chartTable devolve uma linha por categoria, com frase na ausência', () => {
