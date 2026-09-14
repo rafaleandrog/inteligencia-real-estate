@@ -9,6 +9,7 @@ import assert from 'node:assert/strict';
 import { normalizePdadData } from '../src/pdad/normalize-pdad.js';
 import {
   buildPdadIndex, rasForYear, summarizeKpis, indicatorSeries, categoryLabel,
+  indicatorGroups, buildFigureMeta, detailRowsForKey, rankScalar,
 } from '../src/pdad/aggregate.js';
 
 const idade = (ra, year, categoria, categoriaPadrao, total, over = {}) => ({
@@ -226,4 +227,118 @@ test('entrada vazia não estoura', () => {
     population: 0, households: 0, avgHouseholdSize: null, raCount: 0,
   });
   assert.deepEqual(indicatorSeries({}, 2024, [], 'marital'), []);
+});
+
+// --- "Local de compras" (shopping): dois níveis, grupo × destino (issue #102) ------------
+
+const compra = (ra, indicatorCode, segmentValue, destino, pct, status = 'published', over = {}) => ({
+  pdad_year: '2024',
+  ra_geo_id: ra,
+  ra_name: ra === 'RA_01' ? 'Plano Piloto' : 'Ceilândia',
+  indicator_code: indicatorCode,
+  segment_value: segmentValue,
+  response_category: destino,
+  category_standard: (destino || '').toLowerCase(),
+  estimate_pct: status === 'suppressed' ? '' : String(pct),
+  estimate_total: status === 'suppressed' ? '' : String(pct * 10),
+  source_value_status: status,
+  ...over,
+});
+
+test('indicatorGroups: purchase_locations usa segment_value (slug) como grupo e response_category como destino', () => {
+  const rows = [
+    compra('RA_01', 'purchase_locations', 'alimentacao_higiene_limpeza', 'Plano Piloto', 80),
+    compra('RA_01', 'purchase_locations', 'alimentacao_higiene_limpeza', 'Taguatinga', 20),
+  ];
+  const idx = buildPdadIndex(normalizePdadData(rows).rows);
+  const grupos = indicatorGroups(idx, 2024, ['RA_01']);
+  assert.equal(grupos.length, 1);
+  assert.equal(grupos[0].group, 'Alimentação, higiene e limpeza');
+  assert.deepEqual(grupos[0].items.map((i) => i.label), ['Plano Piloto', 'Taguatinga']);
+});
+
+test('indicatorGroups: purchase_appliances usa o indicator_code como grupo (sem slug)', () => {
+  const rows = [compra('RA_01', 'purchase_appliances', 'irrelevante', 'São Sebastião', 76.3)];
+  const idx = buildPdadIndex(normalizePdadData(rows).rows);
+  const grupos = indicatorGroups(idx, 2024, ['RA_01']);
+  assert.equal(grupos[0].group, 'Eletrodomésticos');
+  assert.equal(grupos[0].items[0].label, 'São Sebastião');
+});
+
+test('indicatorGroups com mais de uma RA tira MÉDIA por destino dentro do grupo, nunca soma', () => {
+  const rows = [
+    compra('RA_01', 'purchase_locations', 'eletrodomesticos', 'Taguatinga', 40),
+    compra('RA_09', 'purchase_locations', 'eletrodomesticos', 'Taguatinga', 60),
+  ];
+  const idx = buildPdadIndex(normalizePdadData(rows).rows);
+  const grupos = indicatorGroups(idx, 2024, ['RA_01', 'RA_09']);
+  assert.equal(grupos[0].items[0].pct, 50);
+});
+
+test('indicatorGroups devolve lista vazia quando a RA não tem "shopping"', () => {
+  assert.deepEqual(indicatorGroups({ 2024: {} }, 2024, []), []);
+});
+
+// --- Metadados de Figura/Tabela (drill-down, issue #102) ----------------------------------
+
+test('buildFigureMeta pega a PRIMEIRA linha vista de cada indicator_code, sem duplicar', () => {
+  const rows = normalizePdadData([
+    marital('RA_01', 2024, 'Casado', 52, 'published', {
+      figure_number: '17', table_number: '9', universe: 'Moradores de 10 anos ou mais',
+    }),
+    marital('RA_09', 2024, 'Casado', 48, 'published', { figure_number: '999' }),
+  ]).rows;
+  const meta = buildFigureMeta(rows);
+  assert.equal(meta.get('marital_status').figureNumber, '17');
+  assert.equal(meta.get('marital_status').universe, 'Moradores de 10 anos ou mais');
+});
+
+// --- Linhas cruas por chave de exibição (drill-down, issue #102) --------------------------
+
+test('detailRowsForKey filtra por RA + ano + indicator_code(s) da chave', () => {
+  const rows = normalizePdadData([
+    marital('RA_01', 2024, 'Casado', 52),
+    marital('RA_01', 2021, 'Casado', 50),
+    marital('RA_09', 2024, 'Casado', 48),
+  ]).rows;
+  const achadas = detailRowsForKey(rows, { raGeoId: 'RA_01', year: 2024, key: 'marital' });
+  assert.equal(achadas.length, 1);
+  assert.equal(achadas[0].raGeoId, 'RA_01');
+});
+
+test('detailRowsForKey de "shopping" cruza os 5 indicator_code que compartilham a chave', () => {
+  const rows = normalizePdadData([
+    compra('RA_01', 'purchase_locations', 'eletrodomesticos', 'Taguatinga', 40),
+    compra('RA_01', 'purchase_appliances', 'x', 'São Sebastião', 76),
+  ]).rows;
+  const achadas = detailRowsForKey(rows, { raGeoId: 'RA_01', year: 2024, key: 'shopping' });
+  assert.equal(achadas.length, 2);
+});
+
+test('detailRowsForKey com chave desconhecida devolve lista vazia, não estoura', () => {
+  assert.deepEqual(detailRowsForKey([], { raGeoId: 'RA_01', year: 2024, key: 'inexistente' }), []);
+});
+
+// --- Valor escalar do Ranking dos territórios (issue #102) --------------------------------
+
+test('rankScalar lê a categoria declarada do indicador quando o item usa `key`+`category`', () => {
+  const rows = [marital('RA_01', 2024, 'Casado', 52.1)];
+  const idx = buildPdadIndex(normalizePdadData(rows).rows);
+  const ra = rasForYear(idx, 2024)[0];
+  assert.equal(rankScalar(ra, { key: 'marital', category: 'Casado' }), 52.1);
+});
+
+test('rankScalar devolve null quando a RA não publicou a categoria — nunca 0', () => {
+  const rows = [marital('RA_01', 2024, 'Casado', 52.1)];
+  const idx = buildPdadIndex(normalizePdadData(rows).rows);
+  const ra = rasForYear(idx, 2024)[0];
+  assert.equal(rankScalar(ra, { key: 'marital', category: 'Viúvo' }), null);
+});
+
+test('rankScalar com `attr` lê um campo pronto da RA — ausente/`incomePerCapita` (sem join com RA_PROFILES) devolve null', () => {
+  const rows = [idade('RA_01', 2024, 'até 4 anos', 'ate_4_anos', 100)];
+  const idx = buildPdadIndex(normalizePdadData(rows).rows);
+  const ra = rasForYear(idx, 2024)[0];
+  assert.equal(rankScalar(ra, { attr: 'population' }), 100);
+  assert.equal(rankScalar(ra, { attr: 'incomePerCapita' }), null);
 });

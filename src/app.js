@@ -30,8 +30,17 @@ import {
 } from './fipezap/history.js';
 import { localitiesAvailable, buildLocalityCharts, FIPEZAP_SEGMENTS } from './fipezap/locality.js';
 import { pdadYearsAvailable } from './pdad/normalize-pdad.js';
-import { buildPdadIndex, rasForYear, summarizeKpis, indicatorSeries } from './pdad/aggregate.js';
-import { PDAD_TEMAS, INDICATORS_BY_TEMA } from './pdad/indicators.js';
+import {
+  buildPdadIndex, rasForYear, summarizeKpis, indicatorSeries, indicatorGroups,
+  buildFigureMeta, detailRowsForKey, rankScalar, categoryLabel,
+} from './pdad/aggregate.js';
+import {
+  PDAD_TEMAS, INDICATORS_BY_TEMA, PDAD_VIZ, PDAD_TIME_ORDER, PDAD_RANK_SET,
+  PDAD_COMPARE_KITS, PDAD_SCATTER_VIEWS, PDAD_INDICATOR_LIST, INDICATOR_CODES_BY_KEY,
+  SHOPPING_GROUP_BY_CODE, SHOPPING_GROUP_TITLE_BY_SLUG,
+} from './pdad/indicators.js';
+import { buildChart, buildGroups } from './pdad/charts.js';
+import { rowsToCsv, downloadCsv } from './pdad/csv.js';
 import {
   anchorLegendGroups, applyFilters, computeKpis, createFilterState, distinctAnchorGroups,
   distinctAnchorSegments, distinctLocalities, distinctPropertyTypes, distinctRegions,
@@ -104,6 +113,34 @@ const dom = {
   pdadRa: el('pdadRa'), pdadYear: el('pdadYear'), pdadTema: el('pdadTema'),
   pdadReset: el('pdadReset'), pdadKpis: el('pdadKpis'), pdadYearNote: el('pdadYearNote'),
   pdadTemaBlocks: el('pdadTemaBlocks'),
+  pdadScatterSection: el('pdadScatterSection'), pdadScatterMeta: el('pdadScatterMeta'),
+  pdadScatterView: el('pdadScatterView'), pdadScatterInsight: el('pdadScatterInsight'),
+  pdadScatterPlot: el('pdadScatterPlot'), pdadScatterNote: el('pdadScatterNote'),
+
+  pdadRankingTab: el('pdadRankingTab'), pdadRankingView: el('pdadRankingView'),
+  pdadRankRa: el('pdadRankRa'), pdadRankCards: el('pdadRankCards'),
+  pdadRankIndicator: el('pdadRankIndicator'), pdadRankMode: el('pdadRankMode'),
+  pdadRankExport: el('pdadRankExport'), pdadRankTableHead: el('pdadRankTableHead'),
+  pdadRankTableBody: el('pdadRankTableBody'),
+
+  pdadCompareTab: el('pdadCompareTab'), pdadCompareView: el('pdadCompareView'),
+  pdadCompareCount: el('pdadCompareCount'),
+  pdadCvRaSelect: el('pdadCvRaSelect'), pdadCvRaAdd: el('pdadCvRaAdd'), pdadCvRaTop: el('pdadCvRaTop'),
+  pdadCvRas: el('pdadCvRas'),
+  pdadCvIndSelect: el('pdadCvIndSelect'), pdadCvIndAdd: el('pdadCvIndAdd'), pdadCvKits: el('pdadCvKits'),
+  pdadCvInds: el('pdadCvInds'),
+  pdadCvClear: el('pdadCvClear'), pdadCvExport: el('pdadCvExport'),
+  pdadCvSummary: el('pdadCvSummary'), pdadCvBlocks: el('pdadCvBlocks'),
+
+  pdadBaseTab: el('pdadBaseTab'), pdadBaseView: el('pdadBaseView'),
+  pdadBaseDescription: el('pdadBaseDescription'), pdadBaseKpis: el('pdadBaseKpis'),
+
+  pdadDrillOverlay: el('pdadDrillOverlay'), pdadDrillTitle: el('pdadDrillTitle'),
+  pdadDrillSub: el('pdadDrillSub'), pdadDrillClose: el('pdadDrillClose'),
+  pdadDrillRa: el('pdadDrillRa'), pdadDrillYear: el('pdadDrillYear'),
+  pdadDrillExport: el('pdadDrillExport'), pdadDrillAudit: el('pdadDrillAudit'),
+  pdadDrillRows: el('pdadDrillRows'), pdadDrillRank: el('pdadDrillRank'),
+  pdadDrillMeta: el('pdadDrillMeta'),
 };
 
 const state = {
@@ -148,6 +185,18 @@ const state = {
   pdadData: [],
   pdadIndex: {},
   pdadFilters: null,
+  // Metadados de figura/tabela por `indicator_code` (issue #102), montados uma vez no
+  // carregamento — alimenta o cabeçalho do drill-down sem precisar de um `FIGURE_MAP`
+  // separado, porque cada linha do PDAD_A_DATA já carrega a própria procedência.
+  pdadFigureMeta: new Map(),
+  // Filtros da tela Ranking dos territórios: RA de referência dos cartões, indicador e
+  // critério (%/absoluto) da tabela comparativa. `null` até a primeira carga com dado.
+  pdadRankState: null,
+  // Seleção da tela Comparar RAs: RAs (2 a 6) e indicadores (até 4), com uma cor fixa por
+  // RA enquanto ela estiver selecionada — mesma leitura do protótipo de referência.
+  pdadCompareState: { ras: [], inds: [], colors: {} },
+  // Recorte aberto no modal de drill-down (issue #102). `null` quando o modal está fechado.
+  pdadDrillState: null,
 };
 
 let map = null;
@@ -1246,6 +1295,21 @@ function populateSelect(select, values, formatter = (v) => v) {
 }
 
 /**
+ * Como `populateSelect`, mas sem opção fixa a preservar — para seletores de escolha
+ * única (RA do ranking/drill-down, indicador a adicionar) que não têm um "Todas" (issue
+ * #102). `populateSelect` chamado num `<select>` vazio deixaria `null` como o primeiro
+ * filho a "preservar", o que o DOM converteria na string literal "null".
+ */
+function populateSelectFull(select, values, formatter = (v) => v) {
+  select.replaceChildren(...values.map((value) => {
+    const option = document.createElement('option');
+    option.value = value;
+    option.textContent = formatter(value);
+    return option;
+  }));
+}
+
+/**
  * Repopula o select de segmento com os segmentos do grupo escolhido (issue #26).
  *
  * Sem isso, escolher "Infraestrutura" e "Escola" ao mesmo tempo devolveria conjunto
@@ -1410,7 +1474,7 @@ function showSourceBadge(source) {
 
 // --- View interna do Mercado Residencial DF (issue #58) ----------------------------
 
-const VIEWS = ['mapa', 'mercado', 'diagnostico'];
+const VIEWS = ['mapa', 'mercado', 'diagnostico', 'ranking', 'comparar', 'base'];
 
 /** A view pedida pelo hash. Hash desconhecido cai no mapa, sem erro. */
 function viewFromHash() {
@@ -1435,20 +1499,29 @@ function viewFromHash() {
  */
 function setView(name) {
   const temMercado = state.ivvMonthly.length > 0;
+  // As 4 telas do PDAD-A (issue #102) compartilham o mesmo dado carregado — sem ele,
+  // nenhuma das quatro tem o que mostrar.
   const temDiagnostico = state.pdadData.length > 0;
+  const PDAD_VIEWS = new Set(['diagnostico', 'ranking', 'comparar', 'base']);
   let view = 'mapa';
   if (name === 'mercado' && temMercado) view = 'mercado';
-  else if (name === 'diagnostico' && temDiagnostico) view = 'diagnostico';
+  else if (PDAD_VIEWS.has(name) && temDiagnostico) view = name;
 
   dom.mapView.hidden = view !== 'mapa';
   dom.marketView.hidden = view !== 'mercado';
   dom.pdadView.hidden = view !== 'diagnostico';
+  dom.pdadRankingView.hidden = view !== 'ranking';
+  dom.pdadCompareView.hidden = view !== 'comparar';
+  dom.pdadBaseView.hidden = view !== 'base';
 
   for (const tab of dom.viewSwitch.querySelectorAll('.view-tab')) {
     tab.setAttribute('aria-pressed', String(tab.dataset.view === view));
   }
 
   if (view === 'mapa' && map) map.invalidateSize();
+  if (view === 'ranking') renderPdadRankingView();
+  if (view === 'comparar') renderPdadCompareView();
+  if (view === 'base') renderPdadBaseView();
 
   const alvo = `#${view}`;
   if (location.hash !== alvo) history.replaceState(null, '', alvo);
@@ -2615,6 +2688,10 @@ function initializePdadFilters() {
   populatePdadRaFilter();
   populateSelect(dom.pdadTema, Object.keys(PDAD_TEMAS), (key) => PDAD_TEMAS[key]);
   dom.pdadTema.value = 'all';
+  // Metadados de Figura/Tabela por indicador (issue #102) — montados uma vez, igual ao
+  // índice agregado: são constantes por `indicator_code`, recalcular a cada filtro
+  // custaria as ~12 mil linhas de novo para o mesmo resultado.
+  state.pdadFigureMeta = buildFigureMeta(state.pdadData);
 }
 
 /**
@@ -2669,42 +2746,32 @@ function renderPdadKpis(raIds) {
   );
 }
 
-/** Uma categoria, como barra horizontal proporcional ao maior valor do cartão. */
-function pdadBarRow(valor, maximo) {
-  const li = document.createElement('li');
-  li.className = 'pdad-bar';
-
-  const nome = document.createElement('span');
-  nome.className = 'pdad-bar-nome';
-  nome.title = valor.label;
-  nome.textContent = valor.label;
-
-  const trilho = document.createElement('span');
-  trilho.className = 'pdad-bar-trilho';
-  const fill = document.createElement('span');
-  fill.className = 'pdad-bar-fill';
-  const pct = Number.isFinite(valor.pct) ? valor.pct : null;
-  fill.style.width = (pct !== null && maximo > 0) ? `${Math.max(2, (pct / maximo) * 100)}%` : '0%';
-  trilho.append(fill);
-
-  const numero = document.createElement('span');
-  const ausente = pct === null;
-  numero.className = ausente ? 'pdad-bar-valor pdad-ausente' : 'pdad-bar-valor';
-  // Suprimido/parcial vira FRASE, nunca "0%" — uma barra vazia afirma "não tem" onde o
-  // dado diz "não publicou" (R5.7).
-  numero.textContent = ausente
-    ? (valor.status === 'suppressed' ? 'suprimido' : valor.status === 'partial' ? 'parcial' : '—')
-    : formatPercent(percentFromPoints(pct));
-
-  li.append(nome, trilho, numero);
-  return li;
+/** Parágrafo de "sem valor" — mesma classe usada por `src/pdad/charts.js`. */
+function pdadEmptyPara(texto) {
+  const p = document.createElement('p');
+  p.className = 'pdad-empty';
+  p.textContent = texto;
+  return p;
 }
 
-const PDAD_BAR_CAP = 8;
+function pdadEmptySection(texto) {
+  const section = document.createElement('section');
+  section.className = 'pdad-card';
+  section.append(pdadEmptyPara(texto));
+  return section;
+}
 
+/**
+ * Um cartão de indicador (issue #102): desenha pelo tipo declarado em `PDAD_VIZ` — não
+ * só barras horizontais como a Fase 1 fazia. `shopping` é o único que usa `groups`
+ * (dois níveis, tipo de compra × destino) em vez da lista achatada de categorias que
+ * todo o resto usa — por isso lê de `indicatorGroups()`, não `indicatorSeries()`.
+ */
 function pdadIndicatorCard(indicador, raIds) {
+  const viz = PDAD_VIZ[indicador.key] || { kind: 'hbars' };
   const article = document.createElement('article');
-  article.className = 'pdad-card';
+  article.className = viz.span === 2 ? 'pdad-card pdad-card-wide' : 'pdad-card';
+  article.dataset.pdadIndicatorKey = indicador.key;
 
   const head = document.createElement('div');
   head.className = 'pdad-card-head';
@@ -2717,31 +2784,19 @@ function pdadIndicatorCard(indicador, raIds) {
   head.append(titulo, unidade);
   article.append(head);
 
-  const valores = indicatorSeries(state.pdadIndex, state.pdadFilters.year, raIds, indicador.key);
-  if (valores.length === 0) {
-    const vazio = document.createElement('p');
-    vazio.className = 'pdad-empty';
-    vazio.textContent = 'Sem valores publicados para esta seleção.';
-    article.append(vazio);
+  if (indicador.key === 'shopping') {
+    const grupos = indicatorGroups(state.pdadIndex, state.pdadFilters.year, raIds, 'shopping');
+    article.append(grupos.length ? buildGroups(grupos, { cap: viz.cap }) : pdadEmptyPara('Sem valores publicados para esta seleção.'));
     return article;
   }
 
-  const mostrados = valores.slice(0, PDAD_BAR_CAP);
-  const resto = valores.length - mostrados.length;
-  const maximo = Math.max(...mostrados.map((v) => (Number.isFinite(v.pct) ? v.pct : 0)), 1);
-
-  const lista = document.createElement('ul');
-  lista.className = 'pdad-bar-list';
-  for (const valor of mostrados) lista.append(pdadBarRow(valor, maximo));
-  article.append(lista);
-
-  if (resto > 0) {
-    const mais = document.createElement('p');
-    mais.className = 'pdad-bar-mais';
-    mais.textContent = `+${resto} categoria(s) não mostrada(s) neste recorte.`;
-    article.append(mais);
+  const valores = indicatorSeries(state.pdadIndex, state.pdadFilters.year, raIds, indicador.key);
+  if (valores.length === 0) {
+    article.append(pdadEmptyPara('Sem valores publicados para esta seleção.'));
+    return article;
   }
-
+  const order = (indicador.key === 'schoolTime' || indicador.key === 'workTime') ? PDAD_TIME_ORDER : undefined;
+  article.append(buildChart(viz, valores, { order }));
   return article;
 }
 
@@ -2780,12 +2835,14 @@ function renderPdadTemaBlocks(raIds) {
 function renderPdadView() {
   const temDado = state.pdadData.length > 0;
 
-  dom.pdadTab.disabled = !temDado;
-  dom.pdadTab.title = temDado ? ''
-    : 'A aba PDAD_A_DATA não foi carregada, então não há diagnóstico territorial para mostrar.';
+  const semAba = 'A aba PDAD_A_DATA não foi carregada, então não há diagnóstico territorial para mostrar.';
+  for (const tab of [dom.pdadTab, dom.pdadRankingTab, dom.pdadCompareTab, dom.pdadBaseTab]) {
+    tab.disabled = !temDado;
+    tab.title = temDado ? '' : semAba;
+  }
 
   if (!temDado) {
-    if (viewFromHash() === 'diagnostico') setView('mapa');
+    if (['diagnostico', 'ranking', 'comparar', 'base'].includes(viewFromHash())) setView('mapa');
     return [];
   }
 
@@ -2799,6 +2856,7 @@ function renderPdadView() {
   renderPdadKpis(raIds);
   dom.pdadYearNote.textContent = pdadYearNoteText();
   renderPdadTemaBlocks(raIds);
+  renderPdadScatter();
 
   setView(viewFromHash());
   return [];
@@ -2807,6 +2865,723 @@ function renderPdadView() {
 function refreshPdadView() {
   const pdadWarnings = renderPdadView();
   showWarnings([...state.baseWarnings, ...pdadWarnings]);
+}
+
+// --- Diagnóstico Territorial PDAD-A: dispersão (issue #102) -----------------------
+
+/** O ano de cobertura completa (o mais recente do lote) — Ranking/Comparar/Dispersão travam nele. */
+function pdadPrimaryYear() {
+  return pdadYearsAvailable(state.pdadData)[0];
+}
+
+function populatePdadScatterSelect() {
+  if (dom.pdadScatterView.options.length > 0) return;
+  populateSelectFull(dom.pdadScatterView, PDAD_SCATTER_VIEWS.map((v) => v.id), (id) => PDAD_SCATTER_VIEWS.find((v) => v.id === id).label);
+}
+
+function pdadNiceTicks(min, max, n) {
+  const span = (max - min) || 1;
+  const step0 = span / n;
+  const mag = 10 ** Math.floor(Math.log10(step0));
+  const norm = step0 / mag;
+  const step = (norm < 1.5 ? 1 : norm < 3.5 ? 2 : norm < 7.5 ? 5 : 10) * mag;
+  const lo = Math.floor(min / step) * step;
+  const hi = Math.ceil(max / step) * step;
+  const ticks = [];
+  for (let t = lo; t <= hi + step / 2; t += step) ticks.push(t);
+  return { ticks, lo, hi };
+}
+
+function pdadFmtTick(v) {
+  return Math.abs(v) >= 1000
+    ? `${(v / 1000).toLocaleString('pt-BR', { maximumFractionDigits: 1 })}k`
+    : v.toLocaleString('pt-BR', { maximumFractionDigits: 1 });
+}
+
+function pdadAxisFmt(spec, v) {
+  if (spec.attr === 'incomePerCapita') return `R$ ${Math.round(v).toLocaleString('pt-BR')}`;
+  if (spec.attr === 'population' || spec.attr === 'households') return formatNumber(v);
+  return formatPercent(percentFromPoints(v));
+}
+
+function pdadPearson(pts) {
+  const n = pts.length;
+  if (n < 3) return null;
+  const mx = pts.reduce((a, p) => a + p.x, 0) / n;
+  const my = pts.reduce((a, p) => a + p.y, 0) / n;
+  let sxy = 0; let sxx = 0; let syy = 0;
+  for (const p of pts) {
+    sxy += (p.x - mx) * (p.y - my);
+    sxx += (p.x - mx) ** 2;
+    syy += (p.y - my) ** 2;
+  }
+  const den = Math.sqrt(sxx * syy);
+  return den ? sxy / den : null;
+}
+
+/**
+ * Desenha a seção de dispersão da tela Diagnóstico (issue #102): 7 leituras cruzadas
+ * pré-definidas (`PDAD_SCATTER_VIEWS`), correlação de Pearson descritiva, eixos com
+ * ticks "redondos". Só faz sentido no ano de cobertura completa — travado nele, mesma
+ * leitura do protótipo de referência (que trava a dispersão em 2024).
+ */
+function renderPdadScatter() {
+  populatePdadScatterSelect();
+  const ano = pdadPrimaryYear();
+  if (state.pdadFilters.year !== ano) {
+    dom.pdadScatterSection.hidden = true;
+    return;
+  }
+  dom.pdadScatterSection.hidden = false;
+
+  const view = PDAD_SCATTER_VIEWS.find((v) => v.id === dom.pdadScatterView.value) || PDAD_SCATTER_VIEWS[0];
+  dom.pdadScatterView.value = view.id;
+  dom.pdadScatterInsight.textContent = view.insight;
+
+  const ras = rasForYear(state.pdadIndex, ano);
+  const pontos = [];
+  const excluidas = [];
+  for (const ra of ras) {
+    const x = rankScalar(ra, view.x);
+    const y = rankScalar(ra, view.y);
+    if (Number.isFinite(x) && Number.isFinite(y)) pontos.push({ ra, x, y });
+    else excluidas.push(ra);
+  }
+
+  if (pontos.length < 3) {
+    dom.pdadScatterPlot.replaceChildren(pdadEmptyPara('Poucas RAs com valor publicado nesta leitura.'));
+    dom.pdadScatterMeta.textContent = '';
+    dom.pdadScatterNote.textContent = excluidas.length
+      ? `Sem valor publicado: ${excluidas.map((ra) => ra.raName).join(', ')}.` : '';
+    return;
+  }
+
+  const W = 700; const H = 320; const mg = { l: 58, r: 24, t: 14, b: 44 };
+  const iw = W - mg.l - mg.r; const ih = H - mg.t - mg.b;
+  const xt = pdadNiceTicks(Math.min(...pontos.map((p) => p.x)), Math.max(...pontos.map((p) => p.x)), 5);
+  const yt = pdadNiceTicks(Math.min(...pontos.map((p) => p.y)), Math.max(...pontos.map((p) => p.y)), 4);
+  const X = (v) => mg.l + ((v - xt.lo) / ((xt.hi - xt.lo) || 1)) * iw;
+  const Y = (v) => mg.t + ih - ((v - yt.lo) / ((yt.hi - yt.lo) || 1)) * ih;
+  const raSelecionada = state.pdadFilters.ra !== 'all' ? state.pdadFilters.ra : null;
+
+  const svgNS = 'http://www.w3.org/2000/svg';
+  const svg = document.createElementNS(svgNS, 'svg');
+  svg.setAttribute('viewBox', `0 0 ${W} ${H}`);
+  svg.setAttribute('role', 'img');
+  svg.setAttribute('class', 'pdad-sc-svg');
+  svg.setAttribute('aria-label', view.label);
+
+  const eixo = document.createElementNS(svgNS, 'line');
+  eixo.setAttribute('class', 'pdad-sc-axis');
+  eixo.setAttribute('x1', mg.l); eixo.setAttribute('x2', W - mg.r);
+  eixo.setAttribute('y1', mg.t + ih); eixo.setAttribute('y2', mg.t + ih);
+  svg.append(eixo);
+
+  for (const t of yt.ticks) {
+    const linha = document.createElementNS(svgNS, 'line');
+    linha.setAttribute('class', 'pdad-sc-grid');
+    linha.setAttribute('x1', mg.l); linha.setAttribute('x2', W - mg.r);
+    linha.setAttribute('y1', Y(t)); linha.setAttribute('y2', Y(t));
+    svg.append(linha);
+    const texto = document.createElementNS(svgNS, 'text');
+    texto.setAttribute('class', 'pdad-sc-tick');
+    texto.setAttribute('x', mg.l - 8); texto.setAttribute('y', Y(t) + 3);
+    texto.setAttribute('text-anchor', 'end');
+    texto.textContent = pdadFmtTick(t);
+    svg.append(texto);
+  }
+  for (const t of xt.ticks) {
+    const texto = document.createElementNS(svgNS, 'text');
+    texto.setAttribute('class', 'pdad-sc-tick');
+    texto.setAttribute('x', X(t)); texto.setAttribute('y', H - mg.b + 16);
+    texto.setAttribute('text-anchor', 'middle');
+    texto.textContent = pdadFmtTick(t);
+    svg.append(texto);
+  }
+
+  for (const ponto of pontos) {
+    const selecionado = ponto.ra.raGeoId === raSelecionada;
+    const circulo = document.createElementNS(svgNS, 'circle');
+    circulo.setAttribute('class', selecionado ? 'pdad-sc-dot sel' : 'pdad-sc-dot');
+    circulo.setAttribute('cx', X(ponto.x)); circulo.setAttribute('cy', Y(ponto.y));
+    circulo.setAttribute('r', selecionado ? 6 : 4.5);
+    circulo.dataset.drillRa = ponto.ra.raGeoId;
+    circulo.setAttribute('role', 'button');
+    circulo.setAttribute('tabindex', '0');
+    const titulo = document.createElementNS(svgNS, 'title');
+    titulo.textContent = `${ponto.ra.raName} · ${view.x.label}: ${pdadAxisFmt(view.x, ponto.x)} · `
+      + `${view.y.label}: ${pdadAxisFmt(view.y, ponto.y)} · clique para focar`;
+    circulo.append(titulo);
+    svg.append(circulo);
+  }
+
+  const labelX = document.createElementNS(svgNS, 'text');
+  labelX.setAttribute('class', 'pdad-sc-axlabel');
+  labelX.setAttribute('x', mg.l + iw / 2); labelX.setAttribute('y', H - 6);
+  labelX.setAttribute('text-anchor', 'middle');
+  labelX.textContent = view.x.label;
+  svg.append(labelX);
+  const labelY = document.createElementNS(svgNS, 'text');
+  labelY.setAttribute('class', 'pdad-sc-axlabel');
+  labelY.setAttribute('x', 14); labelY.setAttribute('y', mg.t + ih / 2);
+  labelY.setAttribute('transform', `rotate(-90 14 ${mg.t + ih / 2})`);
+  labelY.setAttribute('text-anchor', 'middle');
+  labelY.textContent = view.y.label;
+  svg.append(labelY);
+
+  dom.pdadScatterPlot.replaceChildren(svg);
+  const r = pdadPearson(pontos);
+  dom.pdadScatterMeta.textContent = `${pontos.length} RAs${r !== null ? ` · r = ${r.toFixed(2).replace('.', ',')}` : ''}`;
+  dom.pdadScatterNote.textContent = 'Correlação de Pearson descritiva sobre valores publicados — não implica causalidade.'
+    + (excluidas.length ? ` Fora do gráfico (sem valor publicado): ${excluidas.map((ra) => ra.raName).join(', ')}.` : '');
+}
+
+// --- Diagnóstico Territorial PDAD-A: Ranking dos territórios (issue #102) ---------
+
+/** Total estimado publicado da categoria do item de ranking — usado no critério "Nº absolutos". */
+function pdadRankAbsValue(ra, item) {
+  if (item.attr) return rankScalar(ra, item);
+  const rows = detailRowsForKey(state.pdadData, { raGeoId: ra.raGeoId, year: pdadPrimaryYear(), key: item.key });
+  const achado = rows.find((row) => categoryLabel(row) === item.category);
+  return achado && Number.isFinite(achado.estimateTotal) ? achado.estimateTotal : null;
+}
+
+function pdadRankValues(item, mode) {
+  const ano = pdadPrimaryYear();
+  const ras = rasForYear(state.pdadIndex, ano);
+  return ras.map((ra) => {
+    const bruto = (mode === 'abs' && !item.attr) ? pdadRankAbsValue(ra, item) : rankScalar(ra, item);
+    return { ra, v: Number.isFinite(bruto) ? bruto : null };
+  }).filter((x) => x.v !== null).sort((a, b) => b.v - a.v);
+}
+
+function pdadRankFormat(item, v, abs) {
+  if (item.unit === 'currency') return `R$ ${Math.round(v).toLocaleString('pt-BR')}`;
+  if (abs) return formatNumber(v);
+  return formatPercent(percentFromPoints(v));
+}
+
+function pdadRankCard(item, raGeoId, mode) {
+  const abs = mode === 'abs' && !!item.key;
+  const vals = pdadRankValues(item, mode);
+  const pos = vals.findIndex((x) => x.ra.raGeoId === raGeoId);
+  const minha = pos >= 0 ? vals[pos].v : null;
+  const pctil = (pos >= 0 && vals.length > 1) ? (1 - pos / (vals.length - 1)) * 100 : null;
+
+  const article = document.createElement('article');
+  article.className = pos < 0 ? 'pdad-rank-card pdad-rank-off' : 'pdad-rank-card';
+  if (item.key) {
+    article.dataset.pdadIndicatorKey = item.key;
+    article.dataset.drillCategory = item.category;
+    article.tabIndex = 0;
+    article.setAttribute('role', 'button');
+    article.title = 'Clique para rastrear até a origem do dado';
+  }
+  const temaEl = document.createElement('div'); temaEl.className = 'pdad-rank-tema'; temaEl.textContent = item.tema;
+  const labelEl = document.createElement('div'); labelEl.className = 'pdad-rank-label'; labelEl.textContent = item.label;
+  const valorEl = document.createElement('strong'); valorEl.textContent = minha === null ? '—' : pdadRankFormat(item, minha, abs);
+  article.append(temaEl, labelEl, valorEl);
+  if (abs && minha !== null && item.absUnit) {
+    const unidadeEl = document.createElement('div'); unidadeEl.className = 'pdad-rank-pos'; unidadeEl.textContent = item.absUnit;
+    article.append(unidadeEl);
+  }
+  const posEl = document.createElement('div'); posEl.className = 'pdad-rank-pos';
+  posEl.textContent = pos >= 0 ? `${pos + 1}ª de ${vals.length} RAs publicadas` : 'sem valor publicado para esta RA';
+  article.append(posEl);
+  if (pctil !== null) {
+    const barra = document.createElement('div'); barra.className = 'pdad-rank-bar';
+    const fill = document.createElement('i'); fill.style.width = `${Math.max(3, pctil)}%`;
+    barra.append(fill);
+    article.append(barra);
+  }
+  return article;
+}
+
+function initializePdadRankState() {
+  const ano = pdadPrimaryYear();
+  const ras = rasForYear(state.pdadIndex, ano);
+  const comFigura = PDAD_RANK_SET.filter((item) => item.key);
+  state.pdadRankState = { ra: ras[0]?.raGeoId || null, indicatorId: comFigura[0]?.id || null, mode: 'pct' };
+}
+
+function renderPdadRankTable() {
+  const item = PDAD_RANK_SET.find((i) => i.id === state.pdadRankState.indicatorId);
+  if (!item) { dom.pdadRankTableBody.replaceChildren(); return; }
+  const abs = state.pdadRankState.mode === 'abs';
+  dom.pdadRankTableHead.textContent = `${item.label}${abs ? ' · nº absolutos' : ' · %'}`;
+
+  const ano = pdadPrimaryYear();
+  const ras = rasForYear(state.pdadIndex, ano);
+  const linhas = ras.map((ra) => {
+    const bruto = abs ? pdadRankAbsValue(ra, item) : rankScalar(ra, item);
+    return { ra, v: Number.isFinite(bruto) ? bruto : null };
+  }).sort((a, b) => {
+    if (a.v === null) return 1;
+    if (b.v === null) return -1;
+    return b.v - a.v;
+  });
+
+  dom.pdadRankTableBody.replaceChildren(...linhas.map(({ ra, v }) => {
+    const tr = document.createElement('tr');
+    const celulas = [
+      ra.raName, formatNumber(ra.population), formatNumber(ra.households),
+      v === null ? '—' : pdadRankFormat(item, v, abs),
+    ];
+    for (const texto of celulas) {
+      const td = document.createElement('td'); td.textContent = texto; tr.append(td);
+    }
+    return tr;
+  }));
+}
+
+/** Monta a tela Ranking dos territórios (issue #102): cartões de posição + tabela comparativa. */
+function renderPdadRankingView() {
+  if (!state.pdadData.length) return;
+  if (!state.pdadFilters) initializePdadFilters();
+  if (!state.pdadRankState) initializePdadRankState();
+
+  const ano = pdadPrimaryYear();
+  const ras = rasForYear(state.pdadIndex, ano);
+  populateSelectFull(dom.pdadRankRa, ras.map((ra) => ra.raGeoId), (id) => ras.find((r) => r.raGeoId === id)?.raName || id);
+  dom.pdadRankRa.value = ras.some((r) => r.raGeoId === state.pdadRankState.ra) ? state.pdadRankState.ra : (ras[0]?.raGeoId || '');
+  state.pdadRankState.ra = dom.pdadRankRa.value;
+
+  dom.pdadRankCards.replaceChildren(
+    ...PDAD_RANK_SET.map((item) => pdadRankCard(item, state.pdadRankState.ra, state.pdadRankState.mode)),
+  );
+
+  const comFigura = PDAD_RANK_SET.filter((item) => item.key);
+  populateSelectFull(dom.pdadRankIndicator, comFigura.map((item) => item.id), (id) => comFigura.find((i) => i.id === id)?.label || id);
+  dom.pdadRankIndicator.value = comFigura.some((i) => i.id === state.pdadRankState.indicatorId)
+    ? state.pdadRankState.indicatorId : (comFigura[0]?.id || '');
+  state.pdadRankState.indicatorId = dom.pdadRankIndicator.value;
+
+  for (const botao of dom.pdadRankMode.querySelectorAll('button')) {
+    botao.classList.toggle('on', botao.dataset.mode === state.pdadRankState.mode);
+  }
+
+  renderPdadRankTable();
+}
+
+// --- Diagnóstico Territorial PDAD-A: Comparar RAs (issue #102) --------------------
+
+const PDAD_CV_MAX_RAS = 6;
+const PDAD_CV_MAX_INDS = 4;
+const PDAD_CV_SERIES = ['var(--cat-1)', 'var(--cat-2)', 'var(--cat-3)', 'var(--cat-4)', 'var(--cat-5)', 'var(--cat-6)'];
+
+function pdadCvColorFor(raGeoId) {
+  const cores = state.pdadCompareState.colors;
+  if (cores[raGeoId] !== undefined) return cores[raGeoId];
+  const usados = new Set(Object.values(cores));
+  for (let i = 0; i < PDAD_CV_MAX_RAS; i += 1) {
+    if (!usados.has(i)) { cores[raGeoId] = i; return i; }
+  }
+  cores[raGeoId] = 0;
+  return 0;
+}
+
+function initializePdadCompareState() {
+  const ano = pdadPrimaryYear();
+  const ras = rasForYear(state.pdadIndex, ano);
+  const inicial = (state.pdadFilters?.ra && state.pdadFilters.ra !== 'all') ? state.pdadFilters.ra : ras[0]?.raGeoId;
+  const segunda = ras.find((ra) => ra.raGeoId !== inicial)?.raGeoId;
+  state.pdadCompareState.ras = [inicial, segunda].filter(Boolean);
+  state.pdadCompareState.inds = ['age'];
+  state.pdadCompareState.colors = {};
+  for (const raGeoId of state.pdadCompareState.ras) pdadCvColorFor(raGeoId);
+}
+
+function pdadCvAddRa(raGeoId) {
+  const { ras } = state.pdadCompareState;
+  if (!raGeoId || ras.includes(raGeoId) || ras.length >= PDAD_CV_MAX_RAS) return;
+  ras.push(raGeoId);
+  pdadCvColorFor(raGeoId);
+  renderPdadCompareView();
+}
+
+function pdadCvRemoveRa(raGeoId) {
+  const { ras } = state.pdadCompareState;
+  const i = ras.indexOf(raGeoId);
+  if (i < 0) return;
+  ras.splice(i, 1);
+  delete state.pdadCompareState.colors[raGeoId];
+  renderPdadCompareView();
+}
+
+function pdadCvAddInd(key) {
+  const { inds } = state.pdadCompareState;
+  if (!key || inds.includes(key) || inds.length >= PDAD_CV_MAX_INDS) return;
+  inds.push(key);
+  renderPdadCompareView();
+}
+
+function pdadCvRemoveInd(key) {
+  const { inds } = state.pdadCompareState;
+  const i = inds.indexOf(key);
+  if (i < 0) return;
+  inds.splice(i, 1);
+  renderPdadCompareView();
+}
+
+function pdadCvChip(texto, datasetKey, datasetValue, cor) {
+  const botao = document.createElement('button');
+  botao.type = 'button';
+  botao.className = 'pdad-cv-chip';
+  botao.title = 'Clique para remover';
+  if (cor !== undefined) botao.style.setProperty('--chip', PDAD_CV_SERIES[cor % PDAD_CV_SERIES.length]);
+  botao.dataset[datasetKey] = datasetValue;
+  const nome = document.createElement('span'); nome.textContent = texto;
+  const x = document.createElement('span'); x.className = 'x'; x.textContent = '✕';
+  botao.append(nome, x);
+  return botao;
+}
+
+/** Valores de um indicador para uma RA, achatados (`shopping` compõe "grupo · destino"). */
+function pdadCvValues(ra, key) {
+  if (key === 'shopping') {
+    return (ra.indicators.shopping?.groups || [])
+      .flatMap((g) => g.items.map((it) => ({ ...it, label: `${g.group} · ${it.label}` })));
+  }
+  return ra.indicators[key]?.values || [];
+}
+
+function renderPdadCompareSummary(ras) {
+  const secao = document.createElement('section');
+  secao.className = 'pdad-card pdad-rank-table-card';
+  const cabecalho = document.createElement('div'); cabecalho.className = 'pdad-card-head';
+  const tituloWrap = document.createElement('div');
+  const eyebrow = document.createElement('p'); eyebrow.className = 'market-eyebrow'; eyebrow.textContent = 'Perfil estrutural';
+  const titulo = document.createElement('h2'); titulo.className = 'pdad-card-titulo'; titulo.textContent = 'As RAs selecionadas em números';
+  tituloWrap.append(eyebrow, titulo);
+  cabecalho.append(tituloWrap);
+  secao.append(cabecalho);
+
+  const wrap = document.createElement('div'); wrap.className = 'pdad-table-wrap';
+  const tabela = document.createElement('table');
+  const thead = document.createElement('thead');
+  const trh = document.createElement('tr');
+  for (const texto of ['Região', 'População', 'Domicílios', 'Moradores/dom.', 'Escritura registrada']) {
+    const th = document.createElement('th'); th.textContent = texto; trh.append(th);
+  }
+  thead.append(trh);
+  const tbody = document.createElement('tbody');
+  for (const ra of ras) {
+    const tr = document.createElement('tr');
+    tr.className = 'pdad-row-link';
+    tr.dataset.drillRa = ra.raGeoId;
+    tr.title = 'Abrir esta RA no diagnóstico';
+    const nomeTd = document.createElement('td');
+    const ponto = document.createElement('i'); ponto.className = 'pdad-cv-dot';
+    ponto.style.background = PDAD_CV_SERIES[pdadCvColorFor(ra.raGeoId) % PDAD_CV_SERIES.length];
+    nomeTd.append(ponto, document.createTextNode(ra.raName));
+    const popTd = document.createElement('td'); popTd.textContent = formatNumber(ra.population);
+    const domTd = document.createElement('td'); domTd.textContent = formatNumber(ra.households);
+    const razaoTd = document.createElement('td');
+    razaoTd.textContent = ra.avgHouseholdSize === null ? '—'
+      : ra.avgHouseholdSize.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    const escrituraTd = document.createElement('td');
+    const deed = (ra.indicators.deed?.values || []).find((v) => v.label === 'Sim');
+    escrituraTd.textContent = deed && Number.isFinite(deed.pct) ? formatPercent(percentFromPoints(deed.pct)) : '—';
+    tr.append(nomeTd, popTd, domTd, razaoTd, escrituraTd);
+    tbody.append(tr);
+  }
+  tabela.append(thead, tbody);
+  wrap.append(tabela);
+  secao.append(wrap);
+  dom.pdadCvSummary.replaceChildren(secao);
+}
+
+function renderPdadCompareBlocks(ras) {
+  const blocos = state.pdadCompareState.inds.map((key) => {
+    const meta = PDAD_INDICATOR_LIST.find((i) => i.key === key);
+    const secao = document.createElement('section');
+    secao.className = 'pdad-card';
+    const cabecalho = document.createElement('div'); cabecalho.className = 'pdad-card-head';
+    const tituloWrap = document.createElement('div');
+    const eyebrow = document.createElement('p'); eyebrow.className = 'market-eyebrow';
+    eyebrow.textContent = meta ? PDAD_TEMAS[meta.tema] || '' : '';
+    const titulo = document.createElement('h2'); titulo.className = 'pdad-card-titulo'; titulo.textContent = meta?.label || key;
+    tituloWrap.append(eyebrow, titulo);
+    const unidade = document.createElement('span'); unidade.className = 'mono';
+    unidade.textContent = `${meta?.unit || ''}${meta?.multiple ? ' · categorias podem coexistir' : ''}`;
+    cabecalho.append(tituloWrap, unidade);
+    secao.append(cabecalho);
+
+    const legenda = document.createElement('div'); legenda.className = 'pdad-cv-legend';
+    for (const ra of ras) {
+      const item = document.createElement('span'); item.className = 'pdad-cv-key';
+      const ponto = document.createElement('i'); ponto.style.background = PDAD_CV_SERIES[pdadCvColorFor(ra.raGeoId) % PDAD_CV_SERIES.length];
+      item.append(ponto, document.createTextNode(ra.raName));
+      legenda.append(item);
+    }
+    secao.append(legenda);
+
+    const porRa = ras.map((ra) => ({ ra, valores: pdadCvValues(ra, key) }));
+    const categorias = [...new Set(porRa.flatMap((x) => x.valores.map((v) => v.label)))];
+    const ordenadas = categorias
+      .map((cat) => [cat, porRa.reduce((soma, x) => soma + (x.valores.find((v) => v.label === cat)?.pct || 0), 0)])
+      .sort((a, b) => b[1] - a[1])
+      .map(([cat]) => cat);
+    const mostradas = ordenadas.slice(0, 8);
+    const resto = ordenadas.length - mostradas.length;
+    const maximo = Math.max(
+      ...mostradas.flatMap((cat) => porRa.map((x) => x.valores.find((v) => v.label === cat)?.pct || 0)), 1,
+    );
+
+    const grade = document.createElement('div'); grade.className = 'pdad-cvb-grid';
+    for (const categoria of mostradas) {
+      const linhaCat = document.createElement('div'); linhaCat.className = 'pdad-cvb-cat';
+      const cabecalhoCat = document.createElement('div'); cabecalhoCat.className = 'pdad-cvb-head';
+      const nomeCat = document.createElement('span'); nomeCat.title = categoria; nomeCat.textContent = categoria;
+      cabecalhoCat.append(nomeCat);
+      linhaCat.append(cabecalhoCat);
+      for (const { ra, valores } of porRa) {
+        const valor = valores.find((v) => v.label === categoria);
+        const linha = document.createElement('div'); linha.className = 'pdad-cvb-row';
+        linha.dataset.pdadIndicatorKey = key;
+        linha.dataset.drillRa = ra.raGeoId;
+        if (valor) {
+          linha.dataset.drillCategory = key === 'shopping' ? categoria.split(' · ').slice(1).join(' · ') : categoria;
+          if (key === 'shopping') linha.dataset.drillGroup = categoria.split(' · ')[0];
+        }
+        const trilho = document.createElement('span'); trilho.className = 'pdad-mini-trilho';
+        const fill = document.createElement('span'); fill.className = 'pdad-mini-fill';
+        const pct = valor && Number.isFinite(valor.pct) ? valor.pct : null;
+        fill.style.width = pct !== null ? `${Math.max(2, (pct / maximo) * 100)}%` : '0%';
+        fill.style.background = PDAD_CV_SERIES[pdadCvColorFor(ra.raGeoId) % PDAD_CV_SERIES.length];
+        trilho.append(fill);
+        const numero = document.createElement('b');
+        numero.textContent = pct !== null ? formatPercent(percentFromPoints(pct)) : (valor ? '—' : 'sem registro');
+        linha.append(trilho, numero);
+        linhaCat.append(linha);
+      }
+      grade.append(linhaCat);
+    }
+    secao.append(grade);
+    if (resto > 0) secao.append(pdadYearNoteEl(`+${resto} categorias fora do quadro — completas no drill-down e no CSV.`));
+    return secao;
+  });
+  dom.pdadCvBlocks.replaceChildren(...blocos);
+}
+
+function pdadYearNoteEl(texto) {
+  const p = document.createElement('p');
+  p.className = 'pdad-year-note';
+  p.textContent = texto;
+  return p;
+}
+
+/** Monta a tela Comparar RAs (issue #102): seleção de RAs/indicadores + comparação por categoria. */
+function renderPdadCompareView() {
+  if (!state.pdadData.length) return;
+  if (!state.pdadFilters) initializePdadFilters();
+  if (!state.pdadCompareState.ras.length) initializePdadCompareState();
+
+  const ano = pdadPrimaryYear();
+  const ras = rasForYear(state.pdadIndex, ano);
+  const porId = new Map(ras.map((ra) => [ra.raGeoId, ra]));
+
+  populateSelectFull(dom.pdadCvRaSelect, ras.map((ra) => ra.raGeoId), (id) => porId.get(id)?.raName || id);
+  populateSelectFull(
+    dom.pdadCvIndSelect,
+    PDAD_INDICATOR_LIST.map((i) => i.key),
+    (key) => PDAD_INDICATOR_LIST.find((i) => i.key === key)?.label || key,
+  );
+
+  dom.pdadCvRas.replaceChildren(...(state.pdadCompareState.ras.length
+    ? state.pdadCompareState.ras.map((raGeoId) => pdadCvChip(
+      porId.get(raGeoId)?.raName || raGeoId, 'raGeoId', raGeoId, pdadCvColorFor(raGeoId),
+    ))
+    : [pdadEmptyPara('nenhuma RA selecionada — use "+ Adicionar"')]));
+  dom.pdadCvInds.replaceChildren(...(state.pdadCompareState.inds.length
+    ? state.pdadCompareState.inds.map((key) => pdadCvChip(
+      PDAD_INDICATOR_LIST.find((i) => i.key === key)?.label || key, 'indKey', key,
+    ))
+    : [pdadEmptyPara('nenhum indicador selecionado')]));
+
+  dom.pdadCompareCount.textContent =
+    `${state.pdadCompareState.ras.length}/${PDAD_CV_MAX_RAS} RAs · ${state.pdadCompareState.inds.length}/${PDAD_CV_MAX_INDS} indicadores`;
+
+  const rasEscolhidas = state.pdadCompareState.ras.map((id) => porId.get(id)).filter(Boolean);
+  if (rasEscolhidas.length < 2 || !state.pdadCompareState.inds.length) {
+    dom.pdadCvSummary.replaceChildren();
+    dom.pdadCvBlocks.replaceChildren(pdadEmptySection('Selecione ao menos 2 RAs e 1 indicador para montar a comparação.'));
+    return;
+  }
+
+  renderPdadCompareSummary(rasEscolhidas);
+  renderPdadCompareBlocks(rasEscolhidas);
+}
+
+// --- Diagnóstico Territorial PDAD-A: Base de dados (issue #102) -------------------
+
+/** Monta a tela Base de dados: como o dado chega até a tela, e a cobertura do lote atual. */
+function renderPdadBaseView() {
+  if (!state.pdadData.length) return;
+  const anos = pdadYearsAvailable(state.pdadData);
+  const totalRas = new Set(state.pdadData.map((item) => item.raGeoId)).size;
+  const totalIndicadores = new Set(state.pdadData.map((item) => item.indicatorCode)).size;
+  dom.pdadBaseDescription.textContent =
+    'Este pipeline lê a aba PDAD_A_DATA direto da planilha viva (formato longo: uma linha por RA × '
+    + 'indicador × segmento × categoria de resposta), normaliza cada linha em src/pdad/normalize-pdad.js '
+    + 'e agrega por Região Administrativa e ano em src/pdad/aggregate.js. A tela consome apenas os '
+    + 'indicadores com regra de exibição declarada em src/pdad/indicators.js — o restante das linhas '
+    + 'segue normalizado e disponível para o drill-down.';
+  dom.pdadBaseKpis.replaceChildren(
+    pdadKpiTile('Linhas carregadas', formatNumber(state.pdadData.length), 'PDAD_A_DATA · lote atual'),
+    pdadKpiTile('Regiões administrativas', String(totalRas), 'com ao menos um registro'),
+    pdadKpiTile('Indicadores na planilha', String(totalIndicadores), `${PDAD_INDICATOR_LIST.length} exibidos na tela`),
+    pdadKpiTile('Anos disponíveis', anos.join(' · '), 'PDAD-A'),
+  );
+}
+
+// --- Diagnóstico Territorial PDAD-A: drill-down (issue #102) ----------------------
+
+function pdadStatusBadgeText(status) {
+  if (status === 'published') return 'publicado';
+  if (status === 'partial') return 'parcial';
+  if (status === 'suppressed') return 'suprimido';
+  return status || '—';
+}
+
+/** A chave de indicador do cartão/linha mais próximo do elemento clicado, ou `null`. */
+function pdadCardKeyOf(el) {
+  const card = el.closest('[data-pdad-indicator-key]');
+  return card ? card.dataset.pdadIndicatorKey : null;
+}
+
+function pdadDrillRankItems(key, year, category, group) {
+  const ras = rasForYear(state.pdadIndex, year);
+  return ras.map((ra) => {
+    let achado = null;
+    if (key === 'shopping') {
+      if (group) {
+        const grupoObj = (ra.indicators.shopping?.groups || []).find((g) => g.group === group);
+        achado = grupoObj?.items.find((it) => it.label === category) || null;
+      }
+    } else {
+      achado = (ra.indicators[key]?.values || []).find((v) => v.label === category) || null;
+    }
+    return { raGeoId: ra.raGeoId, raName: ra.raName, pct: achado?.pct ?? null, status: achado?.status ?? null };
+  });
+}
+
+function renderPdadDrillRank() {
+  const { key, category, group } = state.pdadDrillState;
+  dom.pdadDrillRank.replaceChildren();
+  if (!category) { dom.pdadDrillRank.hidden = true; return; }
+  dom.pdadDrillRank.hidden = false;
+
+  const itens = pdadDrillRankItems(key, state.pdadDrillState.year, category, group);
+  const publicados = itens.filter((i) => i.pct !== null).sort((a, b) => b.pct - a.pct);
+  const suprimidos = itens.filter((i) => i.pct === null && i.status === 'suppressed');
+  const semRegistro = itens.filter((i) => i.pct === null && i.status !== 'suppressed');
+  const maximo = Math.max(...publicados.map((i) => i.pct), 1);
+
+  const titulo = document.createElement('p');
+  titulo.className = 'market-eyebrow';
+  titulo.textContent = `Ranking entre RAs · ${group ? `${group} · ` : ''}${category}`;
+  dom.pdadDrillRank.append(titulo);
+
+  const lista = document.createElement('ul');
+  lista.className = 'pdad-bar-list';
+  for (const item of publicados) {
+    const li = document.createElement('li'); li.className = 'pdad-bar';
+    const nome = document.createElement('span'); nome.className = 'pdad-bar-nome'; nome.title = item.raName; nome.textContent = item.raName;
+    const trilho = document.createElement('span'); trilho.className = 'pdad-bar-trilho';
+    const fill = document.createElement('span'); fill.className = 'pdad-bar-fill';
+    fill.style.width = `${Math.min(100, (item.pct / maximo) * 100)}%`;
+    trilho.append(fill);
+    const numero = document.createElement('span'); numero.className = 'pdad-bar-valor';
+    numero.textContent = formatPercent(percentFromPoints(item.pct));
+    li.append(nome, trilho, numero);
+    lista.append(li);
+  }
+  if (!publicados.length) lista.append(pdadEmptyPara('Nenhuma RA publica esta categoria isolada.'));
+  dom.pdadDrillRank.append(lista);
+
+  if (suprimidos.length) dom.pdadDrillRank.append(pdadYearNoteEl(`Suprimido em: ${suprimidos.map((i) => i.raName).join(', ')}.`));
+  if (semRegistro.length) dom.pdadDrillRank.append(pdadYearNoteEl(`Sem registro desta categoria em: ${semRegistro.map((i) => i.raName).join(', ')}.`));
+}
+
+/** Monta o corpo do modal de drill-down a partir de `state.pdadDrillState` (issue #102). */
+function renderPdadDrill() {
+  const drill = state.pdadDrillState;
+  const { key, raGeoId, year } = drill;
+  const meta = (INDICATOR_CODES_BY_KEY[key] || []).map((codigo) => state.pdadFigureMeta.get(codigo)).find(Boolean);
+  const ras = rasForYear(state.pdadIndex, year);
+  const raAtual = ras.find((r) => r.raGeoId === raGeoId);
+  const indicadorMeta = PDAD_INDICATOR_LIST.find((i) => i.key === key);
+
+  dom.pdadDrillTitle.textContent = meta?.indicatorName || indicadorMeta?.label || key;
+  dom.pdadDrillSub.textContent = `${raAtual?.raName || raGeoId} · ${raGeoId} · PDAD-A ${year}`;
+
+  populateSelectFull(dom.pdadDrillRa, ras.map((r) => r.raGeoId), (id) => ras.find((r) => r.raGeoId === id)?.raName || id);
+  dom.pdadDrillRa.value = raGeoId;
+  const anos = pdadYearsAvailable(state.pdadData);
+  populateSelectFull(dom.pdadDrillYear, anos.map(String), (v) => v);
+  dom.pdadDrillYear.value = String(year);
+
+  dom.pdadDrillAudit.replaceChildren();
+  if (meta?.notes) dom.pdadDrillAudit.append(pdadYearNoteEl(`Nota da figura: ${meta.notes}`));
+
+  const linhas = detailRowsForKey(state.pdadData, { raGeoId, year, key });
+  dom.pdadDrillRows.replaceChildren(...linhas.map((item) => {
+    const tr = document.createElement('tr');
+    tr.className = 'pdad-row-link';
+    tr.dataset.drillCategory = categoryLabel(item);
+    if (key === 'shopping') {
+      tr.dataset.drillGroup = SHOPPING_GROUP_BY_CODE[item.indicatorCode]
+        || SHOPPING_GROUP_TITLE_BY_SLUG[item.segmentValue] || '';
+    }
+    const categoria = item.responseCategory || item.categoryStandard || item.categoryRaw || '—';
+    const celulas = [
+      item.segmentDimension || '—',
+      item.segmentValue || '—',
+      categoria,
+      Number.isFinite(item.estimateTotal) ? formatNumber(item.estimateTotal) : '—',
+      Number.isFinite(item.estimatePct) ? formatPercent(percentFromPoints(item.estimatePct)) : '—',
+    ];
+    for (const texto of celulas) {
+      const td = document.createElement('td'); td.textContent = texto; tr.append(td);
+    }
+    const tdStatus = document.createElement('td');
+    const badge = document.createElement('span'); badge.className = 'pdad-badge'; badge.textContent = pdadStatusBadgeText(item.sourceValueStatus);
+    tdStatus.append(badge);
+    tr.append(tdStatus);
+    return tr;
+  }));
+  if (!linhas.length) {
+    const tr = document.createElement('tr');
+    const td = document.createElement('td'); td.colSpan = 6; td.className = 'pdad-empty';
+    td.textContent = 'Sem registros desta figura para esta RA/ano.';
+    tr.append(td);
+    dom.pdadDrillRows.append(tr);
+  }
+
+  const contagens = linhas.reduce((acc, item) => {
+    const chave = item.sourceValueStatus || 'sem_status';
+    acc[chave] = (acc[chave] || 0) + 1;
+    return acc;
+  }, {});
+  dom.pdadDrillMeta.replaceChildren(pdadYearNoteEl(
+    `Universo: ${meta?.universe || '—'} · Estrutura: ${meta?.structure || '—'} · Registros: ${linhas.length} `
+    + `(${contagens.published || 0} publicados · ${contagens.partial || 0} parciais · ${contagens.suppressed || 0} suprimidos)`,
+  ));
+
+  renderPdadDrillRank();
+}
+
+function openPdadDrill({ key, raGeoId, year, category = null, group = null }) {
+  if (!key || !raGeoId || !Number.isFinite(year)) return;
+  state.pdadDrillState = { key, raGeoId, year, category, group };
+  dom.pdadDrillOverlay.hidden = false;
+  renderPdadDrill();
+}
+
+function closePdadDrill() {
+  state.pdadDrillState = null;
+  dom.pdadDrillOverlay.hidden = true;
 }
 
 async function load() {
@@ -3014,6 +3789,181 @@ function bindEvents() {
     refreshPdadView();
   });
 
+  // Dispersão (issue #102): trocar a leitura redesenha o gráfico; clicar num ponto foca
+  // aquela RA no filtro principal do Diagnóstico, mesma leitura do protótipo de referência.
+  dom.pdadScatterView.addEventListener('change', () => {
+    if (state.pdadData.length) renderPdadScatter();
+  });
+  dom.pdadScatterPlot.addEventListener('click', (event) => {
+    const alvo = event.target.closest('[data-drill-ra]');
+    if (!alvo || !state.pdadFilters) return;
+    state.pdadFilters.ra = alvo.dataset.drillRa;
+    dom.pdadRa.value = alvo.dataset.drillRa;
+    refreshPdadView();
+  });
+
+  // Drill-down (issue #102): qualquer elemento com `data-drill-category` desenhado por
+  // `src/pdad/charts.js` abre o modal por delegação — a RA usada é a única selecionada,
+  // ou a primeira em ordem alfabética quando o filtro está em "Todas as RAs".
+  dom.pdadTemaBlocks.addEventListener('click', (event) => {
+    const alvo = event.target.closest('[data-drill-category]');
+    if (!alvo || !state.pdadFilters) return;
+    const key = pdadCardKeyOf(alvo);
+    const raIds = pdadSelectedRaIds();
+    if (!key || !raIds.length) return;
+    openPdadDrill({
+      key, raGeoId: raIds[0], year: state.pdadFilters.year,
+      category: alvo.dataset.drillCategory, group: alvo.dataset.drillGroup || null,
+    });
+  });
+
+  // Ranking dos territórios (issue #102).
+  dom.pdadRankRa.addEventListener('change', () => {
+    if (!state.pdadRankState) return;
+    state.pdadRankState.ra = dom.pdadRankRa.value;
+    renderPdadRankingView();
+  });
+  dom.pdadRankIndicator.addEventListener('change', () => {
+    if (!state.pdadRankState) return;
+    state.pdadRankState.indicatorId = dom.pdadRankIndicator.value;
+    renderPdadRankTable();
+  });
+  dom.pdadRankMode.addEventListener('click', (event) => {
+    const botao = event.target.closest('button[data-mode]');
+    if (!botao || !state.pdadRankState) return;
+    state.pdadRankState.mode = botao.dataset.mode;
+    renderPdadRankingView();
+  });
+  dom.pdadRankExport.addEventListener('click', () => {
+    const item = PDAD_RANK_SET.find((i) => i.id === state.pdadRankState?.indicatorId);
+    if (!item) return;
+    const ano = pdadPrimaryYear();
+    const ras = rasForYear(state.pdadIndex, ano);
+    const header = ['ra_geo_id', 'ra_name', 'indicador', 'ano', 'percentual', 'total_estimado'];
+    const linhas = ras.map((ra) => {
+      const p = rankScalar(ra, item);
+      const t = pdadRankAbsValue(ra, item);
+      return [ra.raGeoId, ra.raName, item.label, ano, Number.isFinite(p) ? p : '', Number.isFinite(t) ? t : ''];
+    });
+    downloadCsv(`pdad_ranking_${item.id}.csv`, rowsToCsv(header, linhas));
+  });
+  dom.pdadRankCards.addEventListener('click', (event) => {
+    const alvo = event.target.closest('[data-pdad-indicator-key]');
+    if (!alvo || !state.pdadRankState) return;
+    openPdadDrill({
+      key: alvo.dataset.pdadIndicatorKey, raGeoId: state.pdadRankState.ra,
+      year: pdadPrimaryYear(), category: alvo.dataset.drillCategory,
+    });
+  });
+
+  // Comparar RAs (issue #102).
+  dom.pdadCvRaAdd.addEventListener('click', () => pdadCvAddRa(dom.pdadCvRaSelect.value));
+  dom.pdadCvRaTop.addEventListener('click', () => {
+    const ano = pdadPrimaryYear();
+    const top6 = [...rasForYear(state.pdadIndex, ano)].sort((a, b) => b.population - a.population).slice(0, 6);
+    state.pdadCompareState.ras = top6.map((ra) => ra.raGeoId);
+    state.pdadCompareState.colors = {};
+    for (const ra of top6) pdadCvColorFor(ra.raGeoId);
+    renderPdadCompareView();
+  });
+  dom.pdadCvIndAdd.addEventListener('click', () => pdadCvAddInd(dom.pdadCvIndSelect.value));
+  dom.pdadCvKits.addEventListener('click', (event) => {
+    const botao = event.target.closest('button[data-kit]');
+    if (!botao) return;
+    const kit = PDAD_COMPARE_KITS[botao.dataset.kit];
+    if (!kit) return;
+    state.pdadCompareState.inds = kit.keys.slice(0, PDAD_CV_MAX_INDS);
+    renderPdadCompareView();
+  });
+  dom.pdadCvRas.addEventListener('click', (event) => {
+    const chip = event.target.closest('[data-ra-geo-id]');
+    if (chip) pdadCvRemoveRa(chip.dataset.raGeoId);
+  });
+  dom.pdadCvInds.addEventListener('click', (event) => {
+    const chip = event.target.closest('[data-ind-key]');
+    if (chip) pdadCvRemoveInd(chip.dataset.indKey);
+  });
+  dom.pdadCvClear.addEventListener('click', () => {
+    state.pdadCompareState = { ras: [], inds: [], colors: {} };
+    renderPdadCompareView();
+  });
+  dom.pdadCvExport.addEventListener('click', () => {
+    const ano = pdadPrimaryYear();
+    const ras = state.pdadCompareState.ras
+      .map((id) => rasForYear(state.pdadIndex, ano).find((ra) => ra.raGeoId === id)).filter(Boolean);
+    if (ras.length < 2 || !state.pdadCompareState.inds.length) return;
+    const header = ['indicador', 'categoria', 'ra_geo_id', 'ra_name', 'percentual'];
+    const linhas = [];
+    for (const key of state.pdadCompareState.inds) {
+      const meta = PDAD_INDICATOR_LIST.find((i) => i.key === key);
+      for (const ra of ras) {
+        for (const valor of pdadCvValues(ra, key)) {
+          linhas.push([meta?.label || key, valor.label, ra.raGeoId, ra.raName, Number.isFinite(valor.pct) ? valor.pct : '']);
+        }
+      }
+    }
+    downloadCsv('pdad_comparacao_ras.csv', rowsToCsv(header, linhas));
+  });
+  dom.pdadCvSummary.addEventListener('click', (event) => {
+    const linha = event.target.closest('[data-drill-ra]');
+    if (!linha || !state.pdadFilters) return;
+    state.pdadFilters.ra = linha.dataset.drillRa;
+    dom.pdadRa.value = linha.dataset.drillRa;
+    refreshPdadView();
+    setView('diagnostico');
+  });
+  dom.pdadCvBlocks.addEventListener('click', (event) => {
+    const alvo = event.target.closest('[data-drill-category]');
+    if (!alvo) return;
+    const key = alvo.dataset.pdadIndicatorKey;
+    const raGeoId = alvo.dataset.drillRa;
+    if (!key || !raGeoId) return;
+    openPdadDrill({
+      key, raGeoId, year: pdadPrimaryYear(),
+      category: alvo.dataset.drillCategory, group: alvo.dataset.drillGroup || null,
+    });
+  });
+
+  // Modal de drill-down (issue #102).
+  dom.pdadDrillRows.addEventListener('click', (event) => {
+    const tr = event.target.closest('[data-drill-category]');
+    if (!tr || !state.pdadDrillState) return;
+    state.pdadDrillState.category = tr.dataset.drillCategory;
+    state.pdadDrillState.group = tr.dataset.drillGroup || null;
+    renderPdadDrillRank();
+  });
+  dom.pdadDrillRa.addEventListener('change', () => {
+    if (!state.pdadDrillState) return;
+    state.pdadDrillState.raGeoId = dom.pdadDrillRa.value;
+    renderPdadDrill();
+  });
+  dom.pdadDrillYear.addEventListener('change', () => {
+    if (!state.pdadDrillState) return;
+    state.pdadDrillState.year = Number(dom.pdadDrillYear.value);
+    renderPdadDrill();
+  });
+  dom.pdadDrillClose.addEventListener('click', closePdadDrill);
+  dom.pdadDrillOverlay.addEventListener('click', (event) => {
+    if (event.target === dom.pdadDrillOverlay) closePdadDrill();
+  });
+  dom.pdadDrillExport.addEventListener('click', () => {
+    const s = state.pdadDrillState;
+    if (!s) return;
+    const linhas = detailRowsForKey(state.pdadData, { raGeoId: s.raGeoId, year: s.year, key: s.key });
+    const header = [
+      'ra_geo_id', 'pdad_year', 'indicator_code', 'segment_dimension', 'segment_value',
+      'categoria', 'total_estimado', 'percentual', 'status',
+    ];
+    const corpo = linhas.map((item) => [
+      item.raGeoId, item.pdadYear, item.indicatorCode, item.segmentDimension || '', item.segmentValue || '',
+      item.responseCategory || item.categoryStandard || item.categoryRaw || '',
+      Number.isFinite(item.estimateTotal) ? item.estimateTotal : '',
+      Number.isFinite(item.estimatePct) ? item.estimatePct : '',
+      item.sourceValueStatus || '',
+    ]);
+    downloadCsv(`pdad_${s.year}_${s.raGeoId}_${s.key}.csv`, rowsToCsv(header, corpo));
+  });
+
   // Troca de view (issue #58). O hash é a fonte da verdade: o clique escreve nele e o
   // `hashchange` aplica. Assim o botão e a barra de endereço nunca discordam, e
   // recarregar em `#mercado` abre direto no dashboard.
@@ -3025,7 +3975,9 @@ function bindEvents() {
   window.addEventListener('hashchange', () => setView(viewFromHash()));
 
   document.addEventListener('keydown', (event) => {
-    if (event.key === 'Escape' && !dom.detail.hidden) closeDetail();
+    if (event.key !== 'Escape') return;
+    if (!dom.detail.hidden) closeDetail();
+    if (!dom.pdadDrillOverlay.hidden) closePdadDrill();
   });
 }
 
