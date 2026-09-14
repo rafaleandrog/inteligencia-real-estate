@@ -174,9 +174,10 @@
   --sombra-2: var(--shadow);
 
   /* Tipo. Do micro-rótulo de eixo ao título de página.
-     `--tipo-3xs` e `--tipo-display` entraram na #95: o protótipo usa um degrau abaixo
-     de 10px nos rótulos de grupo, e um título que respira com a viewport. */
-  --tipo-3xs: 9px;
+     `--tipo-display` entrou na #95, para um título que respira com a viewport. Um degrau
+     de 9px chegou a entrar junto — o protótipo usa um abaixo de 10px nos rótulos de grupo
+     — e saiu antes do merge por não ter sido usado: degrau de escala criado "por via das
+     dúvidas" é a forma mais barata de uma escala apodrecer. */
   --tipo-2xs: 10px;
   --tipo-xs: 11px;
   --tipo-sm: 12px;
