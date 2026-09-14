@@ -127,7 +127,11 @@
   --shadow: 0 10px 30px #13251a14;
   --radius: 10px;
 
-  --topbar-h: 56px;
+  /* Casca (#95). O trilho de navegação substituiu a barra superior: a largura dele é
+     token porque a grade de `.app` e os dois pontos de quebra precisam concordar sobre
+     ela. Em ≤1000px o trilho encolhe para só-ícone; em ≤640px ele vira faixa horizontal
+     e a largura deixa de valer. */
+  --rail-w: 232px;
   --panel-w: 300px;
   --detail-w: 360px;
 
@@ -417,70 +421,139 @@ h1, h2 { margin: 0; font-size: 1rem; }
 
 /* Topo ------------------------------------------------------------------ */
 
-.topbar {
-  height: var(--topbar-h);
-  display: flex;
-  align-items: center;
-  gap: 16px;
-  padding: 0 16px;
-  background: var(--brand);
-  color: #fff;
+/* A casca é uma grade de duas colunas. `height: 100vh` com `body { overflow: hidden }`
+   mantém a decisão do mapa (ele ocupa a viewport por definição) sem que nenhuma view
+   precise calcular altura a partir da altura da barra — que era o acoplamento frágil de
+   antes: `calc(100% - var(--topbar-h))` só está certo enquanto a barra tiver exatamente
+   aquela altura, e ela deixava de ter no primeiro ponto de quebra (R8.73). */
+.app {
+  display: grid;
+  grid-template-columns: var(--rail-w) minmax(0, 1fr);
+  height: 100vh;
 }
 
-.brand { display: flex; align-items: baseline; gap: 8px; white-space: nowrap; }
-.brand strong { font-size: 15px; letter-spacing: .01em; }
-.brand-sub { font-size: 12px; opacity: .7; }
+.app-main {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+}
 
-.search-wrap { flex: 1; max-width: 520px; }
+/* O trilho fica sobre `--brand` nos dois temas — preenchimento sólido, como a identidade
+   registrada no topo deste arquivo prevê. Por isso tudo que vive nele é branco literal e
+   não token de texto: `--ink` daria escuro sobre escuro no tema claro, ilegível e sem
+   nenhum erro que denunciasse. É a mesma razão que já valia para `.admin-link`. */
+.topbar {
+  display: flex;
+  flex-direction: column;
+  gap: var(--esp-6);
+  padding: var(--esp-5) var(--esp-3);
+  background: var(--brand);
+  color: #fff;
+  overflow-y: auto;
+}
+
+.brand { display: flex; align-items: center; gap: var(--esp-3); padding: 0 var(--esp-2); }
+/* O monograma é um quadrado branco com a marca em verde: o contraste mais alto possível
+   contra o trilho, e a única peça da tela que existe só para ser reconhecida de relance.
+   `aria-hidden` porque o nome completo está no `<strong>` logo ao lado.
+
+   São as letras de "Imob", e não as iniciais "ii" de "Imob Intelligence": duas hastes
+   idênticas e apertadas viram um símbolo de pausa, que é o que o protótipo evita ao usar
+   duas letras DIFERENTES ("ir"). Por isso também o tracking aqui é -.04em e não -.08em —
+   mais que isso funde os dois glifos num borrão. */
+.brand-mark {
+  flex: none;
+  width: 34px;
+  height: 34px;
+  display: grid;
+  place-items: center;
+  border-radius: var(--raio-md);
+  background: #fff;
+  color: var(--brand);
+  font-size: var(--tipo-md);
+  font-weight: 800;
+  letter-spacing: -.04em;
+}
+.brand-text { min-width: 0; }
+.brand strong { display: block; font-size: var(--tipo-md); line-height: 1.15; letter-spacing: -.02em; }
+.brand-sub {
+  display: block;
+  margin-top: var(--esp-1);
+  font-family: var(--font-mono);
+  font-size: var(--tipo-2xs);
+  opacity: .7;
+}
+
+/* A busca saiu do topo verde para a faixa de conteúdo, sobre `--bg` (#95). Os quatro
+   literais brancos que ela carregava existiam só porque ela vivia sobre a marca; no novo
+   lugar eles davam branco sobre claro, então saíram todos e o campo passou a se comportar
+   como qualquer outro controle da tela. */
+.search-wrap { flex: 1; min-width: 0; max-width: 520px; }
 
 #search {
   width: 100%;
-  padding: 8px 12px;
-  border: 1px solid transparent;
-  border-radius: var(--radius);
-  background: #ffffff1f;
-  color: #fff;
+  padding: var(--esp-2) var(--esp-3);
+  border: 1px solid var(--borda-base);
+  border-radius: var(--raio-md);
+  background: var(--superficie-sutil);
+  color: var(--texto-base);
   font: inherit;
+  font-size: var(--tipo-base);
 }
-#search::placeholder { color: #ffffffa8; }
-#search:focus {
-  /* Fundo e texto fixos, não themed: o campo sempre vira branco sólido ao
-     focar (para ler bem sobre o topo verde-escuro, que também não muda de
-     tema). `color: var(--ink)` quebrava em modo escuro — --ink vira quase
-     branco lá, texto digitado ficava branco sobre fundo branco (review do
-     PR #40). */
-  background: #fff;
-  color: #172019;
-  outline: none;
-  border-color: var(--brand2);
-}
-/* Mesmo motivo do bloco acima: fundo fixo, cor fixa, não themed. */
-#search:focus::placeholder { color: #69736d; }
+#search::placeholder { color: var(--texto-fraco); }
+#search:focus { border-color: var(--accent-text); }
+#search:focus-visible { outline: 2px solid var(--accent-text); outline-offset: 2px; }
 
+/* Selo no molde do protótipo: pílula em mono miúdo. Ele também desceu da barra de marca
+   para a faixa de conteúdo, então perdeu os brancos literais — exceto no estado `demo`,
+   que continua sendo preenchimento sólido laranja com texto branco por cima (é aviso, e
+   precisa saltar da faixa). */
 .source-badge {
   margin-left: auto;
-  font-size: 12px;
-  padding: 4px 10px;
-  border-radius: 999px;
-  background: #ffffff24;
+  padding: var(--esp-1) var(--esp-3);
+  border: 1px solid var(--borda-base);
+  border-radius: var(--raio-pill);
+  background: var(--superficie-base);
+  color: var(--texto-sec);
+  font-family: var(--font-mono);
+  font-size: var(--tipo-2xs);
+  letter-spacing: var(--track-label);
+  text-transform: uppercase;
   white-space: nowrap;
 }
-.source-badge[data-source="demo"] { background: var(--primary-on-fill); }
-
-/* O link da planilha vive SOBRE a barra escura (`--brand`), como `.admin-link` — por isso
-   branco literal e não token de texto, que daria escuro sobre escuro nos dois temas. */
-.source-badge a {
+.source-badge[data-source="demo"] {
+  background: var(--primary-on-fill);
+  border-color: var(--primary-on-fill);
   color: #fff;
-  text-decoration: none;
 }
+.source-badge a { color: inherit; text-decoration: none; }
 .source-badge a:hover,
 .source-badge a:focus-visible { text-decoration: underline; }
-.source-badge a:focus-visible { outline: 2px solid #fff; outline-offset: 2px; }
+.source-badge a:focus-visible { outline: 2px solid currentColor; outline-offset: 2px; }
+
+/* Faixa de conteúdo: busca à esquerda, procedência à direita. Fina de propósito — ela é
+   moldura, e o protagonista é o que vem abaixo dela. */
+.topline {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: var(--esp-3);
+  padding: var(--esp-3) var(--esp-4);
+  background: var(--superficie-base);
+  border-bottom: 1px solid var(--borda-base);
+}
+
+/* Rodapé do trilho: separado por hairline e empurrado para o fim pelo `margin-top: auto`,
+   como no protótipo. Em ≤1000px o trilho vira só-ícone e o rodapé sai da tela. */
+.rail-foot {
+  margin-top: auto;
+  padding-top: var(--esp-4);
+  border-top: 1px solid #ffffff2e;
+}
 
 .admin-link {
-  /* O `margin-left: auto` passou para `.view-switch`, que agora é o primeiro item do
-     bloco à direita da barra. Manter os dois empurraria as abas para longe do link. */
-  font-size: 12px;
+  font-size: var(--tipo-xs);
   opacity: .7;
   color: #fff;
   white-space: nowrap;
@@ -491,9 +564,12 @@ h1, h2 { margin: 0; font-size: 1rem; }
 
 /* Layout ---------------------------------------------------------------- */
 
+/* A altura vem do pai (`.app-main`, coluna flex), não de uma conta sobre a altura da
+   barra: `min-height: 0` é o que permite ao mapa encolher e às colunas internas rolarem. */
 .layout {
   display: flex;
-  height: calc(100% - var(--topbar-h));
+  flex: 1 1 auto;
+  min-height: 0;
 }
 
 /* `display: flex` da classe vence a regra nativa do atributo `hidden` em alguns
@@ -1185,59 +1261,6 @@ button.traffic-item-head:hover .traffic-item-name { color: var(--accent-text); }
 
 /* Mobile ---------------------------------------------------------------- */
 
-@media (max-width: 860px) {
-  body { overflow: auto; }
-
-  .topbar {
-    height: auto;
-    flex-wrap: wrap;
-    padding: 10px 12px;
-    gap: 10px;
-  }
-  .search-wrap { flex: 1 1 100%; order: 3; max-width: none; }
-  .source-badge { margin-left: auto; }
-
-  .layout {
-    flex-direction: column;
-    height: auto;
-  }
-
-  /* Com o `body` rolando, uma segunda barra de rolagem dentro da tela do Mercado seria
-     rolagem aninhada — e a altura fixa estaria errada de todo jeito, porque aqui a topbar
-     quebra em linhas e cresce além de `--topbar-h`. */
-  .market {
-    height: auto;
-    overflow-y: visible;
-  }
-
-  .panel {
-    width: 100%;
-    flex: none;
-    border-right: 0;
-    border-bottom: 1px solid var(--line);
-    max-height: none;
-    overflow: visible;
-    order: 2;
-  }
-
-  .map-wrap {
-    order: 1;
-    flex: none;
-    height: 58vh;
-    min-height: 300px;
-  }
-
-  /* No mobile o detalhe cobre a tela: não há espaço para uma terceira coluna. */
-  .detail {
-    position: fixed;
-    inset: 0;
-    z-index: 1100;
-    width: 100%;
-    flex: none;
-    border-left: 0;
-  }
-}
-
 /* Troca de view e a tela do Mercado Residencial DF (issue #58).
 
    As duas abas usam a mesma pílula do resto da barra: a troca de view é navegação, não
@@ -1245,30 +1268,50 @@ button.traffic-item-head:hover .traffic-item-name { color: var(--accent-text); }
    mais usado da barra. O estado ativo vem de `aria-pressed`, que já é o que o leitor de
    tela consulta — um `.is-active` paralelo seria uma segunda verdade sobre a mesma
    coisa, e as duas divergiriam no primeiro bug. */
-.view-switch { display: flex; gap: 4px; margin-left: auto; }
+.view-switch { display: grid; gap: var(--esp-1); }
 
-/* As abas vivem SOBRE a barra escura (`--brand`), não sobre o fundo da página. Por isso
+/* As abas vivem SOBRE o trilho de marca (`--brand`), não sobre o fundo da página. Por isso
    a cor delas é branca com opacidade, como `.admin-link` já faz — usar `--ink`/`--muted`
    aqui daria texto escuro sobre fundo escuro nos dois temas, ilegível e sem erro nenhum
-   que denunciasse. Os tokens de texto existem para conteúdo sobre `--bg`/`--panel`. */
+   que denunciasse. Os tokens de texto existem para conteúdo sobre `--bg`/`--panel`.
+
+   Desde a #95 a aba é item de nav vertical, não pílula: a marca de seleção é a barra de
+   4px à esquerda, no molde do protótipo. O `::before` existe SEMPRE, transparente quando
+   a aba está solta — a alternativa (criá-lo só no estado pressionado) mudaria a largura
+   do conteúdo ao trocar de view, e a linha inteira daria um salto lateral. */
 .view-tab {
-  padding: 6px 12px;
-  border: 1px solid rgba(255, 255, 255, .35);
-  border-radius: 999px;
+  display: flex;
+  align-items: center;
+  gap: var(--esp-2);
+  width: 100%;
+  padding: var(--esp-3);
+  border: 0;
+  border-radius: var(--raio-md);
   background: transparent;
   font: inherit;
-  font-size: 12px;
+  font-size: var(--tipo-base);
+  text-align: left;
   color: #fff;
-  opacity: .75;
+  opacity: .72;
   cursor: pointer;
 }
-.view-tab:hover:not(:disabled) { opacity: 1; }
+.view-tab::before {
+  content: "";
+  flex: none;
+  width: 4px;
+  height: 16px;
+  border-radius: var(--raio-xs);
+  background: transparent;
+}
+.view-tab-ic { flex: none; font-size: var(--tipo-sm); line-height: 1; }
+.view-tab-tx { min-width: 0; }
+.view-tab:hover:not(:disabled) { opacity: 1; background: #ffffff14; }
 .view-tab[aria-pressed="true"] {
-  background: rgba(255, 255, 255, .16);
-  border-color: rgba(255, 255, 255, .7);
+  background: #ffffff1f;
   opacity: 1;
   font-weight: 600;
 }
+.view-tab[aria-pressed="true"]::before { background: #fff; }
 .view-tab:disabled { opacity: .4; cursor: not-allowed; }
 .view-tab:focus-visible { outline: 2px solid #fff; outline-offset: 2px; }
 
@@ -1277,14 +1320,18 @@ button.traffic-item-head:hover .traffic-item-name { color: var(--accent-text); }
    `.layout`; esta tela não resolvia nenhuma, então herdava o corte sem herdar a rolagem:
    no desktop, tudo abaixo da dobra ficava inalcançável — sem barra, sem erro, com a tela
    apenas parecendo curta. Cada view declara a própria altura e o próprio overflow (R8.73).
-   Em ≤860px o `body` volta a rolar sozinho e esta altura é desfeita, porque lá a topbar
-   quebra em várias linhas e `--topbar-h` deixa de descrever a altura real dela. */
+   Desde a #95 a altura não é mais calculada a partir da altura da barra: as duas views são
+   itens de uma coluna flex (`.app-main`) e crescem para o espaço que sobra, o que elimina
+   a premissa de que a barra mede exatamente `--topbar-h` — premissa que deixava de valer
+   no primeiro ponto de quebra. Em ≤1000px o `body` volta a rolar sozinho e esta altura é
+   desfeita, para não haver rolagem aninhada. */
 .market {
   /* A grade principal tem dois gráficos. Em tela ampla, 1.100 px deixava mais de 400 px
      sem conteúdo de cada lado e comprimia os gráficos sem ganho de leitura. 1.440 px dá
      largura útil às duas colunas, mas preserva uma linha de leitura confortável em desktop. */
   max-width: 1440px;
-  height: calc(100% - var(--topbar-h));
+  flex: 1 1 auto;
+  min-height: 0;
   margin: 0 auto;
   padding: var(--esp-5) var(--esp-4) var(--esp-7);
   overflow-y: auto;
@@ -1729,16 +1776,6 @@ button.traffic-item-head:hover .traffic-item-name { color: var(--accent-text); }
 .market-provenance dt { color: var(--muted); }
 .market-provenance dd { margin: 0; text-align: right; }
 
-@media (max-width: 760px) {
-  /* Em 390 px a barra já é apertada: as abas passam a ocupar a linha inteira, abaixo da
-     busca, em vez de espremerem o campo de busca a ponto de ele não caber um endereço. */
-  .view-switch { order: 3; width: 100%; }
-  .view-tab { flex: 1; }
-  .market { padding: var(--esp-4) var(--esp-3) var(--esp-6); }
-  .market-campos { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-  .market-chart-grid { grid-template-columns: 1fr; }
-}
-
 /* Cards do Mercado Residencial DF (issue #59).
 
    São stat tiles sem gráfico: rótulo, valor e as variações. A hierarquia vem do
@@ -1873,10 +1910,96 @@ button.traffic-item-head:hover .traffic-item-name { color: var(--accent-text); }
   color: var(--texto-sec);
 }
 
-@media (max-width: 900px) {
+/* Responsivo ------------------------------------------------------------ *
+
+   OS DOIS PONTOS DE QUEBRA MORAM AQUI, NO FIM DO ARQUIVO, E ISSO NÃO É ESTÉTICA.
+   `@media` não acrescenta especificidade: uma regra de ponto de quebra e a regra base do
+   mesmo seletor empatam, e quem vem depois no arquivo vence. Até a #95 o bloco de ≤860px
+   ficava ANTES da regra base de `.market`, então o `height: auto` dele nunca chegou a
+   valer — em telas estreitas a tela do Mercado continuava com altura fixa e barra de
+   rolagem própria, aninhada dentro da rolagem do `body`, que é exatamente o que aquele
+   bloco existia para evitar. Ninguém notou porque a falha é de AUSÊNCIA: nada erra, nada
+   avisa, a tela só rola de um jeito estranho. Blocos no fim não têm como ter esse
+   problema, e é por isso que os quatro que existiam viraram estes dois.
+
+   São 1000 e 640, os mesmos do protótipo, no lugar dos quatro anteriores (860/900/760/560),
+   que não formavam escala e se cruzavam. */
+
+@media (max-width: 1000px) {
+  /* O trilho encolhe para só-ícone. O rótulo some da tela, mas continua no `aria-label`
+     de cada aba, então quem usa leitor de tela não perde nada. */
+  :root { --rail-w: 74px; }
+
+  .app { height: auto; min-height: 100vh; }
+  body { overflow: auto; }
+
+  .topbar { padding: var(--esp-4) var(--esp-2); gap: var(--esp-5); }
+  .brand { justify-content: center; padding: 0; }
+  .brand-text,
+  .view-tab-tx,
+  .rail-foot { display: none; }
+  .view-tab { justify-content: center; padding: var(--esp-3) var(--esp-1); }
+  .view-tab::before { display: none; }
+  .view-tab-ic { font-size: var(--tipo-md); }
+
+  .layout { flex-direction: column; flex: none; min-height: 0; }
+
+  /* Com o `body` rolando, uma segunda barra de rolagem dentro da tela do Mercado seria
+     rolagem aninhada. */
+  .market { flex: none; min-height: 0; overflow-y: visible; }
+  .market-chart-grid { grid-template-columns: 1fr; }
   .market-destaques { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+
+  .panel {
+    width: 100%;
+    flex: none;
+    border-right: 0;
+    border-bottom: 1px solid var(--line);
+    max-height: none;
+    overflow: visible;
+    order: 2;
+  }
+
+  .map-wrap {
+    order: 1;
+    flex: none;
+    height: 58vh;
+    min-height: 300px;
+  }
+
+  /* No mobile o detalhe cobre a tela: não há espaço para uma terceira coluna. */
+  .detail {
+    position: fixed;
+    inset: 0;
+    z-index: 1100;
+    width: 100%;
+    flex: none;
+    border-left: 0;
+  }
 }
-@media (max-width: 560px) {
+
+@media (max-width: 640px) {
+  /* O trilho vira faixa horizontal no topo. Aqui o rótulo VOLTA: numa faixa que rola na
+     horizontal cabe texto, e dois ícones sozinhos numa barra larga não dizem o que são. */
+  .app { grid-template-columns: minmax(0, 1fr); }
+
+  .topbar {
+    flex-direction: row;
+    align-items: center;
+    gap: var(--esp-3);
+    padding: var(--esp-3) var(--esp-4);
+    overflow: visible;
+  }
+  .brand { padding: 0; }
+  .view-switch { display: flex; gap: var(--esp-1); overflow-x: auto; }
+  .view-tab { width: auto; white-space: nowrap; padding: var(--esp-2) var(--esp-3); }
+  .view-tab-tx { display: inline; }
+
+  .topline { flex-wrap: wrap; padding: var(--esp-3); }
+  .source-badge { margin-left: 0; }
+
+  .market { padding: var(--esp-4) var(--esp-3) var(--esp-6); }
+
   /* Em 390 px os indicadores empilham. Duas colunas ali dariam ~170 px por card, e
      "R$ 12.071,92/m²" não cabe sem quebrar no meio do número.
 
