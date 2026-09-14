@@ -606,34 +606,79 @@ h1, h2 { margin: 0; font-size: 1rem; }
 
 /* KPIs ------------------------------------------------------------------ */
 
+/* Tile de indicador no molde do protótipo: quadrado tingido com ícone em traço à
+   esquerda, valor e rótulo à direita.
+
+   UM POR LINHA, e não dois lado a lado como antes. O painel tem 300px; dois tiles davam
+   ~140px cada, e "R$ 7 mil/m²" em DM Mono não cabia nisso — quebrava no meio, entre o
+   número e a unidade. Foi o que a primeira renderização com as fontes novas mostrou. Uma
+   coluna dá 268px úteis, que aceita o valor inteiro numa linha com folga. */
 .kpis {
   display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 10px;
-  margin-bottom: 20px;
+  grid-template-columns: 1fr;
+  gap: var(--esp-2);
+  margin-bottom: var(--esp-5);
 }
 
 .kpi {
   display: flex;
-  flex-direction: column;
-  padding: 10px 12px;
-  background: var(--bg);
-  border-radius: var(--radius);
+  align-items: flex-start;
+  gap: var(--esp-3);
+  padding: var(--esp-3);
+  background: var(--superficie-sutil);
+  border: 1px solid var(--borda-sutil);
+  border-radius: var(--raio-lg);
 }
 
-.kpi-value {
-  font-family: var(--font-mono);
-  font-size: 20px;
-  font-weight: 600;
-  letter-spacing: -.01em;
-  color: var(--accent-text);
+/* A tinta é decorativa e rotativa por posição — `.tinta-1`, `.tinta-2` —, nunca
+   semântica. Quem carrega significado no tile é o valor e o rótulo. */
+.kpi-ic {
+  flex: none;
+  width: 38px;
+  height: 38px;
+  display: grid;
+  place-items: center;
+  border-radius: var(--raio-md);
 }
-.kpi-label { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: .04em; }
+.kpi-ic svg {
+  width: 19px;
+  height: 19px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.9;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.tinta-1 { background: var(--tinta-1-fundo); color: var(--tinta-1); }
+.tinta-2 { background: var(--tinta-2-fundo); color: var(--tinta-2); }
+.tinta-3 { background: var(--tinta-3-fundo); color: var(--tinta-3); }
+.tinta-4 { background: var(--tinta-4-fundo); color: var(--tinta-4); }
+
+.kpi-tx { min-width: 0; }
+
+.kpi-value {
+  display: block;
+  font-size: var(--tipo-xl);
+  font-weight: 800;
+  letter-spacing: var(--track-tight);
+  font-variant-numeric: tabular-nums;
+  color: var(--texto-forte);
+  line-height: 1.15;
+}
+.kpi-label {
+  display: block;
+  margin-top: var(--esp-1);
+  font-family: var(--font-mono);
+  font-size: var(--tipo-2xs);
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: var(--track-label);
+}
 
 .kpi-note {
   grid-column: 1 / -1;
   margin: 0;
-  font-size: 12px;
+  font-size: var(--tipo-sm);
   color: var(--muted);
 }
 .kpi-note:empty { display: none; }
@@ -714,12 +759,16 @@ h1, h2 { margin: 0; font-size: 1rem; }
 /* Campos ---------------------------------------------------------------- */
 
 .field-group { margin-bottom: 20px; }
+/* Micro-rótulo de seção, no molde do protótipo: mono, caixa-alta, entrelinha aberta.
+   A entrelinha não é enfeite — em caixa-alta miúda ela é o que separa as hastes e
+   impede que a palavra vire um borrão. */
 .field-group h2 {
-  font-size: 11px;
+  font-family: var(--font-mono);
+  font-size: var(--tipo-2xs);
   text-transform: uppercase;
-  letter-spacing: .06em;
+  letter-spacing: var(--track-label);
   color: var(--muted);
-  margin-bottom: 8px;
+  margin-bottom: var(--esp-2);
 }
 
 .field {
@@ -1336,7 +1385,26 @@ button.traffic-item-head:hover .traffic-item-name { color: var(--accent-text); }
   padding: var(--esp-5) var(--esp-4) var(--esp-7);
   overflow-y: auto;
 }
-.market-head h1 { margin: 0 0 var(--esp-2); font-size: var(--tipo-xl); }
+/* Kicker: nomeia o TIPO de conteúdo da tela, enquanto o `h1` nomeia a área. Em mono e
+   na cor de ênfase, como no protótipo — é a peça que dá o tom de painel de instrumentos
+   logo na primeira linha. */
+.market-eyebrow {
+  margin: 0;
+  font-family: var(--font-mono);
+  font-size: var(--tipo-2xs);
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: var(--track-label);
+  color: var(--accent-text);
+}
+.market-head h1 {
+  margin: var(--esp-2) 0 var(--esp-2);
+  font-size: var(--tipo-display);
+  font-weight: 800;
+  line-height: 1.12;
+  letter-spacing: var(--track-tight);
+}
+.market-hl { color: var(--accent-text); }
 
 /* A declaração de escopo NÃO é rodapé nem letra miúda: quem chega aqui vindo de um mapa
    com filtro de Região Administrativa espera, por continuidade, que os números respondam
@@ -1436,8 +1504,19 @@ button.traffic-item-head:hover .traffic-item-name { color: var(--accent-text); }
   flex-wrap: wrap;
   margin-bottom: var(--esp-3);
 }
-.market-history h2 { font-size: var(--tipo-lg); }
-.market-history-head p { margin: var(--esp-1) 0 0; font-size: var(--tipo-sm); color: var(--texto-sec); }
+.market-history h2 {
+  font-size: var(--tipo-lg);
+  font-weight: 700;
+  letter-spacing: var(--track-tight);
+}
+/* A nota da seção é META, não corpo de texto: mono miúdo, como o `.mono` à direita do
+   `panel-head` do protótipo. */
+.market-history-head p {
+  margin: var(--esp-1) 0 0;
+  font-family: var(--font-mono);
+  font-size: var(--tipo-xs);
+  color: var(--texto-sec);
+}
 .market-chart-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -1445,9 +1524,10 @@ button.traffic-item-head:hover .traffic-item-name { color: var(--accent-text); }
 }
 .market-fipezap-group + .market-fipezap-group { margin-top: var(--esp-5); }
 .market-fipezap-group-title {
-  font-size: var(--tipo-sm);
+  font-family: var(--font-mono);
+  font-size: var(--tipo-xs);
   text-transform: uppercase;
-  letter-spacing: .04em;
+  letter-spacing: var(--track-label);
   color: var(--texto-sec);
   margin: 0 0 var(--esp-2);
 }
@@ -1808,18 +1888,24 @@ button.traffic-item-head:hover .traffic-item-name { color: var(--accent-text); }
 .market-kpi-rotulo {
   min-height: calc(var(--tipo-2xs) * 1.35 * 2);
   margin: 0 0 var(--esp-1);
+  font-family: var(--font-mono);
   font-size: var(--tipo-2xs);
-  font-weight: 700;
-  letter-spacing: .04em;
+  font-weight: 500;
+  letter-spacing: var(--track-label);
   text-transform: uppercase;
   color: var(--texto-sec);
   line-height: 1.35;
 }
+/* O valor é o protagonista do tile: corpo grande, peso 800 e entrelinha apertada, como
+   no protótipo. `tabular-nums` porque uma coluna de valores que dança de largura quando o
+   número muda é ruído que se lê como instabilidade. */
 .market-kpi-valor {
   margin: 0;
   font-size: var(--tipo-3xl);
-  font-weight: 600;
+  font-weight: 800;
   line-height: 1.1;
+  letter-spacing: var(--track-tight);
+  font-variant-numeric: tabular-nums;
   color: var(--texto-forte);
 }
 
@@ -1829,9 +1915,10 @@ button.traffic-item-head:hover .traffic-item-name { color: var(--accent-text); }
   margin: 0 0 var(--esp-3);
   padding-bottom: var(--esp-2);
   border-bottom: 1px solid var(--borda-sutil);
+  font-family: var(--font-mono);
   font-size: var(--tipo-2xs);
-  font-weight: 700;
-  letter-spacing: .04em;
+  font-weight: 500;
+  letter-spacing: var(--track-label);
   text-transform: uppercase;
   color: var(--texto-sec);
 }
@@ -1853,9 +1940,10 @@ button.traffic-item-head:hover .traffic-item-name { color: var(--accent-text); }
    destaque (12px caixa-baixa contra 10px caixa-alta), o que invertia a leitura. */
 .market-card-label {
   margin: 0 0 var(--esp-1);
+  font-family: var(--font-mono);
   font-size: var(--tipo-2xs);
-  font-weight: 700;
-  letter-spacing: .04em;
+  font-weight: 500;
+  letter-spacing: var(--track-label);
   text-transform: uppercase;
   color: var(--texto-sec);
   line-height: 1.35;
@@ -1867,8 +1955,10 @@ button.traffic-item-head:hover .traffic-item-name { color: var(--accent-text); }
 .market-card-value {
   margin: 0;
   font-size: var(--tipo-lg);
-  font-weight: 600;
+  font-weight: 800;
   line-height: 1.15;
+  letter-spacing: var(--track-tight);
+  font-variant-numeric: tabular-nums;
   color: var(--texto-forte);
 }
 
