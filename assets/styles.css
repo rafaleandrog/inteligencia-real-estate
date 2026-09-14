@@ -836,16 +836,19 @@ h1, h2 { margin: 0; font-size: 1rem; }
   line-height: 1.9;
 }
 .ra-age-label { color: var(--muted); white-space: nowrap; }
+/* Canto assimétrico, como no protótipo: chato à esquerda, arredondado à direita. A barra
+   CRESCE da esquerda, e arredondar a ponta de onde ela parte sugere um começo que não
+   existe — o zero é uma linha reta. */
 .ra-age-track {
   height: 6px;
-  border-radius: 3px;
-  background: var(--line);
+  border-radius: 0 var(--raio-xs) var(--raio-xs) 0;
+  background: var(--superficie-hover);
   overflow: hidden;
 }
 .ra-age-bar {
   display: block;
   height: 100%;
-  border-radius: 3px;
+  border-radius: 0 var(--raio-xs) var(--raio-xs) 0;
   background: var(--chart-bar);
 }
 .ra-age-value {
@@ -1549,7 +1552,12 @@ button.traffic-item-head:hover .traffic-item-name { color: var(--accent-text); }
   gap: var(--esp-3);
   margin-bottom: var(--esp-2);
 }
-.market-chart h3 { margin: 0; font-size: var(--tipo-base); font-weight: 600; }
+.market-chart h3 {
+  margin: 0;
+  font-size: var(--tipo-base);
+  font-weight: 700;
+  letter-spacing: var(--track-tight);
+}
 
 /* A pergunta que o gráfico responde, embaixo do título. É ela que transforma
    "VGV por mês" em algo que a pessoa sabe por que está olhando. */
@@ -1563,6 +1571,7 @@ button.traffic-item-head:hover .traffic-item-name { color: var(--accent-text); }
    pílula que escolheu o modo. */
 .market-chart-modo {
   margin: var(--esp-1) 0 0;
+  font-family: var(--font-mono);
   font-size: var(--tipo-2xs);
   color: var(--texto-fraco);
 }
@@ -1579,13 +1588,16 @@ button.traffic-item-head:hover .traffic-item-name { color: var(--accent-text); }
 .market-chart-resumo strong {
   display: block;
   font-size: var(--tipo-lg);
-  font-weight: 600;
+  font-weight: 800;
+  letter-spacing: var(--track-tight);
+  font-variant-numeric: tabular-nums;
   color: var(--texto-forte);
 }
 .market-chart-resumo span {
+  font-family: var(--font-mono);
   font-size: var(--tipo-2xs);
   text-transform: uppercase;
-  letter-spacing: .04em;
+  letter-spacing: var(--track-label);
   color: var(--texto-sec);
 }
 
@@ -1602,8 +1614,14 @@ button.traffic-item-head:hover .traffic-item-name { color: var(--accent-text); }
 /* Linha de base do eixo X: ancora coluna e área, e diz onde o plot termina. */
 .chart-axis-line { stroke: var(--borda-base); stroke-width: 1; }
 .chart-zero-line { stroke: var(--borda-forte); stroke-width: 1; stroke-opacity: .6; }
+/* Rótulo de eixo em mono: é número, e número que dança de largura entre um tique e o
+   seguinte faz o eixo parecer torto sem nada estar torto. */
 .chart-axis-value,
-.chart-axis-month { fill: var(--texto-sec); font-size: var(--tipo-2xs); }
+.chart-axis-month {
+  fill: var(--texto-sec);
+  font-family: var(--font-mono);
+  font-size: var(--tipo-2xs);
+}
 .chart-axis-value { text-anchor: end; }
 
 /* Cor de série: UMA declaração por índice, herdada pelo grupo.
@@ -1661,16 +1679,21 @@ button.traffic-item-head:hover .traffic-item-name { color: var(--accent-text); }
 
 /* O balão segue o mês. Valor em destaque e nome da série secundário — o inverso da
    legenda, porque aqui quem lê já sabe a série e quer o número. */
+/* Balão no molde do protótipo: teto de largura para que uma série de nome longo não
+   estique o balão pela tela afora, e sombra funda — aqui a sombra ganha, porque o balão
+   flutua SOBRE o gráfico e precisa se descolar dele. */
 .market-chart-tooltip {
   position: absolute;
   z-index: 2;
   min-width: 132px;
-  padding: var(--esp-2);
+  max-width: 340px;
+  padding: var(--esp-2) var(--esp-3);
   transform: translateX(var(--esp-2));
-  border: 1px solid var(--borda-forte);
+  border: 1px solid var(--borda-base);
   border-radius: var(--raio-md);
   background: var(--superficie-elevada);
   box-shadow: var(--sombra-2);
+  font-size: var(--tipo-xs);
   pointer-events: none;
 }
 .market-chart-tooltip-esquerda { transform: translateX(calc(-100% - var(--esp-2))); }
@@ -1716,13 +1739,14 @@ button.traffic-item-head:hover .traffic-item-name { color: var(--accent-text); }
   padding: 0;
   list-style: none;
   color: var(--texto-sec);
+  font-family: var(--font-mono);
   font-size: var(--tipo-xs);
 }
 .market-chart-legend li { display: inline-flex; align-items: center; gap: var(--esp-2); }
 /* A chave espelha a marca: traço para linha, bloco para área e coluna. Um quadrado ao lado
    de uma linha faz procurar no gráfico uma forma que não está lá. */
 .market-legenda-cor { background: var(--serie-cor); border-radius: var(--raio-xs); }
-.market-legenda-bloco { width: 10px; height: 10px; }
+.market-legenda-bloco { width: 9px; height: 9px; }
 .market-legenda-traco { width: 14px; height: 3px; }
 
 /* Os mesmos números em tabela, recolhidos: acima de 24 meses o gráfico não desenha
@@ -1754,11 +1778,15 @@ button.traffic-item-head:hover .traffic-item-name { color: var(--accent-text); }
 .market-chart-valores thead th {
   text-align: right;
   color: var(--texto-sec);
+  font-family: var(--font-mono);
   font-size: var(--tipo-2xs);
-  font-weight: 700;
-  letter-spacing: .04em;
+  font-weight: 500;
+  letter-spacing: var(--track-label);
   text-transform: uppercase;
 }
+/* Linha inteira tingida no hover: numa tabela densa, seguir uma linha com o olho é o que
+   custa, e o tingimento é o que sustenta o olho até o fim dela. */
+.market-chart-valores tbody tr:hover { background: var(--superficie-hover); }
 .market-chart-valores tbody th,
 .market-chart-valores thead th:first-child { text-align: left; color: var(--texto-sec); font-weight: 500; }
 
@@ -1809,13 +1837,13 @@ button.traffic-item-head:hover .traffic-item-name { color: var(--accent-text); }
 }
 .market-regiao-trilho {
   height: 10px;
-  border-radius: var(--raio-pill);
+  border-radius: 0 var(--raio-xs) var(--raio-xs) 0;
   background: var(--superficie-hover);
 }
 .market-regiao-barra {
   display: block;
   height: 100%;
-  border-radius: var(--raio-pill);
+  border-radius: 0 var(--raio-xs) var(--raio-xs) 0;
   background: var(--cat-8);
 }
 /* Acima da régua do DF a barra ganha a cor da série principal: quem está acima do
@@ -1880,7 +1908,6 @@ button.traffic-item-head:hover .traffic-item-name { color: var(--accent-text); }
   border: 1px solid var(--borda-base);
   border-radius: var(--raio-lg);
   background: var(--superficie-base);
-  box-shadow: var(--sombra-1);
 }
 /* Duas linhas reservadas para o rótulo: "IVV (índice de velocidade de vendas)" quebra e os
    outros três não, e sem a reserva os quatro valores da faixa saem em alturas diferentes —

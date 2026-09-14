@@ -96,6 +96,24 @@ function medidaSemEscala(propriedade, valor) {
   });
 }
 
+/**
+ * Raio aceito: CADA componente do valor é `0`, `50%` ou um `var(--raio-*)`.
+ *
+ * A primeira versão exigia que o valor INTEIRO começasse com `var(--raio-` — uma checagem
+ * de forma no lugar de uma de intenção. Ela bastava enquanto todo raio era simétrico, e
+ * passou a reprovar valor legítimo quando o canto assimétrico do protótipo entrou
+ * (`0 var(--raio-xs) var(--raio-xs) 0`, issue #95): nenhum pixel improvisado ali, e o
+ * guard reclamava mesmo assim. Guard que reprova o certo é tão caro quanto guard que
+ * aprova o errado — o conserto é o desenho contornar a regra, e aí a regra vira obstáculo
+ * em vez de trilho. A intenção continua a mesma e continua cobrada componente a
+ * componente: `4px` em qualquer posição reprova.
+ */
+function raioTokenizado(valor) {
+  const partes = valor.split(/\s+/).filter(Boolean);
+  return partes.length > 0
+    && partes.every((parte) => parte === '0' || parte === '50%' || /^var\(--raio-[\w-]+\)$/.test(parte));
+}
+
 /** Achados do guard: uma frase por violação, com o seletor que a carrega. */
 export function violacoesCss(css) {
   const achados = [];
@@ -115,7 +133,7 @@ export function violacoesCss(css) {
     }
     for (const m of declaracoes.matchAll(/border(?:-[a-z]+)*-radius\s*:\s*([^;}]+)/g)) {
       const valor = m[1].trim();
-      if (!valor.startsWith('var(--raio-') && valor !== '50%') {
+      if (!raioTokenizado(valor)) {
         achados.push(`raio literal em "${seletor}": ${valor}`);
       }
     }
@@ -160,6 +178,7 @@ test('o guard sabe falhar', () => {
     :root { --raio-md: 8px; }
     .market-x { color: #abc; }
     .market-y { border-radius: 10px; }
+    .market-y2 { border-radius: 0 var(--raio-md) 4px 0; }
     .chart-z { background: rgba(0, 0, 0, .5); }
     .market-w { color: var(--nao-existe); }
     .market-v { color: var(--raio-md, #fff); }
@@ -168,6 +187,9 @@ test('o guard sabe falhar', () => {
   const achados = violacoesCss(plantado);
   assert.ok(achados.some((a) => a.includes('literal de cor em ".market-x"')), achados.join(' · '));
   assert.ok(achados.some((a) => a.includes('raio literal em ".market-y"')), achados.join(' · '));
+  // Um pixel escondido no meio de um shorthand tokenizado é o caso que a versão anterior
+  // do `raioTokenizado` não teria como pegar se ela olhasse só o começo do valor.
+  assert.ok(achados.some((a) => a.includes('raio literal em ".market-y2"')), achados.join(' · '));
   assert.ok(achados.some((a) => a.includes('literal de cor em ".chart-z"')), achados.join(' · '));
   assert.ok(achados.some((a) => a.includes('--nao-existe')), achados.join(' · '));
   assert.ok(achados.some((a) => a.includes('fallback')), achados.join(' · '));
@@ -178,6 +200,8 @@ test('o guard sabe falhar', () => {
   assert.deepEqual(violacoesCss(
     ':root { --raio-md: 8px; --esp-2: 8px; --tipo-sm: 12px; }\n'
     + '.market-x { border-radius: var(--raio-md); padding: var(--esp-2); font-size: var(--tipo-sm);'
-    + ' margin: 0; line-height: 1.4; width: 10px; }',
+    + ' margin: 0; line-height: 1.4; width: 10px; }\n'
+    // Canto assimétrico inteiramente tokenizado: é valor legítimo e não pode virar achado.
+    + '.market-x2 { border-radius: 0 var(--raio-md) var(--raio-md) 0; }',
   ), [], 'o guard não pode reclamar de medida que não é de escala, nem de valor tokenizado');
 });
