@@ -23,6 +23,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync, readdirSync } from 'node:fs';
+import { SEASONALITY_CHART } from '../src/ivv/history.js';
 
 const read = (p) => readFileSync(new URL(p, import.meta.url), 'utf8');
 
@@ -30,7 +31,7 @@ const RE_COR_LITERAL = /#[0-9a-fA-F]{3,8}\b|\b(?:rgba?|hsla?)\s*\(/;
 /** Propriedades cujo valor tem escala declarada — literal aqui é densidade improvisada. */
 const PROPRIEDADES_DE_ESCALA = /(?:^|[;{\s])(font-size|padding|margin|gap|row-gap|column-gap)\s*:\s*([^;}]+)/g;
 const RE_VAR_COM_FALLBACK = /var\(\s*--[\w-]+\s*,/;
-const SELETORES_DA_TELA = /(^|[\s,>+~])[.](market|chart|serie)[-\w]*/;
+const SELETORES_DA_TELA = /(^|[\s,>+~])[.](market|chart|serie|ano)[-\w]*/;
 
 /** CSS sem comentários. O corte é textual: o arquivo não tem `/*` dentro de string. */
 export function semComentarios(css) {
@@ -160,6 +161,33 @@ test('as regras da tela do Mercado não trazem literal de cor nem de raio', () =
   assert.deepEqual(violacoesCss(read('../assets/styles.css')), []);
 });
 
+/**
+ * A rampa ordinal dos anos: o CSS e o JS têm que concordar sobre QUANTOS degraus ela tem.
+ *
+ * O número é uma verdade em dois arquivos — `SEASONALITY_CHART.anos` decide quantos anos a
+ * sazonalidade compara, e `assets/styles.css` decide quantas regras `.ano-N` existem. Pedir
+ * um degrau que o CSS não tem não dá erro nenhum: a classe sai, nenhuma regra casa,
+ * `--serie-cor` fica indefinido e a série some da tela em silêncio (família da R8.70).
+ *
+ * A checagem é por CONTAGEM EXATA e não por presença, e nos dois sentidos: degrau a mais no
+ * CSS é rampa maior do que o JS sabe usar (código morto, que foi como este bug nasceu —
+ * a rampa inteira ficou sem quem a emitisse desde a issue #85 até a #97); degrau a menos é
+ * série invisível. Nenhum dos dois lados pode andar sozinho.
+ */
+test('a rampa ordinal do CSS tem exatamente os degraus que a sazonalidade usa', () => {
+  const degraus = regrasCss(read('../assets/styles.css'))
+    .map(({ seletor }) => seletor.trim())
+    .filter((seletor) => /^\.ano-\d+$/.test(seletor));
+  assert.equal(degraus.length, SEASONALITY_CHART.anos,
+    `CSS define ${degraus.length} degrau(s) (${degraus.join(', ')}), `
+    + `a sazonalidade compara ${SEASONALITY_CHART.anos} anos`);
+  assert.deepEqual(
+    degraus.slice().sort(),
+    Array.from({ length: SEASONALITY_CHART.anos }, (_, i) => `.ano-${i + 1}`).sort(),
+    'os degraus precisam ser 1..N, sem buraco nem salto',
+  );
+});
+
 test('nenhum módulo de src/ivv conhece cor — sem exceção e sem lista', () => {
   const dir = new URL('../src/ivv/', import.meta.url);
   const achados = [];
@@ -180,6 +208,7 @@ test('o guard sabe falhar', () => {
     .market-y { border-radius: 10px; }
     .market-y2 { border-radius: 0 var(--raio-md) 4px 0; }
     .chart-z { background: rgba(0, 0, 0, .5); }
+    .ano-9 { color: #654; }
     .market-w { color: var(--nao-existe); }
     .market-v { color: var(--raio-md, #fff); }
     .market-u { font-size: 13px; padding: 4px 8px; }
@@ -191,6 +220,9 @@ test('o guard sabe falhar', () => {
   // do `raioTokenizado` não teria como pegar se ela olhasse só o começo do valor.
   assert.ok(achados.some((a) => a.includes('raio literal em ".market-y2"')), achados.join(' · '));
   assert.ok(achados.some((a) => a.includes('literal de cor em ".chart-z"')), achados.join(' · '));
+  // A rampa ordinal entrou no escopo do guard na #97: antes disso `.ano-*` passava batido,
+  // e foi sob esse ponto cego que ela ficou morta por duas issues.
+  assert.ok(achados.some((a) => a.includes('literal de cor em ".ano-9"')), achados.join(' · '));
   assert.ok(achados.some((a) => a.includes('--nao-existe')), achados.join(' · '));
   assert.ok(achados.some((a) => a.includes('fallback')), achados.join(' · '));
   assert.ok(achados.some((a) => a.includes('font-size: 13px')), achados.join(' · '));

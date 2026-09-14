@@ -1701,6 +1701,104 @@ selo.ausente
   ? pass('o link externo abre em aba nova com rel="noopener noreferrer" (R4.5)')
   : fail('atributos do link: ' + JSON.stringify(selo));
 
+// == Sazonalidade: a rampa ORDINAL chega à tela (issue #97) ==
+//
+// A rampa `--ano-1..4` existia no CSS desde a issue #85 e NUNCA foi emitida por ninguém: o
+// gráfico saía com `serie-N` e pintava os anos com a paleta categórica. Nada errava — e a
+// R8.76, a mensagem do commit e o comentário do CSS já descreviam o conserto como feito.
+// Esta asserção é a que faltava lá: ela fala as duas línguas, porque compara o token do CSS
+// com o valor COMPUTADO do traço (R8.67/R8.70).
+//
+// A base de demonstração traz UMA linha de `ivv_monthly`, o que daria uma série só e não
+// exercitaria ordem nenhuma. Por isso injeta quatro anos — mesmo padrão que a seção do IVV
+// ausente usa para zerar a aba.
+console.log('\n== 12l. Sazonalidade: rampa ordinal dos anos ==');
+
+const sazonal = await context.newPage();
+await sazonal.addInitScript(() => {
+  Object.defineProperty(window, 'APP_CONFIG', {
+    configurable: true,
+    set(value) { delete window.APP_CONFIG; window.APP_CONFIG = value; if (value) value.demoMode = true; },
+    get() { return undefined; },
+  });
+});
+await sazonal.route('**/data/demo.json', async (route) => {
+  const response = await route.fetch();
+  const payload = await response.json();
+  payload.ivv_monthly = [];
+  for (const ano of [2023, 2024, 2025, 2026]) {
+    for (let mes = 1; mes <= 12; mes += 1) {
+      payload.ivv_monthly.push({
+        reference_month: `${ano}-${String(mes).padStart(2, '0')}-01`,
+        ivv_pct: String(5 + (mes % 4)),
+        offered_units: '6000',
+        sold_units: '400',
+      });
+    }
+  }
+  await route.fulfill({ response, json: payload });
+});
+await sazonal.goto('http://localhost:8080/#mercado', { waitUntil: 'networkidle' });
+await sazonal.waitForTimeout(1800);
+
+const rampa = await sazonal.evaluate(() => {
+  // `--ano-1` chega como texto do token (" #7ebe9a"); `stroke` chega como "rgb(126, 190, 154)".
+  // Sem normalizar, nenhuma comparação casaria — e o teste passaria a falhar por formato.
+  const paraRgb = (hex) => {
+    const h = hex.trim().replace('#', '');
+    const n = parseInt(h.length === 3 ? h.split('').map((c) => c + c).join('') : h, 16);
+    return `rgb(${(n >> 16) & 255}, ${(n >> 8) & 255}, ${n & 255})`;
+  };
+  const raiz = getComputedStyle(document.documentElement);
+  const card = document.querySelector('#marketCharts [data-chart="sazonalidade"]');
+  if (!card) return { ausente: true };
+  // O degrau sai da PRÓPRIA classe do grupo, não da posição no DOM: `.market-serie-linha` é
+  // um path por SEGMENTO, e um ano com buraco no meio produz dois — qualquer casamento por
+  // índice desalinharia em silêncio.
+  const grupos = [...card.querySelectorAll('g.market-serie')].map((g) => {
+    const ordinal = /(?:^|\s)ano-(\d+)(?:\s|$)/.exec(g.className.baseVal || '');
+    const categorico = /(?:^|\s)serie-(\d+)(?:\s|$)/.test(g.className.baseVal || '');
+    const traco = g.querySelector('.market-serie-linha, .market-serie-coluna');
+    return {
+      degrau: ordinal ? Number(ordinal[1]) : null,
+      categorico,
+      cor: traco ? (getComputedStyle(traco).stroke !== 'none'
+        ? getComputedStyle(traco).stroke : getComputedStyle(traco).fill) : null,
+      esperado: ordinal ? paraRgb(raiz.getPropertyValue(`--ano-${ordinal[1]}`)) : null,
+    };
+  });
+  return {
+    grupos,
+    legendas: card.querySelectorAll('.market-chart-legend li').length,
+    catsDaPaleta: [1, 2, 3, 4].map((i) => paraRgb(raiz.getPropertyValue(`--cat-${i}`))),
+  };
+});
+
+if (rampa.ausente || !rampa.grupos) {
+  fail('o card da sazonalidade não chegou à tela: ' + JSON.stringify(rampa));
+} else {
+  const degraus = rampa.grupos.map((g) => g.degrau);
+  rampa.grupos.length > 1 && rampa.grupos.length === rampa.legendas
+    ? pass(`a sazonalidade desenhou ${rampa.grupos.length} anos, um por item de legenda`)
+    : fail('séries e legenda divergem: ' + JSON.stringify(rampa));
+  rampa.grupos.every((g) => g.degrau !== null) && !rampa.grupos.some((g) => g.categorico)
+    ? pass('cada ano sai na rampa ORDINAL (ano-N), nenhum na paleta categórica')
+    : fail('classe de série errada: ' + JSON.stringify(degraus));
+  rampa.grupos.every((g) => g.cor && g.cor === g.esperado)
+    ? pass('a cor COMPUTADA de cada ano é o degrau que a classe dele promete')
+    : fail('cor fora da rampa: ' + JSON.stringify(rampa.grupos));
+  rampa.grupos.every((g) => !rampa.catsDaPaleta.includes(g.cor))
+    ? pass('nenhum ano está pintado com uma cor da paleta categórica')
+    : fail('ano com cor categórica: ' + JSON.stringify(rampa.grupos));
+  // O corrente é o teto da rampa: mais escuro no tema claro, mais claro no escuro — nos dois
+  // casos o mais saliente, que é o que a R8.76 pede.
+  Math.max(...degraus) === degraus[degraus.length - 1]
+    && new Set(degraus).size === degraus.length
+    ? pass('o ano corrente fica no último degrau, e nenhum degrau se repete')
+    : fail('ordem dos degraus: ' + JSON.stringify(degraus));
+}
+await sazonal.close();
+
 // == Painel de trechos rodoviários com tráfego (issue #63) ==
 //
 // Cobre os dois estados que a issue pede: sem geometria sincronizada (o piloto real

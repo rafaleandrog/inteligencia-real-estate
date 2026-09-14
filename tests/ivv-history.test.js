@@ -3,10 +3,10 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  HISTORY_CHARTS, SEASONALITY_CHART, SERIES_MODES,
+  HISTORY_CHARTS, SEASONALITY_CHART, SERIES_MODES, CAT_MAXIMA,
   buildHistoryCharts, buildSeasonality, buildSparkline,
 } from '../src/ivv/history.js';
-import { CHART_TYPES, CHART_SOURCES } from '../src/ivv/chart-model.js';
+import { CHART_TYPES, CHART_SOURCES, DIMENSOES } from '../src/ivv/chart-model.js';
 import { METRIC_BY_KEY, DERIVED_SERIES_BY_KEY } from '../src/ivv/metrics.js';
 
 const rows = [
@@ -46,7 +46,7 @@ test('toda série plotada existe num dos dois registros, e nenhuma carrega cor',
     for (const serie of definicao.series) {
       const registro = serie.derivada ? DERIVED_SERIES_BY_KEY : METRIC_BY_KEY;
       assert.ok(registro[serie.key], `${serie.key} fora do registro esperado`);
-      assert.ok(Number.isInteger(serie.cat) && serie.cat >= 1 && serie.cat <= 8,
+      assert.ok(Number.isInteger(serie.cat) && serie.cat >= 1 && serie.cat <= CAT_MAXIMA,
         `${serie.key}: cat fora da paleta`);
       assert.equal('color' in serie, false, `${serie.key} ainda carrega cor`);
     }
@@ -131,13 +131,48 @@ test('a sazonalidade põe jan..dez no eixo e um ano por série', () => {
   assert.deepEqual(modelo.series.map((s) => s.rotulo), ['2025', '2026']);
 });
 
-test('o ano mais recente recebe o índice mais saliente da paleta', () => {
-  const modelo = buildSeasonality([
-    { reference_date: '2025-01-01', ivv_pct: 0.04 },
-    { reference_date: '2026-01-01', ivv_pct: 0.06 },
-  ]);
-  assert.equal(modelo.series.find((s) => s.rotulo === '2026').cat, 1);
-  assert.equal(modelo.series.find((s) => s.rotulo === '2025').cat, 2);
+// A sazonalidade é o único gráfico de dimensão ORDINAL do repositório (issue #97): ano é
+// ordem, não identidade, e a cor carrega essa ordem numa rampa de um matiz só (R8.76).
+const anosDe = (lista) => Object.fromEntries(
+  buildSeasonality(lista.map((ano) => ({ reference_date: `${ano}-01-01`, ivv_pct: 0.05 })))
+    .series.map((s) => [s.rotulo, s.cat]),
+);
+
+test('a sazonalidade se declara ORDINAL; os outros gráficos ficam categóricos', () => {
+  assert.equal(buildSeasonality([{ reference_date: '2026-01-01', ivv_pct: 0.05 }]).dimensao,
+    DIMENSOES.ORDINAL);
+  for (const modelo of buildHistoryCharts({}, SERIES_MODES.MENSAL)) {
+    assert.equal(modelo.dimensao, DIMENSOES.CATEGORICA, `${modelo.key} não é categórico`);
+  }
+});
+
+test('o ano corrente fica no último degrau da rampa, e os demais varrem até o primeiro', () => {
+  // O corrente é sempre o teto — mais escuro no tema claro, mais claro no escuro, porque a
+  // rampa inverte com o tema; é a série que a pessoa veio ver.
+  const teto = SEASONALITY_CHART.anos;
+  assert.deepEqual(anosDe([2026]), { 2026: teto });
+  // Com dois anos, as PONTAS: encostar no corrente daria degraus vizinhos, com 1,7:1 de
+  // contraste entre si — duas linhas quase idênticas justamente na janela mais usada.
+  assert.deepEqual(anosDe([2025, 2026]), { 2025: 1, 2026: teto });
+  assert.deepEqual(anosDe([2024, 2025, 2026]), { 2024: 1, 2025: 2, 2026: teto });
+  assert.deepEqual(anosDe([2023, 2024, 2025, 2026]), { 2023: 1, 2024: 2, 2025: 3, 2026: teto });
+});
+
+test('nenhum degrau cai fora da rampa, nem pedindo demais nem pedindo absurdo', () => {
+  // Índice fora da rampa não dá erro: sairia `ano-5`, sem regra CSS, e a série sumiria da
+  // tela em silêncio (família da R8.70). O clamp é o que impede isso.
+  const muitos = Array.from({ length: 9 }, (_, i) => (
+    { reference_date: `${2018 + i}-01-01`, ivv_pct: 0.05 }
+  ));
+  for (const opcoes of [{}, { anos: 8 }, { anos: -3 }, { anos: 0 }]) {
+    const series = buildSeasonality(muitos, opcoes).series;
+    assert.ok(series.length >= 1 && series.length <= SEASONALITY_CHART.anos,
+      `${JSON.stringify(opcoes)}: ${series.length} séries`);
+    for (const s of series) {
+      assert.ok(Number.isInteger(s.cat) && s.cat >= 1 && s.cat <= SEASONALITY_CHART.anos,
+        `${JSON.stringify(opcoes)}: degrau ${s.cat} fora da rampa`);
+    }
+  }
 });
 
 test('ano incompleto deixa buraco nos meses que ainda não existem', () => {

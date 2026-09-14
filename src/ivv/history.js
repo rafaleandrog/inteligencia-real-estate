@@ -10,7 +10,7 @@
 // onde mora significado — e fora do alcance de qualquer teste. Agora a série declara
 // `cat: 3` e quem resolve o índice em cor é o CSS.
 
-import { CHART_TYPES, CHART_SOURCES, buildChartModel } from './chart-model.js';
+import { CHART_TYPES, CHART_SOURCES, DIMENSOES, buildChartModel } from './chart-model.js';
 import {
   monthlySeries, derivedSeries, runningSeries, prepareRows, aggregateMetric, VALUE_ORIGINS,
 } from './aggregate.js';
@@ -122,12 +122,26 @@ export const SEASONALITY_CHART = Object.freeze({
   tipo: CHART_TYPES.LINHA,
   fonte: CHART_SOURCES.COMPLETA,
   baseZero: true,
+  dimensao: DIMENSOES.ORDINAL,
   metrica: 'ivv_pct',
+  /**
+   * Quantos anos a sazonalidade compara — decisão de produto, e ao mesmo tempo o teto da
+   * rampa ordinal do CSS (`--ano-1..4`).
+   *
+   * Pedir mais anos do que a rampa tem degraus não dá erro nenhum: sairia `ano-5`, que não
+   * existe como regra, `--serie-cor` ficaria indefinido e a quinta série sumiria da tela em
+   * silêncio — a família de falha da R8.70. Por isso este número é o clamp, e
+   * `tests/ui-tokens.test.js` conta as regras `.ano-N` do CSS e cobra a igualdade com ele,
+   * por contagem exata: degrau a mais e degrau a menos quebram.
+   */
   anos: 4,
 });
 
-/** Quantidade de anos comparados na sazonalidade — a paleta tem oito índices, e sobra. */
-const CAT_MAXIMA = 8;
+/**
+ * Tamanho da paleta CATEGÓRICA (`--cat-1..8`). Exportado porque o teste que confere o
+ * intervalo dos índices digitava o 8 à mão, e contagem digitada envelhece calada (R8.72).
+ */
+export const CAT_MAXIMA = 8;
 
 /**
  * Os dois jeitos de olhar a mesma série (issue #85).
@@ -260,13 +274,44 @@ export function buildHistoryCharts(fontes = {}, modo = SERIES_MODES.MENSAL) {
 /**
  * A sazonalidade: eixo de janeiro a dezembro, uma série por ano.
  *
- * O ano mais recente recebe o índice 1 da paleta — é a série que a pessoa veio ver, e o
- * índice 1 é o mais saliente. Anos incompletos (o corrente, ou o primeiro da série)
- * deixam BURACO nos meses que ainda não existem, nunca zero: zero em dezembro diria que
- * o mercado parou.
+ * É o único gráfico do repositório com dimensão ORDINAL. Ano não é identidade, é ordem:
+ * 2023 vem antes de 2024, e a cor pode carregar essa ordem em vez de desperdiçá-la em
+ * quatro matizes sem relação (R8.76).
+ *
+ * O ÍNDICE VARRE A RAMPA INTEIRA, e não os degraus finais. O ano corrente fica sempre no
+ * último degrau — o mais escuro no tema claro, o mais claro no escuro, porque a rampa
+ * inverte com o tema; é ele que a pessoa veio ver e é ele que precisa saltar. Os demais se
+ * distribuem até o primeiro degrau, em vez de se amontoarem ao lado do corrente:
+ *
+ *     1 ano  → [4]          2 anos → [1, 4]
+ *     3 anos → [1, 2, 4]    4 anos → [1, 2, 3, 4]
+ *
+ * A diferença importa justamente onde mais se olha. Com dois anos, encostar no corrente
+ * daria os degraus 3 e 4, que têm 1,7:1 de contraste entre si — duas linhas quase idênticas
+ * —, contra 3,9:1 usando as duas pontas. A rampa foi dimensionada com o passo MÍNIMO para
+ * quatro séries; gastá-lo numa janela de duas é jogar fora dois terços dela.
+ *
+ * A rampa ordena os anos MOSTRADOS, não mede distância no tempo: se um ano faltar no meio
+ * da série, os vizinhos ficam em degraus adjacentes. É o comportamento aceito — a
+ * alternativa, indexar por distância até o ano corrente, precisa de clamp e o clamp põe
+ * dois anos no MESMO degrau, o que faz a cor mentir em vez de apenas não informar.
+ *
+ * Anos incompletos (o corrente, ou o primeiro da série) deixam BURACO nos meses que ainda
+ * não existem, nunca zero: zero em dezembro diria que o mercado parou.
  */
+function degrauDoAno(indice, total) {
+  // Com um ano só não há intervalo para distribuir: ele é o corrente, e vai para o fim.
+  if (total <= 1) return SEASONALITY_CHART.anos;
+  const doFim = total - 1 - indice;
+  return SEASONALITY_CHART.anos - Math.round((doFim * (SEASONALITY_CHART.anos - 1)) / (total - 1));
+}
+
 export function buildSeasonality(rows, opcoes = {}) {
-  const anos = Math.min(Number(opcoes.anos ?? SEASONALITY_CHART.anos) || 1, CAT_MAXIMA);
+  // `Math.max(1, …)` porque um valor negativo é truthy e passaria pelo `|| 1`: `slice(-anos)`
+  // com `anos = -3` vira `slice(3)`, que DESCARTA os três mais antigos em vez de manter os
+  // três mais recentes — e, pior, deixa `recentes.length` imprevisível para a conta do índice.
+  const anos = Math.max(1, Math.min(Number(opcoes.anos ?? SEASONALITY_CHART.anos) || 1,
+    SEASONALITY_CHART.anos));
   const metrica = SEASONALITY_CHART.metrica;
   const acumulado = opcoes.modo === SERIES_MODES.ACUMULADO;
   const porAno = new Map();
@@ -284,6 +329,7 @@ export function buildSeasonality(rows, opcoes = {}) {
       key: SEASONALITY_CHART.key,
       titulo: acumulado ? SEASONALITY_CHART.tituloAcumulado : SEASONALITY_CHART.titulo,
       tipo: SEASONALITY_CHART.tipo,
+      dimensao: SEASONALITY_CHART.dimensao,
       baseZero: SEASONALITY_CHART.baseZero,
       formatar: (valor) => formatMetricValue(metrica, valor),
       formatarCurto: (valor) => formatMetricCompact(metrica, valor),
@@ -292,7 +338,7 @@ export function buildSeasonality(rows, opcoes = {}) {
     recentes.map((ano, indice) => ({
       chave: `${metrica}-${ano}`,
       rotulo: ano,
-      cat: recentes.length - indice,
+      cat: degrauDoAno(indice, recentes.length),
       pontos: meses.map((mes) => ({
         categoria: mes,
         valor: porAno.get(ano).has(mes) ? porAno.get(ano).get(mes) : null,
