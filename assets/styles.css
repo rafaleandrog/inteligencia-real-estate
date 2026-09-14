@@ -1972,9 +1972,242 @@ button.traffic-item-head:hover .traffic-item-name { color: var(--accent-text); }
 }
 .pdad-empty { margin: 0; font-size: var(--tipo-sm); color: var(--muted); }
 
+.pdad-card-wide { grid-column: 1 / -1; }
+
+/* Gráfico de colunas (`age`) e colunas+linha acumulada (`ordline`, `schoolTime`/`workTime`). */
+.pdad-cols-svg, .pdad-ord-svg { display: block; width: 100%; height: auto; }
+.pdad-col-val, .pdad-ord-val {
+  font-size: 9px;
+  font-weight: 700;
+  fill: var(--texto-forte);
+  text-anchor: middle;
+}
+.pdad-col-cat, .pdad-ord-cat {
+  font-size: 8px;
+  fill: var(--texto-sec);
+  text-anchor: middle;
+}
+.pdad-sc-axis { stroke: var(--borda-base); stroke-width: 1; }
+.pdad-sc-grid { stroke: var(--borda-sutil); stroke-width: 1; stroke-dasharray: 3 3; }
+.pdad-cmp-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--esp-3);
+  margin-bottom: var(--esp-2);
+  font-size: var(--tipo-2xs);
+  color: var(--texto-sec);
+}
+
+/* Rosca (`donut`) e pizza (`pie`) — mesma anatomia: SVG + legenda ao lado. */
+.pdad-donut-flex { display: flex; align-items: center; gap: var(--esp-3); flex-wrap: wrap; }
+.pdad-donut-box { flex: 0 0 auto; width: 110px; }
+.pdad-donut-svg { display: block; width: 100%; height: auto; }
+.pdad-donut-val { font-size: 15px; font-weight: 800; fill: var(--texto-forte); }
+.pdad-donut-lab { font-size: 8px; fill: var(--texto-sec); }
+.pdad-legend { flex: 1 1 140px; min-width: 0; display: grid; gap: 4px; }
+.pdad-legend-row {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: center;
+  gap: var(--esp-1);
+  font-size: var(--tipo-xs);
+}
+.pdad-legend-row > i { width: 9px; height: 9px; border-radius: 999px; }
+.pdad-legend-row > span { color: var(--texto-sec); overflow-wrap: anywhere; }
+.pdad-legend-row > b { color: var(--texto-forte); font-variant-numeric: tabular-nums; white-space: nowrap; }
+
+/* Barra empilhada (`stack`, `marital`). */
+.pdad-stack-bar {
+  display: flex;
+  height: 20px;
+  border-radius: var(--raio-xs);
+  overflow: hidden;
+  margin-bottom: var(--esp-2);
+}
+.pdad-stack-bar > i { display: block; height: 100%; }
+
+/* Local de compras (`groups`, Figura 59) — grupo (tipo de compra) × destino. */
+.pdad-shop-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: var(--esp-3);
+}
+.pdad-shop-title { font-size: var(--tipo-xs); font-weight: 700; color: var(--texto-forte); margin-bottom: var(--esp-1); }
+.pdad-mini-row {
+  display: grid;
+  grid-template-columns: minmax(70px, 1fr) minmax(0, 1.4fr) auto;
+  align-items: center;
+  gap: var(--esp-1);
+  padding: 3px 0;
+  font-size: var(--tipo-2xs);
+}
+.pdad-mini-row > span { color: var(--texto-sec); overflow-wrap: anywhere; }
+.pdad-mini-trilho { height: 6px; border-radius: var(--raio-xs); background: var(--superficie-hover); }
+.pdad-mini-fill { display: block; height: 100%; border-radius: var(--raio-xs); background: var(--cat-3); }
+.pdad-mini-row > b { color: var(--texto-forte); font-variant-numeric: tabular-nums; white-space: nowrap; }
+
+[data-drill-category] { cursor: pointer; }
+
+/* Dispersão territorial (issue #102). */
+.pdad-scatter { margin-top: var(--esp-4); }
+.pdad-scatter-view-label {
+  display: grid;
+  gap: var(--esp-1);
+  max-width: 380px;
+  margin-bottom: var(--esp-2);
+}
+.pdad-scatter-view-label > span { font-size: var(--tipo-2xs); color: var(--texto-sec); }
+.pdad-sc-insight { margin: 0 0 var(--esp-3); font-size: var(--tipo-sm); color: var(--texto-sec); }
+.pdad-sc-svg { display: block; width: 100%; height: auto; }
+.pdad-sc-tick { font-size: 9px; fill: var(--texto-sec); }
+.pdad-sc-axlabel { font-size: 10px; fill: var(--texto-sec); text-anchor: middle; }
+.pdad-sc-dot { fill: var(--cat-5); cursor: pointer; }
+.pdad-sc-dot.sel { fill: var(--accent-text); stroke: var(--texto-forte); stroke-width: 1.5; }
+
+/* Ranking dos territórios (issue #102). */
+.pdad-rank-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  gap: var(--esp-3);
+  margin-bottom: var(--esp-4);
+}
+.pdad-rank-card {
+  padding: var(--esp-3);
+  border: 1px solid var(--borda-base);
+  border-radius: var(--raio-lg);
+  background: var(--superficie-base);
+  display: grid;
+  gap: 2px;
+}
+.pdad-rank-card[data-pdad-indicator-key] { cursor: pointer; }
+.pdad-rank-off { opacity: .55; }
+.pdad-rank-tema { font-size: var(--tipo-2xs); color: var(--texto-sec); text-transform: uppercase; letter-spacing: .03em; }
+.pdad-rank-label { font-size: var(--tipo-xs); color: var(--texto-forte); font-weight: 600; }
+.pdad-rank-card > strong { font-size: var(--tipo-xl); color: var(--texto-forte); font-variant-numeric: tabular-nums; }
+.pdad-rank-pos { font-size: var(--tipo-2xs); color: var(--texto-sec); }
+.pdad-rank-bar { height: 5px; border-radius: 999px; background: var(--superficie-hover); overflow: hidden; margin-top: 2px; }
+.pdad-rank-bar > i { display: block; height: 100%; background: var(--cat-5); }
+
+.pdad-rank-table-card { margin-top: var(--esp-4); }
+.pdad-rank-table-controls { align-items: flex-end; margin-bottom: var(--esp-3); }
+.pdad-seg-toggle { display: inline-flex; border: 1px solid var(--borda-base); border-radius: var(--raio-md); overflow: hidden; }
+.pdad-seg-toggle > button {
+  padding: 8px 12px;
+  border: 0;
+  background: transparent;
+  color: var(--texto-sec);
+  font-size: var(--tipo-xs);
+  cursor: pointer;
+}
+.pdad-seg-toggle > button.on { background: var(--brand2); color: var(--texto-forte); }
+
+.pdad-table-wrap { overflow-x: auto; }
+.pdad-table-wrap table { width: 100%; border-collapse: collapse; font-size: var(--tipo-xs); }
+.pdad-table-wrap th, .pdad-table-wrap td { padding: 8px 10px; text-align: left; border-bottom: 1px solid var(--borda-sutil); }
+.pdad-table-wrap th { color: var(--texto-sec); font-weight: 600; white-space: nowrap; }
+.pdad-table-wrap td { color: var(--texto-forte); }
+.pdad-row-link { cursor: pointer; }
+.pdad-row-link:hover { background: var(--superficie-hover); }
+
+.pdad-badge {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: var(--tipo-2xs);
+  background: var(--superficie-hover);
+  color: var(--texto-sec);
+}
+
+/* Comparar RAs (issue #102). */
+.pdad-cv-picker { margin-bottom: var(--esp-4); }
+.pdad-cv-label { font-size: var(--tipo-sm); font-weight: 700; color: var(--texto-forte); margin-bottom: var(--esp-2); }
+.pdad-cv-addrow { display: flex; flex-wrap: wrap; gap: var(--esp-2); align-items: center; margin-bottom: var(--esp-2); }
+.pdad-cv-addrow select {
+  padding: 8px 10px;
+  border: 1px solid var(--borda-base);
+  border-radius: var(--raio-md);
+  background: var(--superficie-base);
+  color: var(--texto-forte);
+}
+.pdad-cv-chips { display: flex; flex-wrap: wrap; gap: var(--esp-2); }
+.pdad-cv-chip {
+  --chip: var(--cat-1);
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 10px;
+  border: 1px solid var(--chip);
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--chip) 18%, transparent);
+  color: var(--texto-forte);
+  font-size: var(--tipo-xs);
+  cursor: pointer;
+}
+.pdad-cv-chip .x { color: var(--texto-sec); }
+.pdad-cv-actions { display: flex; gap: var(--esp-2); margin: var(--esp-3) 0; }
+.pdad-cv-dot { display: inline-block; width: 9px; height: 9px; border-radius: 999px; margin-right: 6px; }
+.pdad-cv-legend { display: flex; flex-wrap: wrap; gap: var(--esp-3); margin-bottom: var(--esp-3); }
+.pdad-cv-key { display: inline-flex; align-items: center; gap: 6px; font-size: var(--tipo-xs); color: var(--texto-sec); }
+.pdad-cv-key > i { width: 9px; height: 9px; border-radius: 999px; }
+
+.pdad-cvb-grid { display: grid; gap: var(--esp-3); }
+.pdad-cvb-cat { display: grid; gap: 4px; }
+.pdad-cvb-head { font-size: var(--tipo-xs); color: var(--texto-sec); }
+.pdad-cvb-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: var(--esp-2);
+  cursor: pointer;
+}
+
+/* Modal de rastreabilidade / drill-down (issue #102). */
+.drill-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--esp-4);
+  background: rgba(4, 10, 20, .72);
+}
+.drill-overlay[hidden] { display: none; }
+.drill-modal {
+  width: min(920px, 100%);
+  max-height: min(88vh, 900px);
+  overflow-y: auto;
+  box-shadow: var(--sombra-2);
+}
+.drill-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: var(--esp-3);
+  margin-bottom: var(--esp-3);
+}
+.drill-head h2 { margin: 2px 0; font-size: var(--tipo-lg); color: var(--texto-forte); }
+.drill-close {
+  flex: 0 0 auto;
+  width: 32px;
+  height: 32px;
+  border: 1px solid var(--borda-base);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--texto-sec);
+  cursor: pointer;
+}
+.drill-close:hover { color: var(--texto-base); border-color: var(--erro); }
+.pdad-drill-controls { align-items: flex-end; margin-bottom: var(--esp-3); }
+.pdad-drill-rank { margin-top: var(--esp-4); padding-top: var(--esp-3); border-top: 1px solid var(--borda-sutil); }
+.pdad-drill-rank[hidden] { display: none; }
+
 @media (max-width: 860px) {
   .pdad-ind-grid { grid-template-columns: 1fr; }
   .pdad-bar { grid-template-columns: minmax(78px, 1fr) 1.4fr auto; }
+  .pdad-donut-box { width: 90px; }
+  .pdad-rank-grid { grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); }
+  .drill-modal { padding: var(--esp-3); }
 }
 
 /* Cards do Mercado Residencial DF (issue #59).

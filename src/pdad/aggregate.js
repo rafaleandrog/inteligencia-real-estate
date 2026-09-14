@@ -16,9 +16,11 @@
 import {
   PDAD_INDICATORS, POPULATION_INDICATOR_CODE, HOUSEHOLDS_INDICATOR_CODE,
   AGE_BUCKET_BY_CATEGORY, AGE_DISPLAY_BUCKETS,
+  SHOPPING_GROUP_BY_CODE, SHOPPING_GROUP_TITLE_BY_SLUG, INDICATOR_CODES_BY_KEY,
 } from './indicators.js';
 
 const AGE_INDICATOR_KEY = 'age';
+const SHOPPING_INDICATOR_KEY = 'shopping';
 
 /**
  * Rótulo de exibição de uma categoria.
@@ -108,6 +110,54 @@ function accumulateIndicator(ra, item, meta) {
   }
 }
 
+/**
+ * O grupo (tipo de compra) e o destino (local) de uma linha de "Local de compras"
+ * (Figura 59, issue #102).
+ *
+ * Cinco `indicator_code` publicam a mesma Figura com formatos diferentes:
+ * `purchase_locations` já traz o tipo de compra em `segment_value` (slug) e o local em
+ * `response_category` — direto. Os outros quatro (`purchase_appliances` etc.) têm o
+ * tipo de compra implícito no próprio `indicator_code`; quando o local foi PUBLICADO,
+ * ele mora em `response_category` (e `segment_value` repete o tipo de compra, redundante);
+ * quando é SUPRIMIDO, `response_category` vem vazio e o local sobra em `segment_value`
+ * — achado real na planilha, os dois formatos coexistem para o mesmo indicador.
+ *
+ * Devolve `null` quando a linha não tem grupo/destino reconhecível — inclui os 17
+ * resquícios de extração já descartados em `normalize-pdad.js`.
+ */
+function shoppingGroupAndDestination(item) {
+  if (item.indicatorCode === 'purchase_locations') {
+    const grupo = SHOPPING_GROUP_TITLE_BY_SLUG[item.segmentValue];
+    const destino = item.responseCategory;
+    return (grupo && destino) ? { grupo, destino } : null;
+  }
+  const grupo = SHOPPING_GROUP_BY_CODE[item.indicatorCode];
+  const destino = item.responseCategory || item.segmentValue;
+  return (grupo && destino) ? { grupo, destino } : null;
+}
+
+/** Acumula uma linha de "Local de compras" (Figura 59) no grupo (tipo) × destino da RA. */
+function accumulateShopping(ra, item, meta) {
+  if (item.isCategoryTotal) return;
+  const gd = shoppingGroupAndDestination(item);
+  if (!gd) return;
+
+  let indicador = ra.indicators.get(meta.key);
+  if (!indicador) {
+    indicador = { key: meta.key, label: meta.label, tema: meta.tema, unit: meta.unit, groups: new Map() };
+    ra.indicators.set(meta.key, indicador);
+  }
+  if (!indicador.groups.has(gd.grupo)) indicador.groups.set(gd.grupo, new Map());
+  const porDestino = indicador.groups.get(gd.grupo);
+  const atual = porDestino.get(gd.destino);
+  const suprimido = item.sourceValueStatus === 'suppressed';
+  if (!atual || (atual.status === 'suppressed' && !suprimido)) {
+    porDestino.set(gd.destino, {
+      label: gd.destino, pct: item.estimatePct, total: item.estimateTotal, status: item.sourceValueStatus || null,
+    });
+  }
+}
+
 /** Faixas etárias finalizadas: as 5 de exibição, na ordem certa, com ausência preservada. */
 function finalizeAge(ra) {
   const total = ra.population || 0;
@@ -161,7 +211,9 @@ export function buildPdadIndex(rows) {
       accumulateHouseholds(ra, item);
     }
     const meta = PDAD_INDICATORS[item.indicatorCode];
-    if (meta) accumulateIndicator(ra, item, meta);
+    if (!meta) continue;
+    if (meta.key === SHOPPING_INDICATOR_KEY) accumulateShopping(ra, item, meta);
+    else accumulateIndicator(ra, item, meta);
   }
 
   const anos = {};
@@ -172,9 +224,18 @@ export function buildPdadIndex(rows) {
       const avgHouseholdSize = ra.households > 0 ? ra.population / ra.households : null;
       const indicadores = {};
       for (const [key, indicador] of ra.indicators) {
+        if (key === SHOPPING_INDICATOR_KEY) {
+          indicadores[key] = {
+            ...indicador,
+            groups: [...indicador.groups.entries()]
+              .map(([grupo, porDestino]) => ({ group: grupo, items: sortedValues(porDestino) }))
+              .sort((a, b) => a.group.localeCompare(b.group, 'pt-BR')),
+          };
+          continue;
+        }
         indicadores[key] = {
           ...indicador,
-          values: key === 'age' ? indicador.values : sortedValues(indicador.values),
+          values: key === AGE_INDICATOR_KEY ? indicador.values : sortedValues(indicador.values),
         };
       }
       ras[id] = {
@@ -255,4 +316,102 @@ export function indicatorSeries(index, year, raGeoIds, indicatorKey) {
     );
   }
   return sortedValues(resultado);
+}
+
+/**
+ * Grupos (tipo de compra) × destinos de "Local de compras", agregados entre as RAs
+ * selecionadas — mesma regra de `indicatorSeries` (uma RA só devolve como veio; mais de
+ * uma faz MÉDIA por destino, nunca soma), só que em dois níveis em vez de um.
+ */
+export function indicatorGroups(index, year, raGeoIds, indicatorKey = SHOPPING_INDICATOR_KEY) {
+  const ras = (index[year] ? raGeoIds.map((id) => index[year][id]).filter(Boolean) : []);
+  if (ras.length === 0) return [];
+  if (ras.length === 1) return ras[0].indicators[indicatorKey]?.groups || [];
+
+  const somas = new Map();
+  for (const ra of ras) {
+    const indicador = ra.indicators[indicatorKey];
+    if (!indicador) continue;
+    for (const grupo of indicador.groups) {
+      if (!somas.has(grupo.group)) somas.set(grupo.group, new Map());
+      const porDestino = somas.get(grupo.group);
+      for (const item of grupo.items) {
+        if (!Number.isFinite(item.pct)) continue;
+        const atual = porDestino.get(item.label) || { soma: 0, n: 0 };
+        atual.soma += item.pct;
+        atual.n += 1;
+        porDestino.set(item.label, atual);
+      }
+    }
+  }
+  return [...somas.entries()]
+    .map(([group, porDestino]) => ({
+      group,
+      items: sortedValues(
+        [...porDestino.entries()].map(([label, { soma, n }]) => ({
+          label, pct: soma / n, total: null, status: 'calculated',
+        })),
+      ),
+    }))
+    .sort((a, b) => a.group.localeCompare(b.group, 'pt-BR'));
+}
+
+/**
+ * Metadados de cada `indicator_code` (Figura, Tabela, universo, notas…), derivados da
+ * PRIMEIRA linha vista — são constantes por indicador, não por RA. Alimenta o
+ * cabeçalho do drill-down (issue #102), sem precisar de um `FIGURE_MAP` separado do
+ * protótipo: o dado já carrega a própria procedência em cada linha.
+ */
+export function buildFigureMeta(rows) {
+  const out = new Map();
+  for (const item of Array.isArray(rows) ? rows : []) {
+    if (!item.indicatorCode || out.has(item.indicatorCode)) continue;
+    out.set(item.indicatorCode, {
+      indicatorCode: item.indicatorCode,
+      indicatorName: item.indicatorName,
+      figureNumber: item.figureNumber,
+      tableNumber: item.tableNumber,
+      section: item.section,
+      universe: item.universe,
+      segmentation: item.figureSegmentation,
+      structure: item.figureDataStructure,
+      notes: item.figureQualityNotes || item.notes || '',
+      figurePdfPage: item.figurePdfPage,
+      tablePdfPage: item.tablePdfPage,
+      sourceInstitution: item.sourceInstitution,
+    });
+  }
+  return out;
+}
+
+/**
+ * Linhas cruas de uma RA/ano para um indicador — a base do drill-down (issue #102):
+ * rastreabilidade até a Figura/Tabela de origem, não só o percentual consolidado.
+ *
+ * `key` (não `indicator_code`) é o que a tela passa, porque um clique parte de um
+ * cartão, que só conhece a chave de exibição — `INDICATOR_CODES_BY_KEY` resolve para
+ * um ou mais `indicator_code` (mais de um só para `shopping`, que é uma Figura só
+ * fatiada em cinco códigos).
+ */
+export function detailRowsForKey(rows, { raGeoId, year, key }) {
+  const codigos = new Set(INDICATOR_CODES_BY_KEY[key] || []);
+  if (codigos.size === 0) return [];
+  return (Array.isArray(rows) ? rows : [])
+    .filter((item) => item.raGeoId === raGeoId && item.pdadYear === year && codigos.has(item.indicatorCode));
+}
+
+/**
+ * Valor escalar de uma RA para um item do Ranking dos territórios (issue #102):
+ * `attr` lê um campo já pronto da RA (ex.: `incomePerCapita`, mesclado de
+ * `RA_PROFILES` por quem monta `ras` — este módulo não conhece essa aba); os demais
+ * leem a categoria declarada de um indicador. Ausência é sempre `null`, nunca `0`.
+ */
+export function rankScalar(ra, rankItem) {
+  if (rankItem.attr) {
+    const v = ra[rankItem.attr];
+    return Number.isFinite(v) ? v : null;
+  }
+  const indicador = ra.indicators[rankItem.key];
+  const achado = indicador?.values?.find((v) => v.label === rankItem.category);
+  return achado && Number.isFinite(achado.pct) ? achado.pct : null;
 }

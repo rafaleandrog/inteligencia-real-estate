@@ -80,6 +80,20 @@ function isTotalCategory(item) {
 }
 
 /**
+ * `true` quando `category_standard` é só dígitos — nunca uma categoria válida.
+ *
+ * Achado real no dataset: uma extração antiga de `purchase_appliances`/
+ * `purchase_construction`/`purchase_food`/`purchase_services`/`healthcare_consultation`
+ * (17 linhas na planilha viva) gravou a CONTAGEM absoluta em `category_standard`/
+ * `category_raw`/`response_category` por engano, em vez do nome do local/categoria —
+ * um resquício de extração corrigida depois, sem remover as linhas antigas. Manter
+ * essas linhas produziria uma barra rotulada "56022" na tela.
+ */
+function hasNumericCategory(item) {
+  return /^\d+$/.test(item.categoryStandard || '');
+}
+
+/**
  * Normaliza as linhas de `PDAD_A_DATA`.
  *
  * Linha sem `ra_geo_id` ou `indicator_code` é descartada com aviso: sem os dois não dá
@@ -91,6 +105,7 @@ export function normalizePdadData(rows) {
   const warnings = [];
   const normalizadas = [];
   const naoDeclaradas = new Set();
+  let categoriaNumericaDescartada = 0;
 
   for (const [indice, row] of (Array.isArray(rows) ? rows : []).entries()) {
     if (!row || typeof row !== 'object') {
@@ -108,9 +123,20 @@ export function normalizePdadData(rows) {
       warnings.push(`Linha ${indice + 1} de PDAD_A_DATA ignorada: sem RA ou sem indicador.`);
       continue;
     }
+    if (hasNumericCategory(item)) {
+      categoriaNumericaDescartada += 1;
+      continue;
+    }
 
     item.isCategoryTotal = isTotalCategory(item);
     normalizadas.push(item);
+  }
+
+  if (categoriaNumericaDescartada > 0) {
+    warnings.push(
+      `PDAD_A_DATA: ${categoriaNumericaDescartada} linha(s) com category_standard só numérico `
+      + `descartada(s) — resquício de extração corrigida depois, não categoria válida.`,
+    );
   }
 
   if (naoDeclaradas.size > 0) {

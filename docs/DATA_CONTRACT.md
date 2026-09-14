@@ -483,10 +483,11 @@ sexos, partição exaustiva da população) e `dwelling_type` (tipos de domicíl
 dos domicílios ocupados) — sempre excluindo a linha `response_category = "Total"` que a própria
 figura publica, para não contar em dobro.
 
-#### Indicadores lidos pela Fase 1
+#### Indicadores lidos pela tela (issue #100/#102)
 
-`src/pdad/indicators.js` declara 29 dos 39 `indicator_code` observados, agrupados nos mesmos temas
-do filtro da tela (`Moradores`, `Saúde`, `Educação`, `Trabalho`, `Domicílios`, `Infraestrutura`):
+`src/pdad/indicators.js` declara 30 chaves de exibição a partir de 34 dos 39 `indicator_code`
+observados, agrupadas nos mesmos temas do filtro da tela (`Moradores`, `Saúde`, `Educação`,
+`Trabalho`, `Domicílios`, `Infraestrutura`, `Consumo e centralidade`):
 
 | `indicator_code` | Tema | Card |
 |---|---|---|
@@ -519,25 +520,73 @@ do filtro da tela (`Moradores`, `Saúde`, `Educação`, `Trabalho`, `Domicílios
 | `sewage` | Infraestrutura | Esgotamento sanitário |
 | `electricity_supply` | Infraestrutura | Abastecimento de energia |
 | `waste_collection` | Infraestrutura | Coleta de resíduos |
+| `purchase_locations` | Consumo e centralidade | Local de compras |
+| `purchase_appliances` | Consumo e centralidade | Local de compras |
+| `purchase_construction` | Consumo e centralidade | Local de compras |
+| `purchase_food` | Consumo e centralidade | Local de compras |
+| `purchase_services` | Consumo e centralidade | Local de compras |
 
-Fora da Fase 1, de propósito — a linha continua sendo lida e normalizada, só não vira card:
+Os cinco `purchase_*` compartilham a chave de exibição `shopping` (Figura 59 fatiada por tipo de
+compra) e viram card único, com o gráfico próprio `groups` (grupo × destino) — ver
+"`purchase_*`: dois formatos de linha para a mesma Figura" abaixo. Fora do card, de propósito — a
+linha continua sendo lida e normalizada:
 
-- `purchase_locations`/`purchase_services`/`purchase_food`/`purchase_construction`/
-  `purchase_appliances` (tema Consumo): o extrator gravou o nome do local de compra em
-  `segment_value` e a **contagem** em `response_category`, em vez de uma categoria de resposta —
-  desenhar isso hoje mostraria número onde a tela promete categoria.
-- `domestic_services_frequency` (5 linhas) e `lot_regularization` (3 linhas): volume baixo demais
-  para um card próprio.
+- `domestic_services_frequency` (5 linhas) e `lot_regularization` (3 linhas, `figure_number` não
+  numérico `"A71"`): volume baixo demais para um card próprio.
 - `labor_force_status`, `internet_type`, `internet_access_any`: perguntas relacionadas às já
   mapeadas (`pea_status`, `internet_access`) — evita duas leituras do mesmo tema na mesma tela.
 
-#### Escala de exibição de gráfico da Fase 1
+##### `purchase_*`: dois formatos de linha para a mesma Figura
 
-A Fase 1 desenha todo indicador como lista de barras horizontais (categorias ordenadas por
-percentual, exceto `age`, que mantém a ordem cronológica das 5 faixas de exibição), sem os tipos
-de gráfico (rosca, pizza, barras empilhadas) do protótipo de referência — simplificação deliberada
-para entregar os ~29 indicadores com semântica correta, registrada como polimento pendente e não
-como pendência de dado.
+Achado real na planilha: as cinco linhas de "Local de compras" (Figura 59) não têm o mesmo
+formato. `purchase_locations` já publica o tipo de compra em `segment_value` (slug, ex.:
+`alimentacao_higiene_limpeza`) e o destino em `response_category` — direto. As outras quatro
+(`purchase_appliances`/`purchase_construction`/`purchase_food`/`purchase_services`) têm o tipo de
+compra implícito no próprio `indicator_code`; quando o destino foi **publicado**, ele mora em
+`response_category` (e `segment_value` repete o tipo de compra, redundante); quando é
+**suprimido**, `response_category` vem vazio e o destino sobra em `segment_value` — os dois
+formatos coexistem para o mesmo indicador. `src/pdad/aggregate.js` (`shoppingGroupAndDestination`)
+resolve os dois formatos antes de agrupar.
+
+Além disso, 17 linhas (`purchase_appliances`/`purchase_construction`/`purchase_food`/
+`purchase_services`/`healthcare_consultation`) têm `category_standard` só dígitos — resquício de
+uma extração corrigida depois sem remover as linhas antigas, gravando a **contagem** onde deveria
+estar o nome da categoria. `src/pdad/normalize-pdad.js` descarta essas linhas com aviso nomeado
+(`hasNumericCategory`), antes de chegarem à agregação.
+
+#### Tipos de gráfico por indicador (`PDAD_VIZ`, issue #102)
+
+`src/pdad/charts.js` desenha cada indicador pelo tipo declarado em `PDAD_VIZ`
+(`src/pdad/indicators.js`) — mesmo recorte do `VIZ` do protótipo de referência: colunas (`age`),
+barra empilhada (`marital`), rosca (`cnh`, `healthPlan`, `healthVisit`, `workRegime`,
+`dwellingSpecies`, `deed`, `internet`), pizza (`tenure`), colunas + linha acumulada (`schoolTime`,
+`workTime`, ordem fixa em `PDAD_TIME_ORDER`), grupo × destino (`shopping`), barras horizontais
+para o restante — com `yesOnly` filtrando as perguntas de múltipla escolha (água/esgoto/energia/
+lixo/animais publicam `"categoria · Sim/Não/Não sabe"`; o card resumo mostra só o "Sim", o resto
+segue disponível no drill-down).
+
+#### Ranking, Comparar RAs, dispersão e drill-down (issue #102)
+
+Quatro peças adicionais, todas derivadas do mesmo índice agregado — nenhuma tem `indicator_code`
+próprio:
+
+- **Ranking dos territórios** (`PDAD_RANK_SET`): 10 indicadores curados de qualidade territorial.
+  O item `income` (Renda per capita) usa `attr: 'incomePerCapita'`, um campo que **não existe** em
+  `PDAD_A_DATA` — resolve sempre ausente (`rankScalar` devolve `null`), de propósito: `RA_PROFILES`
+  usa a convenção `RA2026_RA-I` (romano) para `ra_geo_id`, `PDAD_A_DATA` usa `RA_01..RA_35` — as
+  duas NÃO são a mesma chave (ver nota no topo desta seção), e um join por nome de RA seria frágil
+  o bastante para preferir mostrar ausência a inventar uma correspondência.
+- **Comparar RAs** (`PDAD_COMPARE_KITS`): seleção livre de 2–6 RAs × até 4 indicadores, com três
+  kits prontos (`imob`, `perfil`, `infra`).
+- **Dispersão territorial** (`PDAD_SCATTER_VIEWS`): 7 leituras cruzadas pré-definidas, correlação
+  de Pearson descritiva sobre os pontos com os dois eixos publicados — mesma ausência-nunca-vira-
+  substituição de `rankScalar` para ler cada eixo (`attr` ou `key`+`category`). Trava no ano de
+  cobertura completa (o mais recente do lote), mesma leitura do protótipo de referência.
+  `renda_escritura` herda a mesma ausência de `incomePerCapita` do Ranking.
+- **Drill-down**: `detailRowsForKey()` devolve as linhas cruas de `PDAD_A_DATA` para uma
+  RA+ano+chave de exibição — a Figura inteira, com segmentação/categoria/total/percentual/status,
+  para clique em qualquer categoria de qualquer gráfico. `buildFigureMeta()` deriva o cabeçalho
+  (Figura, Tabela, universo, notas de qualidade) da primeira linha vista de cada `indicator_code`.
 
 ### POLYGONS — camada única de contornos, A:AP (issues #27, #28, #50)
 
