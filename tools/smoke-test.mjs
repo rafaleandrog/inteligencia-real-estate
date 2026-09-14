@@ -30,7 +30,24 @@ const pass = (m) => { ok.push(m); console.log('  ✓ ' + m); };
 // esta versão do Playwright baixaria. CHROMIUM_PATH aponta para o binário existente.
 const executablePath = process.env.CHROMIUM_PATH || undefined;
 const browser = await chromium.launch(executablePath ? { executablePath } : {});
-const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });
+
+// Um CONTEXTO só, com viewport e rotas, em vez de `browser.newPage()` avulso por seção.
+// A rota abaixo vale para toda página criada a partir dele, inclusive as que vierem depois
+// — que é a razão de ela morar aqui e não repetida em cada `newPage`: uma lista de onze
+// chamadas que precisam lembrar de aplicar a rota erra por AUSÊNCIA na décima segunda, e a
+// falha aparece como timeout de 30s num lugar que não tem nada a ver com o que quebrou.
+const context = await browser.newContext({ viewport: { width: 1440, height: 900 } });
+
+// Os tiles do OSM são cortados de propósito, e não por economia: em ambiente sem saída
+// para a internet a requisição de tile não FALHA — ela pendura até o timeout do socket, e
+// `waitUntil: 'networkidle'` fica esperando por ela. O resultado é um smoke que estoura os
+// 30s do `goto` antes de exercitar a primeira asserção, sem que nada da aplicação esteja
+// errado. Abortar na rota torna o carregamento determinístico nos dois ambientes: nenhuma
+// asserção deste arquivo depende de tile desenhado (as camadas são medidas por `path` e
+// `circleMarker`, e a regra da R8.45 existe justamente para NÃO contar `img.leaflet-tile`).
+await context.route(/tile\.openstreetmap\.org/, (route) => route.abort());
+
+const page = await context.newPage();
 
 const consoleErrors = [];
 const consoleWarnings = [];
@@ -218,7 +235,7 @@ console.log('\n== 12c. Metadados do dataset (APP_META) ==');
 
 // Agora com APP_META, interceptando o demo.json para exercitar o caminho real de
 // carregamento em vez de mexer no estado interno da aplicação.
-const metaPage = await browser.newPage({ viewport: { width: 1440, height: 900 } });
+const metaPage = await context.newPage();
 await metaPage.addInitScript(() => {
   Object.defineProperty(window, 'APP_CONFIG', {
     configurable: true,
@@ -296,7 +313,7 @@ await metaPage.close();
  * colunas existem", todo teste que a usava como verdade muda de significado em silêncio.
  */
 async function abrirSemColunas(porEntidade) {
-  const p = await browser.newPage({ viewport: { width: 1440, height: 900 } });
+  const p = await context.newPage();
   await p.addInitScript(() => {
     Object.defineProperty(window, 'APP_CONFIG', {
       configurable: true,
@@ -359,7 +376,7 @@ const SEGMENTOS = {
   parque_equipamento_publico: ['infraestrutura', ''],
 };
 
-const anchorPage = await browser.newPage({ viewport: { width: 1440, height: 900 } });
+const anchorPage = await context.newPage();
 await anchorPage.addInitScript(() => {
   Object.defineProperty(window, 'APP_CONFIG', {
     configurable: true,
@@ -491,7 +508,7 @@ await semClassificacao.close();
   ? pass('com o demo versionado, o filtro de estágio é utilizável')
   : fail('select de estágio vazio mesmo com sales_stage derivado no demo');
 
-const classPage = await browser.newPage({ viewport: { width: 1440, height: 900 } });
+const classPage = await context.newPage();
 await classPage.addInitScript(() => {
   Object.defineProperty(window, 'APP_CONFIG', {
     configurable: true,
@@ -629,7 +646,7 @@ raSemDado && raSemDado.faixas.length === 0 && raSemDado.nota === null
   : fail('linha de renda apareceu sem dado');
 await page.click('#clearFilters'); await page.waitForTimeout(300);
 
-const raPage = await browser.newPage({ viewport: { width: 1440, height: 900 } });
+const raPage = await context.newPage();
 await raPage.addInitScript(() => {
   Object.defineProperty(window, 'APP_CONFIG', {
     configurable: true,
@@ -735,7 +752,7 @@ await raPage.close();
 // real de carregamento é testado sem sujar o dado versionado.
 console.log('\n== 12g. Camada de contornos (issue #28) ==');
 
-const polyPage = await browser.newPage({ viewport: { width: 1440, height: 900 } });
+const polyPage = await context.newPage();
 await polyPage.addInitScript(() => {
   Object.defineProperty(window, 'APP_CONFIG', {
     configurable: true,
@@ -1053,7 +1070,7 @@ await polyPage.close();
 
 console.log('\n== 12j. Troca de view: Mapa × Mercado Residencial DF (issue #58) ==');
 
-const viewPage = await browser.newPage({ viewport: { width: 1440, height: 900 } });
+const viewPage = await context.newPage();
 const viewErros = [];
 viewPage.on('pageerror', (e) => viewErros.push(e.message));
 await viewPage.addInitScript(() => {
@@ -1402,7 +1419,7 @@ proveniencia.linhas >= 1
 
 // Tom da variação: o SIGNIFICADO manda, não o sinal. Distrato subindo é ruim, venda
 // subindo é bom, e preço é neutro porque a tela não sabe de que lado está quem lê.
-const tomPage = await browser.newPage({ viewport: { width: 1440, height: 900 } });
+const tomPage = await context.newPage();
 await tomPage.addInitScript(() => {
   Object.defineProperty(window, 'APP_CONFIG', {
     configurable: true,
@@ -1609,7 +1626,7 @@ viewErros.length === 0
   : fail('erros: ' + viewErros.join(' | '));
 
 // Sem a aba IVV_MONTHLY o botão não pode levar a uma tela vazia.
-const semIvv = await browser.newPage({ viewport: { width: 1440, height: 900 } });
+const semIvv = await context.newPage();
 await semIvv.addInitScript(() => {
   Object.defineProperty(window, 'APP_CONFIG', {
     configurable: true,
@@ -1659,7 +1676,7 @@ await viewPage.close();
 // A origem `gviz` VIRA link. Esta página não força o modo demo, então o selo assume a
 // estratégia configurada — e o que se afirma aqui é a marcação do link, não a rede: o GViz
 // não é alcançável do ambiente de teste, e o selo é escrito antes de qualquer resposta.
-const seloReal = await browser.newPage({ viewport: { width: 1440, height: 900 } });
+const seloReal = await context.newPage();
 await seloReal.goto('http://localhost:8080/', { waitUntil: 'domcontentloaded' });
 await seloReal.waitForTimeout(1500);
 const selo = await seloReal.evaluate(() => {
@@ -1691,7 +1708,7 @@ selo.ausente
 // clicável no segundo caso SEM mudança de código.
 console.log('\n== 12k. Painel de trechos rodoviários com tráfego (issue #63) ==');
 
-const trafficPage = await browser.newPage({ viewport: { width: 1440, height: 900 } });
+const trafficPage = await context.newPage();
 await trafficPage.addInitScript(() => {
   Object.defineProperty(window, 'APP_CONFIG', {
     configurable: true,
