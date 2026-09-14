@@ -819,3 +819,44 @@ Cada uma nasce de um erro que aconteceu de verdade.
   renderização. Navegador sem suporte a import map ignora o bloco e carrega como antes:
   degrada para o comportamento anterior, não quebra.
 
+
+- **R8.80** *(2026-09-14, redesenho visual, issue #95)* **`@media` não acrescenta
+  especificidade: bloco de ponto de quebra escrito ANTES da regra base do mesmo seletor é
+  letra morta, e a falha é de ausência.** O bloco `@media (max-width: 860px)` ficava na
+  linha 1055 de `assets/styles.css` e a regra base de `.market` na 1149. As duas empatam em
+  especificidade (0,1,0), então a de baixo vencia: o `height: auto` do bloco de mobile nunca
+  chegou a valer, e em telas estreitas a view do Mercado seguia com altura fixa e barra de
+  rolagem própria, aninhada dentro da rolagem do `body` — exatamente o que aquele bloco
+  existia para evitar. Nada erra, nada avisa; a tela só rola de um jeito estranho, e como
+  ninguém compara "como rola" com "como deveria rolar", o defeito atravessa revisões.
+  Mecanismo: **pontos de quebra no fim do arquivo, sempre**, onde o empate não tem como
+  acontecer. De quebra, os quatro pontos que existiam (860/900/760/560) não formavam escala
+  e se cruzavam; viraram dois (1000/640). Mesma família da R8.73 — lá a view não declarava
+  altura, aqui ela declarava e a declaração não chegava.
+
+- **R8.81** *(2026-09-14, redesenho visual, issue #95)* **Guard que checa FORMA no lugar de
+  INTENÇÃO reprova o certo, e o conserto de verdade é crescer o guard — nunca contornar
+  ele.** `tests/ui-tokens.test.js` exigia que o valor de `border-radius` **começasse** com
+  `var(--raio-`. A checagem bastava enquanto todo raio era simétrico e passou a reprovar
+  valor legítimo quando entrou o canto assimétrico do protótipo
+  (`0 var(--raio-xs) var(--raio-xs) 0`): nenhum pixel improvisado ali, e reprovava. A
+  tentação é desviar — trocar o shorthand por duas longhands só para caber na regex —, e o
+  preço disso é o desenho passar a ser decidido pelo guard. **Guard que reprova o certo
+  custa o mesmo que guard que aprova o errado**, porque os dois ensinam a não confiar nele.
+  Mecanismo: a checagem passou a ser componente a componente (cada parte tem que ser `0`,
+  `50%` ou `var(--raio-*)`), o meta-teste da R8.23 cresceu com um pixel escondido no meio de
+  um shorthand tokenizado — o caso que a versão anterior não teria como pegar —, e plantei a
+  violação no CSS de verdade para ver o guard falhar antes de confiar nele (R8.4).
+
+- **R8.82** *(2026-09-14, redesenho visual, issue #95)* **Classe compartilhada entre duas
+  páginas não se reestiliza para uma delas, e trocar a fonte é trocar a métrica de tudo que
+  ela mede.** Duas falhas irmãs, as duas invisíveis para a suíte e visíveis na primeira
+  renderização. (a) `.topbar` virou trilho vertical para o `index.html`; o `admin.html` usa a
+  mesma classe sem a grade de casca, e o cabeçalho de lá foi de 56px para 153px sem nenhum
+  teste reclamar — nada mede aquela altura. O que é de uma casca mora sob o seletor dela
+  (`.app > .topbar`), não na regra compartilhada. (b) Trocar a pilha de sistema por DM Mono
+  manteve o `font-size` e mudou a LARGURA: "R$ 7 mil/m²" deixou de caber nos ~140px do tile
+  de KPI e quebrou entre o número e a unidade. Corpo igual não é largura igual, e nenhum
+  teste de token pega isso. Mecanismo: depois de mexer em fonte ou em classe compartilhada,
+  **renderizar as duas páginas e olhar** — é a razão de o passo 7 do fluxo de verificação
+  (`docs/AI_WORKFLOW.md`) existir, e o único que encontra esta família.
