@@ -146,6 +146,15 @@ payload.fipezap_locality_monthly = workbook.FIPEZAP_LOCALITY_MONTHLY
   ? workbook.FIPEZAP_LOCALITY_MONTHLY.rows.map(convertDates)
   : [];
 
+// PDAD_A_DATA (issue #100): extração longa do PDAD-A que alimenta a aba Diagnóstico. A
+// semente v1.0.0 é anterior a esta aba e não a tem, então o demo sai com lista vazia —
+// mesmo motivo de FIPEZAP_MONTHLY estar vazia aqui apesar de ter milhares de linhas na
+// planilha viva: o demo não inventa dado de pesquisa para preencher o buraco, ele mostra
+// o caminho de "aba ausente" honestamente, do jeito real.
+payload.pdad_a_data = workbook.PDAD_A_DATA
+  ? workbook.PDAD_A_DATA.rows.map(convertDates)
+  : [];
+
 mkdirSync(dirname(target), { recursive: true });
 writeFileSync(target, `${JSON.stringify(payload, null, 2)}\n`);
 
@@ -158,4 +167,5 @@ console.log(`IVV_MONTHLY     -> ivv_monthly    ${payload.ivv_monthly.length} lin
 console.log(`IVV_REGION      -> ivv_region     ${payload.ivv_region.length} linhas`);
 console.log(`FIPEZAP_MONTHLY -> fipezap_monthly ${payload.fipezap_monthly.length} linhas`);
 console.log(`FIPEZAP_LOCALITY_MONTHLY -> fipezap_locality_monthly ${payload.fipezap_locality_monthly.length} linhas`);
+console.log(`PDAD_A_DATA     -> pdad_a_data   ${payload.pdad_a_data.length} linhas`);
 console.log(`\n${target} gerado.`);
