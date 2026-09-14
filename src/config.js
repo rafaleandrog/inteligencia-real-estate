@@ -136,6 +136,16 @@ window.APP_CONFIG = {
   fipezapLocalitySheet: 'FIPEZAP_LOCALITY_MONTHLY',
 
   /**
+   * Aba `PDAD_A_DATA` (issue #100): extração longa do PDAD-A — uma linha por Região
+   * Administrativa × indicador × segmento × categoria de resposta, alimentando a aba
+   * Diagnóstico. Mesmo tratamento das demais abas opcionais do Mercado/Território:
+   * ausência ou falha vira aviso, nunca erro (R2.5) — a aba Diagnóstico simplesmente
+   * fica desabilitada, com o motivo escrito, do mesmo jeito que o Mercado fica sem
+   * `ivvMonthlySheet`.
+   */
+  pdadDataSheet: 'PDAD_A_DATA',
+
+  /**
    * Abas previstas para as próximas fases.
    *
    * A tela da V1 não lê PRIMARY_OFFERS/IVV_REGION, e por isso não são buscadas no

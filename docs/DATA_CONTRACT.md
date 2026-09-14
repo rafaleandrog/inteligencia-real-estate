@@ -281,6 +281,7 @@ seções dedicadas abaixo. `FIPEZAP_MONTHLY`/`FIPEZAP_LOCALITY_MONTHLY` passaram
 mudança (preço de venda/locação do FipeZap) — ver `§FIPEZAP_MONTHLY` e `§FIPEZAP_LOCALITY_MONTHLY`
 abaixo. `FIPEZAP_LOCALITY_MAP`/`FIPEZAP_SOURCES`/`FIPEZAP_NOTES` existem na planilha
 (procedência/metodologia) mas não são lidas ainda, mesmo tratamento de `PRIMARY_OFFERS`.
+`PDAD_A_DATA` passa a ser lida nesta mudança (aba Diagnóstico) — ver `§PDAD_A_DATA` abaixo.
 
 | Aba | Chave | Linhas | Papel |
 |---|---|---|---|
@@ -297,6 +298,7 @@ abaixo. `FIPEZAP_LOCALITY_MAP`/`FIPEZAP_SOURCES`/`FIPEZAP_NOTES` existem na plan
 | `FIPEZAP_LOCALITY_MAP` | `locality_map_id` | 0 na semente, 30 na planilha | De-para localidade → RA e metodologia de classificação — não lida ainda |
 | `FIPEZAP_SOURCES` | `source_id` | 0 na semente, 1214 na planilha | Procedência por período/segmento dos relatórios FipeZap — não lida ainda |
 | `FIPEZAP_NOTES` | `note_id` | 0 na semente, 33 na planilha | Notas metodológicas referenciadas por `note_id` — não lida ainda |
+| `PDAD_A_DATA` | `ra_geo_id`+`pdad_year`+`indicator_code`+`segment_value`+`category_standard` | 12.190 na planilha | Extração longa do PDAD-A (35 RAs × indicadores × categorias) — **lida pela tela** |
 
 > **Divergência D2 — `IVV_REGION` tem `ivv_pct` e `ivv_pct_published`.** `ivv_pct` é alias de
 > compatibilidade consumido pelo Apps Script; `ivv_pct_published` é o valor do dataset original.
@@ -408,6 +410,134 @@ vira aviso `AGE_DISTRIBUTION_SUM` em `DATA_QUALITY`, nunca sobrescrita.
 > `coverage_note` e outros) que existem na planilha e ainda não são consumidos pela tela. Estão
 > fora desta tabela **de propósito**: documentá-los aqui os tornaria cabeçalhos exigidos por
 > `tests/contract.test.js`. Ver `migration/README.md` para o inventário completo.
+
+### PDAD_A_DATA — extração longa do PDAD-A (issue #100)
+
+Aba **opcional**, sem contrato de cabeçalho no `Code.gs` (mesma situação de `IVV_MONTHLY`/
+`IVV_REGION`: está fora de `REQUIRED_HEADERS`/`FIELD_SCHEMA`, então a rede de teste é o triângulo
+schema (`src/pdad/normalize-pdad.js`) ↔ este contrato ↔ comportamento do normalizador, fechado por
+`tests/pdad-contract.test.js`). Ausência vira aviso, nunca erro (R2.5) — a aba Diagnóstico fica
+desabilitada, dizendo por quê, do mesmo jeito que o Mercado fica sem `IVV_MONTHLY`.
+
+**Formato longo**, não wide: uma linha por RA × indicador × segmento × categoria de resposta —
+diferente de `RA_PROFILES`, que é uma linha por RA. 33 colunas, **12.190 linhas** na planilha viva.
+Chave composta: `ra_geo_id` + `pdad_year` + `indicator_code` + `segment_value` +
+`category_standard`.
+
+> **`ra_geo_id` aqui é `RA_01`…`RA_35` — uma convenção PRÓPRIA desta aba, diferente da usada em
+> `LISTINGS`/`DEVELOPMENTS`/`ANCHORS`/`RA_PROFILES` (que usam `RA2026_RA-I`, código romano
+> prefixado por ano de sincronização).** As duas convenções **não são assumidas equivalentes** em
+> lugar nenhum do código: `PDAD_A_DATA` é consumida como universo fechado em si mesma (a aba
+> Diagnóstico não cruza `ra_geo_id` dela com o das outras abas). Cruzar as duas exigiria um de-para
+> explícito, que não existe hoje — inventá-lo por semelhança de nome seria o mesmo erro que R8.44
+> nomeia para escala: dois valores parecidos que não são a mesma coisa.
+
+**Cobertura por ano, confirmada no dataset real, não assumida**: `2024` publica as 35 RAs;
+`2021` publica **só o Plano Piloto** (`RA_01`) — é o lote histórico anterior à pesquisa virar
+censitária nas demais RAs. A tela trata isso como fato do dado, não como bug: selecionar outra RA
+em 2021 mostra ausência, nunca RA errada nem zero.
+
+| Campo | Tipo | Observação |
+|---|---|---|
+| `pdad_year` | inteiro | `2021` ou `2024` — eixo do filtro "Ano de referência" |
+| `geography_scope` | texto | `RA` em 100% das linhas observadas |
+| `ra_geo_id` | texto | `RA_01`…`RA_35` — convenção própria desta aba, ver nota acima |
+| `ra_name` | texto | nome de exibição da RA |
+| `figure_number` | texto | número da Figura de origem no relatório PDAD-A. **Não é inteiro**: ao menos um código de apêndice não numérico existe no dataset real (`"A71"`, indicador `lot_regularization`) |
+| `table_number` | texto | número da Tabela do apêndice que confere os valores da figura |
+| `section` | texto | seção do relatório (`Moradores`, `Trabalho`, `Domicílios`, `Infraestrutura domiciliar`, `Compras`, `Migração`, `Educação`, `Saúde`, `Animais de estimação`, `PDAD-A 2021`) |
+| `indicator_code` | texto | identificador estável do indicador — 39 valores distintos observados; ver `src/pdad/indicators.js` para os que a tela desenha na Fase 1 |
+| `indicator_name` | texto | nome de exibição do indicador |
+| `universe` | texto | universo da pergunta (ex.: "População total; cada faixa etária; sexo") |
+| `segment_dimension` | texto | nome do segundo eixo, quando o indicador cruza duas perguntas (ex.: `Sexo`, `Modalidade x resposta`) — vazio em indicador de eixo único |
+| `segment_value` | texto | valor do segundo eixo (ex.: `Feminino`, `Rede Geral`) — vazio quando `segment_dimension` é vazio |
+| `response_category` | texto | categoria de resposta — o eixo principal do gráfico |
+| `estimate_total` | número | contagem estimada publicada |
+| `estimate_pct` | número | **ponto percentual** (`49` = 49%) — mesma escala de `RA_PROFILES`/`IVV_REGION`, nunca a decimal de `IVV_MONTHLY`/FipeZap (R8.44) |
+| `source_value_status` | enum | `published`, `partial` ou `suppressed` — suprimido nunca vira `0` na tela |
+| `figure_pdf_page` / `table_pdf_page` | inteiro | página do PDF de origem, para rastreabilidade |
+| `source_file` | texto | PDF de origem (um por RA) |
+| `source_institution` | texto | `IPEDF/DIEPS/COEPS/PDAD-A 2024` ou equivalente 2021 |
+| `extraction_basis` | texto | nota livre sobre a base da extração |
+| `notes` | texto | nota livre |
+| `figure_segmentation` / `figure_data_structure` / `figure_fields_to_capture` / `figure_preferred` / `figure_extraction_rule` / `figure_quality_notes` / `figure_map_status` | texto | metodologia de extração da figura — procedência, não dado de mercado |
+| `value_origin` | enum | `published`, `partial_published`, `calculated` ou `suppressed` |
+| `source_locator` | texto | localizador da fonte (arquivo + figura/tabela + páginas), formato `chave=valor;chave=valor` |
+| `category_raw` | texto | categoria como veio da figura, antes de padronizar |
+| `category_standard` | texto | categoria em `snake_case`, estável entre RAs — é a chave de agrupamento entre RAs, não `category_raw` (que pode variar em capitalização/acentuação entre extrações) |
+
+#### Como a tela consolida o formato longo
+
+`src/pdad/aggregate.js` agrupa as linhas em `ano -> RA -> indicador -> categorias`. Duas regras que
+não podem se perder:
+
+- **`suppressed`/`partial` nunca vira `0`.** Uma categoria sem valor publicado sai da lista com o
+  status preservado; a tela mostra ausência, nunca uma barra vazia (R5.7).
+- **"Todas as RAs" é MÉDIA das categorias entre as RAs selecionadas, nunca soma.** Os dois KPIs de
+  contagem — população e domicílios — são a exceção: esses somam, porque são contagem, não
+  percentual.
+
+Os dois KPIs de contagem (população, domicílios ocupados) **não têm `indicator_code` dedicado** na
+planilha. São somados a partir de `estimate_total` de `age_sex_distribution` (17 faixas etárias × 2
+sexos, partição exaustiva da população) e `dwelling_type` (tipos de domicílio, partição exaustiva
+dos domicílios ocupados) — sempre excluindo a linha `response_category = "Total"` que a própria
+figura publica, para não contar em dobro.
+
+#### Indicadores lidos pela Fase 1
+
+`src/pdad/indicators.js` declara 29 dos 39 `indicator_code` observados, agrupados nos mesmos temas
+do filtro da tela (`Moradores`, `Saúde`, `Educação`, `Trabalho`, `Domicílios`, `Infraestrutura`):
+
+| `indicator_code` | Tema | Card |
+|---|---|---|
+| `age_sex_distribution` | Moradores | Faixa etária |
+| `marital_status` | Moradores | Estado civil |
+| `drivers_license` | Moradores | Carteira de habilitação |
+| `state_of_origin` | Moradores | Estado de origem |
+| `move_reason` | Moradores | Motivação de mudança |
+| `health_insurance` | Saúde | Plano de saúde |
+| `healthcare_need_any` | Saúde | Atendimento de saúde |
+| `healthcare_consultation` | Saúde | Rede de atendimento |
+| `school_transport` | Educação | Transporte escolar |
+| `school_commute_time` | Educação | Tempo até a escola |
+| `pea_status` | Trabalho | Participação na PEA |
+| `work_location` | Trabalho | Local do trabalho |
+| `job_position` | Trabalho | Posição no trabalho |
+| `work_regime` | Trabalho | Regime de trabalho |
+| `work_transport` | Trabalho | Transporte casa-trabalho |
+| `work_commute_time` | Trabalho | Tempo casa-trabalho |
+| `tenure_status` | Domicílios | Situação de ocupação |
+| `registered_deed` | Domicílios | Escritura registrada |
+| `dwelling_type` | Domicílios | Tipo de domicílio (e KPI "Domicílios ocupados") |
+| `dwelling_species` | Domicílios | Espécie do domicílio |
+| `household_arrangement` | Domicílios | Arranjo domiciliar |
+| `domestic_services` | Domicílios | Serviços domésticos |
+| `pets` | Domicílios | Animais no domicílio |
+| `internet_access` | Infraestrutura | Acesso à internet |
+| `vehicles` | Infraestrutura | Posse de veículos |
+| `water_supply` | Infraestrutura | Abastecimento de água |
+| `sewage` | Infraestrutura | Esgotamento sanitário |
+| `electricity_supply` | Infraestrutura | Abastecimento de energia |
+| `waste_collection` | Infraestrutura | Coleta de resíduos |
+
+Fora da Fase 1, de propósito — a linha continua sendo lida e normalizada, só não vira card:
+
+- `purchase_locations`/`purchase_services`/`purchase_food`/`purchase_construction`/
+  `purchase_appliances` (tema Consumo): o extrator gravou o nome do local de compra em
+  `segment_value` e a **contagem** em `response_category`, em vez de uma categoria de resposta —
+  desenhar isso hoje mostraria número onde a tela promete categoria.
+- `domestic_services_frequency` (5 linhas) e `lot_regularization` (3 linhas): volume baixo demais
+  para um card próprio.
+- `labor_force_status`, `internet_type`, `internet_access_any`: perguntas relacionadas às já
+  mapeadas (`pea_status`, `internet_access`) — evita duas leituras do mesmo tema na mesma tela.
+
+#### Escala de exibição de gráfico da Fase 1
+
+A Fase 1 desenha todo indicador como lista de barras horizontais (categorias ordenadas por
+percentual, exceto `age`, que mantém a ordem cronológica das 5 faixas de exibição), sem os tipos
+de gráfico (rosca, pizza, barras empilhadas) do protótipo de referência — simplificação deliberada
+para entregar os ~29 indicadores com semântica correta, registrada como polimento pendente e não
+como pendência de dado.
 
 ### POLYGONS — camada única de contornos, A:AP (issues #27, #28, #50)
 

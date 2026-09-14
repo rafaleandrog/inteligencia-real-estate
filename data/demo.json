@@ -1,7 +1,7 @@
 {
   "meta": {
     "generated_from": "migration/imob-intelligence-backend.xlsx",
-    "generated_at": "2026-09-03",
+    "generated_at": "2026-09-14",
     "note": "Dataset de DEMONSTRAÇÃO. Não é produção. A fonte de verdade é a Google Sheet — ver docs/ARCHITECTURE.md. Regerar com: node tools/build-demo.mjs"
   },
   "listings": [
@@ -10571,5 +10571,6 @@
     }
   ],
   "fipezap_monthly": [],
-  "fipezap_locality_monthly": []
+  "fipezap_locality_monthly": [],
+  "pdad_a_data": []
 }

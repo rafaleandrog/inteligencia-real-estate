@@ -10,23 +10,30 @@
    régua de neutros em quatro degraus, hairline no lugar de sombra, micro-rótulo em
    caixa-alta, número em mono tabular, barra de canto assimétrico.
 
-   DUAS DECISÕES DA #95, e o porquê de cada uma, porque as duas parecem erradas de longe:
+   A #95 tinha tomado duas decisões de cor — tema claro por padrão e marca verde, não
+   azul — com razão técnica escrita (mapa Leaflet/OSM claro sem provedor escuro
+   configurado; azul de acento perto demais de `--listing`, a cor de camada do mapa). A
+   #100 as REVERTE deliberadamente, a pedido explícito do dono do produto, ciente das
+   duas consequências abaixo — não porque elas deixaram de ser verdadeiras:
 
-   1. O TEMA PADRÃO CONTINUA CLARO, embora o protótipo seja escuro. Os tiles do
-      Leaflet/OSM são claros e não há provedor de tiles escuro configurado nesta
-      aplicação. Casca escura por padrão deixaria um retângulo branco de mapa no meio
-      da tela em toda sessão — trocar o problema de lugar, não resolvê-lo. O que o
-      protótipo tem de bom (tipografia, densidade, anatomia de componente) chega igual
-      nos dois temas; o escuro automático foi reafinado para a régua de quatro degraus
-      dele. O dia em que houver provedor escuro de tiles, esta decisão se reabre.
+   1. TEMA ESCURO por padrão agora (a régua de quatro degraus que era só o modo escuro
+      da #95 virou o `:root`). O mapa Leaflet/OSM continua com tiles CLAROS — não há
+      provedor escuro configurado — então a view do Mapa é, de propósito, uma casca
+      escura ao redor de um retângulo de mapa claro. É a mesma composição de muitos
+      painéis escuros com mapa embutido; não é um defeito de tema que "esqueceu" de
+      escurecer o mapa.
 
-   2. A MARCA CONTINUA VERDE, embora o protótipo acentue em azul (#3987e5). Esse azul
-      fica a ΔE de distância de `--listing` (#3478b9), que codifica CAMADA DO MAPA —
-      e cor que já significa uma coisa não pode passar a significar outra na mesma
-      tela. É a armadilha da R8.71 por outra porta. O papel do azul do protótipo é
-      ocupado pelo verde da marca.
+   2. MARCA AZUL agora (`--brand2: #3987e5`, o mesmo acento do protótipo). Ele convive
+      na mesma tela com `--listing` (`#3478b9`, cor de camada do mapa) — os dois são
+      azuis próximos, e a distinção continua sendo só o CONTEXTO (marca/ação vs.
+      marcador de anúncio no mapa), não mais o matiz. `--brand` (o preenchimento
+      SÓLIDO do trilho e do botão primário) é um azul-marinho mais escuro que
+      `--brand2`, por necessidade própria de contraste com texto branco (ver o token
+      abaixo) — não por cautela de ΔE com `--listing`.
 
-   Consequência das duas: a #95 quase não mexeu em cor. O redesenho é de FORMA.
+   Se um provedor de tiles escuro entrar, ou se a proximidade com `--listing` incomodar
+   na prática, ambas seguem reabertas — registrar aqui é o que permite reabrir com
+   contexto, em vez de deixar um "por que isso é assim?" sem resposta.
 
    ONDE MORA O QUÊ (docs/ARCHITECTURE.md): estrutura no index.html, comportamento em
    src/app.js, aparência aqui. Componente não escreve literal — tudo vem de token, e
@@ -92,17 +99,24 @@
 }
 
 :root {
-  --bg: #f4f5f2;
-  --panel: #fff;
-  --ink: #172019;
-  --muted: #69736d;
-  --line: #dde2dd;
-  --brand: #153b29;
-  --brand2: #24563d;
-  /* Cor de texto/ícone sobre --bg/--panel (nunca de preenchimento sólido). Em
-     modo escuro, --brand/--brand2 continuam servindo preenchimento sólido
-     (topo, botão) sem alteração — só o uso como *texto* precisa de um tom
-     mais claro para manter contraste sobre fundo escuro. */
+  /* Tema escuro por padrão e marca azul (issue #100) — ver o histórico da decisão
+     anterior mais abaixo. Régua de quatro degraus herdada do que era só o modo escuro
+     da #95 (fundo #0a0e0c → painel #121815 → hover #1a211c → elevada #1e2620). */
+  --bg: #0a0e0c;
+  --panel: #121815;
+  --ink: #e9ede9;
+  --muted: #8fa196;
+  --line: #2a352e;
+  /* `--brand` continua sendo o preenchimento SÓLIDO (trilho, botão primário) e
+     `--brand2` o tom mais claro de hover/destaque — mesmos dois papéis de sempre, só
+     a cor mudou de verde para azul. `--brand` é um azul-marinho ESCURO, não o azul
+     vivo do protótipo (`#3987e5`) direto: texto branco sobre `#3987e5` passa perto de
+     3:1, abaixo do piso de 4,5:1 do WCAG AA para texto de corpo — e o nome da marca e
+     os rótulos do trilho são texto de corpo, não título grande. O azul vivo do
+     protótipo vira `--brand2`, com o mesmo papel de acento que já tinha. */
+  --brand: #0f2847;
+  --brand2: #3987e5;
+  /* Cor de texto/ícone sobre --bg/--panel (nunca de preenchimento sólido). */
   --accent-text: var(--brand2);
 
   --listing: #3478b9;
@@ -122,9 +136,9 @@
      porque --accent-text existe para TEXTO sobre --bg/--panel e não para
      preenchimento sólido; misturar os dois usos faria um ajuste de contraste de
      texto mexer no gráfico sem ninguém perceber. */
-  --chart-bar: #24563d;
+  --chart-bar: #3987e5;
 
-  --shadow: 0 10px 30px #13251a14;
+  --shadow: 0 10px 30px #00000066;
   --radius: 10px;
 
   /* Casca (#95). O trilho de navegação substituiu a barra superior: a largura dele é
@@ -148,21 +162,21 @@
      feature, que é exatamente o que a R5.2 proíbe. */
 
   /* Ênfase do texto. `--texto-base` e `--texto-sec` são os de sempre com o nome do papel. */
-  --texto-forte: #0c120e;
+  --texto-forte: #f4f7f4;
   --texto-base: var(--ink);
   --texto-sec: var(--muted);
-  --texto-fraco: #7d8781;
+  --texto-fraco: #7b8a80;
 
   /* Ênfase da borda. `--borda-base` é `--line`. */
-  --borda-sutil: #e9ede8;
+  --borda-sutil: #1c2420;
   --borda-base: var(--line);
-  --borda-forte: #c3ccc3;
+  --borda-forte: #3d4a42;
 
   /* Camadas de superfície sobre o fundo da página. */
   --superficie-sutil: var(--bg);
   --superficie-base: var(--panel);
-  --superficie-hover: #eef1ec;
-  --superficie-elevada: #fff;
+  --superficie-hover: #1a211c;
+  --superficie-elevada: #1e2620;
 
   /* Forma. `--radius` (10px) continua valendo para o que já o usa. */
   --raio-xs: 4px;
@@ -170,7 +184,7 @@
   --raio-md: 8px;
   --raio-lg: 12px;
   --raio-pill: 999px;
-  --sombra-1: 0 1px 2px #13251a14;
+  --sombra-1: 0 1px 2px #00000059;
   --sombra-2: var(--shadow);
 
   /* Tipo. Do micro-rótulo de eixo ao título de página.
@@ -208,26 +222,22 @@
   /* Estados semânticos: saturada para traço e texto, tinta para bloco, borda para o contorno.
      A saturada NUNCA é superfície de texto — quem preenche é o par `-fundo`/`-borda`.
      `--tone-good`/`--tone-bad` já eram os tons de variação dos cards; agora têm família. */
-  --tone-good: #2f5a41;
-  --tone-bad: #8c2f2f;
+  --tone-good: #8fd6ac;
+  --tone-bad: #f0a3a3;
   --sucesso: var(--tone-good);
-  --sucesso-fundo: #e6f1ea;
-  --sucesso-borda: #b9d8c6;
-  --alerta: #8a5620;
-  --alerta-fundo: #fdf1e3;
-  --alerta-borda: #e8c8a0;
+  --sucesso-fundo: #163524;
+  --sucesso-borda: #29553c;
+  --alerta: #f0b877;
+  --alerta-fundo: #3a2a12;
+  --alerta-borda: #5c4526;
   --erro: var(--tone-bad);
-  --erro-fundo: #fbe9e9;
-  --erro-borda: #e9bcbc;
-  --info: #3a5a8c;
-  --info-fundo: #e8eef7;
-  --info-borda: #bfd0e6;
-  /* "Rascunho" (dataset publicado com alteração pendente) era o único tom do selo de
-     status sem par na família — e por isso o único que obrigava a manter uma lista de
-     literais em paralelo, com um bloco de tema escuro só para ele. Com o par nomeado, o
-     bloco inteiro de `@media` do selo some: os tokens já trocam sozinhos (#95). */
-  --rascunho: #4f3f7a;
-  --rascunho-fundo: #eceaf5;
+  --erro-fundo: #3a1a1a;
+  --erro-borda: #5c2c2c;
+  --info: #8fb4e8;
+  --info-fundo: #1a2536;
+  --info-borda: #2e415c;
+  --rascunho: #c3b3f5;
+  --rascunho-fundo: #241d3a;
 
   /* Paleta CATEGÓRICA das séries de gráfico (issues #83 e #85).
 
@@ -265,19 +275,19 @@
   --tinta-2: var(--cat-2);
   --tinta-3: var(--cat-3);
   --tinta-4: var(--cat-5);
-  --tinta-1-fundo: #e6f1ea;
-  --tinta-2-fundo: #e6eef9;
-  --tinta-3-fundo: #f8efdc;
-  --tinta-4-fundo: #e0f0f2;
+  --tinta-1-fundo: #16301f;
+  --tinta-2-fundo: #152538;
+  --tinta-3-fundo: #33270c;
+  --tinta-4-fundo: #0d2c30;
 
-  --cat-1: #2f8f5b;
-  --cat-2: #2a78d6;
-  --cat-3: #c07c0a;
-  --cat-4: #7452c4;
-  --cat-5: #0d8f9e;
-  --cat-6: #d1483c;
-  --cat-7: #6d7f45;
-  --cat-8: #6f7b75;
+  --cat-1: #3f9e68;
+  --cat-2: #5b92d8;
+  --cat-3: #bd8a2e;
+  --cat-4: #8f6fd0;
+  --cat-5: #149dad;
+  --cat-6: #d4665a;
+  --cat-7: #8f9e5a;
+  --cat-8: #8fa196;
 
   /* Rampa ORDINAL dos anos, do mais antigo (claro) ao corrente (escuro) — issue #85.
 
@@ -288,10 +298,10 @@
 
      Passa `--ordinal` nos dois temas: monotonia de luminosidade, ΔL ≥ 0,06 entre passos,
      ponta clara acima de 2:1 sobre a superfície, matiz único (dispersão ≤ 3°). */
-  --ano-1: #7ebe9a;
-  --ano-2: #4fa675;
-  --ano-3: #2f8054;
-  --ano-4: #155839;
+  --ano-1: #1f5a3d;
+  --ano-2: #2f8558;
+  --ano-3: #4fb07b;
+  --ano-4: #8fd6ac;
 
   /* Manrope e DM Mono vêm de `assets/fonts/` (bloco `@font-face` no topo). A pilha de
      sistema que era o valor inteiro destes dois tokens até a #95 continua aqui como
@@ -300,88 +310,6 @@
   /* Reforça o caráter de dado (preço, m², contagens): número em mono tabular não dança
      de largura quando o valor muda, que é o que deixa uma coluna de valores legível. */
   --font-mono: "DM Mono", ui-monospace, "SF Mono", "Cascadia Mono", "Roboto Mono", Consolas, monospace;
-}
-
-/* Modo escuro: só a cromática de interface (superfícies, texto, linhas).
-   --brand/--brand2/--listing/--development/--anchor ficam intactos — são
-   preenchimento sólido (topo, botões) ou codificação semântica de camada no
-   mapa/legenda, e mudar cor por tema quebraria a associação visual que o
-   usuário já aprendeu (R8.C: "hierarquia que funciona em claro tem que
-   funcionar em escuro", não "a mesma cor em toda parte"). */
-@media (prefers-color-scheme: dark) {
-  :root {
-    /* Régua de quatro degraus do protótipo da #95 (fundo → painel → hover → elevada),
-       reafinada no MATIZ VERDE em vez do azul-preto dele: o que se importou foi o
-       espaçamento entre os degraus, não a cor. O fundo desceu de #0f1310 para #0a0e0c e
-       o painel de #161c18 para #121815 — separação maior entre o que é chão e o que é
-       cartão, que é o traço do protótipo que mais depende de valor.
-
-       Superfície escura mais funda só FACILITA as checagens da R8.75 (marca clara contra
-       fundo mais escuro tem mais contraste, e as outras quatro não dependem da
-       superfície). Revalidado mesmo assim, com `validate_palette.js` e a superfície nova
-       #121815: `--cat-1..6` passa nas cinco, com o mesmo WARN de sempre (teal↔violeta
-       ΔE 7,6, legal com codificação secundária, que a legenda sempre presente fornece);
-       a rampa `--ano-1..4` passa nas quatro do modo ordinal. */
-    --bg: #0a0e0c;
-    --panel: #121815;
-    --ink: #e9ede9;
-    --muted: #8fa196;
-    --line: #2a352e;
-    --accent-text: #57b57e;
-    --chart-bar: #57b57e;
-    --shadow: 0 10px 30px #00000066;
-
-    /* Mesmas escalas, cromática de interface trocada (issue #83). Os apelidos
-       (`--texto-base`, `--borda-base`, `--superficie-base`) seguem o token que já muda
-       aqui em cima e não precisam ser repetidos. */
-    --texto-forte: #f4f7f4;
-    --texto-fraco: #7b8a80;
-    --borda-sutil: #1c2420;
-    --borda-forte: #3d4a42;
-    --superficie-hover: #1a211c;
-    --superficie-elevada: #1e2620;
-    --sombra-1: 0 1px 2px #00000059;
-
-    /* Tinta do ícone de KPI no escuro: o fundo tingido vira um degrau ACIMA da
-       superfície, não abaixo — no claro ele escurece o branco, aqui ele clareia o
-       quase-preto. Mesma leitura, caminho invertido, como na rampa dos anos (R8.76). */
-    --tinta-1-fundo: #16301f;
-    --tinta-2-fundo: #152538;
-    --tinta-3-fundo: #33270c;
-    --tinta-4-fundo: #0d2c30;
-
-    --tone-good: #8fd6ac;
-    --tone-bad: #f0a3a3;
-    --sucesso-fundo: #163524;
-    --sucesso-borda: #29553c;
-    --alerta: #f0b877;
-    --alerta-fundo: #3a2a12;
-    --alerta-borda: #5c4526;
-    --erro-fundo: #3a1a1a;
-    --erro-borda: #5c2c2c;
-    --info: #8fb4e8;
-    --info-fundo: #1a2536;
-    --info-borda: #2e415c;
-    --rascunho: #c3b3f5;
-    --rascunho-fundo: #241d3a;
-
-    --cat-1: #3f9e68;
-    --cat-2: #5b92d8;
-    --cat-3: #bd8a2e;
-    --cat-4: #8f6fd0;
-    --cat-5: #149dad;
-    --cat-6: #d4665a;
-    --cat-7: #8f9e5a;
-    --cat-8: #8fa196;
-
-    /* A rampa dos anos inverte no escuro: o ano corrente é o passo MAIS CLARO, porque é
-       ele que precisa saltar da superfície escura. A ordem de leitura (antigo → corrente)
-       continua a mesma; o que muda é de que lado da superfície ela caminha. */
-    --ano-1: #1f5a3d;
-    --ano-2: #2f8558;
-    --ano-3: #4fb07b;
-    --ano-4: #8fd6ac;
-  }
 }
 
 * { box-sizing: border-box; }
@@ -1940,6 +1868,114 @@ button.traffic-item-head:hover .traffic-item-name { color: var(--accent-text); }
 .market-provenance dl { font-size: var(--tipo-sm); }
 .market-provenance dt { color: var(--muted); }
 .market-provenance dd { margin: 0; text-align: right; }
+
+/* Diagnóstico Territorial PDAD-A (issue #100).
+
+   KPIs e filtros reusam `.market-destaques`/`.market-kpi`/`.market-campos`/`.btn-ghost`
+   como estão — é a mesma anatomia de "régua de indicadores + filtros" do Mercado, e duas
+   telas com o mesmo formato não precisam de dois vocabulários de CSS. Só o que é
+   genuinamente novo aqui — o aviso de cobertura por ano e a lista de categorias por
+   indicador — ganha classe própria. */
+.pdad-kpi-nota {
+  margin: var(--esp-1) 0 0;
+  font-size: var(--tipo-2xs);
+  line-height: 1.4;
+  color: var(--texto-sec);
+}
+.pdad-year-note {
+  margin: 0 0 var(--esp-4);
+  padding: var(--esp-3);
+  border-radius: var(--raio-md);
+  border-left: 3px solid var(--info);
+  background: var(--info-fundo);
+  font-size: var(--tipo-sm);
+  line-height: 1.45;
+  color: var(--info);
+}
+.pdad-year-note:empty { display: none; }
+
+.pdad-tema-head {
+  display: flex;
+  align-items: center;
+  gap: var(--esp-2);
+  margin: var(--esp-5) 0 var(--esp-3);
+}
+.pdad-tema-head span {
+  font-size: var(--tipo-sm);
+  font-weight: 800;
+  color: var(--texto-forte);
+}
+.pdad-tema-head::after { content: ''; flex: 1; height: 1px; background: var(--borda-sutil); }
+
+.pdad-ind-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--esp-3);
+  margin-bottom: var(--esp-3);
+}
+.pdad-card {
+  min-width: 0;
+  padding: var(--esp-4);
+  border: 1px solid var(--borda-base);
+  border-radius: var(--raio-lg);
+  background: var(--superficie-base);
+}
+.pdad-card-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: var(--esp-2);
+  margin-bottom: var(--esp-3);
+}
+.pdad-card-titulo { margin: 0; font-size: var(--tipo-base); font-weight: 700; color: var(--texto-forte); }
+.pdad-card-unidade { font-family: var(--font-mono); font-size: var(--tipo-2xs); color: var(--texto-sec); white-space: nowrap; }
+
+/* Mesma anatomia de `.market-regiao` (barra horizontal proporcional ao maior valor da
+   lista), reaproveitada para as categorias de um indicador do PDAD-A em vez de duplicar
+   a regra com outro nome. */
+.pdad-bar-list { margin: 0; padding: 0; list-style: none; }
+.pdad-bar {
+  display: grid;
+  grid-template-columns: minmax(96px, 1.3fr) minmax(0, 2fr) auto;
+  align-items: center;
+  gap: var(--esp-1) var(--esp-2);
+  padding: 6px 0;
+}
+.pdad-bar-nome {
+  font-size: var(--tipo-xs);
+  color: var(--texto-sec);
+  overflow-wrap: anywhere;
+}
+.pdad-bar-trilho {
+  height: 8px;
+  border-radius: 0 var(--raio-xs) var(--raio-xs) 0;
+  background: var(--superficie-hover);
+}
+.pdad-bar-fill {
+  display: block;
+  height: 100%;
+  border-radius: 0 var(--raio-xs) var(--raio-xs) 0;
+  background: var(--cat-2);
+}
+.pdad-bar-valor {
+  font-size: var(--tipo-xs);
+  font-weight: 600;
+  color: var(--texto-forte);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.pdad-bar-valor.pdad-ausente { color: var(--texto-fraco); font-weight: 400; }
+.pdad-bar-mais {
+  margin: var(--esp-1) 0 0;
+  font-size: var(--tipo-2xs);
+  color: var(--texto-sec);
+}
+.pdad-empty { margin: 0; font-size: var(--tipo-sm); color: var(--muted); }
+
+@media (max-width: 860px) {
+  .pdad-ind-grid { grid-template-columns: 1fr; }
+  .pdad-bar { grid-template-columns: minmax(78px, 1fr) 1.4fr auto; }
+}
 
 /* Cards do Mercado Residencial DF (issue #59).
 

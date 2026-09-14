@@ -18,6 +18,7 @@ import { linkTrafficDataset } from './traffic/link.js';
 import { normalizeIvvMonthly } from './ivv/normalize-ivv.js';
 import { normalizeIvvRegion } from './ivv/region.js';
 import { normalizeFipezapMonthly, normalizeFipezapLocality } from './fipezap/normalize-fipezap.js';
+import { normalizePdadData } from './pdad/normalize-pdad.js';
 
 /** Entidades obrigatórias na V1. Ausência de qualquer uma é erro. */
 export const REQUIRED_ENTITIES = ['listings', 'developments', 'anchors'];
@@ -185,6 +186,7 @@ async function loadFromGviz(config) {
   const regiaoPromise = fetchIvvRegionFromGviz(config);
   const fipezapMonthlyPromise = fetchFipezapMonthlyFromGviz(config);
   const fipezapLocalityPromise = fetchFipezapLocalityFromGviz(config);
+  const pdadDataPromise = fetchPdadDataFromGviz(config);
 
   const settled = await Promise.allSettled(
     entries.map(([, sheetName]) => fetchGvizSheet(config.spreadsheetId, sheetName))
@@ -210,12 +212,13 @@ async function loadFromGviz(config) {
   const { ivvRegion, warnings: regiaoWarnings } = await regiaoPromise;
   const { fipezapMonthly, warnings: fipezapMonthlyWarnings } = await fipezapMonthlyPromise;
   const { fipezapLocality, warnings: fipezapLocalityWarnings } = await fipezapLocalityPromise;
+  const { pdadData, warnings: pdadDataWarnings } = await pdadDataPromise;
   return {
     raw,
     errors,
     warnings: [
       ...warnings, ...raProfileWarnings, ...polygonWarnings, ...trafficWarnings, ...ivvWarnings,
-      ...regiaoWarnings, ...fipezapMonthlyWarnings, ...fipezapLocalityWarnings,
+      ...regiaoWarnings, ...fipezapMonthlyWarnings, ...fipezapLocalityWarnings, ...pdadDataWarnings,
     ],
     meta: { spreadsheetId: config.spreadsheetId, ...meta },
     raProfiles,
@@ -225,6 +228,7 @@ async function loadFromGviz(config) {
     ivvRegion,
     fipezapMonthly,
     fipezapLocality,
+    pdadData,
   };
 }
 
@@ -342,6 +346,37 @@ async function fetchFipezapLocalityFromGviz(config) {
     return {
       fipezapLocality: [],
       warnings: [`Preço FipeZap por RA indisponível (${sheetName}): ${error?.message || error}`],
+    };
+  }
+}
+
+/**
+ * Lê a aba `PDAD_A_DATA` (issue #100): extração longa do PDAD-A que alimenta a aba
+ * Diagnóstico. Mesmo tratamento das demais abas opcionais: falha ou ausência vira
+ * **aviso, nunca erro** (R2.5) — a aba Diagnóstico simplesmente fica desabilitada.
+ *
+ * Usa o timeout LONGO (`FETCH_TIMEOUT_MS`), não o curto das demais abas opcionais:
+ * ~12.190 linhas é a maior aba lida pela tela, maior até que as três obrigatórias — o
+ * timeout de 6 s pensado para uma aba de dezenas/centenas de linhas cortaria a busca
+ * antes dela terminar de vir.
+ */
+async function fetchPdadDataFromGviz(config) {
+  const sheetName = config.pdadDataSheet;
+  if (!sheetName) return { pdadData: [], warnings: [] };
+
+  try {
+    const rows = await fetchGvizSheet(config.spreadsheetId, sheetName, {
+      timeoutMs: FETCH_TIMEOUT_MS,
+    });
+    const { rows: pdadData, warnings } = normalizePdadData(rows);
+    return {
+      pdadData,
+      warnings: (warnings || []).map((texto) => `Diagnóstico (PDAD_A_DATA): ${texto}`),
+    };
+  } catch (error) {
+    return {
+      pdadData: [],
+      warnings: [`Diagnóstico territorial indisponível (${sheetName}): ${error?.message || error}`],
     };
   }
 }
@@ -505,6 +540,7 @@ async function loadFromDemo(config) {
   const demoRegiao = normalizeIvvRegion(payload.ivv_region || []);
   const demoFipezapMonthly = normalizeFipezapMonthly(payload.fipezap_monthly || []);
   const demoFipezapLocality = normalizeFipezapLocality(payload.fipezap_locality_monthly || []);
+  const demoPdadData = normalizePdadData(payload.pdad_a_data || []);
 
   return {
     raw,
@@ -515,6 +551,7 @@ async function loadFromDemo(config) {
       ...demoRegiao.warnings.map((texto) => `Mercado (IVV_REGION): ${texto}`),
       ...demoFipezapMonthly.warnings.map((texto) => `Mercado (FIPEZAP_MONTHLY): ${texto}`),
       ...demoFipezapLocality.warnings.map((texto) => `Mercado (FIPEZAP_LOCALITY_MONTHLY): ${texto}`),
+      ...demoPdadData.warnings.map((texto) => `Diagnóstico (PDAD_A_DATA): ${texto}`),
     ],
     meta: { ...normalizeAppMeta(payload.meta), demo: payload.meta || {} },
     // Mesmo tratamento de `raw`: aba ausente no demo.json vira mapa vazio, não erro.
@@ -538,6 +575,9 @@ async function loadFromDemo(config) {
     ivvRegion: demoRegiao.rows,
     fipezapMonthly: demoFipezapMonthly.rows,
     fipezapLocality: demoFipezapLocality.rows,
+    // Mesmo tratamento: demo.json sem `pdad_a_data` vira lista vazia, e a aba
+    // Diagnóstico some dizendo por quê, em vez de abrir vazia sem explicação.
+    pdadData: demoPdadData.rows,
   };
 }
 
@@ -563,6 +603,7 @@ async function loadFromAppsScript(config) {
   const regiaoPromise = fetchIvvRegionFromAppsScript(config);
   const fipezapMonthlyPromise = fetchFipezapMonthlyFromAppsScript(config);
   const fipezapLocalityPromise = fetchFipezapLocalityFromAppsScript(config);
+  const pdadDataPromise = fetchPdadDataFromAppsScript(config);
 
   const settled = await Promise.allSettled(
     entries.map(async ([, sheetName]) => {
@@ -622,10 +663,12 @@ async function loadFromAppsScript(config) {
   warnings.push(...fipezapMonthlyWarnings);
   const { fipezapLocality, warnings: fipezapLocalityWarnings } = await fipezapLocalityPromise;
   warnings.push(...fipezapLocalityWarnings);
+  const { pdadData, warnings: pdadDataWarnings } = await pdadDataPromise;
+  warnings.push(...pdadDataWarnings);
 
   return {
     raw, errors, warnings, meta, raProfiles, polygons, traffic, ivvMonthly, ivvRegion,
-    fipezapMonthly, fipezapLocality,
+    fipezapMonthly, fipezapLocality, pdadData,
   };
 }
 
@@ -762,6 +805,29 @@ async function fetchFipezapLocalityFromAppsScript(config) {
   }
 }
 
+/** PDAD_A_DATA pelo endpoint read-only do Web App — mesmo contrato de `fetchPdadDataFromGviz`. */
+async function fetchPdadDataFromAppsScript(config) {
+  if (!config.pdadDataSheet) return { pdadData: [], warnings: [] };
+
+  try {
+    const url = `${config.appsScriptUrl}?resource=dataset&name=${encodeURIComponent(config.pdadDataSheet)}`;
+    const response = await fetchWithTimeout(url, { timeoutMs: FETCH_TIMEOUT_MS });
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    const payload = await response.json();
+    if (payload.error) throw new Error(payload.error);
+    const { rows, warnings } = normalizePdadData(payload.rows || []);
+    return {
+      pdadData: rows,
+      warnings: (warnings || []).map((texto) => `Diagnóstico (PDAD_A_DATA): ${texto}`),
+    };
+  } catch (error) {
+    return {
+      pdadData: [],
+      warnings: [`Diagnóstico territorial indisponível: ${error?.message || error}`],
+    };
+  }
+}
+
 /** RA_PROFILES pelo endpoint read-only do Web App — mesmo formato de resposta que as abas obrigatórias. */
 async function fetchRaProfilesFromAppsScript(config) {
   if (!config.raProfilesSheet) return { raProfiles: {}, warnings: [] };
@@ -828,6 +894,7 @@ export async function loadDataset(config) {
       ivvRegion: [],
       fipezapMonthly: [],
       fipezapLocality: [],
+      pdadData: [],
       source: strategy,
       warnings,
       errors: [error?.message || String(error)],
@@ -870,6 +937,7 @@ export async function loadDataset(config) {
     ivvRegion: result.ivvRegion || [],
     fipezapMonthly: result.fipezapMonthly || [],
     fipezapLocality: result.fipezapLocality || [],
+    pdadData: result.pdadData || [],
     source: strategy,
     warnings,
     errors,

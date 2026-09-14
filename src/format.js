@@ -866,6 +866,9 @@ export const DATASET_PERCENT_SCALE = Object.freeze({
   // dados reais. Mais um dataset com escala própria convivendo na mesma planilha; nunca se
   // unifica com a de `IVV_REGION` (R8.44).
   FIPEZAP: PERCENT_SCALES.DECIMAL,
+  // PDAD_A_DATA (issue #100) publica `estimate_pct` em ponto percentual (`49` = 49%),
+  // mesma escala de RA_PROFILES/IVV_REGION — confirmado no dataset real.
+  PDAD_A_DATA: PERCENT_SCALES.POINTS,
 });
 
 /**

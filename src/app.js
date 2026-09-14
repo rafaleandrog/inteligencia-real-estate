@@ -29,6 +29,9 @@ import {
   buildFipezapHistoryCharts, fipezapMonthlyIndex, fipezapRowsInRange,
 } from './fipezap/history.js';
 import { localitiesAvailable, buildLocalityCharts, FIPEZAP_SEGMENTS } from './fipezap/locality.js';
+import { pdadYearsAvailable } from './pdad/normalize-pdad.js';
+import { buildPdadIndex, rasForYear, summarizeKpis, indicatorSeries } from './pdad/aggregate.js';
+import { PDAD_TEMAS, INDICATORS_BY_TEMA } from './pdad/indicators.js';
 import {
   anchorLegendGroups, applyFilters, computeKpis, createFilterState, distinctAnchorGroups,
   distinctAnchorSegments, distinctLocalities, distinctPropertyTypes, distinctRegions,
@@ -97,6 +100,10 @@ const dom = {
   fipezapRaSection: el('fipezapRaSection'), fipezapRaNote: el('fipezapRaNote'),
   fipezapSegment: el('fipezapSegment'), fipezapLocality: el('fipezapLocality'),
   fipezapLocalityChart: el('fipezapLocalityChart'),
+  pdadTab: el('pdadTab'), pdadView: el('pdadView'), pdadScope: el('pdadScope'),
+  pdadRa: el('pdadRa'), pdadYear: el('pdadYear'), pdadTema: el('pdadTema'),
+  pdadReset: el('pdadReset'), pdadKpis: el('pdadKpis'), pdadYearNote: el('pdadYearNote'),
+  pdadTemaBlocks: el('pdadTemaBlocks'),
 };
 
 const state = {
@@ -132,6 +139,15 @@ const state = {
   // Trechos rodoviários com tráfego ligado (issue #62/#63). `bySegmentId` vazio é o
   // estado normal enquanto ROAD_SEGMENTS não vier — o painel simplesmente não aparece.
   traffic: { bySegmentId: new Map(), orphaned: [], unmatchedSegmentIds: [] },
+  // Diagnóstico Territorial PDAD-A (issue #100). `pdadData` são as linhas normalizadas
+  // (formato longo); `pdadIndex` é `buildPdadIndex(pdadData)`, calculado uma vez no
+  // carregamento — recalcular a cada troca de filtro custaria as ~12 mil linhas de novo
+  // para um resultado que não muda com o filtro. Lista/índice vazios são o estado normal
+  // enquanto a aba PDAD_A_DATA não vier — a aba Diagnóstico fica desabilitada dizendo
+  // por quê, mesmo tratamento de `ivvMonthly`/`marketTab` (R2.5).
+  pdadData: [],
+  pdadIndex: {},
+  pdadFilters: null,
 };
 
 let map = null;
@@ -1394,7 +1410,7 @@ function showSourceBadge(source) {
 
 // --- View interna do Mercado Residencial DF (issue #58) ----------------------------
 
-const VIEWS = ['mapa', 'mercado'];
+const VIEWS = ['mapa', 'mercado', 'diagnostico'];
 
 /** A view pedida pelo hash. Hash desconhecido cai no mapa, sem erro. */
 function viewFromHash() {
@@ -1419,10 +1435,14 @@ function viewFromHash() {
  */
 function setView(name) {
   const temMercado = state.ivvMonthly.length > 0;
-  const view = name === 'mercado' && temMercado ? 'mercado' : 'mapa';
+  const temDiagnostico = state.pdadData.length > 0;
+  let view = 'mapa';
+  if (name === 'mercado' && temMercado) view = 'mercado';
+  else if (name === 'diagnostico' && temDiagnostico) view = 'diagnostico';
 
   dom.mapView.hidden = view !== 'mapa';
   dom.marketView.hidden = view !== 'mercado';
+  dom.pdadView.hidden = view !== 'diagnostico';
 
   for (const tab of dom.viewSwitch.querySelectorAll('.view-tab')) {
     tab.setAttribute('aria-pressed', String(tab.dataset.view === view));
@@ -2558,6 +2578,237 @@ function refreshMarketView() {
   showWarnings([...state.baseWarnings, ...marketWarnings]);
 }
 
+// --- Diagnóstico Territorial PDAD-A (issue #100, Fase 1) -------------------------
+
+/** As RAs que entram no recorte corrente. RA escolhida sem dado no ano vira lista vazia. */
+function pdadSelectedRaIds() {
+  const { ra, year } = state.pdadFilters;
+  const disponiveis = rasForYear(state.pdadIndex, year).map((item) => item.raGeoId);
+  if (ra === 'all') return disponiveis;
+  return disponiveis.includes(ra) ? [ra] : [];
+}
+
+/** Repovoa o filtro de RA para o ano corrente, preservando a escolha quando ela ainda existe. */
+function populatePdadRaFilter() {
+  const ras = rasForYear(state.pdadIndex, state.pdadFilters.year);
+  const atual = state.pdadFilters.ra;
+  const porId = new Map(ras.map((item) => [item.raGeoId, item.raName]));
+  populateSelect(dom.pdadRa, [...porId.keys()], (id) => porId.get(id) || id);
+  dom.pdadRa.value = porId.has(atual) ? atual : 'all';
+  state.pdadFilters.ra = dom.pdadRa.value;
+}
+
+/** Monta os três filtros uma única vez, na primeira carga com dado — troca de valor não passa por aqui de novo. */
+function initializePdadFilters() {
+  const anos = pdadYearsAvailable(state.pdadData);
+  const maisRecente = anos[0];
+  dom.pdadYear.replaceChildren(...anos.map((ano) => {
+    const option = document.createElement('option');
+    option.value = String(ano);
+    // O ano mais recente é o padrão; os demais se anunciam como histórico, mesma
+    // leitura que a tela já dá ao ano mais antigo do IVV/FipeZap.
+    option.textContent = ano === maisRecente ? String(ano) : `${ano} · histórico`;
+    return option;
+  }));
+  dom.pdadYear.value = String(maisRecente);
+  state.pdadFilters = { ra: 'all', year: maisRecente, tema: 'all' };
+  populatePdadRaFilter();
+  populateSelect(dom.pdadTema, Object.keys(PDAD_TEMAS), (key) => PDAD_TEMAS[key]);
+  dom.pdadTema.value = 'all';
+}
+
+/**
+ * Cobertura do ano corrente, em frase — nunca em silêncio. 2021 publica só o Plano
+ * Piloto no dataset real; escrever isso como frase evita que a pessoa leia "sem dado"
+ * como defeito de carregamento.
+ */
+function pdadYearNoteText() {
+  const { year } = state.pdadFilters;
+  const todasAsRas = new Set();
+  for (const ras of Object.values(state.pdadIndex)) for (const id of Object.keys(ras)) todasAsRas.add(id);
+  const doAno = rasForYear(state.pdadIndex, year);
+  if (doAno.length === 0 || doAno.length >= todasAsRas.size) return '';
+  const nomes = doAno.map((item) => item.raName).join(', ');
+  return `PDAD-A ${year} publicou ${doAno.length} de ${todasAsRas.size} Regiões Administrativas (${nomes}). `
+    + 'Selecionar outra RA mostra ausência de publicação, não um erro de carregamento.';
+}
+
+function pdadKpiTile(label, value, nota) {
+  const box = document.createElement('article');
+  box.className = 'market-kpi';
+  const rotulo = document.createElement('h3');
+  rotulo.className = 'market-kpi-rotulo';
+  rotulo.textContent = label;
+  const valorEl = document.createElement('p');
+  valorEl.className = 'market-kpi-valor';
+  valorEl.textContent = value;
+  box.append(rotulo, valorEl);
+  if (nota) {
+    const notaEl = document.createElement('p');
+    notaEl.className = 'pdad-kpi-nota';
+    notaEl.textContent = nota;
+    box.append(notaEl);
+  }
+  return box;
+}
+
+function renderPdadKpis(raIds) {
+  const { year } = state.pdadFilters;
+  const kpis = summarizeKpis(state.pdadIndex, year, raIds);
+  const avg = kpis.avgHouseholdSize === null ? '—' : kpis.avgHouseholdSize.toLocaleString('pt-BR', {
+    minimumFractionDigits: 2, maximumFractionDigits: 2,
+  });
+  const unica = raIds.length === 1 ? rasForYear(state.pdadIndex, year).find((r) => r.raGeoId === raIds[0]) : null;
+  const escopo = unica ? unica.raName : `soma de ${kpis.raCount} RA(s)`;
+
+  dom.pdadKpis.replaceChildren(
+    pdadKpiTile('População estimada', formatNumber(kpis.population), `${escopo} · PDAD-A ${year}`),
+    pdadKpiTile('Domicílios ocupados', formatNumber(kpis.households), `${escopo} · PDAD-A ${year}`),
+    pdadKpiTile('Moradores por domicílio', avg, 'população ÷ domicílios · calculado'),
+    pdadKpiTile('RAs analisadas', String(kpis.raCount), `PDAD-A ${year} · lote carregado`),
+  );
+}
+
+/** Uma categoria, como barra horizontal proporcional ao maior valor do cartão. */
+function pdadBarRow(valor, maximo) {
+  const li = document.createElement('li');
+  li.className = 'pdad-bar';
+
+  const nome = document.createElement('span');
+  nome.className = 'pdad-bar-nome';
+  nome.title = valor.label;
+  nome.textContent = valor.label;
+
+  const trilho = document.createElement('span');
+  trilho.className = 'pdad-bar-trilho';
+  const fill = document.createElement('span');
+  fill.className = 'pdad-bar-fill';
+  const pct = Number.isFinite(valor.pct) ? valor.pct : null;
+  fill.style.width = (pct !== null && maximo > 0) ? `${Math.max(2, (pct / maximo) * 100)}%` : '0%';
+  trilho.append(fill);
+
+  const numero = document.createElement('span');
+  const ausente = pct === null;
+  numero.className = ausente ? 'pdad-bar-valor pdad-ausente' : 'pdad-bar-valor';
+  // Suprimido/parcial vira FRASE, nunca "0%" — uma barra vazia afirma "não tem" onde o
+  // dado diz "não publicou" (R5.7).
+  numero.textContent = ausente
+    ? (valor.status === 'suppressed' ? 'suprimido' : valor.status === 'partial' ? 'parcial' : '—')
+    : formatPercent(percentFromPoints(pct));
+
+  li.append(nome, trilho, numero);
+  return li;
+}
+
+const PDAD_BAR_CAP = 8;
+
+function pdadIndicatorCard(indicador, raIds) {
+  const article = document.createElement('article');
+  article.className = 'pdad-card';
+
+  const head = document.createElement('div');
+  head.className = 'pdad-card-head';
+  const titulo = document.createElement('h3');
+  titulo.className = 'pdad-card-titulo';
+  titulo.textContent = indicador.label;
+  const unidade = document.createElement('span');
+  unidade.className = 'pdad-card-unidade';
+  unidade.textContent = indicador.unit;
+  head.append(titulo, unidade);
+  article.append(head);
+
+  const valores = indicatorSeries(state.pdadIndex, state.pdadFilters.year, raIds, indicador.key);
+  if (valores.length === 0) {
+    const vazio = document.createElement('p');
+    vazio.className = 'pdad-empty';
+    vazio.textContent = 'Sem valores publicados para esta seleção.';
+    article.append(vazio);
+    return article;
+  }
+
+  const mostrados = valores.slice(0, PDAD_BAR_CAP);
+  const resto = valores.length - mostrados.length;
+  const maximo = Math.max(...mostrados.map((v) => (Number.isFinite(v.pct) ? v.pct : 0)), 1);
+
+  const lista = document.createElement('ul');
+  lista.className = 'pdad-bar-list';
+  for (const valor of mostrados) lista.append(pdadBarRow(valor, maximo));
+  article.append(lista);
+
+  if (resto > 0) {
+    const mais = document.createElement('p');
+    mais.className = 'pdad-bar-mais';
+    mais.textContent = `+${resto} categoria(s) não mostrada(s) neste recorte.`;
+    article.append(mais);
+  }
+
+  return article;
+}
+
+function renderPdadTemaBlocks(raIds) {
+  const { tema } = state.pdadFilters;
+  const temas = tema === 'all' ? Object.keys(PDAD_TEMAS) : [tema];
+
+  const blocos = temas.map((chave) => {
+    const indicadores = INDICATORS_BY_TEMA[chave] || [];
+    const grid = document.createElement('div');
+    grid.className = 'pdad-ind-grid';
+    for (const indicador of indicadores) grid.append(pdadIndicatorCard(indicador, raIds));
+
+    const wrapper = document.createDocumentFragment();
+    if (tema === 'all') {
+      const cabecalho = document.createElement('div');
+      cabecalho.className = 'pdad-tema-head';
+      const rotulo = document.createElement('span');
+      rotulo.textContent = PDAD_TEMAS[chave];
+      cabecalho.append(rotulo);
+      wrapper.append(cabecalho);
+    }
+    wrapper.append(grid);
+    return wrapper;
+  });
+
+  dom.pdadTemaBlocks.replaceChildren(...blocos);
+}
+
+/**
+ * Monta a view do Diagnóstico Territorial PDAD-A (issue #100). Mesmo formato de
+ * `renderMarketView()`: botão desabilitado com o motivo escrito quando a aba não veio,
+ * filtros montados uma vez na primeira carga, e `setView` reaplicado ao final para que
+ * abrir direto em `#diagnostico` funcione.
+ */
+function renderPdadView() {
+  const temDado = state.pdadData.length > 0;
+
+  dom.pdadTab.disabled = !temDado;
+  dom.pdadTab.title = temDado ? ''
+    : 'A aba PDAD_A_DATA não foi carregada, então não há diagnóstico territorial para mostrar.';
+
+  if (!temDado) {
+    if (viewFromHash() === 'diagnostico') setView('mapa');
+    return [];
+  }
+
+  if (!state.pdadFilters) initializePdadFilters();
+
+  const anosDisponiveis = pdadYearsAvailable(state.pdadData);
+  dom.pdadScope.textContent =
+    `PDAD-A ${anosDisponiveis[0]} — Instituto de Planejamento e Estatística do Distrito Federal (IPEDF/DIEPS/COEPS).`;
+
+  const raIds = pdadSelectedRaIds();
+  renderPdadKpis(raIds);
+  dom.pdadYearNote.textContent = pdadYearNoteText();
+  renderPdadTemaBlocks(raIds);
+
+  setView(viewFromHash());
+  return [];
+}
+
+function refreshPdadView() {
+  const pdadWarnings = renderPdadView();
+  showWarnings([...state.baseWarnings, ...pdadWarnings]);
+}
+
 async function load() {
   showLoading(true);
   dom.errorState.hidden = true;
@@ -2583,6 +2834,9 @@ async function load() {
   state.ivvRegion = result.ivvRegion || [];
   state.fipezapMonthly = result.fipezapMonthly || [];
   state.fipezapLocality = result.fipezapLocality || [];
+  state.pdadData = result.pdadData || [];
+  state.pdadIndex = state.pdadData.length > 0 ? buildPdadIndex(state.pdadData) : {};
+  state.pdadFilters = null;
   state.fipezapSelection = null;
   state.fipezapLocalitySegment = null;
   state.fipezapLocalityChoice = null;
@@ -2611,6 +2865,7 @@ async function load() {
   renderAnchorLegend(state.records);
 
   refreshMarketView();
+  refreshPdadView();
   render();
 
   // Enquadra o que tem coordenada, para a primeira tela não depender do zoom padrão.
@@ -2729,6 +2984,35 @@ function bindEvents() {
   // tamanho — e não um `matchMedia`, que só dispararia no ponto de quebra e deixaria
   // passar toda mudança de largura entre eles (issue #85).
   observarLarguraDosGraficos();
+
+  // Diagnóstico Territorial PDAD-A (issue #100). Trocar o ano repovoa o filtro de RA
+  // primeiro — a lista de RAs disponíveis muda com o ano (2021 só tem o Plano Piloto) —
+  // e só então redesenha KPIs/cartões.
+  dom.pdadYear.addEventListener('change', () => {
+    if (!state.pdadFilters) return;
+    state.pdadFilters.year = Number(dom.pdadYear.value);
+    populatePdadRaFilter();
+    refreshPdadView();
+  });
+  dom.pdadRa.addEventListener('change', () => {
+    if (!state.pdadFilters) return;
+    state.pdadFilters.ra = dom.pdadRa.value;
+    refreshPdadView();
+  });
+  dom.pdadTema.addEventListener('change', () => {
+    if (!state.pdadFilters) return;
+    state.pdadFilters.tema = dom.pdadTema.value;
+    refreshPdadView();
+  });
+  dom.pdadReset.addEventListener('click', () => {
+    if (!state.pdadFilters) return;
+    const anoPadrao = pdadYearsAvailable(state.pdadData)[0];
+    state.pdadFilters = { ra: 'all', year: anoPadrao, tema: 'all' };
+    dom.pdadYear.value = String(anoPadrao);
+    populatePdadRaFilter();
+    dom.pdadTema.value = 'all';
+    refreshPdadView();
+  });
 
   // Troca de view (issue #58). O hash é a fonte da verdade: o clique escreve nele e o
   // `hashchange` aplica. Assim o botão e a barra de endereço nunca discordam, e
