@@ -1,10 +1,95 @@
-/* Imob Intelligence — visual da V1 (redesign issue #23, design-taste-frontend).
-   Paleta herdada do modelo V3 (reference/index-v3.html): identidade de marca
-   preservada de propósito (verde), não é um redesign do zero. Ver notas de
-   modo escuro logo abaixo — só a cromática de interface muda; os tiles do
-   mapa (Leaflet/OSM) continuam claros, por não existir provedor de tiles
-   escuro configurado nesta aplicação (fora de escopo deste PR).
-   Estrutura fica no index.html, comportamento em src/app.js (docs/ARCHITECTURE.md). */
+/* Imob Intelligence — identidade visual.
+
+   Este comentário é o documento de identidade visual do projeto: não existe doc de UI
+   em `docs/`, e a decisão que não estiver escrita aqui se perde na primeira dúvida.
+
+   LINHAGEM. V1 (issue #23) herdou a paleta do modelo V3 (`reference/index-v3.html`).
+   A issue #83 trouxe as escalas do contrato do UrbiVerso; a #85 acertou paleta de série
+   e densidade. A issue #95 traz a LINGUAGEM do protótipo guardado em
+   `reference/inteligencia-real-estate-v8.html`: painel de instrumentos, não site —
+   régua de neutros em quatro degraus, hairline no lugar de sombra, micro-rótulo em
+   caixa-alta, número em mono tabular, barra de canto assimétrico.
+
+   DUAS DECISÕES DA #95, e o porquê de cada uma, porque as duas parecem erradas de longe:
+
+   1. O TEMA PADRÃO CONTINUA CLARO, embora o protótipo seja escuro. Os tiles do
+      Leaflet/OSM são claros e não há provedor de tiles escuro configurado nesta
+      aplicação. Casca escura por padrão deixaria um retângulo branco de mapa no meio
+      da tela em toda sessão — trocar o problema de lugar, não resolvê-lo. O que o
+      protótipo tem de bom (tipografia, densidade, anatomia de componente) chega igual
+      nos dois temas; o escuro automático foi reafinado para a régua de quatro degraus
+      dele. O dia em que houver provedor escuro de tiles, esta decisão se reabre.
+
+   2. A MARCA CONTINUA VERDE, embora o protótipo acentue em azul (#3987e5). Esse azul
+      fica a ΔE de distância de `--listing` (#3478b9), que codifica CAMADA DO MAPA —
+      e cor que já significa uma coisa não pode passar a significar outra na mesma
+      tela. É a armadilha da R8.71 por outra porta. O papel do azul do protótipo é
+      ocupado pelo verde da marca.
+
+   Consequência das duas: a #95 quase não mexeu em cor. O redesenho é de FORMA.
+
+   ONDE MORA O QUÊ (docs/ARCHITECTURE.md): estrutura no index.html, comportamento em
+   src/app.js, aparência aqui. Componente não escreve literal — tudo vem de token, e
+   `tests/ui-tokens.test.js` cobra isso nas regras `.market*`/`.chart-*`/`.serie-*`. */
+
+/* Fontes auto-hospedadas em `assets/fonts/` — nunca CDN, mesma decisão do Leaflet
+   (R1.6). Manrope é VARIÁVEL: um arquivo por subconjunto cobre 600, 700 e 800, daí o
+   `font-weight: 200 800` numa declaração só. O `unicode-range` mantém `latin-ext` fora
+   do caminho comum: o português brasileiro cabe inteiro em `latin`.
+
+   `@font-face` vive AQUI, e não num arquivo próprio, de propósito: a lista de folhas de
+   estilo é cravada em `tools/versionar-assets.mjs` e `tests/asset-version.test.js`
+   reprova `href` de `assets/` sem `?v=`. Um `.css` novo custaria as duas coisas; uma
+   regra no arquivo que já é linkado não custa nenhuma. Ver `assets/fonts/README.md`
+   para a nota de versionamento do próprio `.woff2`. */
+@font-face {
+  font-family: Manrope;
+  font-style: normal;
+  font-weight: 200 800;
+  font-display: swap;
+  src: url("./fonts/manrope-var-latin-ext.woff2") format("woff2");
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+@font-face {
+  font-family: Manrope;
+  font-style: normal;
+  font-weight: 200 800;
+  font-display: swap;
+  src: url("./fonts/manrope-var-latin.woff2") format("woff2");
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+@font-face {
+  font-family: "DM Mono";
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url("./fonts/dm-mono-400-latin-ext.woff2") format("woff2");
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+@font-face {
+  font-family: "DM Mono";
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url("./fonts/dm-mono-400-latin.woff2") format("woff2");
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+@font-face {
+  font-family: "DM Mono";
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url("./fonts/dm-mono-500-latin-ext.woff2") format("woff2");
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+@font-face {
+  font-family: "DM Mono";
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url("./fonts/dm-mono-500-latin.woff2") format("woff2");
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
 
 :root {
   --bg: #f4f5f2;
@@ -84,7 +169,10 @@
   --sombra-1: 0 1px 2px #13251a14;
   --sombra-2: var(--shadow);
 
-  /* Tipo. Sete degraus, do rótulo de eixo ao valor de destaque. */
+  /* Tipo. Do micro-rótulo de eixo ao título de página.
+     `--tipo-3xs` e `--tipo-display` entraram na #95: o protótipo usa um degrau abaixo
+     de 10px nos rótulos de grupo, e um título que respira com a viewport. */
+  --tipo-3xs: 9px;
   --tipo-2xs: 10px;
   --tipo-xs: 11px;
   --tipo-sm: 12px;
@@ -94,6 +182,14 @@
   --tipo-xl: 20px;
   --tipo-2xl: 26px;
   --tipo-3xl: 30px;
+  --tipo-display: clamp(22px, 2.4vw, 31px);
+
+  /* Entrelinha de rótulo. O guard de tokens não cobre `letter-spacing`, mas espalhar
+     literal aqui é a mesma falha da R8.77 por outra propriedade: a decisão é uma só e
+     precisa ser tomada uma vez. `--track-tight` aperta número e título grandes;
+     `--track-label` abre o micro-rótulo em caixa-alta, que sem isso vira borrão. */
+  --track-tight: -0.025em;
+  --track-label: 0.1em;
 
   /* Espaço. */
   --esp-1: 4px;
@@ -149,6 +245,20 @@
                                     obrigatória de qualquer jeito (legenda sempre presente
                                     e rótulo no último ponto), e esses dois nunca aparecem
                                     no mesmo gráfico. */
+  /* Tinta do ícone de KPI (#95). O protótipo põe o ícone num quadrado de fundo
+     tingido; a tinta é DECORATIVA e rotativa por posição, nunca semântica — quem
+     carrega significado no tile é o valor e o rótulo. Deriva da categórica para não
+     abrir uma quinta família de cor, mas é consumida por posição (`.tinta-2`), e não
+     por nome, pelo mesmo motivo que a série é consumida por índice (R8.71). */
+  --tinta-1: var(--cat-1);
+  --tinta-2: var(--cat-2);
+  --tinta-3: var(--cat-3);
+  --tinta-4: var(--cat-5);
+  --tinta-1-fundo: #e6f1ea;
+  --tinta-2-fundo: #e6eef9;
+  --tinta-3-fundo: #f8efdc;
+  --tinta-4-fundo: #e0f0f2;
+
   --cat-1: #2f8f5b;
   --cat-2: #2a78d6;
   --cat-3: #c07c0a;
@@ -172,10 +282,13 @@
   --ano-3: #2f8054;
   --ano-4: #155839;
 
-  --font-sans: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
-  /* Reforça o caráter de dado (preço, m², contagens) sem depender de fonte
-     externa — pilha só com fontes já instaladas no sistema. */
-  --font-mono: ui-monospace, "SF Mono", "Cascadia Mono", "Roboto Mono", Consolas, monospace;
+  /* Manrope e DM Mono vêm de `assets/fonts/` (bloco `@font-face` no topo). A pilha de
+     sistema que era o valor inteiro destes dois tokens até a #95 continua aqui como
+     FALLBACK: se o `.woff2` faltar, a página perde o acabamento e não a legibilidade. */
+  --font-sans: Manrope, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  /* Reforça o caráter de dado (preço, m², contagens): número em mono tabular não dança
+     de largura quando o valor muda, que é o que deixa uma coluna de valores legível. */
+  --font-mono: "DM Mono", ui-monospace, "SF Mono", "Cascadia Mono", "Roboto Mono", Consolas, monospace;
 }
 
 /* Modo escuro: só a cromática de interface (superfícies, texto, linhas).
@@ -186,11 +299,23 @@
    funcionar em escuro", não "a mesma cor em toda parte"). */
 @media (prefers-color-scheme: dark) {
   :root {
-    --bg: #0f1310;
-    --panel: #161c18;
+    /* Régua de quatro degraus do protótipo da #95 (fundo → painel → hover → elevada),
+       reafinada no MATIZ VERDE em vez do azul-preto dele: o que se importou foi o
+       espaçamento entre os degraus, não a cor. O fundo desceu de #0f1310 para #0a0e0c e
+       o painel de #161c18 para #121815 — separação maior entre o que é chão e o que é
+       cartão, que é o traço do protótipo que mais depende de valor.
+
+       Superfície escura mais funda só FACILITA as checagens da R8.75 (marca clara contra
+       fundo mais escuro tem mais contraste, e as outras quatro não dependem da
+       superfície). Revalidado mesmo assim, com `validate_palette.js` e a superfície nova
+       #121815: `--cat-1..6` passa nas cinco, com o mesmo WARN de sempre (teal↔violeta
+       ΔE 7,6, legal com codificação secundária, que a legenda sempre presente fornece);
+       a rampa `--ano-1..4` passa nas quatro do modo ordinal. */
+    --bg: #0a0e0c;
+    --panel: #121815;
     --ink: #e9ede9;
     --muted: #8fa196;
-    --line: #29332c;
+    --line: #2a352e;
     --accent-text: #57b57e;
     --chart-bar: #57b57e;
     --shadow: 0 10px 30px #00000066;
@@ -200,11 +325,19 @@
        aqui em cima e não precisam ser repetidos. */
     --texto-forte: #f4f7f4;
     --texto-fraco: #7b8a80;
-    --borda-sutil: #1f2822;
-    --borda-forte: #3b473f;
-    --superficie-hover: #1d2520;
-    --superficie-elevada: #1c231e;
+    --borda-sutil: #1c2420;
+    --borda-forte: #3d4a42;
+    --superficie-hover: #1a211c;
+    --superficie-elevada: #1e2620;
     --sombra-1: 0 1px 2px #00000059;
+
+    /* Tinta do ícone de KPI no escuro: o fundo tingido vira um degrau ACIMA da
+       superfície, não abaixo — no claro ele escurece o branco, aqui ele clareia o
+       quase-preto. Mesma leitura, caminho invertido, como na rampa dos anos (R8.76). */
+    --tinta-1-fundo: #16301f;
+    --tinta-2-fundo: #152538;
+    --tinta-3-fundo: #33270c;
+    --tinta-4-fundo: #0d2c30;
 
     --tone-good: #8fd6ac;
     --tone-bad: #f0a3a3;
