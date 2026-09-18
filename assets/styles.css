@@ -565,6 +565,27 @@ h1, h2 { margin: 0; font-size: 1rem; }
   border-top: 1px solid var(--line);
 }
 
+/* Botão de recolher o trilho (issue #104): no rodapé, acima do link do admin. */
+.rail-toggle {
+  display: flex;
+  align-items: center;
+  gap: var(--esp-2);
+  width: 100%;
+  margin-bottom: var(--esp-3);
+  padding: var(--esp-2) var(--esp-3);
+  border: 1px solid var(--line);
+  border-radius: var(--raio-md);
+  background: transparent;
+  color: var(--muted);
+  font: inherit;
+  font-size: var(--tipo-xs);
+  text-align: left;
+  cursor: pointer;
+}
+.rail-toggle:hover { color: var(--ink); border-color: var(--accent-text); }
+.rail-toggle:focus-visible { outline: 2px solid var(--accent-text); outline-offset: 2px; }
+.rail-toggle-ic { flex: none; font-size: var(--tipo-md); line-height: 1; }
+
 .admin-link {
   font-size: var(--tipo-xs);
   color: var(--muted);
@@ -593,7 +614,7 @@ h1, h2 { margin: 0; font-size: 1rem; }
   margin: 0 12px 12px;
   padding: 8px 10px;
   border: 1px solid var(--line);
-  border-left: 3px solid var(--primary);
+  border-left: 3px solid var(--accent-text);
   border-radius: var(--radius);
   color: var(--muted);
   font-size: 12px;
@@ -613,6 +634,29 @@ h1, h2 { margin: 0; font-size: 1rem; }
 }
 
 .map-wrap { position: relative; flex: 1; min-width: 0; }
+
+/* Alça de recolher o painel (issue #104): na costura, centrada na vertical, acima dos
+   controles do Leaflet (`.leaflet-top` = 1000) e abaixo do detalhe em mobile (1100). */
+.panel-toggle {
+  position: absolute;
+  left: 0;
+  top: 50%;
+  z-index: 1001;
+  width: 22px;
+  height: 56px;
+  transform: translateY(-50%);
+  border: 1px solid var(--line);
+  border-left: 0;
+  border-radius: 0 var(--raio-md) var(--raio-md) 0;
+  background: var(--panel);
+  color: var(--muted);
+  font: inherit;
+  font-size: var(--tipo-md);
+  cursor: pointer;
+}
+.panel-toggle:hover { color: var(--ink); border-color: var(--accent-text); }
+.panel-toggle:focus-visible { outline: 2px solid var(--accent-text); outline-offset: 2px; }
+.layout[data-panel="collapsed"] .panel { display: none; }
 
 /* Fundo enquanto o tile não chega: um degrau do tema, e não o bege claro do Leaflet, que
    piscava contra a tela escura a cada zoom. */
@@ -708,14 +752,7 @@ h1, h2 { margin: 0; font-size: 1rem; }
   margin: 0 0 6px;
 }
 
-.dataset-meta-details summary {
-  font-size: 11px;
-  text-transform: uppercase;
-  letter-spacing: .06em;
-  color: var(--muted);
-  cursor: pointer;
-  margin-bottom: 8px;
-}
+.dataset-meta-details summary { cursor: pointer; margin-bottom: 8px; }
 
 .dataset-meta-details[open] summary { margin-bottom: 8px; }
 
@@ -779,18 +816,25 @@ h1, h2 { margin: 0; font-size: 1rem; }
 /* Micro-rótulo de seção, no molde do protótipo: mono, caixa-alta, entrelinha aberta.
    A entrelinha não é enfeite — em caixa-alta miúda ela é o que separa as hastes e
    impede que a palavra vire um borrão. */
-.field-group h2 {
+.field-group h2,
+.layers-group-label,
+.anchor-legend-title,
+.dataset-meta-details summary {
   font-family: var(--font-mono);
   font-size: var(--tipo-2xs);
+  font-weight: 500;
   text-transform: uppercase;
   letter-spacing: var(--track-label);
   color: var(--muted);
-  margin-bottom: var(--esp-2);
+  margin: 0 0 var(--esp-2);
 }
 
 .field {
   display: block;
-  font-size: 12px;
+  font-family: var(--font-mono);
+  font-size: var(--tipo-2xs);
+  text-transform: uppercase;
+  letter-spacing: var(--track-label);
   color: var(--muted);
   margin: 10px 0 4px;
 }
@@ -957,9 +1001,11 @@ select:focus, input[type="number"]:focus {
   display: flex;
   align-items: center;
   gap: 8px;
-  font-size: 13px;
+  font-size: var(--tipo-base);
+  color: var(--texto-sec);
   cursor: pointer;
 }
+.layers label:hover { color: var(--ink); }
 
 .dot { width: 10px; height: 10px; border-radius: 50%; flex: none; }
 .dot-listing { background: var(--listing); }
@@ -991,13 +1037,7 @@ select:focus, input[type="number"]:focus {
 }
 
 /* Agrupamento "Imóveis à venda" × "Pontos comerciais de referência" (issue #22). */
-.layers-group-label {
-  font-size: 11px;
-  text-transform: uppercase;
-  letter-spacing: .06em;
-  color: var(--muted);
-  margin: 0 0 6px;
-}
+.layers-group-label { margin-bottom: 6px; }
 .layers-group-label-anchor,
 .layers-group-label-polygon { margin-top: 14px; }
 
@@ -1012,13 +1052,7 @@ select:focus, input[type="number"]:focus {
 .anchor-legend[hidden] { display: none; }
 .anchor-legend-group + .anchor-legend-group { margin-top: 10px; }
 
-.anchor-legend-title {
-  font-size: 11px;
-  text-transform: uppercase;
-  letter-spacing: .06em;
-  color: var(--muted);
-  margin: 0 0 5px;
-}
+.anchor-legend-title { margin-bottom: 5px; }
 
 .anchor-categories {
   list-style: none;
@@ -1182,11 +1216,12 @@ button.traffic-item-head:hover .traffic-item-name { color: var(--accent-text); }
 }
 .detail[hidden] { display: none; }
 .detail h2 {
-  font-size: var(--tipo-lg);
+  font-size: 17px;
   font-weight: 800;
   letter-spacing: var(--track-tight);
   padding-right: var(--esp-6);
   line-height: 1.25;
+  color: var(--texto-forte);
 }
 
 /* Quadrado contornado de 34px, como no protótipo. A borda vira a cor de erro no hover:
@@ -1246,7 +1281,8 @@ button.traffic-item-head:hover .traffic-item-name { color: var(--accent-text); }
   font-size: 13px;
 }
 .detail dt { color: var(--muted); }
-.detail dd { margin: 0; text-align: right; font-variant-numeric: tabular-nums; }
+.detail dd { margin: 0; text-align: right; font-variant-numeric: tabular-nums; color: var(--ink); }
+.detail-more dd, .detail-provenance dd { font-family: var(--font-mono); font-size: var(--tipo-xs); }
 
 /* Painel de detalhe em três níveis (issue #55).
 
@@ -1261,7 +1297,13 @@ button.traffic-item-head:hover .traffic-item-name { color: var(--accent-text); }
 .detail-essential dt { padding-top: 3px; font-size: 12px; }
 .detail-essential dd { font-size: 16px; line-height: 1.25; font-weight: 600; }
 
+/* Níveis complementar e técnico: no registro são listas planas abaixo do essencial, com
+   régua e corpo menor; no contorno continuam dentro de `<details>` (issue #104). */
 .detail-more, .detail-provenance { margin: 0 0 10px; }
+dl.detail-more, dl.detail-provenance {
+  padding-top: var(--esp-3);
+  border-top: 1px solid var(--borda-sutil);
+}
 .detail-more > summary, .detail-provenance > summary {
   cursor: pointer;
   padding: 6px 0;
@@ -1306,7 +1348,7 @@ button.traffic-item-head:hover .traffic-item-name { color: var(--accent-text); }
    Passar a consumir a família custa um ajuste imperceptível de matiz e devolve um
    vocabulário só de "atenção/tudo certo" para a aplicação inteira; de quebra, o terceiro
    e último `@media (prefers-color-scheme: dark)` de componente saiu com eles (#95). */
-.precision {
+p.precision {
   margin: 0 0 var(--esp-4);
   padding: var(--esp-3);
   border-radius: var(--raio-md);
@@ -1316,10 +1358,20 @@ button.traffic-item-head:hover .traffic-item-name { color: var(--accent-text); }
   line-height: 1.45;
   color: var(--alerta);
 }
-.precision.precision-exact {
+p.precision.precision-exact {
   border-left-color: var(--anchor);
   background: var(--sucesso-fundo);
   color: var(--tone-good);
+}
+/* A precisão do registro é uma LINHA do essencial (issue #104), não a caixa acima: corpo
+   menor e cor de nota, para não competir com o preço; a frase completa da R3.6 vive no
+   `title`. A caixa continua existindo só para o aviso "sem coordenada". */
+.detail-essential dd.precision {
+  font-size: var(--tipo-sm);
+  font-weight: 400;
+  line-height: 1.35;
+  color: var(--texto-sec);
+  cursor: help;
 }
 
 .precision code {
@@ -1942,297 +1994,519 @@ button.traffic-item-head:hover .traffic-item-name { color: var(--accent-text); }
 .market-provenance dt { color: var(--muted); }
 .market-provenance dd { margin: 0; text-align: right; }
 
-/* Diagnóstico Territorial PDAD-A (issue #100).
+/* Diagnóstico Territorial PDAD-A (issues #100, #102, #104).
 
-   KPIs e filtros reusam `.market-destaques`/`.market-kpi`/`.market-campos`/`.btn-ghost`
-   como estão — é a mesma anatomia de "régua de indicadores + filtros" do Mercado, e duas
-   telas com o mesmo formato não precisam de dois vocabulários de CSS. Só o que é
-   genuinamente novo aqui — o aviso de cobertura por ano e a lista de categorias por
-   indicador — ganha classe própria. */
-.pdad-kpi-nota {
-  margin: var(--esp-1) 0 0;
+   Anatomia do protótipo `inteligencia_real_estate_site.html`, componente a componente:
+   topline com cartão "Fonte ativa", barra de filtros, quatro tiles de KPI com ícone (a mesma
+   `.kpi` do painel do mapa), cabeçalho de tema com régua, cartões de indicador em duas
+   colunas, cartões de ranking sobre `--superficie-hover`, tabela com cabeçalho mono, chips
+   de comparação e o modal de rastreabilidade. Tudo por token — as medidas do protótipo que
+   não caem num degrau da escala arredondam para o degrau mais próximo. */
+
+/* Topline: texto à esquerda, cartão da fonte à direita. */
+.pdad-topline {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: var(--esp-5);
+  margin-bottom: var(--esp-5);
+}
+.pdad-topline > div:first-child { min-width: 0; }
+/* O escopo do PDAD é a frase de abertura do protótipo (`.sub`), não a declaração de recorte
+   do Mercado: sem régua à esquerda e com largura de leitura. */
+.pdad .market-scope {
+  margin: 0;
+  padding-left: 0;
+  border-left: 0;
+  max-width: 660px;
+  font-size: var(--tipo-base);
+  line-height: 1.55;
+}
+.pdad-source {
+  flex: none;
+  min-width: 205px;
+  padding: var(--esp-3) var(--esp-4);
+  border: 1px solid var(--line);
+  border-radius: var(--raio-md);
+  background: var(--panel);
+}
+.pdad-source[hidden] { display: none; }
+.pdad-source-label {
+  display: block;
   font-size: var(--tipo-2xs);
-  line-height: 1.4;
+  text-transform: uppercase;
+  letter-spacing: var(--track-label);
+  color: var(--muted);
+}
+.pdad-source strong {
+  display: block;
+  margin-top: var(--esp-2);
+  font-family: var(--font-mono);
+  font-size: var(--tipo-sm);
+  font-weight: 500;
+  line-height: 1.5;
+  color: var(--ink);
+}
+
+/* Barra de filtros do protótipo: campos lado a lado com o botão de limpar alinhado ao pé. */
+.pdad .market-filters {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: var(--esp-3);
+  padding: var(--esp-4);
+  margin-bottom: var(--esp-4);
+}
+.pdad .market-filters .market-campos {
+  flex: 1 1 auto;
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--esp-3);
+}
+.pdad .market-filters .market-campos label { flex: 1 1 170px; min-width: 170px; }
+.pdad .market-filters .market-campos label > span,
+.pdad-filter > span,
+.pdad-cv-label,
+.pdad-section-label {
+  font-family: var(--font-mono);
+  font-size: var(--tipo-2xs);
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: var(--track-label);
+  color: var(--muted);
+}
+.pdad-section-label { margin: 0; }
+.pdad .market-filters .market-campos select { min-height: 0; font-size: var(--tipo-base); }
+/* Botão fantasma do PDAD: largura do conteúdo, sem a margem superior do painel do mapa. */
+.pdad .btn-ghost.pdad-ghost,
+.pdad .market-filters .btn-ghost,
+.drill-modal .pdad-ghost {
+  width: auto;
+  margin-top: 0;
+  padding: var(--esp-2) var(--esp-3);
+  font-size: var(--tipo-sm);
+  white-space: nowrap;
+}
+.pdad .market-filters .btn-ghost { align-self: flex-end; }
+
+/* Quatro tiles de KPI lado a lado (`.kpis` do mapa é uma coluna). */
+.kpis-4 {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: var(--esp-3);
+  margin-bottom: var(--esp-4);
+}
+.kpis-4 .kpi { min-height: 104px; padding: var(--esp-4); background: var(--panel); border-color: var(--line); }
+.kpis-4 .kpi-value { font-size: var(--tipo-2xl); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.kpis-4 .kpi-value-sm { font-size: var(--tipo-lg); }
+/* Rótulo do tile em texto corrido (o protótipo não põe o rótulo do KPI em caixa-alta). */
+.kpis-4 .kpi-label-texto {
+  font-family: var(--font-sans);
+  font-size: var(--tipo-xs);
+  font-weight: 600;
+  text-transform: none;
+  letter-spacing: 0;
   color: var(--texto-sec);
 }
+.pdad-kpi-nota {
+  display: block;
+  margin: var(--esp-1) 0 0;
+  font-size: var(--tipo-2xs);
+  line-height: 1.45;
+  color: var(--muted);
+}
+
+/* Aviso de cobertura por ano: caixa azul do protótipo (`.year-note`). */
 .pdad-year-note {
   margin: 0 0 var(--esp-4);
-  padding: var(--esp-3);
+  padding: var(--esp-3) var(--esp-4);
+  border: 1px solid var(--accent-line);
   border-radius: var(--raio-md);
-  border-left: 3px solid var(--info);
-  background: var(--info-fundo);
+  background: var(--accent-soft);
   font-size: var(--tipo-sm);
-  line-height: 1.45;
-  color: var(--info);
+  line-height: 1.5;
+  color: var(--texto-sec);
 }
 .pdad-year-note:empty { display: none; }
+/* Rodapé de cartão (`.footnote`): nota, não aviso. */
+.pdad-footnote {
+  margin: var(--esp-4) 0 0;
+  font-size: var(--tipo-xs);
+  line-height: 1.55;
+  color: var(--muted);
+}
+.pdad-footnote:empty { display: none; }
+.pdad-sub {
+  margin: var(--esp-3) 0 0;
+  max-width: 900px;
+  font-size: var(--tipo-base);
+  line-height: 1.55;
+  color: var(--texto-sec);
+}
+.mono {
+  font-family: var(--font-mono);
+  font-size: var(--tipo-xs);
+  color: var(--muted);
+}
+.pdad-section-gap { margin-bottom: var(--esp-4); }
 
 .pdad-tema-head {
   display: flex;
   align-items: center;
-  gap: var(--esp-2);
+  gap: var(--esp-3);
   margin: var(--esp-5) 0 var(--esp-3);
 }
 .pdad-tema-head span {
-  font-size: var(--tipo-sm);
+  font-size: var(--tipo-md);
   font-weight: 800;
+  letter-spacing: -.01em;
   color: var(--texto-forte);
 }
-.pdad-tema-head::after { content: ''; flex: 1; height: 1px; background: var(--borda-sutil); }
+.pdad-tema-head::after { content: ''; flex: 1; height: 1px; background: var(--line); }
 
 .pdad-ind-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: var(--esp-3);
-  margin-bottom: var(--esp-3);
+  gap: var(--esp-4);
+  margin-bottom: var(--esp-4);
 }
 .pdad-card {
   min-width: 0;
-  padding: var(--esp-4);
-  border: 1px solid var(--borda-base);
+  padding: var(--esp-4) var(--esp-5);
+  border: 1px solid var(--line);
   border-radius: var(--raio-lg);
-  background: var(--superficie-base);
+  background: var(--panel);
+  transition: border-color .2s;
 }
+.pdad-ind-grid > .pdad-card { cursor: pointer; }
+.pdad-ind-grid > .pdad-card:hover { border-color: var(--accent-line); }
+.pdad-panel { padding: var(--esp-5); }
 .pdad-card-head {
   display: flex;
   justify-content: space-between;
-  align-items: baseline;
-  gap: var(--esp-2);
-  margin-bottom: var(--esp-3);
+  align-items: flex-start;
+  gap: var(--esp-4);
+  margin-bottom: var(--esp-4);
 }
-.pdad-card-titulo { margin: 0; font-size: var(--tipo-base); font-weight: 700; color: var(--texto-forte); }
-.pdad-card-unidade { font-family: var(--font-mono); font-size: var(--tipo-2xs); color: var(--texto-sec); white-space: nowrap; }
+.pdad-card-head-wrap { flex-wrap: wrap; }
+.pdad-card-head-wrap > .pdad-tbl-controls { flex: 1 1 auto; justify-content: flex-end; }
+.pdad-card-head > div:first-child { min-width: 0; }
+.pdad-card-titulo {
+  margin: var(--esp-1) 0 0;
+  font-size: var(--tipo-md);
+  font-weight: 700;
+  letter-spacing: -.01em;
+  color: var(--texto-forte);
+}
+.pdad-card-titulo-lg { font-size: var(--tipo-lg); }
+.pdad-card-unidade { font-family: var(--font-mono); font-size: var(--tipo-xs); color: var(--muted); white-space: nowrap; }
 
-/* Mesma anatomia de `.market-regiao` (barra horizontal proporcional ao maior valor da
-   lista), reaproveitada para as categorias de um indicador do PDAD-A em vez de duplicar
-   a regra com outro nome. */
-.pdad-bar-list { margin: 0; padding: 0; list-style: none; }
+/* Controles à direita do cabeçalho de cartão (tabela, drill): campos lado a lado, alinhados
+   pelo pé, como `.tbl-controls` do protótipo. */
+.pdad-tbl-controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: var(--esp-3);
+}
+.pdad-filter { display: grid; gap: var(--esp-2); min-width: 190px; flex: 0 1 240px; }
+.pdad-filter-auto { min-width: 0; flex: 0 0 auto; }
+.pdad-filter select { width: 100%; font-size: var(--tipo-base); }
+
+/* Barras horizontais por categoria: mesma anatomia de `.market-regiao`. */
+.pdad-bar-list { margin: 0; padding: 0; list-style: none; display: grid; gap: var(--esp-3); }
 .pdad-bar {
   display: grid;
-  grid-template-columns: minmax(96px, 1.3fr) minmax(0, 2fr) auto;
+  grid-template-columns: minmax(128px, 1.45fr) 2fr 48px;
   align-items: center;
-  gap: var(--esp-1) var(--esp-2);
-  padding: 6px 0;
+  gap: var(--esp-2);
+  font-size: var(--tipo-sm);
 }
 .pdad-bar-nome {
-  font-size: var(--tipo-xs);
   color: var(--texto-sec);
-  overflow-wrap: anywhere;
+  overflow: hidden;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  line-height: 1.3;
 }
 .pdad-bar-trilho {
+  position: relative;
   height: 8px;
   border-radius: 0 var(--raio-xs) var(--raio-xs) 0;
-  background: var(--superficie-hover);
+  background: var(--trilho-barra);
 }
 .pdad-bar-fill {
   display: block;
   height: 100%;
   border-radius: 0 var(--raio-xs) var(--raio-xs) 0;
-  background: var(--cat-2);
+  background: var(--pdad-serie-1);
+  transition: width .3s ease;
 }
 .pdad-bar-valor {
-  font-size: var(--tipo-xs);
-  font-weight: 600;
+  text-align: right;
+  font-family: var(--font-mono);
+  font-size: var(--tipo-sm);
+  font-weight: 500;
   color: var(--texto-forte);
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
 }
 .pdad-bar-valor.pdad-ausente { color: var(--texto-fraco); font-weight: 400; }
 .pdad-bar-mais {
-  margin: var(--esp-1) 0 0;
-  font-size: var(--tipo-2xs);
-  color: var(--texto-sec);
+  margin: var(--esp-2) 0 0;
+  font-size: var(--tipo-xs);
+  color: var(--muted);
 }
-.pdad-empty { margin: 0; font-size: var(--tipo-sm); color: var(--muted); }
+.pdad-empty { margin: 0; padding: var(--esp-4) 0; font-size: var(--tipo-base); line-height: 1.55; color: var(--muted); }
 
 .pdad-card-wide { grid-column: 1 / -1; }
 
-/* Gráfico de colunas (`age`) e colunas+linha acumulada (`ordline`, `schoolTime`/`workTime`). */
+/* Gráfico de colunas (`age`) e colunas+linha acumulada (`ordline`). */
 .pdad-cols-svg, .pdad-ord-svg { display: block; width: 100%; height: auto; }
 .pdad-col-val, .pdad-ord-val {
-  font-size: 9px;
+  font-size: 12.5px;
   font-weight: 700;
   fill: var(--texto-forte);
   text-anchor: middle;
 }
 .pdad-col-cat, .pdad-ord-cat {
-  font-size: 8px;
-  fill: var(--texto-sec);
+  font-size: 11px;
+  font-weight: 600;
+  fill: var(--muted);
   text-anchor: middle;
 }
-.pdad-sc-axis { stroke: var(--borda-base); stroke-width: 1; }
-.pdad-sc-grid { stroke: var(--borda-sutil); stroke-width: 1; stroke-dasharray: 3 3; }
+.pdad-sc-axis { stroke: var(--borda-forte); stroke-width: 1; }
+.pdad-sc-grid { stroke: var(--borda-sutil); stroke-width: 1; }
 .pdad-cmp-legend {
   display: flex;
   flex-wrap: wrap;
-  gap: var(--esp-3);
-  margin-bottom: var(--esp-2);
+  gap: var(--esp-4);
+  margin-bottom: var(--esp-3);
+  font-family: var(--font-mono);
   font-size: var(--tipo-2xs);
-  color: var(--texto-sec);
+  color: var(--muted);
 }
 
-/* Rosca (`donut`) e pizza (`pie`) — mesma anatomia: SVG + legenda ao lado. */
-.pdad-donut-flex { display: flex; align-items: center; gap: var(--esp-3); flex-wrap: wrap; }
-.pdad-donut-box { flex: 0 0 auto; width: 110px; }
+/* Rosca (`donut`) e pizza (`pie`): SVG de 150px + legenda ao lado. */
+.pdad-donut-flex { display: flex; align-items: center; gap: var(--esp-5); flex-wrap: wrap; }
+.pdad-donut-box { flex: 0 0 150px; width: 150px; }
 .pdad-donut-svg { display: block; width: 100%; height: auto; }
-.pdad-donut-val { font-size: 15px; font-weight: 800; fill: var(--texto-forte); }
-.pdad-donut-lab { font-size: 8px; fill: var(--texto-sec); }
-.pdad-legend { flex: 1 1 140px; min-width: 0; display: grid; gap: 4px; }
+.pdad-donut-val { font-size: 21px; font-weight: 800; letter-spacing: -.03em; fill: var(--texto-forte); }
+.pdad-donut-lab { font-size: 9.5px; font-weight: 600; fill: var(--muted); }
+.pdad-legend { flex: 1 1 140px; min-width: 0; display: grid; gap: var(--esp-2); }
 .pdad-legend-row {
   display: grid;
-  grid-template-columns: auto 1fr auto;
+  grid-template-columns: 9px 1fr auto;
   align-items: center;
-  gap: var(--esp-1);
-  font-size: var(--tipo-xs);
+  gap: var(--esp-2);
+  font-size: var(--tipo-sm);
+  color: var(--texto-sec);
 }
-.pdad-legend-row > i { width: 9px; height: 9px; border-radius: 999px; }
-.pdad-legend-row > span { color: var(--texto-sec); overflow-wrap: anywhere; }
-.pdad-legend-row > b { color: var(--texto-forte); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.pdad-legend-row > i { width: 9px; height: 9px; border-radius: 2px; }
+.pdad-legend-row > span { overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; line-height: 1.3; }
+.pdad-legend-row > b { font-family: var(--font-mono); font-size: var(--tipo-xs); font-weight: 500; color: var(--texto-forte); font-variant-numeric: tabular-nums; white-space: nowrap; }
 
 /* Barra empilhada (`stack`, `marital`). */
 .pdad-stack-bar {
   display: flex;
-  height: 20px;
-  border-radius: var(--raio-xs);
+  gap: 2px;
+  height: 26px;
+  border-radius: var(--raio-sm);
   overflow: hidden;
-  margin-bottom: var(--esp-2);
+  margin: var(--esp-2) 0 var(--esp-3);
 }
-.pdad-stack-bar > i { display: block; height: 100%; }
+.pdad-stack-bar > i { display: block; height: 100%; min-width: 2px; cursor: pointer; transition: opacity .15s; }
+.pdad-stack-bar > i:hover { opacity: .82; }
 
 /* Local de compras (`groups`, Figura 59) — grupo (tipo de compra) × destino. */
 .pdad-shop-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-  gap: var(--esp-3);
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--esp-4) var(--esp-6);
 }
-.pdad-shop-title { font-size: var(--tipo-xs); font-weight: 700; color: var(--texto-forte); margin-bottom: var(--esp-1); }
+.pdad-shop-title { font-size: var(--tipo-sm); font-weight: 700; color: var(--texto-forte); margin-bottom: var(--esp-2); }
 .pdad-mini-row {
   display: grid;
-  grid-template-columns: minmax(70px, 1fr) minmax(0, 1.4fr) auto;
+  grid-template-columns: minmax(88px, 1.4fr) 1.2fr 42px;
   align-items: center;
-  gap: var(--esp-1);
-  padding: 3px 0;
-  font-size: var(--tipo-2xs);
+  gap: var(--esp-2);
+  margin-bottom: 7px;
+  font-size: var(--tipo-xs);
 }
-.pdad-mini-row > span { color: var(--texto-sec); overflow-wrap: anywhere; }
-.pdad-mini-trilho { height: 6px; border-radius: var(--raio-xs); background: var(--superficie-hover); }
-.pdad-mini-fill { display: block; height: 100%; border-radius: var(--raio-xs); background: var(--cat-3); }
-.pdad-mini-row > b { color: var(--texto-forte); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.pdad-mini-row > span { color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pdad-mini-trilho { height: 6px; border-radius: 0 var(--raio-xs) var(--raio-xs) 0; background: var(--trilho-barra); }
+.pdad-mini-fill { display: block; height: 100%; border-radius: 0 var(--raio-xs) var(--raio-xs) 0; background: var(--pdad-serie-1); }
+.pdad-mini-row > b { text-align: right; font-family: var(--font-mono); font-size: var(--tipo-xs); font-weight: 500; color: var(--texto-forte); font-variant-numeric: tabular-nums; white-space: nowrap; }
 
 [data-drill-category] { cursor: pointer; }
 
 /* Dispersão territorial (issue #102). */
-.pdad-scatter { margin-top: var(--esp-4); }
+.pdad-scatter { margin-top: var(--esp-4); padding: var(--esp-5); }
 .pdad-scatter-view-label {
   display: grid;
-  gap: var(--esp-1);
-  max-width: 380px;
-  margin-bottom: var(--esp-2);
-}
-.pdad-scatter-view-label > span { font-size: var(--tipo-2xs); color: var(--texto-sec); }
-.pdad-sc-insight { margin: 0 0 var(--esp-3); font-size: var(--tipo-sm); color: var(--texto-sec); }
-.pdad-sc-svg { display: block; width: 100%; height: auto; }
-.pdad-sc-tick { font-size: 9px; fill: var(--texto-sec); }
-.pdad-sc-axlabel { font-size: 10px; fill: var(--texto-sec); text-anchor: middle; }
-.pdad-sc-dot { fill: var(--cat-5); cursor: pointer; }
-.pdad-sc-dot.sel { fill: var(--accent-text); stroke: var(--texto-forte); stroke-width: 1.5; }
-
-/* Ranking dos territórios (issue #102). */
-.pdad-rank-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
-  gap: var(--esp-3);
+  gap: var(--esp-2);
+  min-width: 300px;
+  max-width: 430px;
   margin-bottom: var(--esp-4);
 }
+.pdad-scatter-view-label > span {
+  font-family: var(--font-mono);
+  font-size: var(--tipo-2xs);
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: var(--track-label);
+  color: var(--muted);
+}
+/* Leitura editorial da dispersão: régua de acento à esquerda, como `.sc-insight`. */
+.pdad-sc-insight {
+  margin: 0 0 var(--esp-4);
+  padding-left: var(--esp-3);
+  border-left: 3px solid var(--accent-text);
+  max-width: 900px;
+  font-size: var(--tipo-sm);
+  line-height: 1.6;
+  color: var(--texto-sec);
+}
+.pdad-sc-insight:empty { display: none; }
+.pdad-sc-svg { display: block; width: 100%; height: auto; }
+.pdad-sc-tick { font-family: var(--font-mono); font-size: 10px; fill: var(--muted); }
+.pdad-sc-axlabel { font-size: 10px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; fill: var(--texto-sec); text-anchor: middle; }
+.pdad-sc-dot { fill: var(--pdad-serie-1); stroke: var(--panel); stroke-width: 2; cursor: pointer; }
+.pdad-sc-dot.sel { fill: var(--alerta); stroke: var(--texto-forte); stroke-width: 1.5; }
+
+/* Ranking dos territórios (issue #102): cartões sobre a superfície elevada, como `.rank-card`. */
+.pdad-rank-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(212px, 1fr));
+  gap: var(--esp-4);
+  margin-top: var(--esp-2);
+}
 .pdad-rank-card {
-  padding: var(--esp-3);
-  border: 1px solid var(--borda-base);
+  padding: var(--esp-4) var(--esp-4) var(--esp-3);
+  border: 1px solid var(--line);
   border-radius: var(--raio-lg);
-  background: var(--superficie-base);
+  background: var(--superficie-hover);
   display: grid;
   gap: 2px;
+  transition: border-color .2s;
 }
 .pdad-rank-card[data-pdad-indicator-key] { cursor: pointer; }
+.pdad-rank-card[data-pdad-indicator-key]:hover { border-color: var(--accent-line); }
 .pdad-rank-off { opacity: .55; }
-.pdad-rank-tema { font-size: var(--tipo-2xs); color: var(--texto-sec); text-transform: uppercase; letter-spacing: .03em; }
-.pdad-rank-label { font-size: var(--tipo-xs); color: var(--texto-forte); font-weight: 600; }
-.pdad-rank-card > strong { font-size: var(--tipo-xl); color: var(--texto-forte); font-variant-numeric: tabular-nums; }
-.pdad-rank-pos { font-size: var(--tipo-2xs); color: var(--texto-sec); }
-.pdad-rank-bar { height: 5px; border-radius: 999px; background: var(--superficie-hover); overflow: hidden; margin-top: 2px; }
-.pdad-rank-bar > i { display: block; height: 100%; background: var(--cat-5); }
+.pdad-rank-tema {
+  font-family: var(--font-mono);
+  font-size: var(--tipo-2xs);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: var(--track-label);
+  color: var(--muted);
+}
+.pdad-rank-label { margin: var(--esp-1) 0 var(--esp-2); min-height: 30px; font-size: var(--tipo-sm); line-height: 1.3; font-weight: 700; color: var(--texto-forte); }
+.pdad-rank-card > strong { font-size: var(--tipo-xl); font-weight: 800; letter-spacing: -.03em; color: var(--texto-forte); font-variant-numeric: tabular-nums; }
+.pdad-rank-pos { margin-top: var(--esp-1); font-size: var(--tipo-xs); color: var(--texto-sec); }
+.pdad-rank-pos b { font-size: var(--tipo-base); color: var(--accent-text); }
+.pdad-rank-bar { height: 5px; border-radius: var(--raio-xs); background: var(--trilho-barra); overflow: hidden; margin-top: var(--esp-2); }
+.pdad-rank-bar > i { display: block; height: 100%; border-radius: var(--raio-xs); background: linear-gradient(90deg, var(--brand2), var(--brand2-soft)); }
 
-.pdad-rank-table-card { margin-top: var(--esp-4); }
-.pdad-rank-table-controls { align-items: flex-end; margin-bottom: var(--esp-3); }
-.pdad-seg-toggle { display: inline-flex; border: 1px solid var(--borda-base); border-radius: var(--raio-md); overflow: hidden; }
+/* Tabela comparativa: cabeçalho mono em caixa-alta, linhas com régua sutil e lavagem no hover. */
+.pdad-table-card { padding: var(--esp-5); overflow: hidden; }
+.pdad-seg-toggle { display: inline-flex; border: 1px solid var(--borda-forte); border-radius: var(--raio-md); overflow: hidden; }
 .pdad-seg-toggle > button {
-  padding: 8px 12px;
+  padding: var(--esp-2) var(--esp-3);
   border: 0;
   background: transparent;
   color: var(--texto-sec);
-  font-size: var(--tipo-xs);
+  font: inherit;
+  font-size: var(--tipo-sm);
   cursor: pointer;
 }
-.pdad-seg-toggle > button.on { background: var(--brand2); color: var(--texto-forte); }
+.pdad-seg-toggle > button:not(.on):hover { color: var(--ink); }
+.pdad-seg-toggle > button.on { background: var(--accent-soft); color: var(--ink); font-weight: 700; }
 
 .pdad-table-wrap { overflow-x: auto; }
-.pdad-table-wrap table { width: 100%; border-collapse: collapse; font-size: var(--tipo-xs); }
-.pdad-table-wrap th, .pdad-table-wrap td { padding: 8px 10px; text-align: left; border-bottom: 1px solid var(--borda-sutil); }
-.pdad-table-wrap th { color: var(--texto-sec); font-weight: 600; white-space: nowrap; }
-.pdad-table-wrap td { color: var(--texto-forte); }
+.pdad-table-wrap table { width: 100%; border-collapse: collapse; font-size: var(--tipo-sm); }
+.pdad-table-wrap th {
+  padding: 0 var(--esp-3) var(--esp-3);
+  text-align: left;
+  border-bottom: 1px solid var(--line);
+  font-family: var(--font-mono);
+  font-size: var(--tipo-2xs);
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: .07em;
+  color: var(--muted);
+  white-space: nowrap;
+}
+.pdad-table-wrap td {
+  padding: var(--esp-3) var(--esp-3);
+  text-align: left;
+  border-bottom: 1px solid var(--borda-sutil);
+  color: var(--texto-forte);
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+.pdad-table-wrap tbody tr:last-child td { border-bottom: 0; }
+.pdad-table-wrap tbody tr:hover { background: var(--linha-hover); }
 .pdad-row-link { cursor: pointer; }
-.pdad-row-link:hover { background: var(--superficie-hover); }
 
 .pdad-badge {
   display: inline-block;
-  padding: 2px 8px;
-  border-radius: 999px;
+  padding: 3px var(--esp-2);
+  border-radius: var(--raio-lg);
+  font-family: var(--font-mono);
   font-size: var(--tipo-2xs);
+  font-weight: 500;
+  white-space: nowrap;
   background: var(--superficie-hover);
   color: var(--texto-sec);
 }
 
-/* Comparar RAs (issue #102). */
-.pdad-cv-picker { margin-bottom: var(--esp-4); }
-.pdad-cv-label { font-size: var(--tipo-sm); font-weight: 700; color: var(--texto-forte); margin-bottom: var(--esp-2); }
-.pdad-cv-addrow { display: flex; flex-wrap: wrap; gap: var(--esp-2); align-items: center; margin-bottom: var(--esp-2); }
-.pdad-cv-addrow select {
-  padding: 8px 10px;
-  border: 1px solid var(--borda-base);
-  border-radius: var(--raio-md);
-  background: var(--superficie-base);
-  color: var(--texto-forte);
+/* Comparar RAs (issue #102): dois seletores lado a lado, chips coloridos, grade de blocos. */
+.pdad-cv-pickers {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.25fr);
+  gap: var(--esp-5);
 }
-.pdad-cv-chips { display: flex; flex-wrap: wrap; gap: var(--esp-2); }
+.pdad-cv-picker { min-width: 0; }
+.pdad-cv-label { margin-bottom: var(--esp-2); }
+.pdad-cv-addrow { display: flex; flex-wrap: wrap; gap: var(--esp-2); align-items: center; margin-bottom: var(--esp-2); }
+.pdad-cv-addrow select { flex: 1; min-width: 180px; max-width: 320px; }
+.pdad-cv-chips { display: flex; flex-wrap: wrap; gap: 6px; align-content: flex-start; }
 .pdad-cv-chip {
-  --chip: var(--cat-1);
+  --chip: var(--accent-text);
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  padding: 5px 10px;
+  padding: 6px 11px;
   border: 1px solid var(--chip);
-  border-radius: 999px;
-  background: color-mix(in srgb, var(--chip) 18%, transparent);
-  color: var(--texto-forte);
+  border-radius: var(--raio-lg);
+  background: var(--superficie-hover);
+  color: var(--ink);
+  font: inherit;
   font-size: var(--tipo-xs);
   cursor: pointer;
 }
-.pdad-cv-chip .x { color: var(--texto-sec); }
-.pdad-cv-actions { display: flex; gap: var(--esp-2); margin: var(--esp-3) 0; }
-.pdad-cv-dot { display: inline-block; width: 9px; height: 9px; border-radius: 999px; margin-right: 6px; }
-.pdad-cv-legend { display: flex; flex-wrap: wrap; gap: var(--esp-3); margin-bottom: var(--esp-3); }
+.pdad-cv-chip::before { content: ''; display: inline-block; width: 7px; height: 7px; border-radius: 2px; background: var(--chip); }
+.pdad-cv-chip:hover { border-color: var(--erro); }
+.pdad-cv-chip .x { color: var(--muted); }
+.pdad-cv-actions { display: flex; flex-wrap: wrap; gap: var(--esp-2); margin-top: var(--esp-4); }
+.pdad-cv-dot { display: inline-block; width: 9px; height: 9px; border-radius: 2px; margin-right: var(--esp-2); }
+.pdad-cv-legend { display: flex; flex-wrap: wrap; gap: var(--esp-4); margin-bottom: var(--esp-4); }
 .pdad-cv-key { display: inline-flex; align-items: center; gap: 6px; font-size: var(--tipo-xs); color: var(--texto-sec); }
-.pdad-cv-key > i { width: 9px; height: 9px; border-radius: 999px; }
+.pdad-cv-key > i { width: 10px; height: 10px; border-radius: 2px; }
 
-.pdad-cvb-grid { display: grid; gap: var(--esp-3); }
-.pdad-cvb-cat { display: grid; gap: 4px; }
-.pdad-cvb-head { font-size: var(--tipo-xs); color: var(--texto-sec); }
+.pdad-cvb-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: var(--esp-4) var(--esp-6); }
+.pdad-cvb-cat { display: grid; gap: 5px; }
+.pdad-cvb-head { font-size: var(--tipo-sm); font-weight: 700; color: var(--texto-forte); margin-bottom: 3px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .pdad-cvb-row {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-columns: minmax(0, 1fr) 48px;
   align-items: center;
   gap: var(--esp-2);
   cursor: pointer;
 }
+.pdad-cvb-row .pdad-mini-trilho { height: 8px; }
+.pdad-cvb-row:hover b { color: var(--accent-text); }
 
 /* Modal de rastreabilidade / drill-down (issue #102). */
 .drill-overlay {
@@ -2240,48 +2514,53 @@ button.traffic-item-head:hover .traffic-item-name { color: var(--accent-text); }
   inset: 0;
   z-index: 60;
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   justify-content: center;
-  padding: var(--esp-4);
-  background: rgba(4, 10, 20, .72);
+  padding: 4vh var(--esp-4);
+  overflow: auto;
+  background: rgba(4, 7, 11, .76);
+  backdrop-filter: blur(3px);
 }
 .drill-overlay[hidden] { display: none; }
 .drill-modal {
-  width: min(920px, 100%);
-  max-height: min(88vh, 900px);
+  width: min(900px, 100%);
+  max-height: 92vh;
   overflow-y: auto;
+  padding: var(--esp-5) var(--esp-5);
   box-shadow: var(--sombra-2);
 }
 .drill-head {
   display: flex;
   justify-content: space-between;
   align-items: flex-start;
-  gap: var(--esp-3);
-  margin-bottom: var(--esp-3);
+  gap: var(--esp-4);
 }
-.drill-head h2 { margin: 2px 0; font-size: var(--tipo-lg); color: var(--texto-forte); }
+.drill-head h2 { margin: 7px 0 4px; font-size: var(--tipo-lg); letter-spacing: -.02em; color: var(--texto-forte); }
 .drill-close {
   flex: 0 0 auto;
-  width: 32px;
-  height: 32px;
-  border: 1px solid var(--borda-base);
-  border-radius: 999px;
+  width: 34px;
+  height: 34px;
+  border: 1px solid var(--borda-forte);
+  border-radius: var(--raio-md);
   background: transparent;
   color: var(--texto-sec);
+  font-size: var(--tipo-md);
   cursor: pointer;
 }
 .drill-close:hover { color: var(--texto-base); border-color: var(--erro); }
-.pdad-drill-controls { align-items: flex-end; margin-bottom: var(--esp-3); }
-.pdad-drill-rank { margin-top: var(--esp-4); padding-top: var(--esp-3); border-top: 1px solid var(--borda-sutil); }
-.pdad-drill-rank[hidden] { display: none; }
-
-@media (max-width: 860px) {
-  .pdad-ind-grid { grid-template-columns: 1fr; }
-  .pdad-bar { grid-template-columns: minmax(78px, 1fr) 1.4fr auto; }
-  .pdad-donut-box { width: 90px; }
-  .pdad-rank-grid { grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); }
-  .drill-modal { padding: var(--esp-3); }
+.pdad-drill-controls { margin: var(--esp-4) 0; }
+.drill-modal .pdad-table-wrap table { min-width: 660px; }
+.drill-modal .pdad-year-note { margin-bottom: var(--esp-3); }
+.pdad-drill-foot {
+  margin-top: var(--esp-4);
+  padding-top: var(--esp-3);
+  border-top: 1px solid var(--line);
 }
+.pdad-drill-foot .pdad-footnote { margin-top: 0; line-height: 1.7; }
+.pdad-drill-rank { margin-top: var(--esp-4); padding-top: var(--esp-4); border-top: 1px solid var(--line); }
+.pdad-drill-rank[hidden] { display: none; }
+.pdad-drill-rank .market-eyebrow { margin-bottom: var(--esp-3); }
+
 
 /* Cards do Mercado Residencial DF (issue #59).
 
@@ -2550,4 +2829,46 @@ button.traffic-item-head:hover .traffic-item-name { color: var(--accent-text); }
   .market-regiao { grid-template-columns: 1fr auto; }
   .market-regiao-nome { grid-column: 1 / -1; }
   .market-regiao-trilho { grid-column: 1; }
+}
+
+/* Pontos de quebra do PDAD-A (issue #104): no fim, como os demais, para vencerem a regra base. */
+@media (max-width: 1000px) {
+  .pdad-topline { display: block; }
+  .pdad-source { display: inline-block; margin-top: var(--esp-4); }
+  .kpis-4 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .pdad-ind-grid { grid-template-columns: 1fr; }
+  .pdad-card-wide { grid-column: auto; }
+  .pdad-cv-pickers { grid-template-columns: 1fr; }
+  .pdad-cvb-grid { grid-template-columns: 1fr; }
+  .pdad-shop-grid { grid-template-columns: 1fr; }
+  .drill-modal { padding: var(--esp-4); }
+}
+@media (max-width: 640px) {
+  .kpis-4 { grid-template-columns: 1fr; gap: var(--esp-2); }
+  .kpis-4 .kpi { min-height: 0; }
+  .pdad-panel, .pdad-table-card, .pdad-card { padding: var(--esp-4); }
+  .pdad-bar { grid-template-columns: minmax(78px, 1fr) 1.4fr auto; }
+  .pdad-donut-flex { flex-direction: column; align-items: flex-start; }
+  .pdad-donut-box { width: 110px; flex-basis: 110px; }
+  .pdad-rank-grid { grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); }
+  .pdad-table-wrap table { min-width: 560px; }
+}
+
+/* Trilho recolhido pelo botão (issue #104): as MESMAS declarações do bloco de ≤1000px, só
+   acima dele — abaixo, a media query já faz isso e em ≤640px os rótulos voltam na faixa
+   horizontal, então o atributo não pode valer lá. `@media` não aceita OU com atributo, daí
+   a duplicação. O rodapé fica, porque é nele que mora o botão de expandir. */
+@media (min-width: 1001px) {
+  :root[data-rail="collapsed"] { --rail-w: 74px; }
+  :root[data-rail="collapsed"] .app > .topbar { padding: var(--esp-4) var(--esp-2); gap: var(--esp-5); }
+  :root[data-rail="collapsed"] .app > .topbar .brand { justify-content: center; padding: 0; }
+  :root[data-rail="collapsed"] .brand-text,
+  :root[data-rail="collapsed"] .view-tab-tx,
+  :root[data-rail="collapsed"] .rail-toggle-tx,
+  :root[data-rail="collapsed"] .admin-link { display: none; }
+  :root[data-rail="collapsed"] .view-tab { justify-content: center; padding: var(--esp-3) var(--esp-1); }
+  :root[data-rail="collapsed"] .view-tab::before { display: none; }
+  :root[data-rail="collapsed"] .view-tab-ic { font-size: var(--tipo-md); }
+  :root[data-rail="collapsed"] .rail-foot { padding-left: 0; padding-right: 0; }
+  :root[data-rail="collapsed"] .rail-toggle { justify-content: center; margin-bottom: 0; padding: var(--esp-2) 0; }
 }

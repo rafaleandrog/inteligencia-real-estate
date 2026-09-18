@@ -86,6 +86,7 @@ const dom = {
   polygonMasterLayer: el('polygonMasterLayer'), countPolygon: el('countPolygon'),
   trafficSection: el('trafficSection'), trafficList: el('trafficList'),
   viewSwitch: el('viewSwitch'), marketTab: el('marketTab'),
+  railToggle: el('railToggle'), panelToggle: el('panelToggle'),
   mapView: el('mapView'), marketView: el('marketView'),
   marketScope: el('marketScope'), marketBody: el('marketBody'),
   marketPeriodChips: el('marketPeriodChips'), marketYear: el('marketYear'),
@@ -124,7 +125,7 @@ const dom = {
   pdadRankTableBody: el('pdadRankTableBody'),
 
   pdadCompareTab: el('pdadCompareTab'), pdadCompareView: el('pdadCompareView'),
-  pdadCompareCount: el('pdadCompareCount'),
+  pdadCvCount: el('pdadCvCount'),
   pdadCvRaSelect: el('pdadCvRaSelect'), pdadCvRaAdd: el('pdadCvRaAdd'), pdadCvRaTop: el('pdadCvRaTop'),
   pdadCvRas: el('pdadCvRas'),
   pdadCvIndSelect: el('pdadCvIndSelect'), pdadCvIndAdd: el('pdadCvIndAdd'), pdadCvKits: el('pdadCvKits'),
@@ -481,74 +482,88 @@ function detailSection(title, rows, className) {
   return box;
 }
 
+/** Lista plana de definições com a classe dada — o que `detailSection` põe dentro do `<details>`. */
+function detailList(rows, className) {
+  if (!rows || rows.length === 0) return null;
+  const dl = document.createElement('dl');
+  dl.className = `detail-list ${className}`;
+  for (const row of rows) addRow(dl, row.label, row.value, row);
+  return dl.childElementCount > 0 ? dl : null;
+}
+
 /**
- * Monta o painel em três níveis: essencial visível, o resto recolhido.
+ * Monta o painel em três níveis: essencial visível e o resto abaixo dele.
  *
- * O essencial é o contrato desta issue e tem checagem fixa no smoke: **cabe sem rolagem
+ * O essencial é o contrato da issue #55 e tem checagem fixa no smoke: **cabe sem rolagem
  * em 390 px**. Sem essa trava o painel volta a crescer na próxima issue que precisar
  * mostrar mais um campo, que foi exatamente como ele chegou a ~30 linhas de peso visual
  * idêntico.
+ *
+ * `collapse` decide se os dois níveis seguintes ficam recolhidos num `<details>` ou em
+ * lista plana (issue #104). O registro (anúncio, empreendimento, âncora) tem meia dúzia de
+ * linhas complementares e vai plano, como o dono pediu; o contorno (RA, trecho rodoviário)
+ * carrega até doze linhas de procedência e continua recolhido, senão o painel volta ao
+ * estado de ~30 linhas que a #55 desfez.
  */
-function appendTiers(frag, { essencial, complementar, tecnico }) {
-  if (essencial && essencial.length > 0) {
-    const dl = document.createElement('dl');
-    dl.className = 'detail-list detail-essential';
-    for (const row of essencial) addRow(dl, row.label, row.value);
-    if (dl.childElementCount > 0) frag.append(dl);
-  }
+function appendTiers(frag, { essencial, complementar, tecnico }, { collapse = true } = {}) {
+  const base = detailList(essencial, 'detail-essential');
+  if (base) frag.append(base);
 
-  const more = detailSection('Mais informações', complementar, 'detail-more');
+  const more = collapse
+    ? detailSection('Mais informações', complementar, 'detail-more')
+    : detailList(complementar, 'detail-more');
   if (more) frag.append(more);
 
-  const tech = detailSection('Origem e qualidade', tecnico, 'detail-provenance');
+  const tech = collapse
+    ? detailSection('Origem e qualidade', tecnico, 'detail-provenance')
+    : detailList(tecnico, 'detail-provenance');
   if (tech) frag.append(tech);
 }
 
-function addRow(dl, label, value) {
+/**
+ * Uma linha `dt`/`dd`. `className`/`title` são opcionais e vão só no `dd`: é o que permite à
+ * linha de precisão espacial manter o gancho `.precision` que o smoke lê e carregar a frase
+ * completa da R3.6 no `title` sem virar caixa de aviso.
+ */
+function addRow(dl, label, value, { className = '', title = '' } = {}) {
   if (value === null || value === undefined || value === '' || value === '—') return;
   const dt = document.createElement('dt');
   dt.textContent = label;
   const dd = document.createElement('dd');
   dd.textContent = value;
+  if (className) dd.className = className;
+  if (title) dd.title = title;
   dl.append(dt, dd);
 }
 
 /**
- * Aviso de precisão espacial.
+ * Linha de precisão espacial do nível essencial.
  *
- * Obrigatório em todo detalhe: apresentar centroide de localidade como se fosse o
- * endereço do imóvel é desinformação, e no dataset atual os 141 anúncios são
- * exatamente isso (R3.6).
+ * Obrigatória em todo detalhe: apresentar centroide de localidade como se fosse o
+ * endereço do imóvel é desinformação, e no dataset atual os anúncios são exatamente
+ * isso (R3.6). Desde a #104 ela é uma linha da lista — "Localização: Aproximada · centro
+ * da localidade" — e não mais uma caixa de aviso: o dono pediu o painel limpo, e a regra
+ * continua cumprida porque a linha diz "aproximada" à vista e carrega a frase completa
+ * ("não o endereço exato") no `title`, junto do rótulo da precisão declarada na planilha.
  */
-function buildPrecisionNotice(record) {
+function precisionRow(record) {
   const approximate = isApproximateLocation(record);
-  const box = document.createElement('p');
-  box.className = approximate ? 'precision' : 'precision precision-exact';
-
-  const strong = document.createElement('strong');
-  strong.textContent = approximate ? 'Localização aproximada. ' : 'Localização verificada. ';
-  box.append(strong);
-
-  box.append(document.createTextNode(
-    approximate
-      ? 'O ponto no mapa representa a região, não o endereço exato do imóvel.'
-      : 'A coordenada foi verificada na fonte indicada.'
-  ));
-
   const precision = record.coordinate_precision || record.confidence_flag;
-  if (precision) {
-    const label = formatSpatialPrecision(precision);
-    if (label) {
-      box.append(document.createElement('br'));
-      const code = document.createElement('code');
-      code.textContent = label;
-      // Identificador técnico cru fica só no atributo, para suporte/depuração —
-      // nunca como texto visível (issue #21).
-      code.title = precision;
-      box.append(code);
-    }
-  }
-  return box;
+  const detalhe = precision ? formatSpatialPrecision(precision) : '';
+  const frase = approximate
+    ? 'O ponto no mapa representa a região, não o endereço exato do imóvel.'
+    : 'A coordenada foi verificada na fonte indicada.';
+  // O método só é afirmado quando a planilha o declara (`coordinate_precision`); sem ele,
+  // "Aproximada" e nada mais — `isApproximateLocation()` também vale true para precisão
+  // ausente/pendente/geocodificada, e dizer "centro da localidade" ali seria inventar
+  // método (achado P1 do Codex na #109; R3.6).
+  const metodo = approximate && record.coordinate_precision ? formatSpatialPrecision(record.coordinate_precision) : '';
+  return {
+    label: 'Localização',
+    value: approximate ? (metodo ? `Aproximada · ${metodo.charAt(0).toLowerCase()}${metodo.slice(1)}` : 'Aproximada') : 'Verificada na fonte',
+    className: approximate ? 'precision' : 'precision precision-exact',
+    title: detalhe ? `${frase} ${detalhe}.` : frase,
+  };
 }
 
 /** Link para a fonte, com esquema validado e rel de segurança (R4.5, R4.6). */
@@ -595,13 +610,12 @@ function buildRegularizationNotice(record) {
  * Card de um registro (anúncio, empreendimento, âncora), em três níveis (issue #55).
  *
  * O essencial responde à pergunta que fez a pessoa clicar no ponto: quanto custa, que
- * tamanho tem, onde fica. O resto é consulta, e consulta pode estar a um clique de
- * distância. Antes desta issue eram ~15 linhas de peso visual idêntico, com "Portal" e
- * "Observado em" ocupando o mesmo destaque que o preço.
+ * tamanho tem, onde fica; ganha peso pelo TAMANHO do valor. Os níveis seguintes vêm
+ * abaixo, em lista plana e corpo menor (issue #104) — sem cabeçalho recolhível, porque
+ * são meia dúzia de linhas e o dono quis o painel de leitura direta.
  *
- * As ressalvas — precisão espacial, procedência da regularização, registro sem
- * coordenada — continuam SEMPRE visíveis. Recolher uma ressalva é o mesmo que apagá-la:
- * quem não sabe que ela existe nunca abre a seção.
+ * As ressalvas — precisão espacial (linha "Localização"), procedência da regularização,
+ * registro sem coordenada — continuam SEMPRE visíveis, nunca escondidas atrás de um clique.
  */
 function buildDetailBody(record) {
   const frag = document.createDocumentFragment();
@@ -622,8 +636,6 @@ function buildDetailBody(record) {
     badge.textContent = stage;
     frag.append(badge);
   }
-
-  frag.append(buildPrecisionNotice(record));
 
   const num = (value) => (value === null || value === undefined ? null : formatNumber(value));
   const essencial = [];
@@ -687,7 +699,10 @@ function buildDetailBody(record) {
     push(tecnico, 'Verificado em', dateOrNull(record.observed_at));
   }
 
-  appendTiers(frag, { essencial, complementar, tecnico });
+  // A precisão espacial fecha o essencial de todo registro (R3.6), como linha, não como caixa.
+  essencial.push(precisionRow(record));
+
+  appendTiers(frag, { essencial, complementar, tecnico }, { collapse: false });
 
   const regularization = buildRegularizationNotice(record);
   if (regularization) frag.append(regularization);
@@ -726,6 +741,38 @@ function selectRecord(key) {
 
   if (record.coord && map) map.panTo([record.coord.lat, record.coord.lon]);
   dom.closeDetail.focus();
+}
+
+/**
+ * Recolhe/expande o trilho de navegação (issue #104). O estado é `data-rail` em `<html>` e
+ * vive só nesta página — sem `localStorage`, por decisão do dono: a tela sempre abre
+ * expandida. O Leaflet só ouve `resize` da janela, e o trilho encolhendo alarga `.map-wrap`
+ * sem evento nenhum: sem o `invalidateSize()` o mapa fica com uma faixa sem tile à direita.
+ */
+function toggleRail() {
+  const recolher = document.documentElement.dataset.rail !== 'collapsed';
+  if (recolher) document.documentElement.dataset.rail = 'collapsed';
+  else delete document.documentElement.dataset.rail;
+  const rotulo = recolher ? 'Expandir menu' : 'Recolher menu';
+  dom.railToggle.setAttribute('aria-expanded', String(!recolher));
+  dom.railToggle.setAttribute('aria-label', rotulo);
+  dom.railToggle.title = rotulo;
+  dom.railToggle.querySelector('.rail-toggle-ic').textContent = recolher ? '›' : '‹';
+  dom.railToggle.querySelector('.rail-toggle-tx').textContent = rotulo;
+  if (map) map.invalidateSize();
+}
+
+/** Recolhe/expande o painel lateral do mapa (issue #104). Mesmo contrato de `toggleRail`. */
+function togglePanel() {
+  const recolher = dom.mapView.dataset.panel !== 'collapsed';
+  if (recolher) dom.mapView.dataset.panel = 'collapsed';
+  else delete dom.mapView.dataset.panel;
+  const rotulo = recolher ? 'Expandir painel' : 'Recolher painel';
+  dom.panelToggle.setAttribute('aria-expanded', String(!recolher));
+  dom.panelToggle.setAttribute('aria-label', rotulo);
+  dom.panelToggle.title = rotulo;
+  dom.panelToggle.firstElementChild.textContent = recolher ? '›' : '‹';
+  if (map) map.invalidateSize();
 }
 
 function closeDetail() {
@@ -2710,22 +2757,59 @@ function pdadYearNoteText() {
     + 'Selecionar outra RA mostra ausência de publicação, não um erro de carregamento.';
 }
 
-function pdadKpiTile(label, value, nota) {
+
+/**
+ * Ícones dos tiles de KPI, os mesmos quatro do protótipo (`KPI_IC`): traço, sem
+ * preenchimento, 24×24. São `path`/`circle` criados com `createElementNS` — nunca
+ * `innerHTML` (R4.4), mesmo sendo constante: a regra não tem exceção para "é só um ícone".
+ */
+const PDAD_KPI_ICONS = {
+  pop: [['circle', { cx: 9, cy: 8, r: 3.2 }], ['path', { d: 'M3.5 19c0-3 2.5-5 5.5-5s5.5 2 5.5 5' }],
+    ['circle', { cx: 17, cy: 9, r: 2.4 }], ['path', { d: 'M16 19c.2-2.6 1.6-4.2 4.5-4.2' }]],
+  home: [['path', { d: 'M4 11 12 4l8 7' }], ['path', { d: 'M6.5 10v9h11v-9' }]],
+  avg: [['path', { d: 'M4 11 12 4l8 7' }], ['path', { d: 'M6.5 10v9h11v-9' }], ['circle', { cx: 12, cy: 14.5, r: 2.2 }]],
+  share: [['circle', { cx: 12, cy: 12, r: 8 }], ['path', { d: 'M12 4v8h8' }]],
+};
+
+function pdadKpiIcon(name) {
+  const svg = document.createElementNS(SVG_NS, 'svg');
+  svg.setAttribute('viewBox', '0 0 24 24');
+  for (const [tag, attrs] of PDAD_KPI_ICONS[name] || PDAD_KPI_ICONS.share) {
+    const node = document.createElementNS(SVG_NS, tag);
+    for (const [k, v] of Object.entries(attrs)) node.setAttribute(k, String(v));
+    svg.append(node);
+  }
+  return svg;
+}
+
+/**
+ * Tile de KPI na anatomia do protótipo — a mesma `.kpi` do painel do mapa: quadrado tingido
+ * com ícone à esquerda, valor grande, rótulo e nota à direita. A tinta é decorativa e
+ * rotativa por posição (`tinta-1..4`), nunca semântica; quem carrega significado é o valor.
+ */
+function pdadKpiTile(label, value, nota, { icon = 'share', tint = 1, small = false } = {}) {
   const box = document.createElement('article');
-  box.className = 'market-kpi';
-  const rotulo = document.createElement('h3');
-  rotulo.className = 'market-kpi-rotulo';
-  rotulo.textContent = label;
-  const valorEl = document.createElement('p');
-  valorEl.className = 'market-kpi-valor';
+  box.className = 'kpi';
+  const ic = document.createElement('span');
+  ic.className = `kpi-ic tinta-${tint}`;
+  ic.setAttribute('aria-hidden', 'true');
+  ic.append(pdadKpiIcon(icon));
+  const tx = document.createElement('span');
+  tx.className = 'kpi-tx';
+  const valorEl = document.createElement('strong');
+  valorEl.className = small ? 'kpi-value kpi-value-sm' : 'kpi-value';
   valorEl.textContent = value;
-  box.append(rotulo, valorEl);
+  const rotulo = document.createElement('span');
+  rotulo.className = 'kpi-label kpi-label-texto';
+  rotulo.textContent = label;
+  tx.append(valorEl, rotulo);
   if (nota) {
-    const notaEl = document.createElement('p');
+    const notaEl = document.createElement('small');
     notaEl.className = 'pdad-kpi-nota';
     notaEl.textContent = nota;
-    box.append(notaEl);
+    tx.append(notaEl);
   }
+  box.append(ic, tx);
   return box;
 }
 
@@ -2739,10 +2823,12 @@ function renderPdadKpis(raIds) {
   const escopo = unica ? unica.raName : `soma de ${kpis.raCount} RA(s)`;
 
   dom.pdadKpis.replaceChildren(
-    pdadKpiTile('População estimada', formatNumber(kpis.population), `${escopo} · PDAD-A ${year}`),
-    pdadKpiTile('Domicílios ocupados', formatNumber(kpis.households), `${escopo} · PDAD-A ${year}`),
-    pdadKpiTile('Moradores por domicílio', avg, 'população ÷ domicílios · calculado'),
-    pdadKpiTile('RAs analisadas', String(kpis.raCount), `PDAD-A ${year} · lote carregado`),
+    pdadKpiTile('População estimada', formatNumber(kpis.population), `${escopo} · PDAD-A ${year}`, { icon: 'pop', tint: 1 }),
+    pdadKpiTile('Domicílios ocupados', formatNumber(kpis.households), `${escopo} · PDAD-A ${year}`, { icon: 'home', tint: 2 }),
+    pdadKpiTile('Moradores por domicílio', avg, 'população ÷ domicílios · calculado', { icon: 'avg', tint: 3 }),
+    unica
+      ? pdadKpiTile('Território em foco', unica.raName, `${unica.raGeoId} · PDAD-A ${year}`, { icon: 'share', tint: 4, small: true })
+      : pdadKpiTile('RAs analisadas', String(kpis.raCount), `PDAD-A ${year} · lote carregado`, { icon: 'share', tint: 4 }),
   );
 }
 
@@ -2850,7 +2936,23 @@ function renderPdadView() {
 
   const anosDisponiveis = pdadYearsAvailable(state.pdadData);
   dom.pdadScope.textContent =
-    `PDAD-A ${anosDisponiveis[0]} — Instituto de Planejamento e Estatística do Distrito Federal (IPEDF/DIEPS/COEPS).`;
+    `Explore o território, compare Regiões Administrativas e identifique oportunidades com base na PDAD-A ${anosDisponiveis[0]} — com rastreabilidade até a figura de origem.`;
+  // Cartão "Fonte ativa" das quatro toplines: o lote vem do dado, e a instituição é o
+  // rótulo fixo da fonte — mesmo texto do protótipo. No Diagnóstico o ano é o do FILTRO
+  // (quem escolhe 2021 está lendo o lote 2021, e o cartão tem que dizer isso — achado do
+  // Codex na #108); Ranking, Comparar e Base travam no ano de cobertura completa, o mais
+  // recente, e o cartão delas mostra esse.
+  for (const card of document.querySelectorAll('[data-pdad-source]')) {
+    const noDiagnostico = dom.pdadView.contains(card);
+    const ano = noDiagnostico ? state.pdadFilters.year : anosDisponiveis[0];
+    const strong = card.querySelector('strong');
+    strong.replaceChildren(
+      document.createTextNode(`PDAD-A ${ano}`),
+      document.createElement('br'),
+      document.createTextNode('IPEDF / DIEPS / COEPS'),
+    );
+    card.hidden = false;
+  }
 
   const raIds = pdadSelectedRaIds();
   renderPdadKpis(raIds);
@@ -3086,7 +3188,12 @@ function pdadRankCard(item, raGeoId, mode) {
     article.append(unidadeEl);
   }
   const posEl = document.createElement('div'); posEl.className = 'pdad-rank-pos';
-  posEl.textContent = pos >= 0 ? `${pos + 1}ª de ${vals.length} RAs publicadas` : 'sem valor publicado para esta RA';
+  if (pos >= 0) {
+    const b = document.createElement('b'); b.textContent = `${pos + 1}ª`;
+    posEl.append(b, document.createTextNode(` de ${vals.length} RAs publicadas`));
+  } else {
+    posEl.textContent = 'sem valor publicado para esta RA';
+  }
   article.append(posEl);
   if (pctil !== null) {
     const barra = document.createElement('div'); barra.className = 'pdad-rank-bar';
@@ -3252,7 +3359,7 @@ function renderPdadCompareSummary(ras) {
   secao.className = 'pdad-card pdad-rank-table-card';
   const cabecalho = document.createElement('div'); cabecalho.className = 'pdad-card-head';
   const tituloWrap = document.createElement('div');
-  const eyebrow = document.createElement('p'); eyebrow.className = 'market-eyebrow'; eyebrow.textContent = 'Perfil estrutural';
+  const eyebrow = document.createElement('p'); eyebrow.className = 'pdad-section-label'; eyebrow.textContent = 'Perfil estrutural';
   const titulo = document.createElement('h2'); titulo.className = 'pdad-card-titulo'; titulo.textContent = 'As RAs selecionadas em números';
   tituloWrap.append(eyebrow, titulo);
   cabecalho.append(tituloWrap);
@@ -3300,7 +3407,7 @@ function renderPdadCompareBlocks(ras) {
     secao.className = 'pdad-card';
     const cabecalho = document.createElement('div'); cabecalho.className = 'pdad-card-head';
     const tituloWrap = document.createElement('div');
-    const eyebrow = document.createElement('p'); eyebrow.className = 'market-eyebrow';
+    const eyebrow = document.createElement('p'); eyebrow.className = 'pdad-section-label';
     eyebrow.textContent = meta ? PDAD_TEMAS[meta.tema] || '' : '';
     const titulo = document.createElement('h2'); titulo.className = 'pdad-card-titulo'; titulo.textContent = meta?.label || key;
     tituloWrap.append(eyebrow, titulo);
@@ -3360,7 +3467,7 @@ function renderPdadCompareBlocks(ras) {
       grade.append(linhaCat);
     }
     secao.append(grade);
-    if (resto > 0) secao.append(pdadYearNoteEl(`+${resto} categorias fora do quadro — completas no drill-down e no CSV.`));
+    if (resto > 0) secao.append(pdadFootnoteEl(`+${resto} categorias fora do quadro — completas no drill-down e no CSV.`));
     return secao;
   });
   dom.pdadCvBlocks.replaceChildren(...blocos);
@@ -3369,6 +3476,14 @@ function renderPdadCompareBlocks(ras) {
 function pdadYearNoteEl(texto) {
   const p = document.createElement('p');
   p.className = 'pdad-year-note';
+  p.textContent = texto;
+  return p;
+}
+
+/** Rodapé de cartão (`.footnote` do protótipo): nota miúda, não aviso — aviso é `pdadYearNoteEl`. */
+function pdadFootnoteEl(texto) {
+  const p = document.createElement('p');
+  p.className = 'pdad-footnote';
   p.textContent = texto;
   return p;
 }
@@ -3401,7 +3516,7 @@ function renderPdadCompareView() {
     ))
     : [pdadEmptyPara('nenhum indicador selecionado')]));
 
-  dom.pdadCompareCount.textContent =
+  dom.pdadCvCount.textContent =
     `${state.pdadCompareState.ras.length}/${PDAD_CV_MAX_RAS} RAs · ${state.pdadCompareState.inds.length}/${PDAD_CV_MAX_INDS} indicadores`;
 
   const rasEscolhidas = state.pdadCompareState.ras.map((id) => porId.get(id)).filter(Boolean);
@@ -3430,10 +3545,10 @@ function renderPdadBaseView() {
     + 'indicadores com regra de exibição declarada em src/pdad/indicators.js — o restante das linhas '
     + 'segue normalizado e disponível para o drill-down.';
   dom.pdadBaseKpis.replaceChildren(
-    pdadKpiTile('Linhas carregadas', formatNumber(state.pdadData.length), 'PDAD_A_DATA · lote atual'),
-    pdadKpiTile('Regiões administrativas', String(totalRas), 'com ao menos um registro'),
-    pdadKpiTile('Indicadores na planilha', String(totalIndicadores), `${PDAD_INDICATOR_LIST.length} exibidos na tela`),
-    pdadKpiTile('Anos disponíveis', anos.join(' · '), 'PDAD-A'),
+    pdadKpiTile('Linhas carregadas', formatNumber(state.pdadData.length), 'PDAD_A_DATA · lote atual', { icon: 'share', tint: 1 }),
+    pdadKpiTile('Regiões administrativas', String(totalRas), 'com ao menos um registro', { icon: 'pop', tint: 2 }),
+    pdadKpiTile('Indicadores na planilha', String(totalIndicadores), `${PDAD_INDICATOR_LIST.length} exibidos na tela`, { icon: 'home', tint: 3 }),
+    pdadKpiTile('Anos disponíveis', anos.join(' · '), 'PDAD-A', { icon: 'avg', tint: 4, small: true }),
   );
 }
 
@@ -3566,7 +3681,7 @@ function renderPdadDrill() {
     acc[chave] = (acc[chave] || 0) + 1;
     return acc;
   }, {});
-  dom.pdadDrillMeta.replaceChildren(pdadYearNoteEl(
+  dom.pdadDrillMeta.replaceChildren(pdadFootnoteEl(
     `Universo: ${meta?.universe || '—'} · Estrutura: ${meta?.structure || '—'} · Registros: ${linhas.length} `
     + `(${contagens.published || 0} publicados · ${contagens.partial || 0} parciais · ${contagens.suppressed || 0} suprimidos)`,
   ));
@@ -3671,6 +3786,8 @@ function bindEvents() {
   dom.layers.addEventListener('change', render);
   dom.clearFilters.addEventListener('click', clearFilters);
   dom.closeDetail.addEventListener('click', closeDetail);
+  dom.railToggle.addEventListener('click', toggleRail);
+  dom.panelToggle.addEventListener('click', togglePanel);
   dom.retryBtn.addEventListener('click', () => { load().catch(reportFatal); });
 
   // Delegação: as pílulas são geradas a cada carga da série, e ouvir no container evita
