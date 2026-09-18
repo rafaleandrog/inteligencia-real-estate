@@ -49,7 +49,7 @@
 // Constantes
 // ---------------------------------------------------------------------------
 
-var APP_VERSION = '2.2.1';
+var APP_VERSION = '2.3.0';
 
 /**
  * Protocolo da API de escrita que este script fala, exposto em `health_()`.
@@ -267,11 +267,26 @@ var MAX_ROAD_SYNC_CODES = 200;
  */
 var MAX_ROAD_SYNC_ROUTE_FEATURES = 500;
 
-/** Buffer visual padrão, por lado, do corredor rodoviário derivado do eixo oficial. */
-var DEFAULT_ROAD_DISPLAY_BUFFER_M = 8;
+/**
+ * Buffer visual, por lado, do corredor rodoviário QUANDO o DER não publica a faixa de
+ * domínio do trecho (issue #105). Quando publica — `fd_direita_larg`/`fd_esquerda_largu`,
+ * 65 m por lado na DF-001 —, é ela que vira o corredor: a área da via é a faixa legal, não
+ * um número escolhido aqui. O teto abaixo evita um valor absurdo vindo da camada.
+ */
+var DEFAULT_ROAD_DISPLAY_BUFFER_M = 20;
+var MAX_ROAD_DISPLAY_BUFFER_M = 100;
 
-/** Camada oficial do eixo do trecho rodoviário (DER/DF), via ArcGIS REST. */
-var DER_ROAD_LAYER_URL = 'https://www.geoservicos.ide.df.gov.br/arcgis/rest/services/Publico/SISTEMA_VIARIO/MapServer/9';
+/**
+ * Camada oficial dos trechos rodoviários do DER/DF (ArcGIS Hub do DER, "Rodovias 2025").
+ *
+ * Trocada na issue #105: a camada da SEDUH (`SISTEMA_VIARIO/MapServer/9`) tem
+ * `codtrechorodov` vazio em TODAS as feições, e o casamento caía para "toda a rota", que
+ * juntava a DF-001 inteira num corredor só. Aqui `cod_distrital` é exatamente o código do
+ * posto de contagem de TRAFFIC_DAILY_TEST (`001EDF0070` = DF-001, km 17,0–17,9), e cada
+ * feição traz o eixo, o TMD do DER, a faixa de domínio por lado, faixas, velocidade e
+ * classe CTB. Verificado ao vivo em 2026-09: os cinco códigos do piloto casam 1:1.
+ */
+var DER_ROAD_LAYER_URL = 'https://services7.arcgis.com/mLiYCaoVbEXk2abA/arcgis/rest/services/Rodovias_2025/FeatureServer/0';
 
 /** Camada oficial dos limites das Regiões Administrativas (GeoPortal/SEDUH). */
 var RA_BOUNDARY_LAYER_URL = 'https://www.geoservicos.ide.df.gov.br/arcgis/rest/services/Publico/LIMITES/FeatureServer/1';
@@ -282,6 +297,16 @@ var RA_BOUNDARY_LAYER_URL = 'https://www.geoservicos.ide.df.gov.br/arcgis/rest/s
  * geometria simplificada em vez de truncar — geometria truncada seria polígono inválido.
  */
 var RA_SYNC_MAX_CELL_CHARS = 48000;
+
+/**
+ * Escada de simplificação (`maxAllowableOffset`, em GRAUS porque `outSR=4326`) pedida ao
+ * GeoPortal. A primeira já é a busca normal: sem ela o Plano Piloto vem com 8.519 vértices
+ * e 202 mil caracteres, e a escada antiga (1e-5 → 3e-5) não cabia em 48 mil nem para ele nem
+ * para Planaltina — a RA era descartada em silêncio. Medido em 2026-09: com 1e-4 (~10 m)
+ * o Plano Piloto fica em ~25 mil chars e todas as 37 RAs cabem; 2e-4 e 5e-4 ficam de
+ * reserva. Cada degrau usado fica registrado em `properties_json`.
+ */
+var RA_SYNC_SIMPLIFY_OFFSETS_DEG = ['0.0001', '0.0002', '0.0005'];
 
 // ---------------------------------------------------------------------------
 // Escrita (admin) — R4.9
@@ -1864,6 +1889,9 @@ function syncAdministrativeRegions_() {
   if (!features.length) throw new Error('GeoPortal não retornou Regiões Administrativas.');
 
   var colors = fetchAdministrativeRegionColors_();
+  // Faixas etárias vêm da própria planilha (aba PDAD_A_DATA), calculadas uma vez para
+  // todas as RAs antes do lock — leitura de 12 mil linhas não é coisa para repetir 37 vezes.
+  var ageBands = ageBandsByRaFromPdad_();
   var prepared = [];
   var failed = 0;
 
@@ -1876,29 +1904,26 @@ function syncAdministrativeRegions_() {
       var raGeoId = 'RA_' + ('0' + Math.round(raNumber)).slice(-2);
       var raName = titleCaseRaName_(sanitizePlainText_(attrs.ra_nome || attrs.ra_codigo || raGeoId));
       var geometry = feature.geometry;
-      var validation = validateGeoJsonGeometry_(geometry);
-      if (!validation.ok) throw new Error('geometria inválida: ' + validation.message);
-      var geometryJson = JSON.stringify(validation.geometry);
+      var geometryJson = JSON.stringify(geometry || {});
+      var toleranceDeg = RA_SYNC_SIMPLIFY_OFFSETS_DEG[0];
 
       // Célula do Sheets tem teto. Acima dele a saída NÃO é truncar (geometria truncada é
       // polígono inválido gravado como se fosse válido), é pedir ao GeoPortal a mesma
-      // feição com tolerância de simplificação maior, duas vezes, e desistir da RA se
-      // ainda assim não couber.
-      if (geometryJson.length > RA_SYNC_MAX_CELL_CHARS) {
-        var simplified = fetchAdministrativeRegionFeature_(attrs.objectid, 0.00001);
+      // feição com o próximo degrau de simplificação, e desistir da RA se nenhum couber.
+      // O tamanho é medido ANTES de validar: `validateGeoJsonGeometry_` também recusa
+      // geometria acima do teto, e validar primeiro fazia a escada nunca rodar — a RA
+      // grande caía direto em "falha" (era o que acontecia com o Plano Piloto).
+      for (var step = 1; step < RA_SYNC_SIMPLIFY_OFFSETS_DEG.length && geometryJson.length > RA_SYNC_MAX_CELL_CHARS; step++) {
+        var simplified = fetchAdministrativeRegionFeature_(attrs.objectid, RA_SYNC_SIMPLIFY_OFFSETS_DEG[step]);
         if (!simplified || !simplified.geometry) throw new Error('geometria excede limite da célula e simplificação falhou.');
-        validation = validateGeoJsonGeometry_(simplified.geometry);
-        if (!validation.ok) throw new Error('geometria simplificada inválida: ' + validation.message);
-        geometryJson = JSON.stringify(validation.geometry);
-      }
-      if (geometryJson.length > RA_SYNC_MAX_CELL_CHARS) {
-        var simplified2 = fetchAdministrativeRegionFeature_(attrs.objectid, 0.00003);
-        if (!simplified2 || !simplified2.geometry) throw new Error('geometria continua acima do limite da célula.');
-        validation = validateGeoJsonGeometry_(simplified2.geometry);
-        if (!validation.ok) throw new Error('segunda simplificação inválida: ' + validation.message);
-        geometryJson = JSON.stringify(validation.geometry);
+        geometry = simplified.geometry;
+        geometryJson = JSON.stringify(geometry);
+        toleranceDeg = RA_SYNC_SIMPLIFY_OFFSETS_DEG[step];
       }
       if (geometryJson.length > RA_SYNC_MAX_CELL_CHARS) throw new Error('geometria excede 48 mil caracteres mesmo após simplificação.');
+      var validation = validateGeoJsonGeometry_(geometry);
+      if (!validation.ok) throw new Error('geometria inválida: ' + validation.message);
+      geometryJson = JSON.stringify(validation.geometry);
 
       prepared.push({
         ra_geo_id: raGeoId,
@@ -1911,6 +1936,8 @@ function syncAdministrativeRegions_() {
         geometry: validation.geometry,
         geometry_json: geometryJson,
         geometry_hash: sha256Hex_(geometryJson),
+        simplification_tolerance_deg: toleranceDeg,
+        age_bands: ageBands[raGeoId] || null,
         fill_color: colors[normalizeSlug_(attrs.ra_nome)] || '#8AA6B8',
         synced_at: nowISO_()
       });
@@ -1968,6 +1995,7 @@ function fetchAdministrativeRegionsGeoJson_() {
     returnTrueCurves: 'false',
     outSR: '4326',
     geometryPrecision: '6',
+    maxAllowableOffset: RA_SYNC_SIMPLIFY_OFFSETS_DEG[0],
     f: 'geojson'
   };
   var url = RA_BOUNDARY_LAYER_URL + '/query?' + encodeQueryParams_(params);
@@ -2110,6 +2138,19 @@ function updateRaProfileFromGeometry_(ra) {
   if (population !== null && areaKm2 !== null && areaKm2 > 0) {
     fields.population_density_km2 = population / areaKm2;
   }
+  // Faixas etárias agregadas da PDAD_A_DATA (issue #105): só quando as 17 categorias × 2
+  // sexos vieram publicadas para a RA; senão a célula fica como estava. `income_per_capita_brl`
+  // nunca é tocada aqui — renda só entra quando o IPEDF publica, e é gravada à mão.
+  if (ra.age_bands) {
+    fields.population_age_0_14_pct = ra.age_bands.age_0_14;
+    fields.population_age_15_29_pct = ra.age_bands.age_15_29;
+    fields.population_age_30_44_pct = ra.age_bands.age_30_44;
+    fields.population_age_45_59_pct = ra.age_bands.age_45_59;
+    fields.population_age_60_plus_pct = ra.age_bands.age_60_plus;
+    fields.notes = 'Faixas etárias agregadas da aba PDAD_A_DATA (Figura 3, 17 categorias × sexo, PDAD-A ' +
+      ra.age_bands.year + ') na sincronização de ' + nowISO_().slice(0, 10) +
+      '. Renda per capita só quando publicada pelo IPEDF (Informe Distrital de Rendimentos).';
+  }
   if (found) applyUpdate_(sheet, headers, found.rowNumber, fields);
   else {
     // RA que existe no limite oficial mas ainda não tem perfil PDAD nasce marcada como
@@ -2118,6 +2159,87 @@ function updateRaProfileFromGeometry_(ra) {
     fields.quality_flag = 'official_geometry_profile_not_loaded';
     applyCreate_(sheet, headers, 'ra_geo_id', ra.ra_geo_id, fields);
   }
+}
+
+/**
+ * Faixas etárias de RA_PROFILES a partir da aba PDAD_A_DATA (issue #105).
+ *
+ * Lê `age_sex_distribution` do ano mais recente por RA, soma `estimate_total` das 17
+ * categorias quinquenais × 2 sexos nas cinco faixas da tela (0–14, 15–29, 30–44, 45–59,
+ * 60+) e devolve pontos percentuais com uma decimal — a mesma escala da aba (R3.4/§D2).
+ * Uma RA só entra quando as 34 linhas vieram `published`: categoria suprimida ou ausente
+ * faria a soma parecer completa sem ser, e a divergência silenciosa é justamente o que a
+ * tela não pode carregar. Reproduz os valores já gravados à mão para o Plano Piloto
+ * (14,2 / 16,6 / 27,8 / 21,0 / 20,4).
+ */
+function ageBandsByRaFromPdad_() {
+  var sheet = ss_().getSheetByName('PDAD_A_DATA');
+  if (!sheet || sheet.getLastRow() < 2) return {};
+  var headers = headersOf_(sheet);
+  var index = headerIndex_(headers);
+  var needed = ['ra_geo_id', 'pdad_year', 'indicator_code', 'segment_dimension', 'segment_value',
+    'category_standard', 'estimate_total', 'source_value_status'];
+  for (var i = 0; i < needed.length; i++) if (index[needed[i]] === undefined) return {};
+
+  var perRa = {};
+  dataRowsOf_(sheet).forEach(function (row) {
+    if (toText_(row[index.indicator_code]) !== 'age_sex_distribution') return;
+    if (toText_(row[index.segment_dimension]) !== 'Sexo') return;
+    var raGeoId = toText_(row[index.ra_geo_id]);
+    var year = toNumber_(row[index.pdad_year]);
+    if (!raGeoId || year === null) return;
+    var slot = perRa[raGeoId] || (perRa[raGeoId] = {});
+    var byYear = slot[year] || (slot[year] = { rows: 0, invalid: 0, seen: {}, bands: { age_0_14: 0, age_15_29: 0, age_30_44: 0, age_45_59: 0, age_60_plus: 0 }, total: 0 });
+    var band = ageBandOfCategory_(row[index.category_standard]);
+    if (!band) return;
+    // Uma linha só conta como completa quando é publicada, numérica e única por
+    // (categoria, sexo): linha `published` sem `estimate_total`, ou repetida, faria o
+    // contador chegar a 34 com um denominador errado — e o resultado pareceria certo.
+    var key = toText_(row[index.category_standard]).toLowerCase() + '|' + toText_(row[index.segment_value]).toLowerCase();
+    var value = toNumber_(row[index.estimate_total]);
+    if (toText_(row[index.source_value_status]) !== 'published' || value === null || byYear.seen[key]) {
+      byYear.invalid++;
+      return;
+    }
+    byYear.seen[key] = true;
+    byYear.rows++;
+    byYear.bands[band] += value;
+    byYear.total += value;
+  });
+
+  var out = {};
+  Object.keys(perRa).forEach(function (raGeoId) {
+    var years = Object.keys(perRa[raGeoId]).map(Number).sort(function (a, b) { return b - a; });
+    var latest = perRa[raGeoId][years[0]];
+    // 17 categorias × 2 sexos, todas válidas: qualquer linha a menos, ou qualquer linha
+    // inválida no lote, é lote incompleto para esta RA.
+    if (!latest || latest.rows !== 34 || latest.invalid !== 0 || latest.total <= 0) return;
+    var pct = function (v) { return Math.round((v / latest.total) * 1000) / 10; };
+    out[raGeoId] = {
+      year: years[0],
+      age_0_14: pct(latest.bands.age_0_14),
+      age_15_29: pct(latest.bands.age_15_29),
+      age_30_44: pct(latest.bands.age_30_44),
+      age_45_59: pct(latest.bands.age_45_59),
+      age_60_plus: pct(latest.bands.age_60_plus)
+    };
+  });
+  return out;
+}
+
+/** "ate_4_anos" → 0–14; "15_a_19_anos" → 15–29; "80_anos_ou_mais" → 60+. Categoria estranha → null. */
+function ageBandOfCategory_(category) {
+  var text = toText_(category).toLowerCase();
+  if (!text) return null;
+  if (/^ate_/.test(text)) return 'age_0_14';
+  var match = text.match(/^(\d+)/);
+  if (!match) return null;
+  var start = Number(match[1]);
+  if (start < 15) return 'age_0_14';
+  if (start < 30) return 'age_15_29';
+  if (start < 45) return 'age_30_44';
+  if (start < 60) return 'age_45_59';
+  return 'age_60_plus';
 }
 
 function profileSnapshotForRa_(raGeoId) {
@@ -2183,6 +2305,7 @@ function upsertAdministrativeRegionPolygon_(ra, kmz) {
     ra_name: ra.ra_name,
     official_area_km2: ra.ra_area_km2,
     official_path: ra.ra_path,
+    display_simplification_tolerance_deg: ra.simplification_tolerance_deg || '',
     profile: profile
   };
   var values = {
@@ -2214,7 +2337,9 @@ function upsertAdministrativeRegionPolygon_(ra, kmz) {
     z_index: '',
     source_page_verified_at: today,
     confidence_flag: 'high_official_geoportal_geometry',
-    quality_flag: ra.geometry_json.length > 45000 ? 'official_boundary_simplified_for_sheet' : 'official_boundary_geoportal',
+    // Toda geometria chega simplificada (a busca já pede `maxAllowableOffset`), então o
+    // rótulo diz isso sempre; a tolerância usada fica em `properties_json`.
+    quality_flag: 'official_boundary_simplified_for_sheet',
     entity_type: 'administrative_region',
     entity_id: ra.ra_geo_id,
     geometry_type: ra.geometry.type,
@@ -2318,14 +2443,15 @@ function syncRoadSegmentsFromTraffic_UI() {
   var ui = SpreadsheetApp.getUi();
   var response = ui.prompt(
     'Sincronizar trechos rodoviários DER',
-    'Informe o buffer visual por lado, em metros. O padrão é ' + DEFAULT_ROAD_DISPLAY_BUFFER_M + ' m. A linha oficial é preservada separadamente.',
+    'Informe o buffer visual por lado, em metros, usado SÓ quando o DER não publica a faixa de domínio do trecho ' +
+    '(quando publica, é ela que vira o corredor). O padrão é ' + DEFAULT_ROAD_DISPLAY_BUFFER_M + ' m. A linha oficial é preservada separadamente.',
     ui.ButtonSet.OK_CANCEL
   );
   if (response.getSelectedButton() !== ui.Button.OK) return;
   var text = toText_(response.getResponseText());
   var bufferM = text ? toNumber_(text) : DEFAULT_ROAD_DISPLAY_BUFFER_M;
-  if (bufferM === null || bufferM <= 0 || bufferM > 100) {
-    ui.alert('Buffer inválido. Use um valor maior que 0 e menor ou igual a 100 m.');
+  if (bufferM === null || bufferM <= 0 || bufferM > MAX_ROAD_DISPLAY_BUFFER_M) {
+    ui.alert('Buffer inválido. Use um valor maior que 0 e menor ou igual a ' + MAX_ROAD_DISPLAY_BUFFER_M + ' m.');
     return;
   }
   try {
@@ -2333,7 +2459,7 @@ function syncRoadSegmentsFromTraffic_UI() {
     ui.alert(
       'Sincronização concluída',
       result.synced + ' trecho(s) sincronizado(s); ' + result.skipped + ' sem feição oficial; ' +
-        result.failed + ' falha(s). Buffer visual: ' + bufferM + ' m por lado.',
+        result.failed + ' falha(s). Corredor = faixa de domínio do DER por lado; buffer padrão ' + bufferM + ' m quando ausente.',
       ui.ButtonSet.OK
     );
   } catch (error) {
@@ -2349,13 +2475,14 @@ function syncRoadSegmentsFromTraffic_(bufferM) {
   }
 
   var fetched = [];
+  var skippedCodes = [];
   var skipped = 0;
   var failed = 0;
   codes.forEach(function (code) {
     try {
       var record = fetchDerRoadByCode_(code, bufferM);
       if (record) fetched.push(record);
-      else skipped++;
+      else { skipped++; skippedCodes.push(code); }
     } catch (error) {
       failed++;
       Logger.log('DER sync %s falhou: %s', code, error && error.message);
@@ -2373,23 +2500,31 @@ function syncRoadSegmentsFromTraffic_(bufferM) {
       upsertRoadPolygon_(road, bufferM);
       synced++;
     });
+    // Código sem feição oficial NESTA camada: um corredor gravado por versão anterior (que
+    // casava a rota inteira por heurística) continuaria ativo e desenhado como se fosse o
+    // trecho do posto. Aposentar é o que torna o `skipped` verdadeiro no mapa também.
+    var retired = 0;
+    skippedCodes.forEach(function (code) { if (retireRoadSegment_(code)) retired++; });
     relateTrafficRowsToRoadSegments_();
     setMeta_('road_sync_status', synced ? ((skipped || failed) ? 'synced_with_warnings' : 'synced') : 'no_official_matches');
     setMeta_('road_sync_last_synced_at', nowISO_());
+    // Buffer PADRÃO (fallback); o corredor de cada trecho registra o próprio em
+    // `display_buffer_m`, que vem da faixa de domínio do DER quando ela existe.
     setMeta_('road_sync_buffer_m', String(bufferM));
     setMeta_('road_sync_synced_count', String(synced));
     setMeta_('road_sync_skipped_count', String(skipped));
     setMeta_('road_sync_failed_count', String(failed));
-    if (synced) {
+    setMeta_('road_sync_retired_count', String(retired));
+    if (synced || retired) {
       var version = bumpDatasetVersion_();
       setMeta_('validation_status', 'dirty');
       setMeta_('last_data_change_at', nowISO_());
       refreshMeta();
       clearCache();
-      logWriteChange_('POLYGONS', '*', 'der_road_sync', '', synced + ' trecho(s)',
+      logWriteChange_('POLYGONS', '*', 'der_road_sync', '', synced + ' trecho(s), ' + retired + ' aposentado(s)',
         'sincronizador DER', 'der-road-' + version, 'ok', '');
     }
-    return { synced: synced, skipped: skipped, failed: failed };
+    return { synced: synced, skipped: skipped, failed: failed, retired: retired };
   });
   if (!result) throw new Error('Não foi possível obter lock de escrita.');
   return result;
@@ -2419,48 +2554,52 @@ function roadCodesFromTraffic_() {
 }
 
 /**
- * `codtrechorodov` (o campo que a sincronização usava para casar) está vazio em TODA a
- * camada ao vivo do DER — confirmado por consulta direta em 2026-09; não é uma falha
- * pontual, é um campo que essa camada nunca preenche. O casamento exato é mantido como
- * primeira tentativa (barato de verificar, e volta a funcionar sozinho se o DER um dia
- * preencher o campo), mas na prática hoje ele sempre cai para o segundo caminho: extrair o
- * número da rota do código do posto de contagem (`routeCodeFromPostoCode_`) e buscar todos
- * os trechos daquela rota na camada, juntando-os num corredor só — não há como saber qual
- * trecho exato pertence ao posto sem a coordenada dele, e um corredor da rota inteira é a
- * aproximação mais honesta que dá para fazer com o dado disponível. A diferença de precisão
- * fica marcada em `quality_flag`/`confidence_flag`, nunca escondida.
+ * Casamento EXATO por `cod_distrital` (ou `cod_distrital2`, quando o trecho é coincidente
+ * de duas rodovias) na camada "Rodovias 2025" do DER — issue #105. Sem fallback por rota:
+ * a versão anterior juntava a DF-001 inteira num corredor só quando o código não casava, e
+ * um corredor da rota inteira apresentado como o trecho do posto é exatamente o que a R3.6
+ * proíbe. Código que não existe na camada volta `null` e conta como `skipped`, com aviso.
  */
 function fetchDerRoadByCode_(code, bufferM) {
-  var exact = queryDerRoadFeatures_("codtrechorodov='" + escapeDerSql_(code) + "'");
-  if (exact.length) {
-    return buildDerRoadRecord_(code, exact, bufferM, {
-      quality_flag: 'official_centerline_synced',
-      confidence_flag: 'high_official_der_geometry',
-    });
-  }
-
-  var route = routeCodeFromPostoCode_(code);
-  if (!route) return null;
-  var byRoute = queryDerRoadFeatures_("nome LIKE '%" + escapeDerSql_(route) + "%'");
-  if (!byRoute.length) return null;
-  return buildDerRoadRecord_(code, byRoute, bufferM, {
-    quality_flag: 'route_matched_by_heuristic_code',
-    confidence_flag: 'medium_route_level_not_segment_level',
+  var literal = escapeDerSql_(code);
+  var exact = queryDerRoadFeatures_("cod_distrital='" + literal + "' OR cod_distrital2='" + literal + "'");
+  if (!exact.length) return null;
+  return buildDerRoadRecord_(code, exact, bufferM, {
+    quality_flag: 'official_centerline_synced',
+    confidence_flag: 'high_official_der_geometry',
   });
 }
 
 /**
- * "001EDF0070" -> "DF-007". O código do posto de contagem embute o número da rota: os três
- * dígitos logo após "DF" são a rota, e o quarto dígito é variante (sub-trecho/marco) que não
- * importa para achar a rota na camada do DER.
- *
- * Testado contra a camada ao vivo em 2026-09: `DF-007`/`DF-009`/`DF-011` existem de verdade
- * (337 feições encontradas ao todo); `DF-013` não apareceu — o que é o resultado honesto
- * quando a rota extraída não existe na camada, não um bug desta função.
+ * "001EDF0070" -> "DF-001". No código do posto de contagem os três PRIMEIROS dígitos são a
+ * rodovia distrital e os quatro últimos o número do trecho (`0070` = km 17,0–17,9 da
+ * DF-001, confirmado no campo `rodovia` da camada do DER em 2026-09). A leitura antiga
+ * ("os três dígitos depois de DF") tirava DF-007 desse mesmo código — rota errada. Serve só
+ * como fallback de `road_code` quando a feição não traz `rodovia`.
  */
 function routeCodeFromPostoCode_(code) {
-  var match = String(code || '').toUpperCase().match(/DF(\d{3})\d*$/);
+  var match = String(code || '').toUpperCase().match(/^(\d{3})EDF\d+$/);
   return match ? 'DF-' + match[1] : null;
+}
+
+/** "DF001" (campo `rodovia` do DER) -> "DF-001"; já hifenado passa intacto. */
+function formatRoadCode_(value) {
+  var text = toText_(value).toUpperCase().replace(/\s+/g, '');
+  var match = text.match(/^([A-Z]{2,3})-?(\d{3})$/);
+  return match ? match[1] + '-' + match[2] : text;
+}
+
+/**
+ * Meio-buffer do corredor: a faixa de domínio publicada pelo DER (média dos dois lados,
+ * que na prática são iguais), com teto; sem faixa publicada, o padrão informado no menu.
+ */
+function derBufferHalfWidthM_(attrs, fallbackM) {
+  var right = toNumber_(attrs.fd_direita_larg);
+  var left = toNumber_(attrs.fd_esquerda_largu);
+  var sides = [right, left].filter(function (v) { return v !== null && v > 0; });
+  if (!sides.length) return { meters: fallbackM, source: 'default_buffer' };
+  var mean = sides.reduce(function (a, v) { return a + v; }, 0) / sides.length;
+  return { meters: Math.min(mean, MAX_ROAD_DISPLAY_BUFFER_M), source: 'der_faixa_de_dominio' };
 }
 
 /** Aspas simples são o terminador do literal SQL do ArcGIS: dobrar impede um valor vindo da
@@ -2471,11 +2610,11 @@ function escapeDerSql_(value) {
 
 function queryDerRoadFeatures_(whereClause) {
   var fields = [
-    'objectid', 'id', 'nome', 'sigla', 'codtrechorodov', 'geometriaaproximada',
-    'tipotrechorod', 'jurisdicao', 'administracao', 'concessionaria', 'revestimento',
-    'operacional', 'situacaofisica', 'canteirodivisorio', 'nrpistas', 'nrfaixas', 'trafego',
-    'limitevelocidade', 'trechoemperimetrourbano', 'acostamento', 'tipopavimentacao',
-    'st_length_geometry_'
+    'OBJECTID', 'rodovia', 'cod_distrital', 'cod_distrital2', 'cod_federal', 'coincidente',
+    'descricao_inicial', 'descricao_final', 'Km_I', 'Km_F', 'extensao_km', 'TMD',
+    'fx_total', 'fx_direita', 'fx_esquerda', 'fd_direita_larg', 'fd_esquerda_largu', 'FD_Grupo',
+    'fd_legislacao', 'velocidade_max', 'classe_ctb', 'situacao_fisica', 'tipo_revestimento',
+    'administracao', 'circunscricao', 'nome_anterior', 'sigla_estrada_parque'
   ];
   var params = {
     where: whereClause,
@@ -2504,8 +2643,8 @@ function buildDerRoadRecord_(code, features, bufferM, flags) {
   features.forEach(function (feature) {
     var geometry = feature.geometry || {};
     (geometry.paths || []).forEach(function (path) { if (path && path.length >= 2) paths.push(path); });
-    var attrs = feature.attributes || {};
-    if (!isBlank_(attrs.objectid)) objectIds.push(String(attrs.objectid));
+    var oid = derObjectId_(feature.attributes || {});
+    if (oid !== '') objectIds.push(oid);
   });
   if (!paths.length) return null;
 
@@ -2516,20 +2655,23 @@ function buildDerRoadRecord_(code, features, bufferM, flags) {
   if (!sourceValidation.ok) throw new Error('Eixo inválido para ' + code + ': ' + sourceValidation.message);
   sourceGeometry = sourceValidation.geometry;
 
-  var displayGeometry = bufferLineGeometry_(sourceGeometry, bufferM);
+  var buffer = derBufferHalfWidthM_(features[0].attributes || {}, bufferM);
+  var displayGeometry = bufferLineGeometry_(sourceGeometry, buffer.meters);
   var validation = validateGeoJsonGeometry_(displayGeometry);
   if (!validation.ok) throw new Error('Buffer inválido para ' + code + ': ' + validation.message);
 
   var attrs0 = features[0].attributes || {};
   var sourceJson = JSON.stringify(sourceGeometry);
   var displayJson = JSON.stringify(validation.geometry);
+  var inicio = sanitizePlainText_(attrs0.descricao_inicial);
+  var fim = sanitizePlainText_(attrs0.descricao_final);
   return {
     road_segment_id: canonicalRoadSegmentId_(code),
     source_segment_code: code,
-    road_name: sanitizePlainText_(attrs0.nome),
-    road_code: sanitizePlainText_(attrs0.sigla) || routeCodeFromPostoCode_(code) || '',
-    segment_type: sanitizePlainText_(attrs0.tipotrechorod),
-    jurisdiction: sanitizePlainText_(attrs0.jurisdicao),
+    road_name: inicio && fim ? inicio + ' → ' + fim : (inicio || fim),
+    road_code: formatRoadCode_(attrs0.rodovia) || routeCodeFromPostoCode_(code) || '',
+    segment_type: sanitizePlainText_(attrs0.classe_ctb),
+    jurisdiction: sanitizePlainText_(attrs0.circunscricao),
     administration: sanitizePlainText_(attrs0.administracao),
     length_m: lineGeometryLengthM_(sourceGeometry),
     source_feature_id: objectIds.join(','),
@@ -2537,12 +2679,59 @@ function buildDerRoadRecord_(code, features, bufferM, flags) {
     source_geometry_json: sourceJson,
     display_geometry: validation.geometry,
     display_geometry_json: displayJson,
+    display_buffer_m: buffer.meters,
+    display_buffer_source: buffer.source,
     geometry_hash: sha256Hex_(sourceJson),
     attributes: attrs0,
+    der_attributes: derAttributesForSheet_(attrs0),
     feature_count: features.length,
     synced_at: nowISO_(),
     quality_flag: flags.quality_flag,
     confidence_flag: flags.confidence_flag
+  };
+}
+
+/** `OBJECTID` na camada Rodovias 2025, `objectid` em serviços mais antigos: aceita os dois. */
+function derObjectId_(attrs) {
+  var value = attrs.OBJECTID !== undefined && attrs.OBJECTID !== null ? attrs.OBJECTID : attrs.objectid;
+  return isBlank_(value) ? '' : String(value);
+}
+
+/** Atributos do DER que vão para `properties_json` (trecho e polígono), com nome próprio e tipo. */
+function derAttributesForSheet_(attrs) {
+  var num = function (v) { var n = toNumber_(v); return n === null ? null : n; };
+  var txt = function (v) { return sanitizePlainText_(v); };
+  return {
+    der_source_layer: 'Rodovias_2025',
+    der_feature_id: derObjectId_(attrs),
+    der_road: formatRoadCode_(attrs.rodovia),
+    der_code: txt(attrs.cod_distrital),
+    der_code_secondary: txt(attrs.cod_distrital2),
+    der_federal_code: txt(attrs.cod_federal),
+    der_coincident: num(attrs.coincidente),
+    der_description_start: txt(attrs.descricao_inicial),
+    der_description_end: txt(attrs.descricao_final),
+    der_km_start: num(attrs.Km_I),
+    der_km_end: num(attrs.Km_F),
+    der_extension_km: num(attrs.extensao_km),
+    // TMD = tráfego médio diário do DER (contagem/estimativa do órgão), referência
+    // independente da medição de TRAFFIC_DAILY_TEST.
+    der_tmd: num(attrs.TMD),
+    der_lanes_total: num(attrs.fx_total),
+    der_lanes_right: num(attrs.fx_direita),
+    der_lanes_left: num(attrs.fx_esquerda),
+    der_fd_right_m: num(attrs.fd_direita_larg),
+    der_fd_left_m: num(attrs.fd_esquerda_largu),
+    der_fd_group: txt(attrs.FD_Grupo),
+    der_fd_legislation: txt(attrs.fd_legislacao),
+    der_speed_limit_kmh: num(attrs.velocidade_max),
+    der_class_ctb: txt(attrs.classe_ctb),
+    der_physical_status: txt(attrs.situacao_fisica),
+    der_surface: txt(attrs.tipo_revestimento),
+    der_administration: txt(attrs.administracao),
+    der_jurisdiction: txt(attrs.circunscricao),
+    der_previous_name: txt(attrs.nome_anterior),
+    der_park_road_acronym: txt(attrs.sigla_estrada_parque)
   };
 }
 
@@ -2746,25 +2935,12 @@ function upsertRoadSegment_(road) {
   var headers = headersOf_(sheet);
   var index = headerIndex_(headers);
   var found = findRowById_(sheet, headers, index, 'road_segment_id', road.road_segment_id);
-  var attrs = road.attributes || {};
-  var props = {
-    source_segment_code: road.source_segment_code,
-    concessionaria: sanitizePlainText_(attrs.concessionaria),
-    revestimento: sanitizePlainText_(attrs.revestimento),
-    operacional: sanitizePlainText_(attrs.operacional),
-    situacaofisica: sanitizePlainText_(attrs.situacaofisica),
-    canteirodivisorio: sanitizePlainText_(attrs.canteirodivisorio),
-    nrpistas: attrs.nrpistas === null || attrs.nrpistas === undefined ? '' : attrs.nrpistas,
-    nrfaixas: attrs.nrfaixas === null || attrs.nrfaixas === undefined ? '' : attrs.nrfaixas,
-    trafego: sanitizePlainText_(attrs.trafego),
-    limitevelocidade: attrs.limitevelocidade === null || attrs.limitevelocidade === undefined ? '' : attrs.limitevelocidade,
-    trechoemperimetrourbano: sanitizePlainText_(attrs.trechoemperimetrourbano),
-    acostamento: sanitizePlainText_(attrs.acostamento),
-    tipopavimentacao: sanitizePlainText_(attrs.tipopavimentacao),
-    geometriaaproximada: sanitizePlainText_(attrs.geometriaaproximada),
-    feature_count: road.feature_count,
-    traffic_summary: road.trafficSummary || null
-  };
+  var props = road.der_attributes || {};
+  props.source_segment_code = road.source_segment_code;
+  props.display_buffer_m_each_side = road.display_buffer_m;
+  props.display_buffer_source = road.display_buffer_source;
+  props.feature_count = road.feature_count;
+  props.traffic_summary = road.trafficSummary || null;
   var values = {
     road_segment_id: road.road_segment_id,
     current_polygon_id: roadPolygonId_(road),
@@ -2776,17 +2952,15 @@ function upsertRoadSegment_(road) {
     administration: road.administration,
     length_m: road.length_m,
     source_system: 'DER_DF',
-    source_layer_name: 'Eixo do Trecho Rodoviário',
+    source_layer_name: 'Rodovias 2025 (DER/DF · ArcGIS Hub)',
     source_feature_id: road.source_feature_id,
     source_crs: 'EPSG:4326',
     valid_from: '',
     valid_to: '',
     is_current: true,
     properties_json: JSON.stringify(props),
-    // Vem de `fetchDerRoadByCode_`: 'high_official_der_geometry'/'official_centerline_synced'
-    // no casamento exato (hoje nunca acontece — ver comentário lá), ou os valores de
-    // confiança mais baixa do casamento por rota. Nunca hardcoded aqui — quem decidiu a
-    // precisão foi quem buscou o dado, não quem grava a linha.
+    // Vem de `fetchDerRoadByCode_` (casamento exato por código). Nunca hardcoded aqui —
+    // quem decidiu a precisão foi quem buscou o dado, não quem grava a linha.
     confidence_flag: road.confidence_flag,
     quality_flag: road.quality_flag,
     last_synced_at: road.synced_at
@@ -2818,6 +2992,54 @@ function upsertRoadAlias_(road) {
   else applyCreate_(sheet, headers, 'alias_id', aliasId, values);
 }
 
+/**
+ * Aposenta o trecho de um código que a camada oficial não conhece mais (issue #105): a
+ * linha de ROAD_SEGMENTS deixa de ser vigente (`is_current = false`, `valid_to` = hoje,
+ * `current_polygon_id` vazio) e todo polígono ativo da entidade vira `inactive` com
+ * `geometry_valid_to`. Nada é apagado — a série de tráfego continua apontando para o
+ * `road_segment_id`, só não há mais desenho a apresentar como oficial. Devolve `true`
+ * quando havia algo vigente para aposentar.
+ */
+function retireRoadSegment_(code) {
+  var roadSegmentId = canonicalRoadSegmentId_(code);
+  if (!roadSegmentId) return false;
+  var today = nowISO_().slice(0, 10);
+  var touched = false;
+
+  var segments = ss_().getSheetByName('ROAD_SEGMENTS');
+  if (segments) {
+    var headers = headersOf_(segments);
+    var index = headerIndex_(headers);
+    var found = findRowById_(segments, headers, index, 'road_segment_id', roadSegmentId);
+    if (found && toBoolean_(found.record.is_current) !== false && !isBlank_(found.record.current_polygon_id)) {
+      applyUpdate_(segments, headers, found.rowNumber, {
+        current_polygon_id: '',
+        valid_to: today,
+        is_current: false,
+        quality_flag: 'no_official_match_in_current_layer',
+        confidence_flag: 'none_retired_no_geometry',
+        last_synced_at: nowISO_()
+      });
+      touched = true;
+    }
+  }
+
+  var polygons = ss_().getSheetByName('POLYGONS');
+  if (polygons) {
+    var pHeaders = headersOf_(polygons);
+    var pIndex = headerIndex_(pHeaders);
+    var hadActive = dataRowsOf_(polygons).some(function (row) {
+      return pIndex.entity_id !== undefined && pIndex.status !== undefined &&
+        toText_(row[pIndex.entity_id]) === roadSegmentId && toText_(row[pIndex.status]) === 'active';
+    });
+    if (hadActive) {
+      supersedePolygonsOfEntity_(polygons, pIndex, roadSegmentId, today);
+      touched = true;
+    }
+  }
+  return touched;
+}
+
 function roadPolygonId_(road) {
   return 'POLY_ROAD_' + road.source_segment_code.toUpperCase().replace(/[^A-Z0-9]+/g, '_') + '_' + road.geometry_hash.slice(0, 12);
 }
@@ -2831,6 +3053,7 @@ function upsertRoadPolygon_(road, bufferM) {
   var today = road.synced_at.slice(0, 10);
   var metrics = polygonMetricsApprox_(road.display_geometry);
   var summary = road.trafficSummary || {};
+  var halfWidth = road.display_buffer_m === undefined ? bufferM : road.display_buffer_m;
   var properties = {
     road_segment_id: road.road_segment_id,
     source_segment_code: road.source_segment_code,
@@ -2839,25 +3062,28 @@ function upsertRoadPolygon_(road, bufferM) {
     segment_type: road.segment_type,
     jurisdiction: road.jurisdiction,
     administration: road.administration,
+    length_m: road.length_m,
     traffic_relation_dataset: 'TRAFFIC_DAILY_TEST',
     traffic_daily_rows: summary.rows || 0,
     traffic_date_min: summary.minDate || '',
     traffic_date_max: summary.maxDate || '',
     traffic_avg_daily_flow: summary.avgDailyFlow === undefined ? null : summary.avgDailyFlow,
     traffic_latest_daily_flow: summary.latestFlow === undefined ? null : summary.latestFlow,
-    display_buffer_m_each_side: bufferM,
-    native_source_crs: 'EPSG:31983'
+    display_buffer_m_each_side: halfWidth,
+    display_buffer_source: road.display_buffer_source || 'default_buffer',
+    native_source_crs: 'SIRGAS 2000 / UTM 23S (EPSG:31983), exportado em EPSG:4326'
   };
+  var der = road.der_attributes || {};
+  Object.keys(der).forEach(function (key) { properties[key] = der[key]; });
 
-  // Casamento por rota junta VÁRIOS trechos da camada num corredor só (não há como saber
-  // qual trecho exato é o do posto sem a coordenada dele) — a descrição avisa disso em vez
-  // de deixar a linha parecer o corredor exato de um único trecho.
-  var descricao = road.quality_flag === 'route_matched_by_heuristic_code'
-    ? 'Trecho rodoviário DER/DF. Corredor aproximado: junta todos os ' + road.feature_count +
-      ' trecho(s) da rota ' + (road.road_code || road.source_segment_code) +
-      ' encontrados na camada oficial (casamento por rota, não pelo trecho exato do posto de ' +
-      'contagem) — buffer de ' + bufferM + ' m por lado.'
-    : 'Trecho rodoviário DER/DF. Corredor visual derivado do eixo oficial com buffer de ' + bufferM + ' m por lado.';
+  var km = der.der_km_start !== null && der.der_km_start !== undefined && der.der_km_end !== null && der.der_km_end !== undefined
+    ? ' (km ' + String(der.der_km_start).replace('.', ',') + ' a ' + String(der.der_km_end).replace('.', ',') + ')' : '';
+  var descricao = 'Trecho rodoviário DER/DF ' + (road.road_code || road.source_segment_code) + km +
+    (road.road_name ? ': ' + road.road_name : '') + '. ' +
+    (road.display_buffer_source === 'der_faixa_de_dominio'
+      ? 'A área desenhada é a faixa de domínio oficial (' + halfWidth + ' m por lado a partir do eixo).'
+      : 'Corredor visual com buffer padrão de ' + halfWidth + ' m por lado a partir do eixo (DER não publica a faixa de domínio deste trecho).') +
+    (der.der_tmd !== null && der.der_tmd !== undefined ? ' TMD do DER: ' + der.der_tmd + ' veíc./dia.' : '');
 
   var values = {
     polygon_id: polygonId,
@@ -2894,9 +3120,9 @@ function upsertRoadPolygon_(road, bufferM) {
     geometry_type: road.display_geometry.type,
     geometry_role: 'display_corridor',
     source_geometry_type: road.source_geometry.type,
-    display_buffer_m: bufferM,
+    display_buffer_m: halfWidth,
     source_system: 'DER_DF',
-    source_layer_name: 'Eixo do Trecho Rodoviário',
+    source_layer_name: 'Rodovias 2025 (DER/DF · ArcGIS Hub)',
     source_feature_id: road.source_feature_id,
     source_crs: 'EPSG:4326',
     geometry_hash: road.geometry_hash,

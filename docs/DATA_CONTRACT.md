@@ -431,6 +431,13 @@ Chave composta: `ra_geo_id` + `pdad_year` + `indicator_code` + `segment_value` +
 > Diagnóstico não cruza `ra_geo_id` dela com o das outras abas). Cruzar as duas exigiria um de-para
 > explícito, que não existe hoje — inventá-lo por semelhança de nome seria o mesmo erro que R8.44
 > nomeia para escala: dois valores parecidos que não são a mesma coisa.
+>
+> **Estado da planilha viva (lido em 2026-09, issue #105):** `RA_PROFILES` e `POLYGONS`
+> (`administrative_regions`) já usam `RA_01`…`RA_37` — a mesma chave desta aba — e é essa a
+> convenção que `syncAdministrativeRegions_` (`Code.gs` v2.3.0) grava em `ra_geo_id`. Só
+> `LISTINGS`/`DEVELOPMENTS`/`ANCHORS` continuam em `RA2026_RA-I`. O cruzamento entre
+> `PDAD_A_DATA` e `RA_PROFILES` passa a ser possível por chave igual, mas ainda **não é feito**
+> no cliente (ver "Renda per capita" abaixo).
 
 **Cobertura por ano, confirmada no dataset real, não assumida**: `2024` publica as 35 RAs;
 `2021` publica **só o Plano Piloto** (`RA_01`) — é o lote histórico anterior à pesquisa virar
@@ -676,7 +683,7 @@ As 42 colunas, em cinco grupos:
 | `geometry_type` | texto | não | — | tipo da geometria desenhada |
 | `geometry_geojson` | texto | **sim** | — | `Polygon` ou `MultiPolygon`, `[longitude, latitude]`; **é esta que vai ao mapa** |
 | `source_geometry_type` | texto | não | — | tipo da geometria original |
-| `display_buffer_m` | número | não | — | buffer por lado usado para derivar o corredor rodoviário |
+| `display_buffer_m` | número | não | — | buffer por lado usado para derivar o corredor rodoviário: faixa de domínio do DER quando publicada (teto 100 m), senão o valor do menu (padrão 20 m); origem em `properties_json.display_buffer_source` |
 | `source_geometry_geojson` | texto | não | — | geometria ORIGINAL; ver abaixo |
 
 #### `source_geometry_geojson` é lido e nunca desenhado
@@ -1087,7 +1094,7 @@ Chave: `road_segment_id`, canônico `ROADSEG_<código do trecho normalizado>`.
 |---|---|---|---|
 | `road_segment_id` | texto | **sim** | chave |
 | `current_polygon_id` | texto | não | aponta para a linha vigente em `POLYGONS` |
-| `source_segment_code` | texto | não | código do posto de contagem em `TRAFFIC_DAILY_TEST.trecho` (DER-DF/DNIT) — **não** é `codtrechorodov` do DER, ver nota abaixo |
+| `source_segment_code` | texto | não | código do posto de contagem em `TRAFFIC_DAILY_TEST.trecho` (DER-DF/DNIT); é o `cod_distrital` da camada `Rodovias_2025`, ver nota abaixo |
 | `road_name` | texto | não | nome da rodovia |
 | `road_code` | texto | não | sigla (ex.: `DF-075`); extraída do código do posto quando `sigla` não vem da camada (sempre o caso hoje) |
 | `segment_type` | texto | não | tipo do trecho |
@@ -1105,20 +1112,29 @@ Chave: `road_segment_id`, canônico `ROADSEG_<código do trecho normalizado>`.
 | `quality_flag` | texto | não | qualidade |
 | `last_synced_at` | texto | não | última sincronização |
 
-> **Casamento por rota, não por trecho exato (2026-09).** `fetchDerRoadByCode_`
-> (`optional-apps-script/Code.gs`) tentava casar `TRAFFIC_DAILY_TEST.trecho` contra
-> `codtrechorodov` na camada `SISTEMA_VIARIO` do DER. Confirmado por consulta direta à camada
-> ao vivo: **`codtrechorodov` está vazio em todos os registros** — o casamento exato nunca
-> encontra nada, para nenhum código. `routeCodeFromPostoCode_` extrai o número da rota embutido
-> no código do posto de contagem (`001EDF0070` → `DF-007`) e busca por `nome LIKE '%DF-NNN%'`;
-> como uma rota tem muitos trechos pequenos na camada, todos os trechos encontrados são
-> juntados num corredor só — corredor da ROTA, não do posto específico (não há como saber qual
-> trecho exato é o do posto sem a coordenada dele). Essa aproximação fica declarada em
-> `quality_flag: route_matched_by_heuristic_code` / `confidence_flag:
-> medium_route_level_not_segment_level` (tanto aqui quanto na linha correspondente de
-> `POLYGONS`) — o casamento exato por `codtrechorodov`, se algum dia voltar a funcionar do lado
-> do DER, continua sendo tentado primeiro e produz `official_centerline_synced` /
-> `high_official_der_geometry`, sem precisar mudar código.
+> **Casamento exato por código do posto, na camada do DER/DF no ArcGIS Hub (v2.3.0, issue #105).**
+> `fetchDerRoadByCode_` (`optional-apps-script/Code.gs`) consulta
+> `Rodovias_2025/FeatureServer/0` (`DER_ROAD_LAYER_URL`, serviço `services7.arcgis.com/mLiYCaoVbEXk2abA`)
+> com `cod_distrital = '<código>' OR cod_distrital2 = '<código>'` — o campo `cod_distrital` carrega
+> exatamente os códigos usados em `TRAFFIC_DAILY_TEST.trecho` (`001EDF0070`, `001EDF0090`, …),
+> verificado ao vivo. Código sem feição → trecho `skipped` com aviso; **não há mais fallback por
+> rota** (`nome LIKE '%DF-NNN%'`), que produzia o corredor da rota inteira em vez do trecho do posto.
+> A camada anterior (`SISTEMA_VIARIO/MapServer/9`, campo `codtrechorodov` vazio em todos os registros)
+> deixou de ser usada. Resultado: `quality_flag: official_centerline_synced` /
+> `confidence_flag: high_official_der_geometry` (aqui e na linha de `POLYGONS`).
+>
+> `road_code` vem de `rodovia` (`DF001` → `DF-001`), `road_name` de `descricao_inicial → descricao_final`
+> e `properties_json` carrega os atributos oficiais com prefixo `der_`: `der_tmd` (tráfego médio
+> diário do DER), `der_lanes_total` (`fx_total`), `der_speed_limit_kmh`, `der_class_ctb`,
+> `der_physical_status`, `der_extension_km`, `der_km_start`/`der_km_end`, `der_description_start`/`der_description_end`,
+> `der_fd_right_m`/`der_fd_left_m` (faixa de domínio por lado, com `der_fd_group` e `der_fd_legislation`), `der_lanes_left`/`der_lanes_right`, `der_surface`, `der_jurisdiction`, `der_administration`, `der_source_layer`
+> (`Rodovias_2025`) e `der_feature_id`. O resumo de tráfego (`traffic_*`) continua sendo um
+> **snapshot** da sincronização; o valor vivo vem de `TRAFFIC_DAILY_TEST`.
+>
+> A largura do corredor em `POLYGONS.display_buffer_m` é a **faixa de domínio oficial por lado**
+> (média de `fd_direita_larg`/`fd_esquerda_largu`, 65 m na DF-001), com teto de 100 m; sem esse dado,
+> vale o buffer informado no menu (padrão 20 m). A origem fica em
+> `properties_json.display_buffer_source` (`der_faixa_de_dominio` ou `default_buffer`).
 
 ### ROAD_SEGMENT_ALIASES — ponte entre códigos
 

@@ -18,7 +18,7 @@ const read = (p) => readFileSync(new URL(p, import.meta.url), 'utf8');
 
 test('APP_VERSION é a da fusão, não a da planilha nem a do repositório antigo', () => {
   const { context } = createAppsScriptSandbox();
-  assert.equal(context.APP_VERSION, '2.2.1');
+  assert.equal(context.APP_VERSION, '2.3.0');
 });
 
 test('as quatro correções da v2.0.2 sobreviveram à fusão, na forma certa', () => {
@@ -246,28 +246,32 @@ test('canonicalRoadSegmentId_ é estável e recusa código vazio', () => {
   assert.equal(context.canonicalRoadSegmentId_('  '), '');
 });
 
-// routeCodeFromPostoCode_ — extrai o número da rota do código do posto de contagem, porque
-// `codtrechorodov` (o campo que a sincronização usava antes) está vazio em toda a camada ao
-// vivo do DER (confirmado por consulta direta em 2026-09) e nunca casa nada. Os cinco valores
-// abaixo são os códigos reais do piloto em TRAFFIC_DAILY_TEST — não são inventados para o
-// teste.
-test('routeCodeFromPostoCode_ extrai a rota dos cinco códigos reais do piloto', () => {
+// routeCodeFromPostoCode_ — hoje é só o fallback de `road_code`: o casamento com o DER é
+// exato por `cod_distrital` (issue #105). No código do posto os três PRIMEIROS dígitos são a
+// rodovia e os quatro últimos o trecho: `001EDF0070` é o km 17,0–17,9 da DF-001 (campo
+// `rodovia` = DF001 na camada "Rodovias 2025" do DER, verificado em 2026-09). A leitura
+// antiga tirava "DF-007" desse código — rota errada, e era ela que puxava a rota inteira.
+test('routeCodeFromPostoCode_ lê a rodovia dos cinco códigos reais do piloto', () => {
   const { context } = createAppsScriptSandbox();
-  assert.equal(context.routeCodeFromPostoCode_('001EDF0070'), 'DF-007');
-  assert.equal(context.routeCodeFromPostoCode_('001EDF0090'), 'DF-009');
-  assert.equal(context.routeCodeFromPostoCode_('001EDF0110'), 'DF-011');
-  // Mesma rota do anterior (011), quarto dígito diferente — dois postos na mesma rota,
-  // marcos/sub-trechos diferentes. O casamento por rota junta os dois no mesmo corredor.
-  assert.equal(context.routeCodeFromPostoCode_('001EDF0116'), 'DF-011');
-  assert.equal(context.routeCodeFromPostoCode_('001EDF0130'), 'DF-013');
+  for (const code of ['001EDF0070', '001EDF0090', '001EDF0110', '001EDF0116', '001EDF0130']) {
+    assert.equal(context.routeCodeFromPostoCode_(code), 'DF-001', code);
+  }
+  assert.equal(context.routeCodeFromPostoCode_('075EDF0010'), 'DF-075');
 });
 
-test('routeCodeFromPostoCode_ é tolerante a caixa e devolve null sem "DF" seguido de dígitos', () => {
+test('routeCodeFromPostoCode_ é tolerante a caixa e devolve null fora do padrão do posto', () => {
   const { context } = createAppsScriptSandbox();
-  assert.equal(context.routeCodeFromPostoCode_('001edf0070'), 'DF-007');
+  assert.equal(context.routeCodeFromPostoCode_('001edf0070'), 'DF-001');
   assert.equal(context.routeCodeFromPostoCode_('codigo-sem-rota'), null);
   assert.equal(context.routeCodeFromPostoCode_(''), null);
   assert.equal(context.routeCodeFromPostoCode_(null), null);
+});
+
+test('formatRoadCode_ hifena o campo `rodovia` do DER', () => {
+  const { context } = createAppsScriptSandbox();
+  assert.equal(context.formatRoadCode_('DF001'), 'DF-001');
+  assert.equal(context.formatRoadCode_('DF-075'), 'DF-075');
+  assert.equal(context.formatRoadCode_(''), '');
 });
 
 test('sanitizePlainText_ tira marcação de texto vindo de API externa', () => {
