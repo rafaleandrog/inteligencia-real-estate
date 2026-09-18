@@ -211,9 +211,11 @@ let polygonLayer = null;
  * do número para ancorar o ícone no centro da coordenada e o balão acima dele; o CSS
  * de `.marker-icon-<kind>` repete o mesmo valor. Se um mudar sem o outro, o disco fica
  * descentrado do ponto. O anúncio é menor de propósito: os agrupamentos de anúncios
- * (centroide de localidade com jitter) já se sobrepõem, e 22px ali viraria uma mancha.
+ * (centroide de localidade com jitter) já se sobrepõem, e um disco grande ali vira uma
+ * mancha. Os valores caíram de 18/22 para 13/16 na issue #116, a pedido do dono; a
+ * amostra da legenda tem tamanho próprio no CSS e não acompanha o mapa.
  */
-const MARKER_ICON_SIZE = { listing: 18, development: 22, anchor: 22 };
+const MARKER_ICON_SIZE = { listing: 13, development: 16, anchor: 16 };
 
 const LAYER_LABEL = {
   listing: 'Anúncio secundário',
@@ -453,7 +455,7 @@ function markerIconElement(kind, name, color = null) {
   svg.setAttribute('viewBox', '0 0 24 24');
   svg.setAttribute('fill', 'none');
   svg.setAttribute('stroke', 'currentColor');
-  svg.setAttribute('stroke-width', '2.25');
+  svg.setAttribute('stroke-width', '2.5'); // um pouco mais grosso que o 2 do Lucide: o glifo tem 8–10px no mapa
   svg.setAttribute('stroke-linecap', 'round');
   svg.setAttribute('stroke-linejoin', 'round');
   svg.setAttribute('aria-hidden', 'true');

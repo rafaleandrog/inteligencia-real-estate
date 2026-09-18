@@ -1392,8 +1392,9 @@ p.precision.precision-exact {
    `src/format.js`). O mesmo `.marker-icon` serve o ponto no mapa e a amostra da
    legenda, e o traço branco por cima lê sobre qualquer cor da paleta.
 
-   Os lados (18/22px) repetem `MARKER_ICON_SIZE` em `src/app.js`: é o número que o
-   Leaflet usa para centrar o disco na coordenada. `.marker` é o `<div>` que o
+   Os lados (13/16px, issue #116) repetem `MARKER_ICON_SIZE` em `src/app.js`: é o
+   número que o Leaflet usa para centrar o disco na coordenada. A amostra da legenda
+   (`.marker-icon-legend`) tem tamanho próprio, 16px, e não acompanha o mapa. `.marker` é o `<div>` que o
    `divIcon` cria; sem a classe própria ele herdaria o fundo branco e a borda cinza de
    `.leaflet-div-icon`. A lição da PR #40 (regra de classe vence atributo que o Leaflet
    escreve) deixou de morder aqui: não há mais `<path>` de marcador, só contorno. */
@@ -1402,20 +1403,20 @@ p.precision.precision-exact {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 22px;
-  height: 22px;
+  width: 16px;
+  height: 16px;
   border-radius: 50%;
   --marker-cor: var(--anchor); /* padrão da classe; o modificador ou o inline sobrepõe */
   background: var(--marker-cor);
   color: #fff;
-  box-shadow: 0 0 0 2px #fff, 0 1px 3px rgba(0, 0, 0, .35);
+  box-shadow: 0 0 0 1.5px #fff, 0 1px 2px rgba(0, 0, 0, .35);
   flex: none;
 }
-.marker-icon svg { width: 14px; height: 14px; display: block; }
-.marker-icon-listing { --marker-cor: var(--listing); width: 18px; height: 18px; }
-.marker-icon-listing svg { width: 11px; height: 11px; }
+.marker-icon svg { width: 10px; height: 10px; display: block; }
+.marker-icon-listing { --marker-cor: var(--listing); width: 13px; height: 13px; }
+.marker-icon-listing svg { width: 8px; height: 8px; }
 .marker-icon-development { --marker-cor: var(--development); }
-.marker:hover .marker-icon { transform: scale(1.18); }
+.marker:hover .marker-icon { transform: scale(1.35); }
 .marker-icon-legend,
 .marker-icon-legend.marker-icon-listing { width: 16px; height: 16px; box-shadow: 0 0 0 1px #fff; }
 .marker-icon-legend svg,
