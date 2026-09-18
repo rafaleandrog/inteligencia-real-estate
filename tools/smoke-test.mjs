@@ -175,9 +175,16 @@ await page.waitForTimeout(500);
 (await page.locator('#detail').isVisible()) ? pass('painel de detalhe abriu') : fail('detalhe não abriu');
 const title = (await page.locator('#detailTitle').textContent()).trim();
 title.length > 0 ? pass(`título: "${title.slice(0,45)}"`) : fail('título vazio');
-const prec = await page.locator('#detailBody .precision').first().textContent();
-/aproximada|verificada/i.test(prec) ? pass('aviso de precisão espacial presente') : fail('aviso de precisão ausente');
-/não o endereço exato/i.test(prec) ? pass('não apresenta coordenada aproximada como exata (R3.6)') : fail('R3.6: aviso não diz que não é endereço exato');
+// Desde a #104 a precisão espacial é uma LINHA do essencial ("Localização: Aproximada …"),
+// não uma caixa: o texto visível diz "aproximada" e a frase completa da R3.6 fica no `title`.
+const precNode = page.locator('#detailBody .precision').first();
+const prec = await precNode.textContent();
+const precTitle = (await precNode.getAttribute('title')) || '';
+/aproximada|verificada/i.test(prec) ? pass('precisão espacial presente no essencial') : fail('precisão espacial ausente');
+/não o endereço exato/i.test(precTitle) ? pass('não apresenta coordenada aproximada como exata (R3.6)') : fail('R3.6: a linha de precisão não diz que não é endereço exato');
+(await page.locator('#detailBody details').count()) === 0
+  ? pass('detalhe do registro em lista plana, sem seções recolhidas (#104)')
+  : fail('detalhe do registro ainda tem <details> recolhido');
 
 const link = page.locator('#detailBody a.detail-source').first();
 if (await link.count() > 0) {
@@ -1923,7 +1930,7 @@ const painel390 = await page.evaluate(() => {
     // essencial inteiro visível sem arrastar.
     excedente: Math.round(fim - caixa.bottom),
     linhas: essencial.querySelectorAll('dt').length,
-    recolhidas: detail.querySelectorAll('details').length,
+    complementares: detail.querySelectorAll('dl.detail-more, dl.detail-provenance').length,
     // Rótulo com underscore é chave crua vazando para o nível de destaque.
     rotulos: [...essencial.querySelectorAll('dt')].map((n) => n.textContent),
   };
@@ -1938,9 +1945,9 @@ painel390.excedente <= 0
 painel390.linhas >= 1 && painel390.linhas <= 6
   ? pass(`o essencial tem ${painel390.linhas} linhas, dentro do teto de 6`)
   : fail(`essencial com ${painel390.linhas} linhas`);
-painel390.recolhidas >= 1
-  ? pass('o resto da informação fica recolhido, não some')
-  : fail('nenhuma seção recolhida — a informação complementar sumiu');
+painel390.complementares >= 1
+  ? pass('o resto da informação segue abaixo do essencial, em lista plana (#104)')
+  : fail('nenhuma lista complementar — a informação complementar sumiu');
 painel390.rotulos.every((r) => !/_/.test(r))
   ? pass('nenhuma chave crua aparece no nível essencial')
   : fail('chave crua no essencial: ' + JSON.stringify(painel390.rotulos));

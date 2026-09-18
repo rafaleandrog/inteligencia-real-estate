@@ -481,74 +481,88 @@ function detailSection(title, rows, className) {
   return box;
 }
 
+/** Lista plana de definições com a classe dada — o que `detailSection` põe dentro do `<details>`. */
+function detailList(rows, className) {
+  if (!rows || rows.length === 0) return null;
+  const dl = document.createElement('dl');
+  dl.className = `detail-list ${className}`;
+  for (const row of rows) addRow(dl, row.label, row.value, row);
+  return dl.childElementCount > 0 ? dl : null;
+}
+
 /**
- * Monta o painel em três níveis: essencial visível, o resto recolhido.
+ * Monta o painel em três níveis: essencial visível e o resto abaixo dele.
  *
- * O essencial é o contrato desta issue e tem checagem fixa no smoke: **cabe sem rolagem
+ * O essencial é o contrato da issue #55 e tem checagem fixa no smoke: **cabe sem rolagem
  * em 390 px**. Sem essa trava o painel volta a crescer na próxima issue que precisar
  * mostrar mais um campo, que foi exatamente como ele chegou a ~30 linhas de peso visual
  * idêntico.
+ *
+ * `collapse` decide se os dois níveis seguintes ficam recolhidos num `<details>` ou em
+ * lista plana (issue #104). O registro (anúncio, empreendimento, âncora) tem meia dúzia de
+ * linhas complementares e vai plano, como o dono pediu; o contorno (RA, trecho rodoviário)
+ * carrega até doze linhas de procedência e continua recolhido, senão o painel volta ao
+ * estado de ~30 linhas que a #55 desfez.
  */
-function appendTiers(frag, { essencial, complementar, tecnico }) {
-  if (essencial && essencial.length > 0) {
-    const dl = document.createElement('dl');
-    dl.className = 'detail-list detail-essential';
-    for (const row of essencial) addRow(dl, row.label, row.value);
-    if (dl.childElementCount > 0) frag.append(dl);
-  }
+function appendTiers(frag, { essencial, complementar, tecnico }, { collapse = true } = {}) {
+  const base = detailList(essencial, 'detail-essential');
+  if (base) frag.append(base);
 
-  const more = detailSection('Mais informações', complementar, 'detail-more');
+  const more = collapse
+    ? detailSection('Mais informações', complementar, 'detail-more')
+    : detailList(complementar, 'detail-more');
   if (more) frag.append(more);
 
-  const tech = detailSection('Origem e qualidade', tecnico, 'detail-provenance');
+  const tech = collapse
+    ? detailSection('Origem e qualidade', tecnico, 'detail-provenance')
+    : detailList(tecnico, 'detail-provenance');
   if (tech) frag.append(tech);
 }
 
-function addRow(dl, label, value) {
+/**
+ * Uma linha `dt`/`dd`. `className`/`title` são opcionais e vão só no `dd`: é o que permite à
+ * linha de precisão espacial manter o gancho `.precision` que o smoke lê e carregar a frase
+ * completa da R3.6 no `title` sem virar caixa de aviso.
+ */
+function addRow(dl, label, value, { className = '', title = '' } = {}) {
   if (value === null || value === undefined || value === '' || value === '—') return;
   const dt = document.createElement('dt');
   dt.textContent = label;
   const dd = document.createElement('dd');
   dd.textContent = value;
+  if (className) dd.className = className;
+  if (title) dd.title = title;
   dl.append(dt, dd);
 }
 
 /**
- * Aviso de precisão espacial.
+ * Linha de precisão espacial do nível essencial.
  *
- * Obrigatório em todo detalhe: apresentar centroide de localidade como se fosse o
- * endereço do imóvel é desinformação, e no dataset atual os 141 anúncios são
- * exatamente isso (R3.6).
+ * Obrigatória em todo detalhe: apresentar centroide de localidade como se fosse o
+ * endereço do imóvel é desinformação, e no dataset atual os anúncios são exatamente
+ * isso (R3.6). Desde a #104 ela é uma linha da lista — "Localização: Aproximada · centro
+ * da localidade" — e não mais uma caixa de aviso: o dono pediu o painel limpo, e a regra
+ * continua cumprida porque a linha diz "aproximada" à vista e carrega a frase completa
+ * ("não o endereço exato") no `title`, junto do rótulo da precisão declarada na planilha.
  */
-function buildPrecisionNotice(record) {
+function precisionRow(record) {
   const approximate = isApproximateLocation(record);
-  const box = document.createElement('p');
-  box.className = approximate ? 'precision' : 'precision precision-exact';
-
-  const strong = document.createElement('strong');
-  strong.textContent = approximate ? 'Localização aproximada. ' : 'Localização verificada. ';
-  box.append(strong);
-
-  box.append(document.createTextNode(
-    approximate
-      ? 'O ponto no mapa representa a região, não o endereço exato do imóvel.'
-      : 'A coordenada foi verificada na fonte indicada.'
-  ));
-
   const precision = record.coordinate_precision || record.confidence_flag;
-  if (precision) {
-    const label = formatSpatialPrecision(precision);
-    if (label) {
-      box.append(document.createElement('br'));
-      const code = document.createElement('code');
-      code.textContent = label;
-      // Identificador técnico cru fica só no atributo, para suporte/depuração —
-      // nunca como texto visível (issue #21).
-      code.title = precision;
-      box.append(code);
-    }
-  }
-  return box;
+  const detalhe = precision ? formatSpatialPrecision(precision) : '';
+  const frase = approximate
+    ? 'O ponto no mapa representa a região, não o endereço exato do imóvel.'
+    : 'A coordenada foi verificada na fonte indicada.';
+  // O método só é afirmado quando a planilha o declara (`coordinate_precision`); sem ele,
+  // "Aproximada" e nada mais — `isApproximateLocation()` também vale true para precisão
+  // ausente/pendente/geocodificada, e dizer "centro da localidade" ali seria inventar
+  // método (achado P1 do Codex na #109; R3.6).
+  const metodo = approximate && record.coordinate_precision ? formatSpatialPrecision(record.coordinate_precision) : '';
+  return {
+    label: 'Localização',
+    value: approximate ? (metodo ? `Aproximada · ${metodo.charAt(0).toLowerCase()}${metodo.slice(1)}` : 'Aproximada') : 'Verificada na fonte',
+    className: approximate ? 'precision' : 'precision precision-exact',
+    title: detalhe ? `${frase} ${detalhe}.` : frase,
+  };
 }
 
 /** Link para a fonte, com esquema validado e rel de segurança (R4.5, R4.6). */
@@ -595,13 +609,12 @@ function buildRegularizationNotice(record) {
  * Card de um registro (anúncio, empreendimento, âncora), em três níveis (issue #55).
  *
  * O essencial responde à pergunta que fez a pessoa clicar no ponto: quanto custa, que
- * tamanho tem, onde fica. O resto é consulta, e consulta pode estar a um clique de
- * distância. Antes desta issue eram ~15 linhas de peso visual idêntico, com "Portal" e
- * "Observado em" ocupando o mesmo destaque que o preço.
+ * tamanho tem, onde fica; ganha peso pelo TAMANHO do valor. Os níveis seguintes vêm
+ * abaixo, em lista plana e corpo menor (issue #104) — sem cabeçalho recolhível, porque
+ * são meia dúzia de linhas e o dono quis o painel de leitura direta.
  *
- * As ressalvas — precisão espacial, procedência da regularização, registro sem
- * coordenada — continuam SEMPRE visíveis. Recolher uma ressalva é o mesmo que apagá-la:
- * quem não sabe que ela existe nunca abre a seção.
+ * As ressalvas — precisão espacial (linha "Localização"), procedência da regularização,
+ * registro sem coordenada — continuam SEMPRE visíveis, nunca escondidas atrás de um clique.
  */
 function buildDetailBody(record) {
   const frag = document.createDocumentFragment();
@@ -622,8 +635,6 @@ function buildDetailBody(record) {
     badge.textContent = stage;
     frag.append(badge);
   }
-
-  frag.append(buildPrecisionNotice(record));
 
   const num = (value) => (value === null || value === undefined ? null : formatNumber(value));
   const essencial = [];
@@ -687,7 +698,10 @@ function buildDetailBody(record) {
     push(tecnico, 'Verificado em', dateOrNull(record.observed_at));
   }
 
-  appendTiers(frag, { essencial, complementar, tecnico });
+  // A precisão espacial fecha o essencial de todo registro (R3.6), como linha, não como caixa.
+  essencial.push(precisionRow(record));
+
+  appendTiers(frag, { essencial, complementar, tecnico }, { collapse: false });
 
   const regularization = buildRegularizationNotice(record);
   if (regularization) frag.append(regularization);
