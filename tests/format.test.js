@@ -518,3 +518,19 @@ test('anchorLegendEntries carrega o ícone e separa rótulos iguais com ícones 
   assert.equal(escola.count, 3, 'mesma tripla (rótulo, cor, ícone) funde');
   assert.equal(entries.find((e) => e.label === 'Saúde').icon, 'cross');
 });
+
+test('markerIcon: casa para anúncio, prédio para empreendimento, cadeia da âncora para âncora (issue #115)', async () => {
+  const { markerIcon, anchorIcon } = await import('../src/format.js');
+  const { ANCHOR_ICONS, LISTING_ICON, DEVELOPMENT_ICON } = await import('../src/icons.js');
+  assert.equal(markerIcon({ kind: 'listing' }), LISTING_ICON);
+  assert.equal(markerIcon({ kind: 'development' }), DEVELOPMENT_ICON);
+  assert.equal(LISTING_ICON, 'house');
+  assert.equal(DEVELOPMENT_ICON, 'building-2');
+  // O anúncio não olha o tipo de imóvel: a entidade é o que distingue casa de prédio.
+  assert.equal(markerIcon({ kind: 'listing', property_type: 'apartamento' }), 'house');
+  const anchor = { kind: 'anchor', segment: 'hospital' };
+  assert.equal(markerIcon(anchor), anchorIcon(anchor));
+  assert.equal(markerIcon({ kind: 'polygon' }), null);
+  assert.equal(markerIcon(null), null);
+  for (const name of [LISTING_ICON, DEVELOPMENT_ICON]) assert.ok(ANCHOR_ICONS[name]?.length > 0, `sem traços: ${name}`);
+});

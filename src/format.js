@@ -4,7 +4,7 @@
 // texto aqui vem de uma planilha pública que qualquer editor pode alterar — tratamos
 // o dado como não confiável por princípio (R4.4, R4.6).
 
-import { ANCHOR_FALLBACK_ICON } from './icons.js';
+import { ANCHOR_FALLBACK_ICON, DEVELOPMENT_ICON, LISTING_ICON } from './icons.js';
 
 const BRL = new Intl.NumberFormat('pt-BR', {
   style: 'currency',
@@ -519,7 +519,22 @@ export function anchorIcon(record) {
 /** Nomes de ícone que as tabelas acima podem devolver — para o teste conferir contra `ANCHOR_ICONS`. */
 export const ANCHOR_ICON_NAMES = [...new Set([
   ...Object.values(ANCHOR_SEGMENT_ICONS), ...Object.values(ANCHOR_CATEGORY_ICONS), ANCHOR_FALLBACK_ICON,
+  LISTING_ICON, DEVELOPMENT_ICON,
 ])];
+
+/**
+ * Nome do ícone de QUALQUER registro plotável (issue #115): casa para o anúncio
+ * secundário, prédio para o empreendimento, e a cadeia de `anchorIcon` para a âncora.
+ * A entidade vem de `kind`, que o loader já resolve pela aba de origem — não há
+ * inferência nova aqui. Registro sem `kind` conhecido devolve `null`.
+ */
+export function markerIcon(record) {
+  if (!record) return null;
+  if (record.kind === 'listing') return LISTING_ICON;
+  if (record.kind === 'development') return DEVELOPMENT_ICON;
+  if (record.kind === 'anchor') return anchorIcon(record);
+  return null;
+}
 
 /**
  * Entradas de legenda prontas para renderizar, a partir das entradas cruas de

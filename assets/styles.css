@@ -1386,44 +1386,40 @@ p.precision.precision-exact {
 
 /* Marcadores ------------------------------------------------------------ */
 
-/* Os marcadores são <path> SVG desenhados pelo Leaflet: usam fill/stroke, não
-   background/border — que não se aplicam a SVG e deixariam todos os pontos brancos.
-   A regra CSS vence os atributos de apresentação que o Leaflet escreve inline. */
-.marker { stroke: #fff; stroke-width: 2; fill-opacity: .9; }
-.marker-listing { fill: var(--listing); }
-.marker-development { fill: var(--development); }
-/* A âncora não é mais um `path.marker-*`: desde a issue #112 ela é um disco com
-   glifo (`.anchor-icon`, abaixo), e a cor entra inline por `--anchor-cor`. A lição
-   da PR #40 continua valendo para os círculos acima: uma regra de classe com `fill`
-   sempre vence o atributo que o Leaflet escreve via `setAttribute`, e foi assim que
-   toda âncora saiu verde uma vez. */
-.marker-selected { stroke: var(--brand); stroke-width: 3; }
+/* Todo marcador é um disco com glifo (issues #112 e #115): anúncio = casa em
+   `--listing`, empreendimento = prédio em `--development`, âncora = glifo do segmento
+   na cor da família, que chega inline por `--marker-cor` (resolvida em
+   `src/format.js`). O mesmo `.marker-icon` serve o ponto no mapa e a amostra da
+   legenda, e o traço branco por cima lê sobre qualquer cor da paleta.
 
-/* Âncora como disco com glifo (issue #112). O mesmo `.anchor-icon` serve o marcador
-   no mapa e a amostra da legenda; `--anchor-cor` chega inline, resolvida em
-   `src/format.js` pela cadeia segmento → categoria → padrão, e o traço branco por
-   cima faz o glifo ler sobre qualquer cor da paleta. O lado de 22px repete
-   `ANCHOR_ICON_SIZE` em `src/app.js`: é o número que o Leaflet usa para centrar o
-   disco na coordenada. `.anchor-marker` é o `<div>` que o `divIcon` cria; sem a
-   classe própria ele herdaria o fundo branco e a borda cinza de `.leaflet-div-icon`. */
-.anchor-marker { background: none; border: 0; }
-.anchor-icon {
+   Os lados (18/22px) repetem `MARKER_ICON_SIZE` em `src/app.js`: é o número que o
+   Leaflet usa para centrar o disco na coordenada. `.marker` é o `<div>` que o
+   `divIcon` cria; sem a classe própria ele herdaria o fundo branco e a borda cinza de
+   `.leaflet-div-icon`. A lição da PR #40 (regra de classe vence atributo que o Leaflet
+   escreve) deixou de morder aqui: não há mais `<path>` de marcador, só contorno. */
+.marker { background: none; border: 0; }
+.marker-icon {
   display: inline-flex;
   align-items: center;
   justify-content: center;
   width: 22px;
   height: 22px;
   border-radius: 50%;
-  --anchor-cor: var(--anchor); /* padrão da classe; o inline do marcador sobrepõe */
-  background: var(--anchor-cor);
+  --marker-cor: var(--anchor); /* padrão da classe; o modificador ou o inline sobrepõe */
+  background: var(--marker-cor);
   color: #fff;
   box-shadow: 0 0 0 2px #fff, 0 1px 3px rgba(0, 0, 0, .35);
   flex: none;
 }
-.anchor-icon svg { width: 14px; height: 14px; display: block; }
-.anchor-marker:hover .anchor-icon { transform: scale(1.18); }
-.anchor-icon-legend { width: 16px; height: 16px; box-shadow: 0 0 0 1px #fff; }
-.anchor-icon-legend svg { width: 10px; height: 10px; }
+.marker-icon svg { width: 14px; height: 14px; display: block; }
+.marker-icon-listing { --marker-cor: var(--listing); width: 18px; height: 18px; }
+.marker-icon-listing svg { width: 11px; height: 11px; }
+.marker-icon-development { --marker-cor: var(--development); }
+.marker:hover .marker-icon { transform: scale(1.18); }
+.marker-icon-legend,
+.marker-icon-legend.marker-icon-listing { width: 16px; height: 16px; box-shadow: 0 0 0 1px #fff; }
+.marker-icon-legend svg,
+.marker-icon-legend.marker-icon-listing svg { width: 10px; height: 10px; }
 
 .leaflet-container { font: inherit; background: var(--superficie-hover); }
 

@@ -117,7 +117,7 @@ seloDemo.origem === 'demo' && seloDemo.texto.includes('demonstração') && !selo
   : fail('selo em modo demo: ' + JSON.stringify(seloDemo));
 
 console.log('\n== 4. Mapa e marcadores ==');
-const markers = await page.locator('#map path.marker').count();
+const markers = await page.locator('#map .marker').count();
 markers > 0 ? pass(`mapa renderizou ${markers} marcadores`) : fail('nenhum marcador no mapa');
 
 console.log('\n== 5. KPIs ==');
@@ -170,7 +170,7 @@ n(afterLayer) < n(visible0) ? pass(`desligar âncoras reduziu -> ${afterLayer}`)
 await page.check('input[data-layer="anchor"]'); await page.waitForTimeout(300);
 
 console.log('\n== 9-10. Detalhe de anúncio ==');
-await page.locator('#map path.marker-listing').first().click({ force: true });
+await page.locator('#map .marker-listing').first().click({ force: true });
 await page.waitForTimeout(500);
 (await page.locator('#detail').isVisible()) ? pass('painel de detalhe abriu') : fail('detalhe não abriu');
 const title = (await page.locator('#detailTitle').textContent()).trim();
@@ -196,7 +196,7 @@ if (await link.count() > 0) {
 
 console.log('\n== 11. Detalhe de empreendimento ==');
 await page.click('#closeDetail'); await page.waitForTimeout(200);
-await page.locator('#map path.marker-development').first().click({ force: true });
+await page.locator('#map .marker-development').first().click({ force: true });
 await page.waitForTimeout(400);
 (await page.locator('#detail').isVisible()) ? pass('detalhe de empreendimento abriu') : fail('detalhe de empreendimento não abriu');
 const devKind = (await page.locator('#detailBody .detail-kind').textContent()).trim();
@@ -207,7 +207,7 @@ console.log('\n== 12. XSS: dado hostil não vira markup ==');
 // `<img onerror=...>` no tooltip do Leaflet, que usa innerHTML para conteúdo string.
 // Este teste injeta um título hostil no dataset e confirma que ele continua texto.
 const xss = await page.evaluate(async () => {
-  const marker = document.querySelector('#map path.marker-listing');
+  const marker = document.querySelector('#map .marker-listing');
   if (!marker) return { erro: 'sem marcador' };
   marker.dispatchEvent(new MouseEvent('mouseover', { bubbles: true }));
   await new Promise((r) => setTimeout(r, 300));
@@ -225,7 +225,7 @@ xss.tooltipTexto ? pass(`tooltip renderiza texto: "${xss.tooltipTexto}"`) : fail
 
 console.log('\n== 12b. Seleção por (kind, id) ==');
 // IDs só são únicos dentro da própria entidade; a seleção preserva o tipo.
-await page.locator('#map path.marker-development').first().click({ force: true });
+await page.locator('#map .marker-development').first().click({ force: true });
 await page.waitForTimeout(400);
 const kindSelecionado = (await page.locator('#detailBody .detail-kind').textContent()).trim();
 kindSelecionado === 'Empreendimento'
@@ -413,8 +413,8 @@ const legenda = await anchorPage.$$eval('#anchorLegend .anchor-legend-group', (s
     titulo: sec.querySelector('.anchor-legend-title')?.textContent ?? null,
     itens: [...sec.querySelectorAll('li')].map((li) => ({
       rotulo: li.textContent.trim(),
-      cor: li.querySelector('.anchor-icon').style.getPropertyValue('--anchor-cor').trim(),
-      icone: li.querySelector('.anchor-icon').dataset.icon,
+      cor: li.querySelector('.marker-icon').style.getPropertyValue('--marker-cor').trim(),
+      icone: li.querySelector('.marker-icon').dataset.icon,
     })),
   })));
 const titulos = legenda.map((sec) => sec.titulo);
@@ -428,18 +428,17 @@ legenda.some((sec) => sec.itens.some((i) => i.rotulo === 'Food hall'))
 
 // Legenda e mapa precisam usar EXATAMENTE o mesmo conjunto de cores e de ícones
 // (issue #112). Cor ou glifo na legenda que nenhum marcador usa (ou o contrário) é a
-// legenda mentindo sobre o mapa. A âncora é um `divIcon` (`.anchor-marker`), não mais
-// um `path.marker-anchor`: quem contar `path.marker` continua vendo só anúncios e
-// empreendimentos.
-const paresMapa = [...new Set(await anchorPage.$$eval('#map .anchor-marker .anchor-icon', (ns) =>
-  ns.map((n) => `${n.dataset.icon}|${n.style.getPropertyValue('--anchor-cor').trim()}`)))].sort();
+// legenda mentindo sobre o mapa. Todo marcador é um `divIcon` (`.marker.marker-<kind>`,
+// issues #112 e #115); marcador não é mais `<path>`, só o contorno é.
+const paresMapa = [...new Set(await anchorPage.$$eval('#map .marker-anchor .marker-icon', (ns) =>
+  ns.map((n) => `${n.dataset.icon}|${n.style.getPropertyValue('--marker-cor').trim()}`)))].sort();
 const paresLegenda = [...new Set(legenda.flatMap((sec) => sec.itens.map((i) => `${i.icone}|${i.cor}`)))].sort();
 const coresMapa = [...new Set(paresMapa.map((p) => p.split('|')[1]))];
 coresMapa.length > 1 ? pass(`âncoras usam ${coresMapa.length} cores distintas no mapa`) : fail('todas as âncoras na mesma cor');
 JSON.stringify(paresMapa) === JSON.stringify(paresLegenda)
   ? pass('legenda e mapa usam o mesmo conjunto de (ícone, cor)')
   : fail(`legenda e mapa divergem\n    mapa:    ${paresMapa}\n    legenda: ${paresLegenda}`);
-const glifosMapa = await anchorPage.$$eval('#map .anchor-marker .anchor-icon svg', (ns) => ns.map((n) => n.childElementCount));
+const glifosMapa = await anchorPage.$$eval('#map .marker-anchor .marker-icon svg', (ns) => ns.map((n) => n.childElementCount));
 glifosMapa.length > 0 && glifosMapa.every((n) => n > 0)
   ? pass(`${glifosMapa.length} âncoras desenhadas como ícone, nenhuma com SVG vazio`)
   : fail('âncora sem glifo no mapa');
@@ -459,8 +458,8 @@ await anchorPage.selectOption('#anchorSegment', 'estacao_metro');
 await anchorPage.waitForTimeout(400);
 const soMetro = Number((await anchorPage.textContent('#kpiVisible')).replace(/\D/g, ''));
 soMetro > 0 && soMetro <= soInfra ? pass(`filtro de segmento reduziu ${soInfra} -> ${soMetro}`) : fail('filtro de segmento não reduziu');
-// Só âncora sobra: nenhum círculo (anúncio/empreendimento) e pelo menos um disco de âncora.
-(await anchorPage.locator('#map path.marker').count()) === 0 && (await anchorPage.locator('#map .anchor-marker').count()) > 0
+// Só âncora sobra: nenhum anúncio/empreendimento e pelo menos um disco de âncora.
+(await anchorPage.locator('#map .marker-listing, #map .marker-development').count()) === 0 && (await anchorPage.locator('#map .marker-anchor').count()) > 0
   ? pass('filtrar âncora por grupo/segmento esconde as outras camadas')
   : fail('sobrou anúncio ou empreendimento com filtro de âncora ativo');
 
@@ -489,7 +488,7 @@ Number((await anchorPage.textContent('#kpiVisible')).replace(/\D/g, '')) === tot
 // Card de âncora: os campos novos aparecem, e `brand_name` hostil continua texto (R4.4).
 await anchorPage.selectOption('#anchorSegment', 'food_hall');
 await anchorPage.waitForTimeout(400);
-await anchorPage.locator('#map .anchor-marker').first().click({ force: true });
+await anchorPage.locator('#map .marker-anchor').first().click({ force: true });
 await anchorPage.waitForTimeout(400);
 const cardAnchor = Object.fromEntries(
   await anchorPage.$$eval('#detailBody dt', (ns) => ns.map((n) => [n.textContent, n.nextElementSibling.textContent])));
@@ -569,7 +568,7 @@ await classPage.selectOption('#salesStage', 'oferta');
 await classPage.waitForTimeout(400);
 const emOferta = await contarVisiveis();
 emOferta > 0 && emOferta < totalClass ? pass(`filtro de estágio reduziu ${totalClass} -> ${emOferta}`) : fail('filtro de estágio não reduziu');
-(await classPage.$$eval('#map path.marker', (ns) => ns.every((n) => n.getAttribute('class').includes('marker-development'))))
+(await classPage.$$eval('#map .marker', (ns) => ns.length > 0 && ns.every((n) => n.classList.contains('marker-development'))))
   ? pass('filtrar por estágio esconde anúncios e âncoras') : fail('sobrou outra camada com filtro de estágio');
 await classPage.click('#clearFilters'); await classPage.waitForTimeout(400);
 
@@ -578,9 +577,10 @@ await classPage.waitForTimeout(400);
 const naoRegularizados = await contarVisiveis();
 naoRegularizados > 0 && naoRegularizados < totalClass
   ? pass(`filtro de regularização reduziu ${totalClass} -> ${naoRegularizados}`) : fail('filtro de regularização não reduziu');
-const camadasReg = await classPage.$$eval('#map path.marker', (ns) => [...new Set(ns.map((n) => n.getAttribute('class').split(' ')[1]))]);
-if ((await classPage.locator('#map .anchor-marker').count()) > 0) camadasReg.push('anchor-marker');
-camadasReg.includes('marker-listing') && camadasReg.includes('marker-development') && !camadasReg.includes('anchor-marker')
+// O Leaflet acrescenta as classes dele ao `<div>` (`leaflet-marker-icon`, ...): a camada
+// é a classe `marker-<kind>`, onde quer que ela esteja na lista.
+const camadasReg = await classPage.$$eval('#map .marker', (ns) => [...new Set(ns.map((n) => [...n.classList].find((c) => /^marker-/.test(c))))]);
+camadasReg.includes('marker-listing') && camadasReg.includes('marker-development') && !camadasReg.includes('marker-anchor')
   ? pass('regularização cobre anúncio E empreendimento, e exclui âncora')
   : fail('camadas com filtro de regularização: ' + JSON.stringify(camadasReg));
 await classPage.click('#clearFilters'); await classPage.waitForTimeout(400);
@@ -589,15 +589,15 @@ await classPage.click('#clearFilters'); await classPage.waitForTimeout(400);
 // empreendimento cuja célula veio como " Vertical " é justamente o teste do caso real.
 await classPage.selectOption('#buildingOrientation', 'vertical');
 await classPage.waitForTimeout(400);
-const devsVerticais = await classPage.$$eval('#map path.marker-development', (ns) => ns.length);
+const devsVerticais = await classPage.$$eval('#map .marker-development', (ns) => ns.length);
 devsVerticais > 0
   ? pass(`filtro vertical alcança ${devsVerticais} empreendimento(s), inclusive o de célula " Vertical "`)
   : fail('nenhum empreendimento passou no filtro vertical');
 await classPage.click('#clearFilters'); await classPage.waitForTimeout(400);
 
-// Clique por evento no <path>: clique por coordenada acerta o marcador que estiver por
-// cima, e as âncoras se sobrepõem aos empreendimentos em vários pontos.
-await classPage.evaluate(() => document.querySelector('#map path.marker-development')
+// Clique por evento no elemento: clique por coordenada acerta o marcador que estiver por
+// cima, e os discos se sobrepõem em vários pontos.
+await classPage.evaluate(() => document.querySelector('#map .marker-development')
   .dispatchEvent(new MouseEvent('click', { bubbles: true })));
 await classPage.waitForTimeout(400);
 const seloEstagio = await classPage.textContent('#detailBody .detail-stage').catch(() => null);
@@ -613,7 +613,7 @@ const ressalva = await classPage.textContent('#detailBody .field-note-inline').c
   : fail('ressalva de procedência ausente: ' + ressalva);
 
 await classPage.click('#closeDetail');
-await classPage.evaluate(() => document.querySelector('#map path.marker-listing')
+await classPage.evaluate(() => document.querySelector('#map .marker-listing')
   .dispatchEvent(new MouseEvent('click', { bubbles: true })));
 await classPage.waitForTimeout(400);
 const cardListing = Object.fromEntries(
@@ -899,7 +899,7 @@ polyCount === '6' ? pass('a contagem mostra os contornos carregados') : fail('co
 
 // Um contorno com geometria ilegível some do mapa e os outros seguem (R2.6): dois
 // registros carregados, um só caminho desenhado.
-// `#map path` casaria com todo marcador — `circleMarker` do Leaflet também é <path>.
+// `#map path` casaria com o vértice do editor e com qualquer <path> avulso;
 // A classe `.polygon-shape` isola os contornos.
 const paths = await polyPage.evaluate(() => document.querySelectorAll('#map .polygon-shape').length);
 paths === 5 ? pass('geometria ilegível não é desenhada, as boas continuam') : fail(`contornos desenhados: ${paths}`);

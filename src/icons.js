@@ -1,4 +1,4 @@
-// Ícones das âncoras no mapa e na legenda (issue #112).
+// Ícones dos marcadores no mapa e na legenda (issues #112 e #115).
 //
 // Glifos do Lucide (https://lucide.dev), versão 1.47.0, licença ISC — texto completo em
 // `assets/vendor/lucide/LICENSE`. Só os traços de que o mapa precisa vivem aqui, como
@@ -19,8 +19,24 @@
 /** Ícone genérico da âncora sem classificação reconhecida (mesmo papel do verde padrão). */
 export const ANCHOR_FALLBACK_ICON = 'map-pin';
 
+/** Ícone do anúncio secundário (aba LISTINGS) e do empreendimento (issue #115). */
+export const LISTING_ICON = 'house';
+export const DEVELOPMENT_ICON = 'building-2';
+
 /** `nome` → lista de `[tag, atributos]`, na ordem de desenho. */
 export const ANCHOR_ICONS = {
+  // Imóveis à venda (issue #115): casa para o anúncio, prédio para o empreendimento.
+  house: [
+    ['path', { d: 'M15 21v-8a1 1 0 0 0-1-1h-4a1 1 0 0 0-1 1v8' }],
+    ['path', { d: 'M3 10a2 2 0 0 1 .709-1.528l7-6a2 2 0 0 1 2.582 0l7 6A2 2 0 0 1 21 10v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z' }],
+  ],
+  'building-2': [
+    ['path', { d: 'M10 12h4' }],
+    ['path', { d: 'M10 8h4' }],
+    ['path', { d: 'M14 21v-3a2 2 0 0 0-4 0v3' }],
+    ['path', { d: 'M6 10H4a2 2 0 0 0-2 2v7a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-2' }],
+    ['path', { d: 'M6 21V5a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v16' }],
+  ],
   // Mobilidade.
   'train-front': [
     ['path', { d: 'M8 3.1V7a4 4 0 0 0 8 0V3.1' }],
