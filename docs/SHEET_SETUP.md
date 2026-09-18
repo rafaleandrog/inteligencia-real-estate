@@ -94,25 +94,42 @@ conteúdo. Reimportar o mesmo arquivo **atualiza** as linhas em vez de duplicá-
 Anel aberto, com menos de 4 posições ou com menos de 3 pontos distintos é rejeitado com erro
 legível — a geometria não entra pela metade.
 
-## 6.2 Sincronizar Regiões Administrativas (v2.2.1)
+## 6.2 Sincronizar Regiões Administrativas (v2.3.0)
 
 Menu **Imob Intelligence → Sincronizar Regiões Administrativas**. Busca o limite oficial de cada RA
 no GeoPortal/SEDUH, grava uma linha em `POLYGONS` com `layer_group = 'administrative_regions'` e
 completa `RA_PROFILES` com código, número e área oficiais. O perfil PDAD **não é sobrescrito**: a
 sincronização só preenche o que a camada oficial sabe.
 
-Uma RA cuja geometria não cabe numa célula do Sheets é pedida de novo ao GeoPortal já simplificada,
-duas vezes, antes de a RA ser descartada com aviso. Geometria nunca é truncada — truncada, deixaria
-de ser um polígono válido sem parecer inválida.
+A geometria já chega simplificada do GeoPortal (`maxAllowableOffset` de 0,0001° ≈ 10 m — todas as
+37 RAs cabem na célula de 50 mil caracteres nesse nível). Se ainda assim não couber, a RA é pedida de
+novo com 0,0002° e depois 0,0005° antes de ser descartada com aviso; a tolerância usada fica em
+`properties_json.display_simplification_tolerance_deg` e a linha recebe
+`quality_flag = 'official_boundary_simplified_for_sheet'`. Geometria nunca é truncada — truncada,
+deixaria de ser um polígono válido sem parecer inválida.
+
+Além de código, número e área oficiais (e densidade, quando a população já existe), a sincronização
+preenche em `RA_PROFILES` as **cinco faixas etárias** (`population_age_*_pct`) agregadas da própria
+aba `PDAD_A_DATA` (indicador `age_sex_distribution`, 17 categorias × sexo, ano mais recente), só
+quando as 17 categorias estão publicadas; a origem fica em `notes`. `income_per_capita_brl` nunca é
+tocada — a renda 2024 só existe em formato aberto para 7 RAs e continua sendo preenchida à mão.
+As RAs criadas depois da PDAD 2024 (RA_36, RA_37) recebem só geometria, código, número e área.
 
 Ao fim, um KMZ com todas as RAs é criado no Drive e o link fica em `APP_META`
 (`ra_geometry_kmz_url`).
 
-## 6.3 Sincronizar trechos rodoviários DER (v2.2.1)
+## 6.3 Sincronizar trechos rodoviários DER (v2.3.0)
 
-Menu **Imob Intelligence → Sincronizar trechos rodoviários DER**. Pergunta o buffer visual por lado
-(padrão 8 m) e, para cada código de trecho presente em `TRAFFIC_DAILY_TEST`, busca o **eixo** oficial
-na camada do DER/DF.
+Menu **Imob Intelligence → Sincronizar trechos rodoviários DER**. Para cada código de trecho presente
+em `TRAFFIC_DAILY_TEST` (`001EDF0070` etc.), busca o **eixo** oficial na camada `Rodovias_2025` do
+DER/DF no ArcGIS Hub, por casamento **exato** do campo `cod_distrital`. Código sem feição é pulado
+com aviso — nunca vira um corredor da rota inteira.
+
+A largura do corredor é a **faixa de domínio oficial por lado** publicada pelo DER
+(`fd_direita_larg`/`fd_esquerda_largu`, 65 m na DF-001), com teto de 100 m. O menu pergunta o buffer
+apenas como reserva (padrão 20 m) para trechos em que o DER não publica a faixa; a origem fica em
+`properties_json.display_buffer_source`. Rode **as RAs antes das rodovias**: o corredor não depende
+delas, mas a ordem deixa a aba `POLYGONS` legível.
 
 O DER publica o eixo, que é uma linha; o mapa desenha área. Então o corredor visual é derivado do
 eixo por buffer e vai para `geometry_geojson`, enquanto o eixo original fica em
