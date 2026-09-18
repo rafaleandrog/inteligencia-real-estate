@@ -51,14 +51,14 @@ import {
   formatBRL, formatBRLCompact, formatM2, formatNumber, formatPriceM2, formatDate,
   formatPropertyType, formatSpatialPrecision, formatBuildingOrientation, safeExternalUrl,
   datasetSourceLink,
-  hostnameOf, anchorColor, anchorIcon, anchorLegendEntries, formatAnchorCategory, formatAnchorGroup,
+  hostnameOf, anchorColor, markerIcon, anchorLegendEntries, formatAnchorCategory, formatAnchorGroup,
   formatAnchorSegment, formatSalesStage, formatRegularizationStatus, formatPercent,
   percentFromPoints, raAgeBands, polygonStyle, sortPolygonsForDraw, raProfileEssentials,
   raProfileUnavailability, polygonEssentials, polygonPropertyTiers, polygonEssentialKeys,
   polygonEntityType,
 } from './format.js';
 import { trafficPanelRows } from './traffic/panel.js';
-import { ANCHOR_ICONS } from './icons.js';
+import { ANCHOR_ICONS, ANCHOR_FALLBACK_ICON } from './icons.js';
 
 const CONFIG = window.APP_CONFIG || {};
 
@@ -206,14 +206,16 @@ let markerLayer = null;
 let polygonLayer = null;
 
 /** Raio do marcador por camada: anúncio é o dado principal, âncora é contexto. */
-const MARKER_RADIUS = { listing: 6, development: 7 };
-
 /**
- * Lado do disco da âncora no mapa, em px (issue #112). O Leaflet precisa do número para
- * ancorar o ícone no centro da coordenada e o balão acima dele; o CSS de `.anchor-icon`
- * repete o mesmo valor. Se um mudar sem o outro, o disco fica descentrado do ponto.
+ * Lado do disco de cada marcador no mapa, em px (issues #112, #115). O Leaflet precisa
+ * do número para ancorar o ícone no centro da coordenada e o balão acima dele; o CSS
+ * de `.marker-icon-<kind>` repete o mesmo valor. Se um mudar sem o outro, o disco fica
+ * descentrado do ponto. O anúncio é menor de propósito: os agrupamentos de anúncios
+ * (centroide de localidade com jitter) já se sobrepõem, e um disco grande ali vira uma
+ * mancha. Os valores caíram de 18/22 para 13/16 na issue #116, a pedido do dono; a
+ * amostra da legenda tem tamanho próprio no CSS e não acompanha o mapa.
  */
-const ANCHOR_ICON_SIZE = 22;
+const MARKER_ICON_SIZE = { listing: 13, development: 16, anchor: 16 };
 
 const LAYER_LABEL = {
   listing: 'Anúncio secundário',
@@ -235,15 +237,14 @@ function initMap() {
     attribution: '&copy; colaboradores do <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener noreferrer">OpenStreetMap</a>',
   }).addTo(map);
 
-  // Empilhamento explícito por pane (issue #112): contorno embaixo, âncora no meio,
-  // anúncio e empreendimento em cima. Antes bastava adicionar os polígonos ANTES dos
-  // marcadores, porque tudo era `<path>` num SVG só e o Leaflet empilha na ordem de
-  // adição. A âncora virou `L.marker` com `divIcon`, que o Leaflet põe no pane de
-  // marcadores (z-index 600) — acima do overlay (400) onde ficam os círculos —, e um
-  // disco de 22px ali cobriria o anúncio embaixo e roubaria o clique dele. Os panes
-  // ficam entre os tiles (200) e o overlay (400): contorno em 350, âncora em 380.
-  // Contorno tem preenchimento clicável, então precisa ficar ABAIXO da âncora, senão
-  // a RA que cobre o DF inteiro engoliria o clique em toda âncora.
+  // Empilhamento explícito por pane (issues #112, #115): contorno embaixo (350),
+  // âncora no meio (380), anúncio e empreendimento em cima (pane padrão de marcadores,
+  // 600). Antes bastava adicionar os polígonos ANTES dos marcadores, porque tudo era
+  // `<path>` num SVG só e o Leaflet empilha na ordem de adição; com `divIcon` cada
+  // entidade precisa dizer onde fica. A âncora é contexto e o imóvel é o dado, então
+  // um disco de âncora nunca pode cobrir um anúncio e roubar o clique dele. Contorno
+  // tem preenchimento clicável, então precisa ficar ABAIXO da âncora, senão a RA que
+  // cobre o DF inteiro engoliria o clique em toda âncora.
   map.createPane('polygons').style.zIndex = 350;
   map.createPane('anchors').style.zIndex = 380;
 
@@ -431,29 +432,30 @@ function buildPolygonSourceLink(polygon) {
 }
 
 /**
- * O disco colorido com o glifo da âncora (issue #112) — o MESMO elemento serve o
- * marcador no mapa e a linha da legenda, para os dois não terem como divergir. `name`
- * e `color` vêm de `anchorIcon`/`anchorColor` (mapa) ou de `anchorLegendEntries`
- * (legenda), que passam pela mesma cadeia segmento → categoria → padrão.
+ * O disco colorido com o glifo do marcador (issues #112, #115) — o MESMO elemento serve
+ * o ponto no mapa e a amostra da legenda, para os dois não terem como divergir. `name`
+ * vem de `markerIcon`; `color` só existe para a âncora (`anchorColor`, resolvida pela
+ * cadeia segmento → categoria → padrão) e entra inline como `--marker-cor`. Anúncio e
+ * empreendimento não passam cor: a classe `.marker-icon-<kind>` pega o token
+ * `--listing`/`--development` do CSS, que é onde a identidade dessas camadas mora.
  *
  * Montado nó a nó com `createElementNS`, nunca por `innerHTML`: os traços vêm de
  * `src/icons.js` e não da planilha, mas a regra R4.4 é sobre o mecanismo, não sobre a
- * origem do dado de hoje. A cor entra como `--anchor-cor` inline e o CSS a consome no
- * fundo do disco; o traço é branco por cima.
+ * origem do dado de hoje. O traço é branco por cima do disco.
  */
-function anchorIconElement(name, color) {
-  const nodes = ANCHOR_ICONS[name] || ANCHOR_ICONS['map-pin'];
+function markerIconElement(kind, name, color = null) {
+  const nodes = ANCHOR_ICONS[name] || ANCHOR_ICONS[ANCHOR_FALLBACK_ICON];
 
   const el = document.createElement('span');
-  el.className = 'anchor-icon';
+  el.className = `marker-icon marker-icon-${kind}`;
   el.dataset.icon = name;
-  el.style.setProperty('--anchor-cor', color);
+  if (color) el.style.setProperty('--marker-cor', color);
 
   const svg = document.createElementNS(SVG_NS, 'svg');
   svg.setAttribute('viewBox', '0 0 24 24');
   svg.setAttribute('fill', 'none');
   svg.setAttribute('stroke', 'currentColor');
-  svg.setAttribute('stroke-width', '2.25');
+  svg.setAttribute('stroke-width', '2.5'); // um pouco mais grosso que o 2 do Lucide: o glifo tem 8–10px no mapa
   svg.setAttribute('stroke-linecap', 'round');
   svg.setAttribute('stroke-linejoin', 'round');
   svg.setAttribute('aria-hidden', 'true');
@@ -467,23 +469,46 @@ function anchorIconElement(name, color) {
 }
 
 /**
- * Marcador de âncora: `L.marker` com `divIcon` em vez de `circleMarker` (issue #112).
+ * Marcador de registro: `L.marker` com `divIcon` para as três entidades (issue #115
+ * estendeu à casa e ao prédio o que a #112 fez com a âncora).
  *
  * `html` recebe o ELEMENTO — o Leaflet 1.9 faz `appendChild` nesse caso e `innerHTML`
  * quando é string (`DivIcon.createIcon`). `className` substitui o `leaflet-div-icon`
- * padrão, que traria fundo branco e borda cinza da folha do Leaflet.
+ * padrão, que traria fundo branco e borda cinza da folha do Leaflet; `marker-<kind>`
+ * é o que o smoke test e o CSS usam para achar cada camada.
+ *
+ * Só a âncora vai para o pane próprio (ver `initMap`); anúncio e empreendimento ficam
+ * no pane padrão de marcadores (600), acima dela e dos contornos.
  */
-function anchorMarker(record) {
-  const half = ANCHOR_ICON_SIZE / 2;
+function iconMarker(record) {
+  const size = MARKER_ICON_SIZE[record.kind] || 22;
+  const half = size / 2;
   const icon = L.divIcon({
-    html: anchorIconElement(anchorIcon(record), anchorColor(record)),
-    className: 'anchor-marker',
-    iconSize: [ANCHOR_ICON_SIZE, ANCHOR_ICON_SIZE],
+    html: markerIconElement(record.kind, markerIcon(record), anchorColor(record)),
+    className: `marker marker-${record.kind}`,
+    iconSize: [size, size],
     iconAnchor: [half, half],
     tooltipAnchor: [0, -half],
   });
-  // `pane: 'anchors'` (ver `initMap`): abaixo dos círculos de anúncio/empreendimento.
-  return L.marker([record.coord.lat, record.coord.lon], { icon, pane: 'anchors', keyboard: false });
+  const options = { icon, keyboard: false };
+  if (record.kind === 'anchor') options.pane = 'anchors';
+  return L.marker([record.coord.lat, record.coord.lon], options);
+}
+
+/**
+ * Amostras das linhas de "Camadas" (issue #115): o mesmo disco com glifo que o mapa
+ * desenha, no lugar da bolinha colorida. A da âncora usa o pino genérico no verde
+ * padrão, porque a linha fala da camada inteira; o segmento aparece na legenda abaixo.
+ */
+function renderLayerSamples() {
+  const icons = { listing: markerIcon({ kind: 'listing' }), development: markerIcon({ kind: 'development' }), anchor: ANCHOR_FALLBACK_ICON };
+  for (const placeholder of dom.layers.querySelectorAll('[data-marker-sample]')) {
+    const kind = placeholder.dataset.markerSample;
+    if (!icons[kind]) continue;
+    const sample = markerIconElement(kind, icons[kind]);
+    sample.classList.add('marker-icon-legend');
+    placeholder.replaceWith(sample);
+  }
 }
 
 /** Desenha os marcadores dos registros filtrados que têm coordenada. */
@@ -494,17 +519,7 @@ function renderMarkers(records) {
   for (const record of records) {
     if (!record.coord) continue; // sem coordenada o registro existe, mas não é mapeável
 
-    // Âncora vira ícone; anúncio e empreendimento continuam como círculo, com a cor
-    // vindo de `assets/styles.css` (`.marker-listing`/`.marker-development`).
-    const marker = record.kind === 'anchor'
-      ? anchorMarker(record)
-      : L.circleMarker([record.coord.lat, record.coord.lon], {
-        radius: MARKER_RADIUS[record.kind] || 6,
-        className: `marker marker-${record.kind}`,
-        color: '#fff',
-        weight: 2,
-        fillOpacity: 0.9,
-      });
+    const marker = iconMarker(record);
 
     // O tooltip recebe um ELEMENTO, nunca uma string. O Leaflet faz
     // `contentNode.innerHTML = conteudo` quando o conteúdo é string
@@ -1131,8 +1146,8 @@ function renderAnchorLegend(records) {
     // legenda mostra exatamente o que a pessoa vai procurar no mapa, cor e forma.
     for (const entry of anchorLegendEntries(entries)) {
       const li = document.createElement('li');
-      const sample = anchorIconElement(entry.icon, entry.color);
-      sample.classList.add('anchor-icon-legend');
+      const sample = markerIconElement('anchor', entry.icon, entry.color);
+      sample.classList.add('marker-icon-legend');
       li.append(sample, document.createTextNode(entry.label));
       list.append(li);
     }
@@ -3857,6 +3872,7 @@ function bindEvents() {
     render();
   });
   dom.layers.addEventListener('change', render);
+  renderLayerSamples();
   dom.clearFilters.addEventListener('click', clearFilters);
   dom.closeDetail.addEventListener('click', closeDetail);
   dom.railToggle.addEventListener('click', toggleRail);
