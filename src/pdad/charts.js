@@ -20,7 +20,25 @@ const SVG_NS = 'http://www.w3.org/2000/svg';
 // Séries consumidas por ÍNDICE, pela MESMA regra das demais telas. São as do protótipo
 // (`--s1`…`--s6`) mais o slot neutro para "Não"/resíduo — família própria do PDAD-A; a
 // categórica do Mercado (`--cat-*`) não muda para casar com outro desenho (R8.75).
-const SERIES = ['var(--pdad-serie-1)', 'var(--pdad-serie-2)', 'var(--pdad-serie-3)', 'var(--pdad-serie-4)', 'var(--pdad-serie-5)', 'var(--pdad-serie-6)', 'var(--pdad-serie-neutra)', 'var(--cat-8)'];
+const SERIES = ['var(--pdad-serie-1)', 'var(--pdad-serie-2)', 'var(--pdad-serie-3)', 'var(--pdad-serie-4)', 'var(--pdad-serie-5)', 'var(--pdad-serie-6)'];
+
+/**
+ * Cor de uma categoria de resposta, resolvida ANTES do índice: "Sim" é sempre a série
+ * principal, "Não" o neutro e "Não sabe" o apagado, em qualquer RA e em qualquer posição
+ * da ordenação — sem isso a mesma resposta trocava de cor entre territórios conforme
+ * liderava ou não (achado do Codex na #107). O resto segue por índice, como no protótipo.
+ */
+const SEMANTIC_COLORS = {
+  sim: 'var(--pdad-serie-1)',
+  'não': 'var(--pdad-serie-neutra)',
+  nao: 'var(--pdad-serie-neutra)',
+  'não sabe': 'var(--pdad-serie-desconhecido)',
+  'nao sabe': 'var(--pdad-serie-desconhecido)',
+};
+function serieColor(label, i) {
+  const chave = String(label ?? '').trim().toLowerCase();
+  return SEMANTIC_COLORS[chave] || SERIES[i % SERIES.length];
+}
 
 function svgEl(tag, attrs = {}) {
   const el = document.createElementNS(SVG_NS, tag);
@@ -144,7 +162,7 @@ function circleSegments(values, { radius, strokeWidth, gap }) {
     const comprimento = ((Number.isFinite(valor.pct) ? valor.pct : 0) / total) * circunferencia;
     const dash = Math.max(0.5, comprimento - gap);
     const circulo = svgEl('circle', {
-      r: radius, cx: 75, cy: 75, fill: 'none', stroke: SERIES[i % SERIES.length], 'stroke-width': strokeWidth,
+      r: radius, cx: 75, cy: 75, fill: 'none', stroke: serieColor(valor.label, i), 'stroke-width': strokeWidth,
       'stroke-dasharray': `${dash} ${circunferencia - dash}`, 'stroke-dashoffset': -offset,
       class: 'pdad-donut-seg',
     });
@@ -162,7 +180,7 @@ function donutLegend(values) {
     linha.className = 'pdad-legend-row';
     linha.dataset.drillCategory = valor.label;
     const ponto = document.createElement('i');
-    ponto.style.background = SERIES[i % SERIES.length];
+    ponto.style.background = serieColor(valor.label, i);
     const nome = document.createElement('span');
     nome.title = valor.label;
     nome.textContent = valor.label;
@@ -237,7 +255,7 @@ export function buildStack(values) {
   mostradas.forEach((valor, i) => {
     const fatia = document.createElement('i');
     fatia.style.width = `${((Number.isFinite(valor.pct) ? valor.pct : 0) / total) * 100}%`;
-    fatia.style.background = SERIES[i % SERIES.length];
+    fatia.style.background = serieColor(valor.label, i);
     fatia.dataset.drillCategory = valor.label;
     fatia.title = `${valor.label}: ${Number.isFinite(valor.pct) ? pctText(valor.pct) : absentText(valor.status)}`;
     barra.append(fatia);
