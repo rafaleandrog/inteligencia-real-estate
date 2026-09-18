@@ -320,6 +320,8 @@
   --pdad-serie-5: #d55181;
   --pdad-serie-6: #008300;
   --pdad-serie-neutra: #8b98a5;
+  /* "Não sabe": um degrau abaixo do neutro, como no protótipo — resposta ausente não é série. */
+  --pdad-serie-desconhecido: #5b6672;
 
   --cat-1: #3f9e68;
   --cat-2: #5b92d8;
@@ -490,8 +492,11 @@ h1, h2 { margin: 0; font-size: 1rem; }
   margin-top: var(--esp-1);
   font-family: var(--font-mono);
   font-size: var(--tipo-2xs);
-  color: var(--muted);
+  opacity: .7;
 }
+/* Só no trilho o subtítulo vira token de texto: no `admin.html` a mesma classe continua
+   sobre `--brand`, onde `--muted` daria 4,3:1 — abaixo do piso de 4,5:1 (achado do Codex). */
+.app > .topbar .brand-sub { color: var(--muted); opacity: 1; }
 
 /* A busca saiu do topo verde para a faixa de conteúdo, sobre `--bg` (#95). Os quatro
    literais brancos que ela carregava existiam só porque ela vivia sobre a marca; no novo
