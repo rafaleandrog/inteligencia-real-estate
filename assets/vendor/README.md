@@ -27,3 +27,15 @@ cp package/LICENSE assets/vendor/leaflet/
 ```
 
 Atualize a versão citada aqui no mesmo commit.
+
+## lucide/ — 1.47.0 (só a licença)
+
+Os ícones das âncoras (`src/icons.js`, issue #112) são traços SVG copiados do pacote
+npm `lucide-static@1.47.0` (`npm pack lucide-static@1.47.0`, arquivos de `icons/`).
+Não há arquivo de runtime aqui: os traços vivem como dados em `src/icons.js`, sem
+fonte de ícones nem sprite. A licença ISC exige que o aviso acompanhe a cópia, e é
+isso que `lucide/LICENSE` faz.
+
+Para trocar ou acrescentar um ícone: abra `package/icons/<nome>.svg` do pacote, copie
+os nós de dentro do `<svg>` para `ANCHOR_ICONS` em `src/icons.js` e mantenha a versão
+citada aqui e no cabeçalho do módulo em sincronia.
