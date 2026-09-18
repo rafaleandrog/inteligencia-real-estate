@@ -112,7 +112,16 @@
     </button>
   </nav>
 
+  <!-- Recolher o trilho (issue #104): o estado vive só na página (`data-rail` em <html>),
+       sem persistência — o dono decidiu que a tela sempre abre expandida. O botão mora no
+       rodapé do trilho porque em ≤1000px o trilho já é só-ícone por media query e o rodapé
+       some junto: não há o que recolher ali. -->
   <div class="rail-foot">
+    <button type="button" class="rail-toggle" id="railToggle" aria-expanded="true"
+            aria-controls="viewSwitch" aria-label="Recolher menu" title="Recolher menu">
+      <span class="rail-toggle-ic" aria-hidden="true">‹</span>
+      <span class="rail-toggle-tx">Recolher menu</span>
+    </button>
     <a class="admin-link" href="./admin.html">Administração</a>
   </div>
 </header>
@@ -297,6 +306,14 @@
 
   <div class="map-wrap">
     <div id="map" role="application" aria-label="Mapa do mercado imobiliário do Distrito Federal"></div>
+
+    <!-- Recolher o painel lateral (issue #104): fica na costura entre painel e mapa, acima dos
+         controles do Leaflet (z-index 1001) e abaixo do detalhe em mobile (1100). Estado em
+         `data-panel` no `#mapView`; o mapa é redimensionado no clique. -->
+    <button type="button" class="panel-toggle" id="panelToggle" aria-expanded="true"
+            aria-controls="filters" aria-label="Recolher painel" title="Recolher painel">
+      <span aria-hidden="true">‹</span>
+    </button>
 
     <div class="state" id="loadingState" role="status">
       <div class="spinner" aria-hidden="true"></div>
