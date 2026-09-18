@@ -218,6 +218,11 @@
   --esp-5: 24px;
   --esp-6: 32px;
   --esp-7: 48px;
+  /* Moldura das views de página inteira (Mercado e as quatro do PDAD-A). Os dois valores
+     vêm do protótipo (`main { padding: 30px 42px 46px }`) e são token porque a regra que os
+     consome cai no guard de escala de `tests/ui-tokens.test.js` — pixel cravado ali reprova. */
+  --esp-pagina-y: 30px;
+  --esp-pagina-x: 42px;
 
   /* Estados semânticos: saturada para traço e texto, tinta para bloco, borda para o contorno.
      A saturada NUNCA é superfície de texto — quem preenche é o par `-fundo`/`-borda`.
@@ -1355,17 +1360,28 @@ button.traffic-item-head:hover .traffic-item-name { color: var(--accent-text); }
    a premissa de que a barra mede exatamente `--topbar-h` — premissa que deixava de valer
    no primeiro ponto de quebra. Em ≤1000px o `body` volta a rolar sozinho e esta altura é
    desfeita, para não haver rolagem aninhada. */
-.market {
+.market,
+.pdad {
   /* A grade principal tem dois gráficos. Em tela ampla, 1.100 px deixava mais de 400 px
-     sem conteúdo de cada lado e comprimia os gráficos sem ganho de leitura. 1.440 px dá
-     largura útil às duas colunas, mas preserva uma linha de leitura confortável em desktop. */
-  max-width: 1440px;
+     sem conteúdo de cada lado e comprimia os gráficos sem ganho de leitura. 1.500 px é a
+     medida do protótipo: dá largura útil às duas colunas e preserva uma linha de leitura
+     confortável em desktop. */
+  max-width: 1500px;
+  /* `width: 100%` porque `margin: 0 auto` numa coluna flex cancela o `stretch`, e a view
+     passa a medir o próprio conteúdo: a do Ranking, que é curta, encolhia. */
+  width: 100%;
   flex: 1 1 auto;
   min-height: 0;
   margin: 0 auto;
-  padding: var(--esp-5) var(--esp-4) var(--esp-7);
+  padding: var(--esp-pagina-y) var(--esp-pagina-x) var(--esp-7);
   overflow-y: auto;
 }
+/* As quatro views do PDAD-A (issue #104) são irmãs de `.market` e nasceram sem esta regra:
+   herdavam o corte do `body` sem herdar altura nem rolagem — no desktop, tudo abaixo da
+   dobra ficava inalcançável, sem barra e sem erro. Mesma falha, mesma regra. `display`
+   não é declarado acima, então o `hidden` nativo vence; a linha existe como defesa, no
+   mesmo molde de `.layout[hidden]`. */
+.pdad[hidden] { display: none; }
 /* Kicker: nomeia o TIPO de conteúdo da tela, enquanto o `h1` nomeia a área. Em mono e
    na cor de ênfase, como no protótipo — é a peça que dá o tom de painel de instrumentos
    logo na primeira linha. */
@@ -2389,7 +2405,8 @@ button.traffic-item-head:hover .traffic-item-name { color: var(--accent-text); }
 
   /* Com o `body` rolando, uma segunda barra de rolagem dentro da tela do Mercado seria
      rolagem aninhada. */
-  .market { flex: none; min-height: 0; overflow-y: visible; }
+  .market,
+  .pdad { flex: none; min-height: 0; overflow-y: visible; }
   .market-chart-grid { grid-template-columns: 1fr; }
   .market-destaques { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 
@@ -2442,7 +2459,8 @@ button.traffic-item-head:hover .traffic-item-name { color: var(--accent-text); }
   .topline { flex-wrap: wrap; padding: var(--esp-3); }
   .source-badge { margin-left: 0; }
 
-  .market { padding: var(--esp-4) var(--esp-3) var(--esp-6); }
+  .market,
+  .pdad { padding: var(--esp-5) var(--esp-4) var(--esp-6); }
 
   /* Em 390 px os indicadores empilham. Duas colunas ali dariam ~170 px por card, e
      "R$ 12.071,92/m²" não cabe sem quebrar no meio do número.
