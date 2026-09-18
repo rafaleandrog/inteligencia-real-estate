@@ -1903,6 +1903,47 @@ mapaVisivelAposClique
 
 await trafficPage.close();
 
+console.log('\n== 12b. Recolher trilho e painel (issue #104) ==');
+await page.click('#closeDetail').catch(() => {});
+const medir = () => page.evaluate(() => ({
+  trilho: Math.round(document.querySelector('.app > .topbar').getBoundingClientRect().width),
+  painel: document.querySelector('#filters').getBoundingClientRect().width,
+  mapa: Math.round(document.querySelector('#map').getBoundingClientRect().width),
+  rail: document.documentElement.dataset.rail || '',
+  railAria: document.querySelector('#railToggle').getAttribute('aria-expanded'),
+  panelAria: document.querySelector('#panelToggle').getAttribute('aria-expanded'),
+}));
+const antesToggle = await medir();
+await page.click('#railToggle');
+await page.waitForTimeout(300);
+const trilhoRecolhido = await medir();
+trilhoRecolhido.trilho < antesToggle.trilho && trilhoRecolhido.mapa > antesToggle.mapa
+  ? pass(`o trilho recolhe (${antesToggle.trilho}px → ${trilhoRecolhido.trilho}px) e o mapa alarga`)
+  : fail('o trilho não recolheu: ' + JSON.stringify({ antesToggle, trilhoRecolhido }));
+trilhoRecolhido.rail === 'collapsed' && trilhoRecolhido.railAria === 'false'
+  ? pass('estado do trilho refletido em data-rail e aria-expanded')
+  : fail('estado do trilho incoerente: ' + JSON.stringify(trilhoRecolhido));
+await page.click('#panelToggle');
+await page.waitForTimeout(300);
+const painelRecolhido = await medir();
+painelRecolhido.painel === 0 && painelRecolhido.mapa > trilhoRecolhido.mapa && painelRecolhido.panelAria === 'false'
+  ? pass('o painel recolhe e o mapa ocupa o espaço')
+  : fail('o painel não recolheu: ' + JSON.stringify(painelRecolhido));
+// Tile desenhado até a borda direita: o `invalidateSize()` do toggle é o que garante isso.
+const mapaCobre = await page.evaluate(() => {
+  const mapa = document.querySelector('#map').getBoundingClientRect();
+  const pane = document.querySelector('#map .leaflet-map-pane');
+  return !!pane && mapa.width > 0;
+});
+mapaCobre ? pass('o mapa continua montado após os toggles') : fail('o mapa perdeu o pane após os toggles');
+await page.click('#panelToggle');
+await page.click('#railToggle');
+await page.waitForTimeout(300);
+const restaurado = await medir();
+restaurado.trilho === antesToggle.trilho && restaurado.painel === antesToggle.painel
+  ? pass('trilho e painel voltam ao tamanho original ao expandir')
+  : fail('não restaurou: ' + JSON.stringify({ antesToggle, restaurado }));
+
 console.log('\n== 13. Mobile 390px ==');
 await page.click('#closeDetail').catch(()=>{});
 await page.setViewportSize({ width: 390, height: 844 });
