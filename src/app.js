@@ -124,7 +124,7 @@ const dom = {
   pdadRankTableBody: el('pdadRankTableBody'),
 
   pdadCompareTab: el('pdadCompareTab'), pdadCompareView: el('pdadCompareView'),
-  pdadCompareCount: el('pdadCompareCount'),
+  pdadCvCount: el('pdadCvCount'),
   pdadCvRaSelect: el('pdadCvRaSelect'), pdadCvRaAdd: el('pdadCvRaAdd'), pdadCvRaTop: el('pdadCvRaTop'),
   pdadCvRas: el('pdadCvRas'),
   pdadCvIndSelect: el('pdadCvIndSelect'), pdadCvIndAdd: el('pdadCvIndAdd'), pdadCvKits: el('pdadCvKits'),
@@ -2710,22 +2710,59 @@ function pdadYearNoteText() {
     + 'Selecionar outra RA mostra ausência de publicação, não um erro de carregamento.';
 }
 
-function pdadKpiTile(label, value, nota) {
+
+/**
+ * Ícones dos tiles de KPI, os mesmos quatro do protótipo (`KPI_IC`): traço, sem
+ * preenchimento, 24×24. São `path`/`circle` criados com `createElementNS` — nunca
+ * `innerHTML` (R4.4), mesmo sendo constante: a regra não tem exceção para "é só um ícone".
+ */
+const PDAD_KPI_ICONS = {
+  pop: [['circle', { cx: 9, cy: 8, r: 3.2 }], ['path', { d: 'M3.5 19c0-3 2.5-5 5.5-5s5.5 2 5.5 5' }],
+    ['circle', { cx: 17, cy: 9, r: 2.4 }], ['path', { d: 'M16 19c.2-2.6 1.6-4.2 4.5-4.2' }]],
+  home: [['path', { d: 'M4 11 12 4l8 7' }], ['path', { d: 'M6.5 10v9h11v-9' }]],
+  avg: [['path', { d: 'M4 11 12 4l8 7' }], ['path', { d: 'M6.5 10v9h11v-9' }], ['circle', { cx: 12, cy: 14.5, r: 2.2 }]],
+  share: [['circle', { cx: 12, cy: 12, r: 8 }], ['path', { d: 'M12 4v8h8' }]],
+};
+
+function pdadKpiIcon(name) {
+  const svg = document.createElementNS(SVG_NS, 'svg');
+  svg.setAttribute('viewBox', '0 0 24 24');
+  for (const [tag, attrs] of PDAD_KPI_ICONS[name] || PDAD_KPI_ICONS.share) {
+    const node = document.createElementNS(SVG_NS, tag);
+    for (const [k, v] of Object.entries(attrs)) node.setAttribute(k, String(v));
+    svg.append(node);
+  }
+  return svg;
+}
+
+/**
+ * Tile de KPI na anatomia do protótipo — a mesma `.kpi` do painel do mapa: quadrado tingido
+ * com ícone à esquerda, valor grande, rótulo e nota à direita. A tinta é decorativa e
+ * rotativa por posição (`tinta-1..4`), nunca semântica; quem carrega significado é o valor.
+ */
+function pdadKpiTile(label, value, nota, { icon = 'share', tint = 1, small = false } = {}) {
   const box = document.createElement('article');
-  box.className = 'market-kpi';
-  const rotulo = document.createElement('h3');
-  rotulo.className = 'market-kpi-rotulo';
-  rotulo.textContent = label;
-  const valorEl = document.createElement('p');
-  valorEl.className = 'market-kpi-valor';
+  box.className = 'kpi';
+  const ic = document.createElement('span');
+  ic.className = `kpi-ic tinta-${tint}`;
+  ic.setAttribute('aria-hidden', 'true');
+  ic.append(pdadKpiIcon(icon));
+  const tx = document.createElement('span');
+  tx.className = 'kpi-tx';
+  const valorEl = document.createElement('strong');
+  valorEl.className = small ? 'kpi-value kpi-value-sm' : 'kpi-value';
   valorEl.textContent = value;
-  box.append(rotulo, valorEl);
+  const rotulo = document.createElement('span');
+  rotulo.className = 'kpi-label kpi-label-texto';
+  rotulo.textContent = label;
+  tx.append(valorEl, rotulo);
   if (nota) {
-    const notaEl = document.createElement('p');
+    const notaEl = document.createElement('small');
     notaEl.className = 'pdad-kpi-nota';
     notaEl.textContent = nota;
-    box.append(notaEl);
+    tx.append(notaEl);
   }
+  box.append(ic, tx);
   return box;
 }
 
@@ -2739,10 +2776,12 @@ function renderPdadKpis(raIds) {
   const escopo = unica ? unica.raName : `soma de ${kpis.raCount} RA(s)`;
 
   dom.pdadKpis.replaceChildren(
-    pdadKpiTile('População estimada', formatNumber(kpis.population), `${escopo} · PDAD-A ${year}`),
-    pdadKpiTile('Domicílios ocupados', formatNumber(kpis.households), `${escopo} · PDAD-A ${year}`),
-    pdadKpiTile('Moradores por domicílio', avg, 'população ÷ domicílios · calculado'),
-    pdadKpiTile('RAs analisadas', String(kpis.raCount), `PDAD-A ${year} · lote carregado`),
+    pdadKpiTile('População estimada', formatNumber(kpis.population), `${escopo} · PDAD-A ${year}`, { icon: 'pop', tint: 1 }),
+    pdadKpiTile('Domicílios ocupados', formatNumber(kpis.households), `${escopo} · PDAD-A ${year}`, { icon: 'home', tint: 2 }),
+    pdadKpiTile('Moradores por domicílio', avg, 'população ÷ domicílios · calculado', { icon: 'avg', tint: 3 }),
+    unica
+      ? pdadKpiTile('Território em foco', unica.raName, `${unica.raGeoId} · PDAD-A ${year}`, { icon: 'share', tint: 4, small: true })
+      : pdadKpiTile('RAs analisadas', String(kpis.raCount), `PDAD-A ${year} · lote carregado`, { icon: 'share', tint: 4 }),
   );
 }
 
@@ -2850,7 +2889,23 @@ function renderPdadView() {
 
   const anosDisponiveis = pdadYearsAvailable(state.pdadData);
   dom.pdadScope.textContent =
-    `PDAD-A ${anosDisponiveis[0]} — Instituto de Planejamento e Estatística do Distrito Federal (IPEDF/DIEPS/COEPS).`;
+    `Explore o território, compare Regiões Administrativas e identifique oportunidades com base na PDAD-A ${anosDisponiveis[0]} — com rastreabilidade até a figura de origem.`;
+  // Cartão "Fonte ativa" das quatro toplines: o lote vem do dado, e a instituição é o
+  // rótulo fixo da fonte — mesmo texto do protótipo. No Diagnóstico o ano é o do FILTRO
+  // (quem escolhe 2021 está lendo o lote 2021, e o cartão tem que dizer isso — achado do
+  // Codex na #108); Ranking, Comparar e Base travam no ano de cobertura completa, o mais
+  // recente, e o cartão delas mostra esse.
+  for (const card of document.querySelectorAll('[data-pdad-source]')) {
+    const noDiagnostico = dom.pdadView.contains(card);
+    const ano = noDiagnostico ? state.pdadFilters.year : anosDisponiveis[0];
+    const strong = card.querySelector('strong');
+    strong.replaceChildren(
+      document.createTextNode(`PDAD-A ${ano}`),
+      document.createElement('br'),
+      document.createTextNode('IPEDF / DIEPS / COEPS'),
+    );
+    card.hidden = false;
+  }
 
   const raIds = pdadSelectedRaIds();
   renderPdadKpis(raIds);
@@ -3086,7 +3141,12 @@ function pdadRankCard(item, raGeoId, mode) {
     article.append(unidadeEl);
   }
   const posEl = document.createElement('div'); posEl.className = 'pdad-rank-pos';
-  posEl.textContent = pos >= 0 ? `${pos + 1}ª de ${vals.length} RAs publicadas` : 'sem valor publicado para esta RA';
+  if (pos >= 0) {
+    const b = document.createElement('b'); b.textContent = `${pos + 1}ª`;
+    posEl.append(b, document.createTextNode(` de ${vals.length} RAs publicadas`));
+  } else {
+    posEl.textContent = 'sem valor publicado para esta RA';
+  }
   article.append(posEl);
   if (pctil !== null) {
     const barra = document.createElement('div'); barra.className = 'pdad-rank-bar';
@@ -3252,7 +3312,7 @@ function renderPdadCompareSummary(ras) {
   secao.className = 'pdad-card pdad-rank-table-card';
   const cabecalho = document.createElement('div'); cabecalho.className = 'pdad-card-head';
   const tituloWrap = document.createElement('div');
-  const eyebrow = document.createElement('p'); eyebrow.className = 'market-eyebrow'; eyebrow.textContent = 'Perfil estrutural';
+  const eyebrow = document.createElement('p'); eyebrow.className = 'pdad-section-label'; eyebrow.textContent = 'Perfil estrutural';
   const titulo = document.createElement('h2'); titulo.className = 'pdad-card-titulo'; titulo.textContent = 'As RAs selecionadas em números';
   tituloWrap.append(eyebrow, titulo);
   cabecalho.append(tituloWrap);
@@ -3300,7 +3360,7 @@ function renderPdadCompareBlocks(ras) {
     secao.className = 'pdad-card';
     const cabecalho = document.createElement('div'); cabecalho.className = 'pdad-card-head';
     const tituloWrap = document.createElement('div');
-    const eyebrow = document.createElement('p'); eyebrow.className = 'market-eyebrow';
+    const eyebrow = document.createElement('p'); eyebrow.className = 'pdad-section-label';
     eyebrow.textContent = meta ? PDAD_TEMAS[meta.tema] || '' : '';
     const titulo = document.createElement('h2'); titulo.className = 'pdad-card-titulo'; titulo.textContent = meta?.label || key;
     tituloWrap.append(eyebrow, titulo);
@@ -3360,7 +3420,7 @@ function renderPdadCompareBlocks(ras) {
       grade.append(linhaCat);
     }
     secao.append(grade);
-    if (resto > 0) secao.append(pdadYearNoteEl(`+${resto} categorias fora do quadro — completas no drill-down e no CSV.`));
+    if (resto > 0) secao.append(pdadFootnoteEl(`+${resto} categorias fora do quadro — completas no drill-down e no CSV.`));
     return secao;
   });
   dom.pdadCvBlocks.replaceChildren(...blocos);
@@ -3369,6 +3429,14 @@ function renderPdadCompareBlocks(ras) {
 function pdadYearNoteEl(texto) {
   const p = document.createElement('p');
   p.className = 'pdad-year-note';
+  p.textContent = texto;
+  return p;
+}
+
+/** Rodapé de cartão (`.footnote` do protótipo): nota miúda, não aviso — aviso é `pdadYearNoteEl`. */
+function pdadFootnoteEl(texto) {
+  const p = document.createElement('p');
+  p.className = 'pdad-footnote';
   p.textContent = texto;
   return p;
 }
@@ -3401,7 +3469,7 @@ function renderPdadCompareView() {
     ))
     : [pdadEmptyPara('nenhum indicador selecionado')]));
 
-  dom.pdadCompareCount.textContent =
+  dom.pdadCvCount.textContent =
     `${state.pdadCompareState.ras.length}/${PDAD_CV_MAX_RAS} RAs · ${state.pdadCompareState.inds.length}/${PDAD_CV_MAX_INDS} indicadores`;
 
   const rasEscolhidas = state.pdadCompareState.ras.map((id) => porId.get(id)).filter(Boolean);
@@ -3430,10 +3498,10 @@ function renderPdadBaseView() {
     + 'indicadores com regra de exibição declarada em src/pdad/indicators.js — o restante das linhas '
     + 'segue normalizado e disponível para o drill-down.';
   dom.pdadBaseKpis.replaceChildren(
-    pdadKpiTile('Linhas carregadas', formatNumber(state.pdadData.length), 'PDAD_A_DATA · lote atual'),
-    pdadKpiTile('Regiões administrativas', String(totalRas), 'com ao menos um registro'),
-    pdadKpiTile('Indicadores na planilha', String(totalIndicadores), `${PDAD_INDICATOR_LIST.length} exibidos na tela`),
-    pdadKpiTile('Anos disponíveis', anos.join(' · '), 'PDAD-A'),
+    pdadKpiTile('Linhas carregadas', formatNumber(state.pdadData.length), 'PDAD_A_DATA · lote atual', { icon: 'share', tint: 1 }),
+    pdadKpiTile('Regiões administrativas', String(totalRas), 'com ao menos um registro', { icon: 'pop', tint: 2 }),
+    pdadKpiTile('Indicadores na planilha', String(totalIndicadores), `${PDAD_INDICATOR_LIST.length} exibidos na tela`, { icon: 'home', tint: 3 }),
+    pdadKpiTile('Anos disponíveis', anos.join(' · '), 'PDAD-A', { icon: 'avg', tint: 4, small: true }),
   );
 }
 
@@ -3566,7 +3634,7 @@ function renderPdadDrill() {
     acc[chave] = (acc[chave] || 0) + 1;
     return acc;
   }, {});
-  dom.pdadDrillMeta.replaceChildren(pdadYearNoteEl(
+  dom.pdadDrillMeta.replaceChildren(pdadFootnoteEl(
     `Universo: ${meta?.universe || '—'} · Estrutura: ${meta?.structure || '—'} · Registros: ${linhas.length} `
     + `(${contagens.published || 0} publicados · ${contagens.partial || 0} parciais · ${contagens.suppressed || 0} suprimidos)`,
   ));
