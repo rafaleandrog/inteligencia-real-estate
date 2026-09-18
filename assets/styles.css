@@ -565,6 +565,27 @@ h1, h2 { margin: 0; font-size: 1rem; }
   border-top: 1px solid var(--line);
 }
 
+/* Botão de recolher o trilho (issue #104): no rodapé, acima do link do admin. */
+.rail-toggle {
+  display: flex;
+  align-items: center;
+  gap: var(--esp-2);
+  width: 100%;
+  margin-bottom: var(--esp-3);
+  padding: var(--esp-2) var(--esp-3);
+  border: 1px solid var(--line);
+  border-radius: var(--raio-md);
+  background: transparent;
+  color: var(--muted);
+  font: inherit;
+  font-size: var(--tipo-xs);
+  text-align: left;
+  cursor: pointer;
+}
+.rail-toggle:hover { color: var(--ink); border-color: var(--accent-text); }
+.rail-toggle:focus-visible { outline: 2px solid var(--accent-text); outline-offset: 2px; }
+.rail-toggle-ic { flex: none; font-size: var(--tipo-md); line-height: 1; }
+
 .admin-link {
   font-size: var(--tipo-xs);
   color: var(--muted);
@@ -613,6 +634,29 @@ h1, h2 { margin: 0; font-size: 1rem; }
 }
 
 .map-wrap { position: relative; flex: 1; min-width: 0; }
+
+/* Alça de recolher o painel (issue #104): na costura, centrada na vertical, acima dos
+   controles do Leaflet (`.leaflet-top` = 1000) e abaixo do detalhe em mobile (1100). */
+.panel-toggle {
+  position: absolute;
+  left: 0;
+  top: 50%;
+  z-index: 1001;
+  width: 22px;
+  height: 56px;
+  transform: translateY(-50%);
+  border: 1px solid var(--line);
+  border-left: 0;
+  border-radius: 0 var(--raio-md) var(--raio-md) 0;
+  background: var(--panel);
+  color: var(--muted);
+  font: inherit;
+  font-size: var(--tipo-md);
+  cursor: pointer;
+}
+.panel-toggle:hover { color: var(--ink); border-color: var(--accent-text); }
+.panel-toggle:focus-visible { outline: 2px solid var(--accent-text); outline-offset: 2px; }
+.layout[data-panel="collapsed"] .panel { display: none; }
 
 /* Fundo enquanto o tile não chega: um degrau do tema, e não o bege claro do Leaflet, que
    piscava contra a tela escura a cada zoom. */
@@ -2807,4 +2851,23 @@ p.precision.precision-exact {
   .pdad-donut-box { width: 110px; flex-basis: 110px; }
   .pdad-rank-grid { grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); }
   .pdad-table-wrap table { min-width: 560px; }
+}
+
+/* Trilho recolhido pelo botão (issue #104): as MESMAS declarações do bloco de ≤1000px, só
+   acima dele — abaixo, a media query já faz isso e em ≤640px os rótulos voltam na faixa
+   horizontal, então o atributo não pode valer lá. `@media` não aceita OU com atributo, daí
+   a duplicação. O rodapé fica, porque é nele que mora o botão de expandir. */
+@media (min-width: 1001px) {
+  :root[data-rail="collapsed"] { --rail-w: 74px; }
+  :root[data-rail="collapsed"] .app > .topbar { padding: var(--esp-4) var(--esp-2); gap: var(--esp-5); }
+  :root[data-rail="collapsed"] .app > .topbar .brand { justify-content: center; padding: 0; }
+  :root[data-rail="collapsed"] .brand-text,
+  :root[data-rail="collapsed"] .view-tab-tx,
+  :root[data-rail="collapsed"] .rail-toggle-tx,
+  :root[data-rail="collapsed"] .admin-link { display: none; }
+  :root[data-rail="collapsed"] .view-tab { justify-content: center; padding: var(--esp-3) var(--esp-1); }
+  :root[data-rail="collapsed"] .view-tab::before { display: none; }
+  :root[data-rail="collapsed"] .view-tab-ic { font-size: var(--tipo-md); }
+  :root[data-rail="collapsed"] .rail-foot { padding-left: 0; padding-right: 0; }
+  :root[data-rail="collapsed"] .rail-toggle { justify-content: center; margin-bottom: 0; padding: var(--esp-2) 0; }
 }

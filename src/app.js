@@ -86,6 +86,7 @@ const dom = {
   polygonMasterLayer: el('polygonMasterLayer'), countPolygon: el('countPolygon'),
   trafficSection: el('trafficSection'), trafficList: el('trafficList'),
   viewSwitch: el('viewSwitch'), marketTab: el('marketTab'),
+  railToggle: el('railToggle'), panelToggle: el('panelToggle'),
   mapView: el('mapView'), marketView: el('marketView'),
   marketScope: el('marketScope'), marketBody: el('marketBody'),
   marketPeriodChips: el('marketPeriodChips'), marketYear: el('marketYear'),
@@ -735,6 +736,38 @@ function selectRecord(key) {
 
   if (record.coord && map) map.panTo([record.coord.lat, record.coord.lon]);
   dom.closeDetail.focus();
+}
+
+/**
+ * Recolhe/expande o trilho de navegação (issue #104). O estado é `data-rail` em `<html>` e
+ * vive só nesta página — sem `localStorage`, por decisão do dono: a tela sempre abre
+ * expandida. O Leaflet só ouve `resize` da janela, e o trilho encolhendo alarga `.map-wrap`
+ * sem evento nenhum: sem o `invalidateSize()` o mapa fica com uma faixa sem tile à direita.
+ */
+function toggleRail() {
+  const recolher = document.documentElement.dataset.rail !== 'collapsed';
+  if (recolher) document.documentElement.dataset.rail = 'collapsed';
+  else delete document.documentElement.dataset.rail;
+  const rotulo = recolher ? 'Expandir menu' : 'Recolher menu';
+  dom.railToggle.setAttribute('aria-expanded', String(!recolher));
+  dom.railToggle.setAttribute('aria-label', rotulo);
+  dom.railToggle.title = rotulo;
+  dom.railToggle.querySelector('.rail-toggle-ic').textContent = recolher ? '›' : '‹';
+  dom.railToggle.querySelector('.rail-toggle-tx').textContent = rotulo;
+  if (map) map.invalidateSize();
+}
+
+/** Recolhe/expande o painel lateral do mapa (issue #104). Mesmo contrato de `toggleRail`. */
+function togglePanel() {
+  const recolher = dom.mapView.dataset.panel !== 'collapsed';
+  if (recolher) dom.mapView.dataset.panel = 'collapsed';
+  else delete dom.mapView.dataset.panel;
+  const rotulo = recolher ? 'Expandir painel' : 'Recolher painel';
+  dom.panelToggle.setAttribute('aria-expanded', String(!recolher));
+  dom.panelToggle.setAttribute('aria-label', rotulo);
+  dom.panelToggle.title = rotulo;
+  dom.panelToggle.firstElementChild.textContent = recolher ? '›' : '‹';
+  if (map) map.invalidateSize();
 }
 
 function closeDetail() {
@@ -3743,6 +3776,8 @@ function bindEvents() {
   dom.layers.addEventListener('change', render);
   dom.clearFilters.addEventListener('click', clearFilters);
   dom.closeDetail.addEventListener('click', closeDetail);
+  dom.railToggle.addEventListener('click', toggleRail);
+  dom.panelToggle.addEventListener('click', togglePanel);
   dom.retryBtn.addEventListener('click', () => { load().catch(reportFatal); });
 
   // Delegação: as pílulas são geradas a cada carga da série, e ouvir no container evita
