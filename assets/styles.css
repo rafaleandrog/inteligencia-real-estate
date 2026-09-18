@@ -593,7 +593,7 @@ h1, h2 { margin: 0; font-size: 1rem; }
   margin: 0 12px 12px;
   padding: 8px 10px;
   border: 1px solid var(--line);
-  border-left: 3px solid var(--primary);
+  border-left: 3px solid var(--accent-text);
   border-radius: var(--radius);
   color: var(--muted);
   font-size: 12px;
@@ -708,14 +708,7 @@ h1, h2 { margin: 0; font-size: 1rem; }
   margin: 0 0 6px;
 }
 
-.dataset-meta-details summary {
-  font-size: 11px;
-  text-transform: uppercase;
-  letter-spacing: .06em;
-  color: var(--muted);
-  cursor: pointer;
-  margin-bottom: 8px;
-}
+.dataset-meta-details summary { cursor: pointer; margin-bottom: 8px; }
 
 .dataset-meta-details[open] summary { margin-bottom: 8px; }
 
@@ -779,18 +772,25 @@ h1, h2 { margin: 0; font-size: 1rem; }
 /* Micro-rótulo de seção, no molde do protótipo: mono, caixa-alta, entrelinha aberta.
    A entrelinha não é enfeite — em caixa-alta miúda ela é o que separa as hastes e
    impede que a palavra vire um borrão. */
-.field-group h2 {
+.field-group h2,
+.layers-group-label,
+.anchor-legend-title,
+.dataset-meta-details summary {
   font-family: var(--font-mono);
   font-size: var(--tipo-2xs);
+  font-weight: 500;
   text-transform: uppercase;
   letter-spacing: var(--track-label);
   color: var(--muted);
-  margin-bottom: var(--esp-2);
+  margin: 0 0 var(--esp-2);
 }
 
 .field {
   display: block;
-  font-size: 12px;
+  font-family: var(--font-mono);
+  font-size: var(--tipo-2xs);
+  text-transform: uppercase;
+  letter-spacing: var(--track-label);
   color: var(--muted);
   margin: 10px 0 4px;
 }
@@ -957,9 +957,11 @@ select:focus, input[type="number"]:focus {
   display: flex;
   align-items: center;
   gap: 8px;
-  font-size: 13px;
+  font-size: var(--tipo-base);
+  color: var(--texto-sec);
   cursor: pointer;
 }
+.layers label:hover { color: var(--ink); }
 
 .dot { width: 10px; height: 10px; border-radius: 50%; flex: none; }
 .dot-listing { background: var(--listing); }
@@ -991,13 +993,7 @@ select:focus, input[type="number"]:focus {
 }
 
 /* Agrupamento "Imóveis à venda" × "Pontos comerciais de referência" (issue #22). */
-.layers-group-label {
-  font-size: 11px;
-  text-transform: uppercase;
-  letter-spacing: .06em;
-  color: var(--muted);
-  margin: 0 0 6px;
-}
+.layers-group-label { margin-bottom: 6px; }
 .layers-group-label-anchor,
 .layers-group-label-polygon { margin-top: 14px; }
 
@@ -1012,13 +1008,7 @@ select:focus, input[type="number"]:focus {
 .anchor-legend[hidden] { display: none; }
 .anchor-legend-group + .anchor-legend-group { margin-top: 10px; }
 
-.anchor-legend-title {
-  font-size: 11px;
-  text-transform: uppercase;
-  letter-spacing: .06em;
-  color: var(--muted);
-  margin: 0 0 5px;
-}
+.anchor-legend-title { margin-bottom: 5px; }
 
 .anchor-categories {
   list-style: none;
@@ -1182,11 +1172,12 @@ button.traffic-item-head:hover .traffic-item-name { color: var(--accent-text); }
 }
 .detail[hidden] { display: none; }
 .detail h2 {
-  font-size: var(--tipo-lg);
+  font-size: 17px;
   font-weight: 800;
   letter-spacing: var(--track-tight);
   padding-right: var(--esp-6);
   line-height: 1.25;
+  color: var(--texto-forte);
 }
 
 /* Quadrado contornado de 34px, como no protótipo. A borda vira a cor de erro no hover:
@@ -1246,7 +1237,8 @@ button.traffic-item-head:hover .traffic-item-name { color: var(--accent-text); }
   font-size: 13px;
 }
 .detail dt { color: var(--muted); }
-.detail dd { margin: 0; text-align: right; font-variant-numeric: tabular-nums; }
+.detail dd { margin: 0; text-align: right; font-variant-numeric: tabular-nums; color: var(--ink); }
+.detail-more dd, .detail-provenance dd { font-family: var(--font-mono); font-size: var(--tipo-xs); }
 
 /* Painel de detalhe em três níveis (issue #55).
 
@@ -1261,7 +1253,13 @@ button.traffic-item-head:hover .traffic-item-name { color: var(--accent-text); }
 .detail-essential dt { padding-top: 3px; font-size: 12px; }
 .detail-essential dd { font-size: 16px; line-height: 1.25; font-weight: 600; }
 
+/* Níveis complementar e técnico: no registro são listas planas abaixo do essencial, com
+   régua e corpo menor; no contorno continuam dentro de `<details>` (issue #104). */
 .detail-more, .detail-provenance { margin: 0 0 10px; }
+dl.detail-more, dl.detail-provenance {
+  padding-top: var(--esp-3);
+  border-top: 1px solid var(--borda-sutil);
+}
 .detail-more > summary, .detail-provenance > summary {
   cursor: pointer;
   padding: 6px 0;
@@ -1306,7 +1304,7 @@ button.traffic-item-head:hover .traffic-item-name { color: var(--accent-text); }
    Passar a consumir a família custa um ajuste imperceptível de matiz e devolve um
    vocabulário só de "atenção/tudo certo" para a aplicação inteira; de quebra, o terceiro
    e último `@media (prefers-color-scheme: dark)` de componente saiu com eles (#95). */
-.precision {
+p.precision {
   margin: 0 0 var(--esp-4);
   padding: var(--esp-3);
   border-radius: var(--raio-md);
@@ -1316,10 +1314,19 @@ button.traffic-item-head:hover .traffic-item-name { color: var(--accent-text); }
   line-height: 1.45;
   color: var(--alerta);
 }
-.precision.precision-exact {
+p.precision.precision-exact {
   border-left-color: var(--anchor);
   background: var(--sucesso-fundo);
   color: var(--tone-good);
+}
+/* A precisão do registro é uma LINHA do essencial (issue #104), não a caixa acima: corpo
+   menor e cor de nota, para não competir com o preço; a frase completa da R3.6 vive no
+   `title`. A caixa continua existindo só para o aviso "sem coordenada". */
+.detail-essential dd.precision {
+  font-size: var(--tipo-sm);
+  font-weight: 400;
+  color: var(--texto-sec);
+  cursor: help;
 }
 
 .precision code {
