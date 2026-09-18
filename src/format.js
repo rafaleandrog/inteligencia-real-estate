@@ -4,6 +4,8 @@
 // texto aqui vem de uma planilha pública que qualquer editor pode alterar — tratamos
 // o dado como não confiável por princípio (R4.4, R4.6).
 
+import { ANCHOR_FALLBACK_ICON } from './icons.js';
+
 const BRL = new Intl.NumberFormat('pt-BR', {
   style: 'currency',
   currency: 'BRL',
@@ -444,11 +446,87 @@ export function anchorLegendColor({ segment, category }) {
 }
 
 /**
+ * Ícone por SEGMENTO (issue #112). Os nomes são chaves de `ANCHOR_ICONS` em
+ * `src/icons.js`; a cadeia de resolução é a MESMA de `anchorColor` — segmento →
+ * categoria → pino genérico —, porque ícone e cor descrevem o mesmo registro e
+ * precisam cair juntos quando o segmento é desconhecido.
+ *
+ * A cor continua sendo a família (saúde = vermelho); o ícone é o que distingue os
+ * irmãos dentro dela num relance (hospital = cruz, clínica = estetoscópio).
+ */
+const ANCHOR_SEGMENT_ICONS = {
+  // Mobilidade.
+  estacao_metro: 'train-front',
+  estacao_trem: 'tram-front',
+  aeroporto: 'plane',
+  terminal_rodoviario: 'bus',
+  ponto_onibus: 'bus-front',
+  // Educação e cultura.
+  escola: 'school',
+  universidade: 'landmark',
+  livraria: 'book-open',
+  // Saúde.
+  hospital: 'cross',
+  clinica: 'stethoscope',
+  laboratorio: 'flask-conical',
+  // Abastecimento.
+  supermercado: 'shopping-cart',
+  atacado: 'warehouse',
+  posto_combustivel: 'fuel',
+  // Varejo.
+  department_store: 'store',
+  vestuario: 'shirt',
+  moveis: 'armchair',
+  artigos_esportivos: 'volleyball',
+  loja_pet: 'paw-print',
+  // Construção e reforma.
+  material_construcao: 'brick-wall',
+  // Lazer, alimentação e hospedagem.
+  cinema: 'clapperboard',
+  academia: 'dumbbell',
+  restaurantes: 'utensils',
+  hotelaria: 'bed',
+};
+
+/** Ícone por CATEGORIA — vocabulário anterior, fallback do segmento (como nas cores). */
+const ANCHOR_CATEGORY_ICONS = {
+  escola: 'school',
+  mobilidade: 'train-front',
+  parque_equipamento_publico: 'trees',
+  saude: 'cross',
+  shopping_center: 'shopping-bag',
+  supermercado_atacarejo: 'shopping-cart',
+  universidade: 'landmark',
+};
+
+/**
+ * Nome do ícone de uma âncora: `segment` → `category` → `ANCHOR_FALLBACK_ICON`.
+ * Registro que não é âncora devolve `null` — ele continua como círculo.
+ *
+ * Todo nome devolvido existe em `ANCHOR_ICONS`: o teste de `format` percorre
+ * `ANCHOR_ICON_NAMES` e cobra isso, para um nome digitado errado não virar um
+ * marcador vazio no mapa sem ninguém perceber.
+ */
+export function anchorIcon(record) {
+  if (!record || record.kind !== 'anchor') return null;
+  const segment = String(record.segment || '').trim().toLowerCase();
+  if (ANCHOR_SEGMENT_ICONS[segment]) return ANCHOR_SEGMENT_ICONS[segment];
+  const category = String(record.category || '').trim().toLowerCase();
+  if (ANCHOR_CATEGORY_ICONS[category]) return ANCHOR_CATEGORY_ICONS[category];
+  return ANCHOR_FALLBACK_ICON;
+}
+
+/** Nomes de ícone que as tabelas acima podem devolver — para o teste conferir contra `ANCHOR_ICONS`. */
+export const ANCHOR_ICON_NAMES = [...new Set([
+  ...Object.values(ANCHOR_SEGMENT_ICONS), ...Object.values(ANCHOR_CATEGORY_ICONS), ANCHOR_FALLBACK_ICON,
+])];
+
+/**
  * Entradas de legenda prontas para renderizar, a partir das entradas cruas de
  * `anchorLegendGroups` (`src/filters.js`).
  *
- * Resolve rótulo e cor pela cadeia do marcador e **funde** as entradas que caem no
- * mesmo par (rótulo, cor): `{segment:'escola', category:'escola'}` e
+ * Resolve rótulo, cor e ícone pela cadeia do marcador e **funde** as entradas que caem
+ * na mesma tripla (rótulo, cor, ícone): `{segment:'escola', category:'escola'}` e
  * `{segment:'escola', category:''}` são a mesma linha da legenda e o mesmo ponto no
  * mapa. O que NÃO se funde é o mesmo rótulo com cores diferentes — aí são de fato
  * dois tons distintos no mapa, e esconder um deixaria um marcador sem legenda.
@@ -463,8 +541,9 @@ export function anchorLegendEntries(entries) {
       || formatAnchorCategory(entry.category)
       || 'Sem classificação';
     const color = anchorLegendColor(entry);
-    const key = `${label}\u0000${color}`;
-    if (!merged.has(key)) merged.set(key, { label, color, count: 0 });
+    const icon = anchorIcon({ kind: 'anchor', segment: entry.segment, category: entry.category });
+    const key = `${label}\u0000${color}\u0000${icon}`;
+    if (!merged.has(key)) merged.set(key, { label, color, icon, count: 0 });
     merged.get(key).count += entry.count || 0;
   }
 

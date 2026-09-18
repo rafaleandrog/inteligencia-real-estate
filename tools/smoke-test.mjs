@@ -412,7 +412,9 @@ const legenda = await anchorPage.$$eval('#anchorLegend .anchor-legend-group', (s
   secs.map((sec) => ({
     titulo: sec.querySelector('.anchor-legend-title')?.textContent ?? null,
     itens: [...sec.querySelectorAll('li')].map((li) => ({
-      rotulo: li.textContent.trim(), cor: li.querySelector('.dot').style.background,
+      rotulo: li.textContent.trim(),
+      cor: li.querySelector('.anchor-icon').style.getPropertyValue('--anchor-cor').trim(),
+      icone: li.querySelector('.anchor-icon').dataset.icon,
     })),
   })));
 const titulos = legenda.map((sec) => sec.titulo);
@@ -424,15 +426,23 @@ legenda.some((sec) => sec.itens.some((i) => i.rotulo === 'Food hall'))
   ? pass('segmento fora do vocabulário vira rótulo legível, não slug cru')
   : fail('segmento desconhecido não apareceu humanizado na legenda');
 
-// Legenda e mapa precisam usar EXATAMENTE o mesmo conjunto de cores. Cor na legenda
-// que nenhum marcador usa (ou o contrário) é a legenda mentindo sobre o mapa.
-const paraHex = (rgb) => '#' + rgb.match(/\d+/g).map((v) => Number(v).toString(16).padStart(2, '0')).join('');
-const coresMapa = [...new Set(await anchorPage.$$eval('#map path.marker-anchor', (ns) => ns.map((n) => n.getAttribute('fill'))))].sort();
-const coresLegenda = [...new Set(legenda.flatMap((sec) => sec.itens.map((i) => paraHex(i.cor))))].sort();
+// Legenda e mapa precisam usar EXATAMENTE o mesmo conjunto de cores e de ícones
+// (issue #112). Cor ou glifo na legenda que nenhum marcador usa (ou o contrário) é a
+// legenda mentindo sobre o mapa. A âncora é um `divIcon` (`.anchor-marker`), não mais
+// um `path.marker-anchor`: quem contar `path.marker` continua vendo só anúncios e
+// empreendimentos.
+const paresMapa = [...new Set(await anchorPage.$$eval('#map .anchor-marker .anchor-icon', (ns) =>
+  ns.map((n) => `${n.dataset.icon}|${n.style.getPropertyValue('--anchor-cor').trim()}`)))].sort();
+const paresLegenda = [...new Set(legenda.flatMap((sec) => sec.itens.map((i) => `${i.icone}|${i.cor}`)))].sort();
+const coresMapa = [...new Set(paresMapa.map((p) => p.split('|')[1]))];
 coresMapa.length > 1 ? pass(`âncoras usam ${coresMapa.length} cores distintas no mapa`) : fail('todas as âncoras na mesma cor');
-JSON.stringify(coresMapa) === JSON.stringify(coresLegenda)
-  ? pass('legenda e mapa usam o mesmo conjunto de cores')
-  : fail(`legenda e mapa divergem\n    mapa:    ${coresMapa}\n    legenda: ${coresLegenda}`);
+JSON.stringify(paresMapa) === JSON.stringify(paresLegenda)
+  ? pass('legenda e mapa usam o mesmo conjunto de (ícone, cor)')
+  : fail(`legenda e mapa divergem\n    mapa:    ${paresMapa}\n    legenda: ${paresLegenda}`);
+const glifosMapa = await anchorPage.$$eval('#map .anchor-marker .anchor-icon svg', (ns) => ns.map((n) => n.childElementCount));
+glifosMapa.length > 0 && glifosMapa.every((n) => n > 0)
+  ? pass(`${glifosMapa.length} âncoras desenhadas como ícone, nenhuma com SVG vazio`)
+  : fail('âncora sem glifo no mapa');
 
 const totalAnchor = Number((await anchorPage.textContent('#kpiVisible')).replace(/\D/g, ''));
 await anchorPage.selectOption('#anchorGroup', 'infraestrutura');
@@ -449,7 +459,8 @@ await anchorPage.selectOption('#anchorSegment', 'estacao_metro');
 await anchorPage.waitForTimeout(400);
 const soMetro = Number((await anchorPage.textContent('#kpiVisible')).replace(/\D/g, ''));
 soMetro > 0 && soMetro <= soInfra ? pass(`filtro de segmento reduziu ${soInfra} -> ${soMetro}`) : fail('filtro de segmento não reduziu');
-(await anchorPage.$$eval('#map path.marker', (ns) => ns.every((n) => n.getAttribute('class').includes('marker-anchor'))))
+// Só âncora sobra: nenhum círculo (anúncio/empreendimento) e pelo menos um disco de âncora.
+(await anchorPage.locator('#map path.marker').count()) === 0 && (await anchorPage.locator('#map .anchor-marker').count()) > 0
   ? pass('filtrar âncora por grupo/segmento esconde as outras camadas')
   : fail('sobrou anúncio ou empreendimento com filtro de âncora ativo');
 
@@ -478,7 +489,7 @@ Number((await anchorPage.textContent('#kpiVisible')).replace(/\D/g, '')) === tot
 // Card de âncora: os campos novos aparecem, e `brand_name` hostil continua texto (R4.4).
 await anchorPage.selectOption('#anchorSegment', 'food_hall');
 await anchorPage.waitForTimeout(400);
-await anchorPage.locator('#map path.marker-anchor').first().click({ force: true });
+await anchorPage.locator('#map .anchor-marker').first().click({ force: true });
 await anchorPage.waitForTimeout(400);
 const cardAnchor = Object.fromEntries(
   await anchorPage.$$eval('#detailBody dt', (ns) => ns.map((n) => [n.textContent, n.nextElementSibling.textContent])));
@@ -568,7 +579,8 @@ const naoRegularizados = await contarVisiveis();
 naoRegularizados > 0 && naoRegularizados < totalClass
   ? pass(`filtro de regularização reduziu ${totalClass} -> ${naoRegularizados}`) : fail('filtro de regularização não reduziu');
 const camadasReg = await classPage.$$eval('#map path.marker', (ns) => [...new Set(ns.map((n) => n.getAttribute('class').split(' ')[1]))]);
-camadasReg.includes('marker-listing') && camadasReg.includes('marker-development') && !camadasReg.includes('marker-anchor')
+if ((await classPage.locator('#map .anchor-marker').count()) > 0) camadasReg.push('anchor-marker');
+camadasReg.includes('marker-listing') && camadasReg.includes('marker-development') && !camadasReg.includes('anchor-marker')
   ? pass('regularização cobre anúncio E empreendimento, e exclui âncora')
   : fail('camadas com filtro de regularização: ' + JSON.stringify(camadasReg));
 await classPage.click('#clearFilters'); await classPage.waitForTimeout(400);
@@ -904,7 +916,17 @@ polyXss === 0 ? pass('nome hostil de contorno não virou markup') : fail('markup
 // agora vem do dado (issue #52), então "o primeiro" deixou de ser o contorno do KML e
 // passou a ser a RA. Depender da ordem do documento era frágil antes e ficou errado
 // agora — a cor identifica o registro que este bloco quer, sem depender de empilhamento.
-await polyPage.click('#map .polygon-shape[fill="#aa3344"]');
+//
+// O clique vai no canto inferior direito do triângulo, não no centro da caixa: o centro
+// cai em cima da hipotenusa, onde uma âncora está desenhada — e desde a issue #112 a
+// âncora é um disco de 22px no pane de marcadores, acima do contorno, que interceptaria
+// o clique (com o círculo de 4px de antes isso passava por sorte).
+const clicarContornoKml = async (page) => {
+  const alvo = page.locator('#map .polygon-shape[fill="#aa3344"]');
+  const caixa = await alvo.boundingBox();
+  await alvo.click({ position: { x: caixa.width * 0.85, y: caixa.height * 0.85 } });
+};
+await clicarContornoKml(polyPage);
 await polyPage.waitForTimeout(400);
 const polyDetail = await polyPage.textContent('#detail');
 /4321/.test(polyDetail || '')
@@ -938,7 +960,7 @@ const raDetail = (await polyPage.textContent('#detail')) || '';
 
 // Contorno que NÃO é RA continua caindo no properties_json — é a única informação que
 // ele tem, e sem perfil canônico não há duplicação possível.
-await polyPage.click('#map .polygon-shape[fill="#aa3344"]');
+await clicarContornoKml(polyPage);
 await polyPage.waitForTimeout(400);
 const kmlDetail = (await polyPage.textContent('#detail')) || '';
 /4321/.test(kmlDetail)

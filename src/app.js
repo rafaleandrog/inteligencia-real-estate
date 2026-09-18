@@ -51,13 +51,14 @@ import {
   formatBRL, formatBRLCompact, formatM2, formatNumber, formatPriceM2, formatDate,
   formatPropertyType, formatSpatialPrecision, formatBuildingOrientation, safeExternalUrl,
   datasetSourceLink,
-  hostnameOf, anchorColor, anchorLegendEntries, formatAnchorCategory, formatAnchorGroup,
+  hostnameOf, anchorColor, anchorIcon, anchorLegendEntries, formatAnchorCategory, formatAnchorGroup,
   formatAnchorSegment, formatSalesStage, formatRegularizationStatus, formatPercent,
   percentFromPoints, raAgeBands, polygonStyle, sortPolygonsForDraw, raProfileEssentials,
   raProfileUnavailability, polygonEssentials, polygonPropertyTiers, polygonEssentialKeys,
   polygonEntityType,
 } from './format.js';
 import { trafficPanelRows } from './traffic/panel.js';
+import { ANCHOR_ICONS } from './icons.js';
 
 const CONFIG = window.APP_CONFIG || {};
 
@@ -205,7 +206,14 @@ let markerLayer = null;
 let polygonLayer = null;
 
 /** Raio do marcador por camada: anúncio é o dado principal, âncora é contexto. */
-const MARKER_RADIUS = { listing: 6, development: 7, anchor: 4 };
+const MARKER_RADIUS = { listing: 6, development: 7 };
+
+/**
+ * Lado do disco da âncora no mapa, em px (issue #112). O Leaflet precisa do número para
+ * ancorar o ícone no centro da coordenada e o balão acima dele; o CSS de `.anchor-icon`
+ * repete o mesmo valor. Se um mudar sem o outro, o disco fica descentrado do ponto.
+ */
+const ANCHOR_ICON_SIZE = 22;
 
 const LAYER_LABEL = {
   listing: 'Anúncio secundário',
@@ -227,9 +235,18 @@ function initMap() {
     attribution: '&copy; colaboradores do <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener noreferrer">OpenStreetMap</a>',
   }).addTo(map);
 
-  // Duas camadas separadas, e os polígonos entram ANTES: o Leaflet empilha na ordem
-  // de adição, então um contorno criado depois cobriria os marcadores e roubaria o
-  // clique deles.
+  // Empilhamento explícito por pane (issue #112): contorno embaixo, âncora no meio,
+  // anúncio e empreendimento em cima. Antes bastava adicionar os polígonos ANTES dos
+  // marcadores, porque tudo era `<path>` num SVG só e o Leaflet empilha na ordem de
+  // adição. A âncora virou `L.marker` com `divIcon`, que o Leaflet põe no pane de
+  // marcadores (z-index 600) — acima do overlay (400) onde ficam os círculos —, e um
+  // disco de 22px ali cobriria o anúncio embaixo e roubaria o clique dele. Os panes
+  // ficam entre os tiles (200) e o overlay (400): contorno em 350, âncora em 380.
+  // Contorno tem preenchimento clicável, então precisa ficar ABAIXO da âncora, senão
+  // a RA que cobre o DF inteiro engoliria o clique em toda âncora.
+  map.createPane('polygons').style.zIndex = 350;
+  map.createPane('anchors').style.zIndex = 380;
+
   polygonLayer = L.layerGroup().addTo(map);
   markerLayer = L.layerGroup().addTo(map);
 }
@@ -277,6 +294,7 @@ function renderPolygons() {
     let shape = null;
     try {
       shape = L.geoJSON(geometry, {
+        pane: 'polygons', // ver `initMap`: abaixo das âncoras e dos marcadores
         // `className` serve só para achar o contorno no DOM (teste e depuração): a cor
         // continua vindo daqui, por `color`/`fillColor`. Nenhuma regra de CSS pode
         // pintar `.polygon-shape` — regra de classe vence o atributo que o Leaflet
@@ -412,6 +430,62 @@ function buildPolygonSourceLink(polygon) {
   return p;
 }
 
+/**
+ * O disco colorido com o glifo da âncora (issue #112) — o MESMO elemento serve o
+ * marcador no mapa e a linha da legenda, para os dois não terem como divergir. `name`
+ * e `color` vêm de `anchorIcon`/`anchorColor` (mapa) ou de `anchorLegendEntries`
+ * (legenda), que passam pela mesma cadeia segmento → categoria → padrão.
+ *
+ * Montado nó a nó com `createElementNS`, nunca por `innerHTML`: os traços vêm de
+ * `src/icons.js` e não da planilha, mas a regra R4.4 é sobre o mecanismo, não sobre a
+ * origem do dado de hoje. A cor entra como `--anchor-cor` inline e o CSS a consome no
+ * fundo do disco; o traço é branco por cima.
+ */
+function anchorIconElement(name, color) {
+  const nodes = ANCHOR_ICONS[name] || ANCHOR_ICONS['map-pin'];
+
+  const el = document.createElement('span');
+  el.className = 'anchor-icon';
+  el.dataset.icon = name;
+  el.style.setProperty('--anchor-cor', color);
+
+  const svg = document.createElementNS(SVG_NS, 'svg');
+  svg.setAttribute('viewBox', '0 0 24 24');
+  svg.setAttribute('fill', 'none');
+  svg.setAttribute('stroke', 'currentColor');
+  svg.setAttribute('stroke-width', '2.25');
+  svg.setAttribute('stroke-linecap', 'round');
+  svg.setAttribute('stroke-linejoin', 'round');
+  svg.setAttribute('aria-hidden', 'true');
+  for (const [tag, attrs] of nodes) {
+    const node = document.createElementNS(SVG_NS, tag);
+    for (const [key, value] of Object.entries(attrs)) node.setAttribute(key, value);
+    svg.append(node);
+  }
+  el.append(svg);
+  return el;
+}
+
+/**
+ * Marcador de âncora: `L.marker` com `divIcon` em vez de `circleMarker` (issue #112).
+ *
+ * `html` recebe o ELEMENTO — o Leaflet 1.9 faz `appendChild` nesse caso e `innerHTML`
+ * quando é string (`DivIcon.createIcon`). `className` substitui o `leaflet-div-icon`
+ * padrão, que traria fundo branco e borda cinza da folha do Leaflet.
+ */
+function anchorMarker(record) {
+  const half = ANCHOR_ICON_SIZE / 2;
+  const icon = L.divIcon({
+    html: anchorIconElement(anchorIcon(record), anchorColor(record)),
+    className: 'anchor-marker',
+    iconSize: [ANCHOR_ICON_SIZE, ANCHOR_ICON_SIZE],
+    iconAnchor: [half, half],
+    tooltipAnchor: [0, -half],
+  });
+  // `pane: 'anchors'` (ver `initMap`): abaixo dos círculos de anúncio/empreendimento.
+  return L.marker([record.coord.lat, record.coord.lon], { icon, pane: 'anchors', keyboard: false });
+}
+
 /** Desenha os marcadores dos registros filtrados que têm coordenada. */
 function renderMarkers(records) {
   markerLayer.clearLayers();
@@ -420,19 +494,17 @@ function renderMarkers(records) {
   for (const record of records) {
     if (!record.coord) continue; // sem coordenada o registro existe, mas não é mapeável
 
-    const fillColor = anchorColor(record);
-    const marker = L.circleMarker([record.coord.lat, record.coord.lon], {
-      radius: MARKER_RADIUS[record.kind] || 6,
-      className: `marker marker-${record.kind}`,
-      color: '#fff',
-      weight: 2,
-      fillOpacity: 0.9,
-      // listing/development continuam pegando a cor de `assets/styles.css`
-      // (`.marker-listing`/`.marker-development`); âncora sempre recebe `fillColor`
-      // explícito (segmento → categoria → verde padrão) — ver a nota de
-      // `ANCHOR_FALLBACK_COLOR` em src/format.js.
-      ...(fillColor ? { fillColor } : {}),
-    });
+    // Âncora vira ícone; anúncio e empreendimento continuam como círculo, com a cor
+    // vindo de `assets/styles.css` (`.marker-listing`/`.marker-development`).
+    const marker = record.kind === 'anchor'
+      ? anchorMarker(record)
+      : L.circleMarker([record.coord.lat, record.coord.lon], {
+        radius: MARKER_RADIUS[record.kind] || 6,
+        className: `marker marker-${record.kind}`,
+        color: '#fff',
+        weight: 2,
+        fillOpacity: 0.9,
+      });
 
     // O tooltip recebe um ELEMENTO, nunca uma string. O Leaflet faz
     // `contentNode.innerHTML = conteudo` quando o conteúdo é string
@@ -1055,12 +1127,13 @@ function renderAnchorLegend(records) {
     const list = document.createElement('ul');
     list.className = 'anchor-categories';
 
+    // A amostra é o mesmo disco com glifo que o mapa desenha (issue #112): a linha da
+    // legenda mostra exatamente o que a pessoa vai procurar no mapa, cor e forma.
     for (const entry of anchorLegendEntries(entries)) {
       const li = document.createElement('li');
-      const dot = document.createElement('span');
-      dot.className = 'dot';
-      dot.style.background = entry.color;
-      li.append(dot, document.createTextNode(entry.label));
+      const sample = anchorIconElement(entry.icon, entry.color);
+      sample.classList.add('anchor-icon-legend');
+      li.append(sample, document.createTextNode(entry.label));
       list.append(li);
     }
 

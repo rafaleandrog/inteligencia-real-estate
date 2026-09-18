@@ -454,3 +454,67 @@ test('o href passa pelo saneador de URL, como qualquer link externo', () => {
   const { href } = datasetSourceLink('gviz', CONFIG);
   assert.equal(safeExternalUrl(href), href);
 });
+
+// --- Ícones das âncoras (issue #112) -----------------------------------------
+
+test('anchorIcon segue a mesma cadeia de anchorColor: segmento → categoria → pino genérico', async () => {
+  const { anchorIcon, ANCHOR_ICON_NAMES } = await import('../src/format.js');
+  const { ANCHOR_ICONS, ANCHOR_FALLBACK_ICON } = await import('../src/icons.js');
+  const anchor = (extra) => ({ kind: 'anchor', ...extra });
+
+  // Segmento conhecido vence a categoria.
+  assert.equal(anchorIcon(anchor({ segment: 'hospital', category: 'escola' })), 'cross');
+  assert.equal(anchorIcon(anchor({ segment: 'escola' })), 'school');
+  assert.equal(anchorIcon(anchor({ segment: 'universidade' })), 'landmark');
+  assert.equal(anchorIcon(anchor({ segment: 'supermercado' })), 'shopping-cart');
+  assert.equal(anchorIcon(anchor({ segment: 'estacao_metro' })), 'train-front');
+  assert.equal(anchorIcon(anchor({ segment: ' Hospital ' })), 'cross', 'normaliza caixa e espaço como a cor');
+
+  // Segmento fora do vocabulário cai na categoria — junto com a cor, não sozinho.
+  assert.equal(anchorIcon(anchor({ segment: 'food_hall', category: 'saude' })), 'cross');
+  assert.equal(anchorIcon(anchor({ category: 'shopping_center' })), 'shopping-bag');
+  assert.equal(anchorIcon(anchor({ category: 'parque_equipamento_publico' })), 'trees');
+
+  // Nada reconhecido: pino genérico, nunca `undefined` (que viraria um disco vazio).
+  assert.equal(anchorIcon(anchor({})), ANCHOR_FALLBACK_ICON);
+  assert.equal(anchorIcon(anchor({ segment: 'food_hall', category: 'algo_novo' })), ANCHOR_FALLBACK_ICON);
+  assert.ok(ANCHOR_ICONS[ANCHOR_FALLBACK_ICON], 'o pino genérico existe no dicionário');
+
+  // Registro que não é âncora continua círculo.
+  assert.equal(anchorIcon({ kind: 'listing', segment: 'hospital' }), null);
+  assert.equal(anchorIcon(null), null);
+
+  // Todo nome que as tabelas podem devolver existe no dicionário de traços: um nome
+  // digitado errado em `format.js` não pode virar marcador vazio no mapa.
+  for (const name of ANCHOR_ICON_NAMES) {
+    assert.ok(Array.isArray(ANCHOR_ICONS[name]) && ANCHOR_ICONS[name].length > 0, `ícone sem traços: ${name}`);
+  }
+});
+
+test('ANCHOR_ICONS: cada nó é uma tupla [tag, atributos] com tags SVG conhecidas', async () => {
+  const { ANCHOR_ICONS } = await import('../src/icons.js');
+  const TAGS = new Set(['path', 'circle', 'rect', 'line', 'polyline', 'polygon']);
+  for (const [name, nodes] of Object.entries(ANCHOR_ICONS)) {
+    for (const node of nodes) {
+      assert.ok(Array.isArray(node) && node.length === 2, `${name}: nó fora do formato [tag, attrs]`);
+      const [tag, attrs] = node;
+      assert.ok(TAGS.has(tag), `${name}: tag SVG desconhecida "${tag}"`);
+      assert.ok(attrs && typeof attrs === 'object' && Object.keys(attrs).length > 0, `${name}: nó sem atributos`);
+      // Sem eventos nem markup: os traços são dados, e `createElementNS` os escreve
+      // como atributos — mas um `onload` aqui seria executado do mesmo jeito.
+      for (const key of Object.keys(attrs)) assert.doesNotMatch(key, /^on/i, `${name}: atributo de evento "${key}"`);
+    }
+  }
+});
+
+test('anchorLegendEntries carrega o ícone e separa rótulos iguais com ícones diferentes', () => {
+  const entries = anchorLegendEntries([
+    { segment: 'escola', category: 'escola', count: 2 },
+    { segment: 'escola', category: '', count: 1 },
+    { segment: '', category: 'saude', count: 3 },
+  ]);
+  const escola = entries.find((e) => e.label === 'Escola');
+  assert.equal(escola.icon, 'school');
+  assert.equal(escola.count, 3, 'mesma tripla (rótulo, cor, ícone) funde');
+  assert.equal(entries.find((e) => e.label === 'Saúde').icon, 'cross');
+});
