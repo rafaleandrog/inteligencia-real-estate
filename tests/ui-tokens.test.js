@@ -11,9 +11,9 @@
 // O escopo é deliberadamente estreito e fechado, sem lista de exceção:
 //
 //   - no CSS, só as regras da superfície redesenhada (`.market*`, `.chart-*`, `.serie-*`).
-//     Fora dela existem literais legítimos e antigos — `.view-tab` vive SOBRE `--brand` e
-//     usa `#fff`, o Leaflet quer cor resolvida — e uma varredura global viraria uma lista
-//     de perdão que envelhece calada.
+//     Fora dela existem literais legítimos e antigos — o `.topbar` do admin vive SOBRE
+//     `--brand` e usa `#fff`, o Leaflet quer cor resolvida — e uma varredura global viraria
+//     uma lista de perdão que envelhece calada.
 //   - no JS, só `src/ivv/`, e ali a proibição é TOTAL. `src/format.js` mapeia categoria do
 //     mapa para cor porque o Leaflet exige valor resolvido em JS; os módulos do IVV não
 //     pintam nada, então não têm por que conhecer cor nenhuma. Proibição sem exceção não

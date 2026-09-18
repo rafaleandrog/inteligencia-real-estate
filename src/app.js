@@ -3167,7 +3167,9 @@ function renderPdadRankingView() {
 
 const PDAD_CV_MAX_RAS = 6;
 const PDAD_CV_MAX_INDS = 4;
-const PDAD_CV_SERIES = ['var(--cat-1)', 'var(--cat-2)', 'var(--cat-3)', 'var(--cat-4)', 'var(--cat-5)', 'var(--cat-6)'];
+// Séries do protótipo (`--s1`…`--s6`), família própria do PDAD-A — a categórica do Mercado
+// (`--cat-*`) foi validada por script e não muda para casar com outro desenho (R8.75).
+const PDAD_CV_SERIES = ['var(--pdad-serie-1)', 'var(--pdad-serie-2)', 'var(--pdad-serie-3)', 'var(--pdad-serie-4)', 'var(--pdad-serie-5)', 'var(--pdad-serie-6)'];
 
 function pdadCvColorFor(raGeoId) {
   const cores = state.pdadCompareState.colors;

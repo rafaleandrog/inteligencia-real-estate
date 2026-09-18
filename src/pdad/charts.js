@@ -17,8 +17,10 @@ import { formatPercent, percentFromPoints } from '../format.js';
 
 const SVG_NS = 'http://www.w3.org/2000/svg';
 
-/** Paleta categórica do site, pela MESMA regra das demais telas: consumida por índice. */
-const SERIES = ['var(--cat-1)', 'var(--cat-2)', 'var(--cat-3)', 'var(--cat-4)', 'var(--cat-5)', 'var(--cat-6)', 'var(--cat-7)', 'var(--cat-8)'];
+// Séries consumidas por ÍNDICE, pela MESMA regra das demais telas. São as do protótipo
+// (`--s1`…`--s6`) mais o slot neutro para "Não"/resíduo — família própria do PDAD-A; a
+// categórica do Mercado (`--cat-*`) não muda para casar com outro desenho (R8.75).
+const SERIES = ['var(--pdad-serie-1)', 'var(--pdad-serie-2)', 'var(--pdad-serie-3)', 'var(--pdad-serie-4)', 'var(--pdad-serie-5)', 'var(--pdad-serie-6)', 'var(--pdad-serie-neutra)', 'var(--cat-8)'];
 
 function svgEl(tag, attrs = {}) {
   const el = document.createElementNS(SVG_NS, tag);
@@ -121,7 +123,7 @@ export function buildColumns(values) {
     const hit = svgEl('rect', {
       x: mg.l + band * i + band * 0.06, y: mg.t, width: band * 0.88, height: ih, fill: 'transparent',
     });
-    const barra = svgEl('rect', { x, y, width: bw, height: h, rx: 3, fill: 'var(--cat-2)' });
+    const barra = svgEl('rect', { x, y, width: bw, height: h, rx: 3, fill: 'var(--pdad-serie-1)' });
     const valorTxt = svgEl('text', { class: 'pdad-col-val', x: x + bw / 2, y: y - 8, 'text-anchor': 'middle' });
     valorTxt.textContent = Number.isFinite(valor.pct) ? pctText(valor.pct) : absentText(valor.status);
     const catTxt = svgEl('text', { class: 'pdad-col-cat', x: x + bw / 2, y: H - 6, 'text-anchor': 'middle' });
@@ -281,7 +283,7 @@ export function buildOrdline(values, order) {
     const g = svgEl('g');
     g.dataset.drillCategory = valor.label;
     const hit = svgEl('rect', { x: cx(i) - band * 0.44, y: mg.t, width: band * 0.88, height: ih, fill: 'transparent' });
-    const barra = svgEl('rect', { x, y: yTopo, width: bw, height: h, rx: 3, fill: 'var(--cat-2)' });
+    const barra = svgEl('rect', { x, y: yTopo, width: bw, height: h, rx: 3, fill: 'var(--pdad-serie-1)' });
     const valorTxt = svgEl('text', { class: 'pdad-ord-val', x: cx(i), y: yTopo - 6, 'text-anchor': 'middle' });
     valorTxt.textContent = pctText(valor.pct);
     const catTxt = svgEl('text', { class: 'pdad-ord-cat', x: cx(i), y: H - 8, 'text-anchor': 'middle' });
@@ -291,12 +293,12 @@ export function buildOrdline(values, order) {
     caminho.push(`${i ? 'L' : 'M'}${cx(i)},${y(valor.acumulado)}`);
   });
   svg.append(svgEl('path', {
-    d: caminho.join(' '), fill: 'none', stroke: 'var(--cat-5)', 'stroke-width': 2,
+    d: caminho.join(' '), fill: 'none', stroke: 'var(--pdad-serie-2)', 'stroke-width': 2,
     'stroke-linejoin': 'round', 'stroke-linecap': 'round', 'pointer-events': 'none',
   }));
   dados.forEach((valor, i) => {
     svg.append(svgEl('circle', {
-      cx: cx(i), cy: y(valor.acumulado), r: 4, fill: 'var(--cat-5)', 'pointer-events': 'none',
+      cx: cx(i), cy: y(valor.acumulado), r: 4, fill: 'var(--pdad-serie-2)', 'pointer-events': 'none',
     }));
   });
 
