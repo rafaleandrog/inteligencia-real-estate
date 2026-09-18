@@ -102,11 +102,11 @@
   /* Tema escuro por padrão e marca azul (issue #100) — ver o histórico da decisão
      anterior mais abaixo. Régua de quatro degraus herdada do que era só o modo escuro
      da #95 (fundo #0a0e0c → painel #121815 → hover #1a211c → elevada #1e2620). */
-  --bg: #0a0e0c;
-  --panel: #121815;
-  --ink: #e9ede9;
-  --muted: #8fa196;
-  --line: #2a352e;
+  --bg: #0b0f15;
+  --panel: #131924;
+  --ink: #eef2f6;
+  --muted: #7f8c99;
+  --line: #242e3a;
   /* `--brand` continua sendo o preenchimento SÓLIDO (trilho, botão primário) e
      `--brand2` o tom mais claro de hover/destaque — mesmos dois papéis de sempre, só
      a cor mudou de verde para azul. `--brand` é um azul-marinho ESCURO, não o azul
@@ -116,8 +116,28 @@
      protótipo vira `--brand2`, com o mesmo papel de acento que já tinha. */
   --brand: #0f2847;
   --brand2: #3987e5;
-  /* Cor de texto/ícone sobre --bg/--panel (nunca de preenchimento sólido). */
-  --accent-text: var(--brand2);
+  /* Um degrau mais claro da série principal: ponta do gradiente da barra de ranking e
+     destaque do título (`.hl` do protótipo). */
+  --brand2-soft: #6da7ec;
+  /* Cor de texto/ícone sobre --bg/--panel (nunca de preenchimento sólido). O protótipo
+     separa o acento de TEXTO (`--accent`, #5598e7) da cor de SÉRIE (`--s1`, #3987e5): o
+     primeiro é um passo mais claro para passar em contraste sobre o painel escuro. Por
+     isso deixou de ser apelido de `--brand2` (issue #104). */
+  --accent-text: #5598e7;
+  /* Acento em lavagem: fundo de estado ligado (`.on`, foco de campo) e contorno de hover
+     de cartão. Rgba de propósito — é o acento com alfa, não uma quinta cor. */
+  --accent-soft: rgba(85, 152, 231, .13);
+  --accent-line: rgba(85, 152, 231, .45);
+  /* Fundo do trilho de navegação: um degrau ABAIXO do fundo da página, como no protótipo
+     (`aside { background: #0a0e14 }`). Token próprio, e não `--brand`, porque `--brand`
+     continua sendo o preenchimento sólido do botão primário, do spinner e do cabeçalho do
+     `admin.html` — pintar tudo isso de quase-preto seria o efeito colateral. */
+  --trilho-fundo: #0a0e14;
+  /* Fundo de campo (`select`, `input`) e trilho vazio das barras de indicador. */
+  --campo-fundo: #0e141c;
+  --trilho-barra: #1b2431;
+  /* Lavagem de hover de linha de tabela: a série principal com alfa, como no protótipo. */
+  --linha-hover: rgba(57, 135, 229, .05);
 
   --listing: #3478b9;
   --primary: #e27a2c;
@@ -162,21 +182,24 @@
      feature, que é exatamente o que a R5.2 proíbe. */
 
   /* Ênfase do texto. `--texto-base` e `--texto-sec` são os de sempre com o nome do papel. */
-  --texto-forte: #f4f7f4;
+  --texto-forte: #eef2f6;
   --texto-base: var(--ink);
-  --texto-sec: var(--muted);
-  --texto-fraco: #7b8a80;
+  /* Deixou de ser apelido de `--muted`: o protótipo tem `--text-2` (#aab6c2) para o corpo
+     secundário e `--muted` (#7f8c99) para o micro-rótulo, e a diferença é o que separa
+     "legenda" de "rodapé" na mesma coluna. */
+  --texto-sec: #aab6c2;
+  --texto-fraco: #6f7c89;
 
   /* Ênfase da borda. `--borda-base` é `--line`. */
-  --borda-sutil: #1c2420;
+  --borda-sutil: #1e2732;
   --borda-base: var(--line);
-  --borda-forte: #3d4a42;
+  --borda-forte: #2b3644;
 
   /* Camadas de superfície sobre o fundo da página. */
   --superficie-sutil: var(--bg);
   --superficie-base: var(--panel);
-  --superficie-hover: #1a211c;
-  --superficie-elevada: #1e2620;
+  --superficie-hover: #182029;
+  --superficie-elevada: #1e2732;
 
   /* Forma. `--radius` (10px) continua valendo para o que já o usa. */
   --raio-xs: 4px;
@@ -276,14 +299,29 @@
      carrega significado no tile é o valor e o rótulo. Deriva da categórica para não
      abrir uma quinta família de cor, mas é consumida por posição (`.tinta-2`), e não
      por nome, pelo mesmo motivo que a série é consumida por índice (R8.71). */
-  --tinta-1: var(--cat-1);
-  --tinta-2: var(--cat-2);
-  --tinta-3: var(--cat-3);
-  --tinta-4: var(--cat-5);
-  --tinta-1-fundo: #16301f;
-  --tinta-2-fundo: #152538;
-  --tinta-3-fundo: #33270c;
-  --tinta-4-fundo: #0d2c30;
+  --tinta-1: #6da7ec;
+  --tinta-2: #2fbe8f;
+  --tinta-3: #d9a441;
+  --tinta-4: #e07ba1;
+  --tinta-1-fundo: rgba(57, 135, 229, .16);
+  --tinta-2-fundo: rgba(25, 158, 112, .16);
+  --tinta-3-fundo: rgba(201, 133, 0, .16);
+  --tinta-4-fundo: rgba(213, 81, 129, .16);
+
+  /* Séries dos gráficos do PDAD-A (rosca, pizza, empilhado, comparação entre RAs), na
+     ordem do protótipo (`--s1`…`--s6`). Família SEPARADA de `--cat-*`: a categórica do
+     Mercado foi validada por script (R8.75) e não se mexe nela para casar com outro
+     desenho; o PDAD-A consome por índice, igual, e cada RA selecionada em Comparar
+     mantém a mesma cor enquanto estiver na seleção. */
+  --pdad-serie-1: #3987e5;
+  --pdad-serie-2: #d95926;
+  --pdad-serie-3: #199e70;
+  --pdad-serie-4: #c98500;
+  --pdad-serie-5: #d55181;
+  --pdad-serie-6: #008300;
+  --pdad-serie-neutra: #8b98a5;
+  /* "Não sabe": um degrau abaixo do neutro, como no protótipo — resposta ausente não é série. */
+  --pdad-serie-desconhecido: #5b6672;
 
   --cat-1: #3f9e68;
   --cat-2: #5b92d8;
@@ -405,7 +443,13 @@ h1, h2 { margin: 0; font-size: 1rem; }
   color: #fff;
 }
 
-/* O trilho propriamente dito: só dentro da casca de duas colunas. */
+/* O trilho propriamente dito: só dentro da casca de duas colunas.
+
+   Desde a #104 ele NÃO é mais a marca sólida: é um painel um degrau abaixo do fundo, com
+   régua à direita, como o `aside` do protótipo. O `.topbar` acima continua azul-marinho
+   com texto branco porque o `admin.html` ainda o usa como barra — só este seletor, que o
+   admin não tem, troca a pintura. Tudo que vive aqui volta a usar token de texto
+   (`--ink`/`--muted`), porque agora o fundo é o mesmo escuro do resto da tela. */
 .app > .topbar {
   flex-direction: column;
   align-items: stretch;
@@ -413,12 +457,16 @@ h1, h2 { margin: 0; font-size: 1rem; }
   gap: var(--esp-6);
   padding: var(--esp-5) var(--esp-3);
   overflow-y: auto;
+  background: var(--trilho-fundo);
+  color: var(--ink);
+  border-right: 1px solid var(--line);
 }
 
 .brand { display: flex; align-items: center; gap: var(--esp-3); padding: 0 var(--esp-2); }
-/* O monograma é um quadrado branco com a marca em verde: o contraste mais alto possível
-   contra o trilho, e a única peça da tela que existe só para ser reconhecida de relance.
-   `aria-hidden` porque o nome completo está no `<strong>` logo ao lado.
+/* O monograma é um quadrado na cor de série com o texto em branco, como o `.mark` do
+   protótipo — a única peça do trilho com preenchimento saturado, e a única que existe só
+   para ser reconhecida de relance. `aria-hidden` porque o nome completo está no
+   `<strong>` logo ao lado.
 
    São as letras de "Imob", e não as iniciais "ii" de "Imob Intelligence": duas hastes
    idênticas e apertadas viram um símbolo de pausa, que é o que o protótipo evita ao usar
@@ -431,8 +479,8 @@ h1, h2 { margin: 0; font-size: 1rem; }
   display: grid;
   place-items: center;
   border-radius: var(--raio-md);
-  background: #fff;
-  color: var(--brand);
+  background: var(--brand2);
+  color: #fff;
   font-size: var(--tipo-md);
   font-weight: 800;
   letter-spacing: -.04em;
@@ -446,6 +494,9 @@ h1, h2 { margin: 0; font-size: 1rem; }
   font-size: var(--tipo-2xs);
   opacity: .7;
 }
+/* Só no trilho o subtítulo vira token de texto: no `admin.html` a mesma classe continua
+   sobre `--brand`, onde `--muted` daria 4,3:1 — abaixo do piso de 4,5:1 (achado do Codex). */
+.app > .topbar .brand-sub { color: var(--muted); opacity: 1; }
 
 /* A busca saiu do topo verde para a faixa de conteúdo, sobre `--bg` (#95). Os quatro
    literais brancos que ela carregava existiam só porque ela vivia sobre a marca; no novo
@@ -456,15 +507,15 @@ h1, h2 { margin: 0; font-size: 1rem; }
 #search {
   width: 100%;
   padding: var(--esp-2) var(--esp-3);
-  border: 1px solid var(--borda-base);
+  border: 1px solid var(--borda-forte);
   border-radius: var(--raio-md);
-  background: var(--superficie-sutil);
+  background: var(--campo-fundo);
   color: var(--texto-base);
   font: inherit;
   font-size: var(--tipo-base);
 }
 #search::placeholder { color: var(--texto-fraco); }
-#search:focus { border-color: var(--accent-text); }
+#search:focus { border-color: var(--accent-text); box-shadow: 0 0 0 3px var(--accent-soft); }
 #search:focus-visible { outline: 2px solid var(--accent-text); outline-offset: 2px; }
 
 /* Selo no molde do protótipo: pílula em mono miúdo. Ele também desceu da barra de marca
@@ -511,18 +562,17 @@ h1, h2 { margin: 0; font-size: 1rem; }
 .rail-foot {
   margin-top: auto;
   padding-top: var(--esp-4);
-  border-top: 1px solid #ffffff2e;
+  border-top: 1px solid var(--line);
 }
 
 .admin-link {
   font-size: var(--tipo-xs);
-  opacity: .7;
-  color: #fff;
+  color: var(--muted);
   white-space: nowrap;
   text-decoration: none;
 }
 .admin-link:hover,
-.admin-link:focus { opacity: 1; text-decoration: underline; }
+.admin-link:focus { color: var(--ink); text-decoration: underline; }
 
 /* Layout ---------------------------------------------------------------- */
 
@@ -564,7 +614,9 @@ h1, h2 { margin: 0; font-size: 1rem; }
 
 .map-wrap { position: relative; flex: 1; min-width: 0; }
 
-#map { position: absolute; inset: 0; background: #e8ebe6; }
+/* Fundo enquanto o tile não chega: um degrau do tema, e não o bege claro do Leaflet, que
+   piscava contra a tela escura a cada zoom. */
+#map { position: absolute; inset: 0; background: var(--superficie-hover); }
 
 /* KPIs ------------------------------------------------------------------ */
 
@@ -842,19 +894,23 @@ h1, h2 { margin: 0; font-size: 1rem; }
   color: var(--muted);
 }
 
+/* Campo no molde do protótipo: fundo um degrau abaixo do painel, borda forte, e no foco
+   a borda vira acento com um halo de acento lavado — o mesmo par em `#search` e nos
+   campos do Mercado, para a aplicação inteira ter UM estado de foco. */
 select, input[type="number"] {
   width: 100%;
   padding: var(--esp-2);
-  border: 1px solid var(--line);
-  border-radius: 8px;
-  background: var(--panel);
+  border: 1px solid var(--borda-forte);
+  border-radius: var(--raio-md);
+  background: var(--campo-fundo);
   color: var(--ink);
   font: inherit;
   transition: border-color .15s ease;
 }
 select:focus, input[type="number"]:focus {
   outline: none;
-  border-color: var(--brand2);
+  border-color: var(--accent-text);
+  box-shadow: 0 0 0 3px var(--accent-soft);
 }
 
 .field-inline {
@@ -885,12 +941,12 @@ select:focus, input[type="number"]:focus {
 }
 .btn-ghost {
   width: 100%;
-  border: 1px solid var(--line);
-  background: var(--panel);
-  color: var(--muted);
+  border: 1px solid var(--borda-forte);
+  background: transparent;
+  color: var(--texto-sec);
 }
 .btn:hover { background: var(--brand2); }
-.btn-ghost:hover { border-color: var(--brand2); color: var(--accent-text); }
+.btn-ghost:hover { border-color: var(--accent-text); color: var(--ink); }
 .btn:active, .btn-ghost:active { transform: scale(.98); }
 
 /* Camadas --------------------------------------------------------------- */
@@ -1292,7 +1348,7 @@ button.traffic-item-head:hover .traffic-item-name { color: var(--accent-text); }
    (`ANCHOR_FALLBACK_COLOR`, mesmo verde que estava aqui: #397d53). */
 .marker-selected { stroke: var(--brand); stroke-width: 3; }
 
-.leaflet-container { font: inherit; background: #e8ebe6; }
+.leaflet-container { font: inherit; background: var(--superficie-hover); }
 
 /* Mobile ---------------------------------------------------------------- */
 
@@ -1305,10 +1361,11 @@ button.traffic-item-head:hover .traffic-item-name { color: var(--accent-text); }
    coisa, e as duas divergiriam no primeiro bug. */
 .view-switch { display: grid; gap: var(--esp-1); }
 
-/* As abas vivem SOBRE o trilho de marca (`--brand`), não sobre o fundo da página. Por isso
-   a cor delas é branca com opacidade, como `.admin-link` já faz — usar `--ink`/`--muted`
-   aqui daria texto escuro sobre fundo escuro nos dois temas, ilegível e sem erro nenhum
-   que denunciasse. Os tokens de texto existem para conteúdo sobre `--bg`/`--panel`.
+/* As abas vivem sobre o trilho escuro (`--trilho-fundo`), que desde a #104 é um degrau do
+   mesmo fundo da página — por isso voltaram aos tokens de texto: solta em `--muted`,
+   ativa ou sob o mouse em `--ink` sobre `--superficie-hover`, exatamente o `nav button`
+   do protótipo. (Até a #104 o trilho era a marca sólida e a aba era branca com opacidade;
+   esse par continua valendo só no `admin.html`, que não tem trilho.)
 
    Desde a #95 a aba é item de nav vertical, não pílula: a marca de seleção é a barra de
    4px à esquerda, no molde do protótipo. O `::before` existe SEMPRE, transparente quando
@@ -1326,8 +1383,7 @@ button.traffic-item-head:hover .traffic-item-name { color: var(--accent-text); }
   font: inherit;
   font-size: var(--tipo-base);
   text-align: left;
-  color: #fff;
-  opacity: .72;
+  color: var(--muted);
   cursor: pointer;
 }
 .view-tab::before {
@@ -1340,15 +1396,15 @@ button.traffic-item-head:hover .traffic-item-name { color: var(--accent-text); }
 }
 .view-tab-ic { flex: none; font-size: var(--tipo-sm); line-height: 1; }
 .view-tab-tx { min-width: 0; }
-.view-tab:hover:not(:disabled) { opacity: 1; background: #ffffff14; }
+.view-tab:hover:not(:disabled) { color: var(--ink); background: var(--superficie-hover); }
 .view-tab[aria-pressed="true"] {
-  background: #ffffff1f;
-  opacity: 1;
+  color: var(--ink);
+  background: var(--superficie-hover);
   font-weight: 600;
 }
-.view-tab[aria-pressed="true"]::before { background: #fff; }
+.view-tab[aria-pressed="true"]::before { background: var(--accent-text); }
 .view-tab:disabled { opacity: .4; cursor: not-allowed; }
-.view-tab:focus-visible { outline: 2px solid #fff; outline-offset: 2px; }
+.view-tab:focus-visible { outline: 2px solid var(--accent-text); outline-offset: 2px; }
 
 /* A view do Mercado é IRMÃ do mapa dentro do mesmo `body`, e o `body` corta o overflow
    porque o mapa ocupa a viewport por definição (`:85`). O mapa resolve a própria altura em
@@ -1478,8 +1534,9 @@ button.traffic-item-head:hover .traffic-item-name { color: var(--accent-text); }
 }
 .market-campos select:focus-visible,
 .market-campos input[type="month"]:focus-visible {
-  outline: 2px solid var(--accent-text);
-  outline-offset: 1px;
+  outline: none;
+  border-color: var(--accent-text);
+  box-shadow: 0 0 0 3px var(--accent-soft);
 }
 /* Campo que o período não usa fica apagado, NÃO escondido: o motivo mora no `title`. */
 .market-campos :disabled { opacity: .5; cursor: not-allowed; }
