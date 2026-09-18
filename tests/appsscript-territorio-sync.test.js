@@ -93,7 +93,7 @@ test('o sync das rodovias casa por cod_distrital e desenha o corredor na faixa d
   const { context, sheets, calls, H } = sandboxRodovias();
   const result = context.syncRoadSegmentsFromTraffic_(20);
 
-  assert.deepEqual({ ...result }, { synced: 2, skipped: 1, failed: 0 });
+  assert.deepEqual({ ...result }, { synced: 2, skipped: 1, failed: 0, retired: 0 });
   // Casamento EXATO: a consulta leva o código, nunca `nome LIKE '%DF-001%'`.
   assert.ok(calls.every((url) => /cod_distrital/.test(url)), calls.join('\n'));
   assert.ok(calls.every((url) => !/LIKE/.test(url)), 'sobrou casamento por rota');
@@ -144,6 +144,11 @@ test('o sync das rodovias casa por cod_distrital e desenha o corredor na faixa d
   assert.equal(s70.segment_type, 'Via Arterial');
   assert.ok(s70.length_m > 800 && s70.length_m < 1000, `comprimento ${s70.length_m} fora do km 17,0–17,9`);
   assert.equal(JSON.parse(s70.properties_json).der_tmd, 26402);
+  // A camada Rodovias 2025 publica `OBJECTID` em maiúsculas: a coluna canônica de
+  // procedência tem de carregar o mesmo id que `properties_json.der_feature_id`.
+  assert.notEqual(s70.source_feature_id, '', 'source_feature_id do trecho vazio');
+  assert.equal(String(s70.source_feature_id), String(JSON.parse(s70.properties_json).der_feature_id));
+  assert.equal(String(p70.source_feature_id), String(s70.source_feature_id), 'polígono e trecho com a mesma feição');
   assert.equal(segs.some((r) => r.road_segment_id === 'ROADSEG_999EDF0001'), false, 'código sem feição não vira trecho');
 
   // Toda linha de tráfego recebe o id canônico, inclusive a do código sem geometria.
@@ -155,6 +160,52 @@ test('o sync das rodovias casa por cod_distrital e desenha o corredor na faixa d
   assert.equal(meta.road_sync_status, 'synced_with_warnings');
   assert.equal(meta.road_sync_synced_count, '2');
   assert.equal(meta.road_sync_skipped_count, '1');
+});
+
+test('código sem feição oficial aposenta o corredor e o trecho herdados de uma sincronização anterior', () => {
+  // Planilha sincronizada pela v2.2.1: o 999EDF0001 tinha ganhado um corredor da rota inteira
+  // por heurística. Na v2.3.0 o código não casa — e o corredor antigo não pode continuar ativo.
+  const probe = createAppsScriptSandbox().context;
+  const H = probe.REQUIRED_HEADERS;
+  const sheets = sheetsBase(probe);
+  sheets.TRAFFIC_DAILY_TEST.push(trafficRow(H, 'T4', '999EDF0001', '2026-04-01', 500));
+  const seg = H.ROAD_SEGMENTS.map(() => '');
+  const setSeg = (k, v) => { seg[H.ROAD_SEGMENTS.indexOf(k)] = v; };
+  setSeg('road_segment_id', 'ROADSEG_999EDF0001'); setSeg('current_polygon_id', 'POLY_ROAD_999EDF0001_abc');
+  setSeg('source_segment_code', '999EDF0001'); setSeg('is_current', true);
+  setSeg('quality_flag', 'route_matched_by_heuristic_code');
+  sheets.ROAD_SEGMENTS.push(seg);
+  const poly = H.POLYGONS.map(() => '');
+  const setPoly = (k, v) => { poly[H.POLYGONS.indexOf(k)] = v; };
+  setPoly('polygon_id', 'POLY_ROAD_999EDF0001_abc'); setPoly('entity_id', 'ROADSEG_999EDF0001');
+  setPoly('entity_type', 'road_segment'); setPoly('layer_group', 'road_network'); setPoly('status', 'active');
+  setPoly('geometry_geojson', JSON.stringify({ type: 'Polygon', coordinates: [[[-47.9, -15.8], [-47.8, -15.8], [-47.8, -15.7], [-47.9, -15.8]]] }));
+  sheets.POLYGONS.push(poly);
+
+  const sandbox = createAppsScriptSandbox({ sheets });
+  sandbox.context.UrlFetchApp.fetch = fakeFetch([[/Rodovias_2025\/FeatureServer\/0\/query\?/, JSON.stringify({ features: [] })]], []);
+  const result = sandbox.context.syncRoadSegmentsFromTraffic_(20);
+  assert.deepEqual({ ...result }, { synced: 0, skipped: 1, failed: 0, retired: 1 });
+
+  const [s] = rowsOf(sandbox.sheets.ROAD_SEGMENTS, H.ROAD_SEGMENTS);
+  assert.equal(s.road_segment_id, 'ROADSEG_999EDF0001', 'o trecho não é apagado: a série de tráfego continua apontando para ele');
+  assert.equal(s.is_current, false);
+  assert.equal(s.current_polygon_id, '', 'sem corredor vigente para o mapa desenhar');
+  assert.match(String(s.valid_to), /^\d{4}-\d{2}-\d{2}$/);
+  assert.equal(s.quality_flag, 'no_official_match_in_current_layer');
+
+  const [p] = rowsOf(sandbox.sheets.POLYGONS, H.POLYGONS);
+  assert.equal(p.status, 'inactive', 'o corredor herdado deixa de ser desenhado');
+  assert.match(String(p.geometry_valid_to), /^\d{4}-\d{2}-\d{2}$/);
+
+  const meta = Object.fromEntries(sandbox.sheets.APP_META._rows.slice(1).map((r) => [r[0], r[1]]));
+  assert.equal(meta.road_sync_retired_count, '1');
+  assert.equal(meta.road_sync_status, 'no_official_matches');
+  assert.equal(meta.validation_status, 'dirty', 'aposentar também é mudança de dado: versão e cache avançam');
+
+  // Rodar de novo sem nada vigente não aposenta duas vezes.
+  const again = sandbox.context.syncRoadSegmentsFromTraffic_(20);
+  assert.equal(again.retired, 0);
 });
 
 test('sem faixa de domínio publicada, o corredor usa o buffer padrão e diz isso', () => {
@@ -280,6 +331,17 @@ test('faixas etárias só entram quando as 34 linhas vieram publicadas', () => {
   } });
   const bands = context.ageBandsByRaFromPdad_();
   assert.equal(bands.RA_11, undefined, 'uma categoria suprimida invalida a agregação da RA');
+  // Linha `published` sem valor numérico: o contador NÃO pode chegar a 34 com denominador menor.
+  const semValor = createAppsScriptSandbox({ sheets: {
+    PDAD_A_DATA: [PDAD_AGE[0], ...PDAD_AGE.slice(1).map((row, i) => (i === 0 ? row.map((v, c) => (c === 6 ? '' : v)) : row))],
+  } }).context.ageBandsByRaFromPdad_();
+  assert.equal(semValor.RA_11, undefined, 'linha publicada sem estimate_total invalida a RA');
+  assert.deepEqual({ ...semValor.RA_19 }, { year: 2024, age_0_14: 17.6, age_15_29: 23.1, age_30_44: 25.7, age_45_59: 17.1, age_60_plus: 16.4 });
+  // Linha repetida (mesma categoria e sexo) também não conta duas vezes.
+  const repetida = createAppsScriptSandbox({ sheets: {
+    PDAD_A_DATA: [PDAD_AGE[0], ...PDAD_AGE.slice(1), PDAD_AGE[1]],
+  } }).context.ageBandsByRaFromPdad_();
+  assert.equal(repetida.RA_11, undefined, 'linha duplicada invalida a RA em vez de inflar a faixa');
   assert.deepEqual({ ...bands.RA_19 }, { year: 2024, age_0_14: 17.6, age_15_29: 23.1, age_30_44: 25.7, age_45_59: 17.1, age_60_plus: 16.4 });
   assert.equal(context.ageBandOfCategory_('ate_4_anos'), 'age_0_14');
   assert.equal(context.ageBandOfCategory_('80_anos_ou_mais'), 'age_60_plus');

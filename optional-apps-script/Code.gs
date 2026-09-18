@@ -2177,8 +2177,8 @@ function ageBandsByRaFromPdad_() {
   if (!sheet || sheet.getLastRow() < 2) return {};
   var headers = headersOf_(sheet);
   var index = headerIndex_(headers);
-  var needed = ['ra_geo_id', 'pdad_year', 'indicator_code', 'segment_dimension', 'category_standard',
-    'estimate_total', 'source_value_status'];
+  var needed = ['ra_geo_id', 'pdad_year', 'indicator_code', 'segment_dimension', 'segment_value',
+    'category_standard', 'estimate_total', 'source_value_status'];
   for (var i = 0; i < needed.length; i++) if (index[needed[i]] === undefined) return {};
 
   var perRa = {};
@@ -2189,13 +2189,20 @@ function ageBandsByRaFromPdad_() {
     var year = toNumber_(row[index.pdad_year]);
     if (!raGeoId || year === null) return;
     var slot = perRa[raGeoId] || (perRa[raGeoId] = {});
-    var byYear = slot[year] || (slot[year] = { rows: 0, published: 0, bands: { age_0_14: 0, age_15_29: 0, age_30_44: 0, age_45_59: 0, age_60_plus: 0 }, total: 0 });
+    var byYear = slot[year] || (slot[year] = { rows: 0, invalid: 0, seen: {}, bands: { age_0_14: 0, age_15_29: 0, age_30_44: 0, age_45_59: 0, age_60_plus: 0 }, total: 0 });
     var band = ageBandOfCategory_(row[index.category_standard]);
     if (!band) return;
-    byYear.rows++;
-    if (toText_(row[index.source_value_status]) === 'published') byYear.published++;
+    // Uma linha só conta como completa quando é publicada, numérica e única por
+    // (categoria, sexo): linha `published` sem `estimate_total`, ou repetida, faria o
+    // contador chegar a 34 com um denominador errado — e o resultado pareceria certo.
+    var key = toText_(row[index.category_standard]).toLowerCase() + '|' + toText_(row[index.segment_value]).toLowerCase();
     var value = toNumber_(row[index.estimate_total]);
-    if (value === null) return;
+    if (toText_(row[index.source_value_status]) !== 'published' || value === null || byYear.seen[key]) {
+      byYear.invalid++;
+      return;
+    }
+    byYear.seen[key] = true;
+    byYear.rows++;
     byYear.bands[band] += value;
     byYear.total += value;
   });
@@ -2204,8 +2211,9 @@ function ageBandsByRaFromPdad_() {
   Object.keys(perRa).forEach(function (raGeoId) {
     var years = Object.keys(perRa[raGeoId]).map(Number).sort(function (a, b) { return b - a; });
     var latest = perRa[raGeoId][years[0]];
-    // 17 categorias × 2 sexos: qualquer coisa a menos é lote incompleto para esta RA.
-    if (!latest || latest.rows !== 34 || latest.published !== 34 || latest.total <= 0) return;
+    // 17 categorias × 2 sexos, todas válidas: qualquer linha a menos, ou qualquer linha
+    // inválida no lote, é lote incompleto para esta RA.
+    if (!latest || latest.rows !== 34 || latest.invalid !== 0 || latest.total <= 0) return;
     var pct = function (v) { return Math.round((v / latest.total) * 1000) / 10; };
     out[raGeoId] = {
       year: years[0],
@@ -2467,13 +2475,14 @@ function syncRoadSegmentsFromTraffic_(bufferM) {
   }
 
   var fetched = [];
+  var skippedCodes = [];
   var skipped = 0;
   var failed = 0;
   codes.forEach(function (code) {
     try {
       var record = fetchDerRoadByCode_(code, bufferM);
       if (record) fetched.push(record);
-      else skipped++;
+      else { skipped++; skippedCodes.push(code); }
     } catch (error) {
       failed++;
       Logger.log('DER sync %s falhou: %s', code, error && error.message);
@@ -2491,6 +2500,11 @@ function syncRoadSegmentsFromTraffic_(bufferM) {
       upsertRoadPolygon_(road, bufferM);
       synced++;
     });
+    // Código sem feição oficial NESTA camada: um corredor gravado por versão anterior (que
+    // casava a rota inteira por heurística) continuaria ativo e desenhado como se fosse o
+    // trecho do posto. Aposentar é o que torna o `skipped` verdadeiro no mapa também.
+    var retired = 0;
+    skippedCodes.forEach(function (code) { if (retireRoadSegment_(code)) retired++; });
     relateTrafficRowsToRoadSegments_();
     setMeta_('road_sync_status', synced ? ((skipped || failed) ? 'synced_with_warnings' : 'synced') : 'no_official_matches');
     setMeta_('road_sync_last_synced_at', nowISO_());
@@ -2500,16 +2514,17 @@ function syncRoadSegmentsFromTraffic_(bufferM) {
     setMeta_('road_sync_synced_count', String(synced));
     setMeta_('road_sync_skipped_count', String(skipped));
     setMeta_('road_sync_failed_count', String(failed));
-    if (synced) {
+    setMeta_('road_sync_retired_count', String(retired));
+    if (synced || retired) {
       var version = bumpDatasetVersion_();
       setMeta_('validation_status', 'dirty');
       setMeta_('last_data_change_at', nowISO_());
       refreshMeta();
       clearCache();
-      logWriteChange_('POLYGONS', '*', 'der_road_sync', '', synced + ' trecho(s)',
+      logWriteChange_('POLYGONS', '*', 'der_road_sync', '', synced + ' trecho(s), ' + retired + ' aposentado(s)',
         'sincronizador DER', 'der-road-' + version, 'ok', '');
     }
-    return { synced: synced, skipped: skipped, failed: failed };
+    return { synced: synced, skipped: skipped, failed: failed, retired: retired };
   });
   if (!result) throw new Error('Não foi possível obter lock de escrita.');
   return result;
@@ -2628,8 +2643,8 @@ function buildDerRoadRecord_(code, features, bufferM, flags) {
   features.forEach(function (feature) {
     var geometry = feature.geometry || {};
     (geometry.paths || []).forEach(function (path) { if (path && path.length >= 2) paths.push(path); });
-    var attrs = feature.attributes || {};
-    if (!isBlank_(attrs.objectid)) objectIds.push(String(attrs.objectid));
+    var oid = derObjectId_(feature.attributes || {});
+    if (oid !== '') objectIds.push(oid);
   });
   if (!paths.length) return null;
 
@@ -2676,13 +2691,19 @@ function buildDerRoadRecord_(code, features, bufferM, flags) {
   };
 }
 
+/** `OBJECTID` na camada Rodovias 2025, `objectid` em serviços mais antigos: aceita os dois. */
+function derObjectId_(attrs) {
+  var value = attrs.OBJECTID !== undefined && attrs.OBJECTID !== null ? attrs.OBJECTID : attrs.objectid;
+  return isBlank_(value) ? '' : String(value);
+}
+
 /** Atributos do DER que vão para `properties_json` (trecho e polígono), com nome próprio e tipo. */
 function derAttributesForSheet_(attrs) {
   var num = function (v) { var n = toNumber_(v); return n === null ? null : n; };
   var txt = function (v) { return sanitizePlainText_(v); };
   return {
     der_source_layer: 'Rodovias_2025',
-    der_feature_id: attrs.OBJECTID === undefined || attrs.OBJECTID === null ? '' : String(attrs.OBJECTID),
+    der_feature_id: derObjectId_(attrs),
     der_road: formatRoadCode_(attrs.rodovia),
     der_code: txt(attrs.cod_distrital),
     der_code_secondary: txt(attrs.cod_distrital2),
@@ -2969,6 +2990,54 @@ function upsertRoadAlias_(road) {
   };
   if (found) applyUpdate_(sheet, headers, found.rowNumber, values);
   else applyCreate_(sheet, headers, 'alias_id', aliasId, values);
+}
+
+/**
+ * Aposenta o trecho de um código que a camada oficial não conhece mais (issue #105): a
+ * linha de ROAD_SEGMENTS deixa de ser vigente (`is_current = false`, `valid_to` = hoje,
+ * `current_polygon_id` vazio) e todo polígono ativo da entidade vira `inactive` com
+ * `geometry_valid_to`. Nada é apagado — a série de tráfego continua apontando para o
+ * `road_segment_id`, só não há mais desenho a apresentar como oficial. Devolve `true`
+ * quando havia algo vigente para aposentar.
+ */
+function retireRoadSegment_(code) {
+  var roadSegmentId = canonicalRoadSegmentId_(code);
+  if (!roadSegmentId) return false;
+  var today = nowISO_().slice(0, 10);
+  var touched = false;
+
+  var segments = ss_().getSheetByName('ROAD_SEGMENTS');
+  if (segments) {
+    var headers = headersOf_(segments);
+    var index = headerIndex_(headers);
+    var found = findRowById_(segments, headers, index, 'road_segment_id', roadSegmentId);
+    if (found && toBoolean_(found.record.is_current) !== false && !isBlank_(found.record.current_polygon_id)) {
+      applyUpdate_(segments, headers, found.rowNumber, {
+        current_polygon_id: '',
+        valid_to: today,
+        is_current: false,
+        quality_flag: 'no_official_match_in_current_layer',
+        confidence_flag: 'none_retired_no_geometry',
+        last_synced_at: nowISO_()
+      });
+      touched = true;
+    }
+  }
+
+  var polygons = ss_().getSheetByName('POLYGONS');
+  if (polygons) {
+    var pHeaders = headersOf_(polygons);
+    var pIndex = headerIndex_(pHeaders);
+    var hadActive = dataRowsOf_(polygons).some(function (row) {
+      return pIndex.entity_id !== undefined && pIndex.status !== undefined &&
+        toText_(row[pIndex.entity_id]) === roadSegmentId && toText_(row[pIndex.status]) === 'active';
+    });
+    if (hadActive) {
+      supersedePolygonsOfEntity_(polygons, pIndex, roadSegmentId, today);
+      touched = true;
+    }
+  }
+  return touched;
 }
 
 function roadPolygonId_(road) {

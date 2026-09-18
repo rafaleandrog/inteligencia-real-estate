@@ -123,7 +123,11 @@ Ao fim, um KMZ com todas as RAs é criado no Drive e o link fica em `APP_META`
 Menu **Imob Intelligence → Sincronizar trechos rodoviários DER**. Para cada código de trecho presente
 em `TRAFFIC_DAILY_TEST` (`001EDF0070` etc.), busca o **eixo** oficial na camada `Rodovias_2025` do
 DER/DF no ArcGIS Hub, por casamento **exato** do campo `cod_distrital`. Código sem feição é pulado
-com aviso — nunca vira um corredor da rota inteira.
+com aviso — nunca vira um corredor da rota inteira — e, se uma sincronização anterior (v2.2.1, que
+casava a rota por heurística) tinha deixado um corredor ativo para ele, esse corredor é **aposentado**:
+a linha de `ROAD_SEGMENTS` perde `current_polygon_id` e vira `is_current = false` com `valid_to`, e o
+polígono fica `inactive` com `geometry_valid_to`. Nada é apagado; a série de tráfego continua ligada
+ao `road_segment_id`. A contagem fica em `APP_META.road_sync_retired_count`.
 
 A largura do corredor é a **faixa de domínio oficial por lado** publicada pelo DER
 (`fd_direita_larg`/`fd_esquerda_largu`, 65 m na DF-001), com teto de 100 m. O menu pergunta o buffer
