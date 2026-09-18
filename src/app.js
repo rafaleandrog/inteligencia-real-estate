@@ -553,9 +553,14 @@ function precisionRow(record) {
   const frase = approximate
     ? 'O ponto no mapa representa a região, não o endereço exato do imóvel.'
     : 'A coordenada foi verificada na fonte indicada.';
+  // O método só é afirmado quando a planilha o declara (`coordinate_precision`); sem ele,
+  // "Aproximada" e nada mais — `isApproximateLocation()` também vale true para precisão
+  // ausente/pendente/geocodificada, e dizer "centro da localidade" ali seria inventar
+  // método (achado P1 do Codex na #109; R3.6).
+  const metodo = approximate && record.coordinate_precision ? formatSpatialPrecision(record.coordinate_precision) : '';
   return {
     label: 'Localização',
-    value: approximate ? 'Aproximada · centro da localidade' : 'Verificada na fonte',
+    value: approximate ? (metodo ? `Aproximada · ${metodo.charAt(0).toLowerCase()}${metodo.slice(1)}` : 'Aproximada') : 'Verificada na fonte',
     className: approximate ? 'precision' : 'precision precision-exact',
     title: detalhe ? `${frase} ${detalhe}.` : frase,
   };
@@ -2932,12 +2937,17 @@ function renderPdadView() {
   const anosDisponiveis = pdadYearsAvailable(state.pdadData);
   dom.pdadScope.textContent =
     `Explore o território, compare Regiões Administrativas e identifique oportunidades com base na PDAD-A ${anosDisponiveis[0]} — com rastreabilidade até a figura de origem.`;
-  // Cartão "Fonte ativa" das quatro toplines: o lote vem do dado (ano mais recente da aba),
-  // e a instituição é o rótulo fixo da fonte — mesmo texto do protótipo.
+  // Cartão "Fonte ativa" das quatro toplines: o lote vem do dado, e a instituição é o
+  // rótulo fixo da fonte — mesmo texto do protótipo. No Diagnóstico o ano é o do FILTRO
+  // (quem escolhe 2021 está lendo o lote 2021, e o cartão tem que dizer isso — achado do
+  // Codex na #108); Ranking, Comparar e Base travam no ano de cobertura completa, o mais
+  // recente, e o cartão delas mostra esse.
   for (const card of document.querySelectorAll('[data-pdad-source]')) {
+    const noDiagnostico = dom.pdadView.contains(card);
+    const ano = noDiagnostico ? state.pdadFilters.year : anosDisponiveis[0];
     const strong = card.querySelector('strong');
     strong.replaceChildren(
-      document.createTextNode(`PDAD-A ${anosDisponiveis[0]}`),
+      document.createTextNode(`PDAD-A ${ano}`),
       document.createElement('br'),
       document.createTextNode('IPEDF / DIEPS / COEPS'),
     );
