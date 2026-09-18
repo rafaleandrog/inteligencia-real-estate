@@ -1325,6 +1325,7 @@ p.precision.precision-exact {
 .detail-essential dd.precision {
   font-size: var(--tipo-sm);
   font-weight: 400;
+  line-height: 1.35;
   color: var(--texto-sec);
   cursor: help;
 }

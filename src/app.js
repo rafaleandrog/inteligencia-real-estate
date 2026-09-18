@@ -552,9 +552,14 @@ function precisionRow(record) {
   const frase = approximate
     ? 'O ponto no mapa representa a região, não o endereço exato do imóvel.'
     : 'A coordenada foi verificada na fonte indicada.';
+  // O método só é afirmado quando a planilha o declara (`coordinate_precision`); sem ele,
+  // "Aproximada" e nada mais — `isApproximateLocation()` também vale true para precisão
+  // ausente/pendente/geocodificada, e dizer "centro da localidade" ali seria inventar
+  // método (achado P1 do Codex na #109; R3.6).
+  const metodo = approximate && record.coordinate_precision ? formatSpatialPrecision(record.coordinate_precision) : '';
   return {
     label: 'Localização',
-    value: approximate ? 'Aproximada · centro da localidade' : 'Verificada na fonte',
+    value: approximate ? (metodo ? `Aproximada · ${metodo.charAt(0).toLowerCase()}${metodo.slice(1)}` : 'Aproximada') : 'Verificada na fonte',
     className: approximate ? 'precision' : 'precision precision-exact',
     title: detalhe ? `${frase} ${detalhe}.` : frase,
   };
