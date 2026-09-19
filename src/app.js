@@ -8,7 +8,8 @@
 // createElement (docs/ENGINEERING_RULES.md, R4.4).
 
 import { loadDataset, flattenEntities } from './data.js';
-import { isApproximateLocation, appMetaRows } from './normalize.js';
+import { isApproximateLocation, canUseForDistance, appMetaRows } from './normalize.js';
+import { comparableSample, comparableStats, positionVsMedian, rulerPosition, RECENT_DAYS } from './map/comparables.js';
 import { ivvProvenance, IVV_SCOPE_NOTICE } from './ivv/scope.js';
 import {
   buildRegionRanking, faixasDisponiveis, regionMonths, REGIAO_TOTAL, FAIXA_TOTAL,
@@ -71,7 +72,8 @@ const dom = {
   anchorGroup: el('anchorGroup'), anchorSegment: el('anchorSegment'),
   salesStage: el('salesStage'), regularizationStatus: el('regularizationStatus'),
   priceMin: el('priceMin'), priceMax: el('priceMax'), beds: el('beds'),
-  clearFilters: el('clearFilters'), layers: el('layersSection'),
+  clearFilters: el('clearFilters'),
+  moreFilters: el('moreFilters'), moreFiltersSummary: el('moreFiltersSummary'), layers: el('layersSection'),
   kpiVisible: el('kpiVisible'), kpiMedian: el('kpiMedian'), kpiNote: el('kpiNote'),
   loadingState: el('loadingState'), errorState: el('errorState'),
   errorTitle: el('errorTitle'), errorDetail: el('errorDetail'), retryBtn: el('retryBtn'),
@@ -147,6 +149,9 @@ const dom = {
 
 const state = {
   records: [],
+  // Registros que passaram no filtro na última renderização — é o "recorte selecionado"
+  // contra o qual o painel de detalhe posiciona um imóvel (issue #124).
+  visible: [],
   filters: createFilterState(),
   markers: new Map(),
   selectedId: null,
@@ -646,12 +651,120 @@ function precisionRow(record) {
   // ausente/pendente/geocodificada, e dizer "centro da localidade" ali seria inventar
   // método (achado P1 do Codex na #109; R3.6).
   const metodo = approximate && record.coordinate_precision ? formatSpatialPrecision(record.coordinate_precision) : '';
+  // Distância só se mede a partir de ponto exato (issue #124): a frase deixa isso dito
+  // onde a precisão é declarada, para ninguém ler "aproximada" e pedir "a quantos metros".
+  const distancia = canUseForDistance(record) ? '' : ' Distâncias a âncoras não são calculadas para este ponto.';
   return {
     label: 'Localização',
     value: approximate ? (metodo ? `Aproximada · ${metodo.charAt(0).toLowerCase()}${metodo.slice(1)}` : 'Aproximada') : 'Verificada na fonte',
     className: approximate ? 'precision' : 'precision precision-exact',
-    title: detalhe ? `${frase} ${detalhe}.` : frase,
+    title: (detalhe ? `${frase} ${detalhe}.` : frase) + distancia,
   };
+}
+
+/**
+ * "Posição no recorte" (issue #124): o preço/m² do imóvel contra a distribuição dos
+ * comparáveis que estão na tela — os registros do mesmo tipo que passaram no filtro,
+ * sem ele próprio. Régua P25–P50–P75 e qualidade da amostra vêm de `src/map/comparables.js`;
+ * aqui só se desenha. Amostra sem preço/m² diz isso em texto — nunca "0 comparáveis"
+ * como se fosse um resultado (R5.7).
+ */
+function buildPositionBlock(record) {
+  if (record.kind !== 'listing' && record.kind !== 'development') return null;
+  const sample = comparableSample(state.visible, record);
+  const stats = comparableStats(sample);
+
+  const section = document.createElement('section');
+  section.className = 'detail-position';
+  section.setAttribute('aria-label', 'Posição no recorte');
+  const title = document.createElement('h3');
+  title.textContent = 'Posição no recorte';
+  section.append(title);
+
+  if (stats.withPriceM2 === 0) {
+    const empty = document.createElement('p');
+    empty.className = 'detail-position-empty';
+    empty.textContent = sample.length === 0
+      ? 'Sem comparáveis no recorte atual — amplie os filtros.'
+      : `${formatNumber(sample.length)} registro(s) no recorte, nenhum com preço/m² para comparar.`;
+    section.append(empty);
+    return section;
+  }
+
+  const { deltaPct, sampleN } = positionVsMedian(record.price_m2, stats);
+  const head = document.createElement('p');
+  head.className = 'detail-position-head';
+  const value = document.createElement('strong');
+  value.className = 'detail-position-value';
+  value.textContent = formatPriceM2(record.price_m2);
+  head.append(value);
+  const delta = document.createElement('span');
+  delta.className = 'detail-position-delta';
+  if (deltaPct === null) {
+    delta.textContent = 'sem preço/m² para posicionar';
+    delta.dataset.sign = 'none';
+  } else {
+    const sinal = deltaPct > 0 ? '+' : (deltaPct < 0 ? '−' : '');
+    delta.textContent = `${sinal}${formatPercent(Math.abs(deltaPct) * 100)} vs. mediana`;
+    delta.dataset.sign = deltaPct > 0 ? 'above' : (deltaPct < 0 ? 'below' : 'equal');
+  }
+  head.append(delta);
+  section.append(head);
+
+  // Régua P25 ── P50 ── P75, com o imóvel como ponto. Fração em `rulerPosition`: o SVG
+  // só desenha. Sem cor literal: as classes vivem em assets/styles.css.
+  const ruler = document.createElement('figure');
+  ruler.className = 'detail-ruler';
+  const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+  svg.setAttribute('viewBox', '0 0 100 14');
+  svg.setAttribute('class', 'detail-ruler-svg');
+  svg.setAttribute('aria-hidden', 'true');
+  const line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+  line.setAttribute('x1', '6'); line.setAttribute('x2', '94'); line.setAttribute('y1', '7'); line.setAttribute('y2', '7');
+  line.setAttribute('class', 'detail-ruler-line');
+  svg.append(line);
+  for (const x of [6, 50, 94]) {
+    const tick = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+    tick.setAttribute('x1', String(x)); tick.setAttribute('x2', String(x)); tick.setAttribute('y1', '3'); tick.setAttribute('y2', '11');
+    tick.setAttribute('class', 'detail-ruler-tick');
+    svg.append(tick);
+  }
+  const pos = rulerPosition(record.price_m2, stats);
+  if (pos !== null) {
+    const dot = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+    dot.setAttribute('cx', String(6 + 88 * pos)); dot.setAttribute('cy', '7'); dot.setAttribute('r', '3.2');
+    dot.setAttribute('class', 'detail-ruler-dot');
+    svg.append(dot);
+  }
+  ruler.append(svg);
+  const labels = document.createElement('figcaption');
+  labels.className = 'detail-ruler-labels';
+  for (const [rotulo, v] of [['P25', stats.p25], ['P50', stats.median], ['P75', stats.p75]]) {
+    const item = document.createElement('span');
+    const k = document.createElement('small');
+    k.textContent = rotulo;
+    const n = document.createElement('b');
+    n.textContent = formatNumber(Math.round(v));
+    item.append(k, n);
+    labels.append(item);
+  }
+  ruler.append(labels);
+  section.append(ruler);
+
+  const quality = document.createElement('ul');
+  quality.className = 'detail-position-sample';
+  for (const texto of [
+    `${formatNumber(sample.length)} comparáveis`,
+    `${formatNumber(sampleN)} com preço/m²`,
+    `${formatNumber(stats.active)} ativos`,
+    `${formatNumber(stats.recent)} recentes (${RECENT_DAYS} dias)`,
+  ]) {
+    const li = document.createElement('li');
+    li.textContent = texto;
+    quality.append(li);
+  }
+  section.append(quality);
+  return section;
 }
 
 /** Link para a fonte, com esquema validado e rel de segurança (R4.5, R4.6). */
@@ -792,6 +905,9 @@ function buildDetailBody(record) {
 
   appendTiers(frag, { essencial, complementar, tecnico }, { collapse: false });
 
+  const position = buildPositionBlock(record);
+  if (position) frag.append(position);
+
   const regularization = buildRegularizationNotice(record);
   if (regularization) frag.append(regularization);
 
@@ -890,6 +1006,7 @@ function readFilters() {
   state.filters.anchorSegment = dom.anchorSegment.value;
   state.filters.priceMin = numberFieldValue(dom.priceMin);
   state.filters.priceMax = numberFieldValue(dom.priceMax);
+  updateMoreFiltersSummary();
 
   const beds = dom.beds.value;
   state.filters.bedrooms = beds === '' ? null : Number(beds);
@@ -913,6 +1030,21 @@ function readFilters() {
   state.filters.polygonTypes = typeInputs.length === 0
     ? null
     : new Set([...typeInputs].filter((i) => i.checked).map((i) => i.dataset.polygonType));
+}
+
+/**
+ * "+ Mais filtros" (issue #124): os filtros secundários vivem numa gaveta recolhida.
+ * O resumo diz quantos estão ativos, e a gaveta ABRE sozinha quando algum está — um
+ * filtro invisível reduzindo o mapa é a forma mais barata de "plausível e errado".
+ */
+function updateMoreFiltersSummary() {
+  if (!dom.moreFilters || !dom.moreFiltersSummary) return;
+  const ativos = [
+    state.filters.buildingOrientation, state.filters.salesStage, state.filters.regularizationStatus,
+    state.filters.anchorGroup, state.filters.anchorSegment,
+  ].filter((v) => v !== '' && v !== null && v !== undefined).length;
+  dom.moreFiltersSummary.textContent = ativos > 0 ? `Mais filtros (${ativos} ativo${ativos > 1 ? 's' : ''})` : 'Mais filtros';
+  if (ativos > 0) dom.moreFilters.open = true;
 }
 
 function renderKpis(kpis) {
@@ -1095,6 +1227,7 @@ function renderRaProfile() {
 function render() {
   readFilters();
   const visible = applyFilters(state.records, state.filters);
+  state.visible = visible;
   renderMarkers(visible);
   renderPolygons();
   renderKpis(computeKpis(visible));

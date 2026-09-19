@@ -1100,6 +1100,55 @@ select:focus, input[type="number"]:focus {
 .polygon-type-row { margin-left: 16px; }
 .polygon-type-row label { font-size: 12px; color: var(--muted); }
 
+/* Gaveta de filtros secundários (issue #124). O resumo tem a mesma anatomia de rótulo
+   de campo; aberta, ela só acrescenta os campos abaixo, sem moldura — é agrupamento,
+   não cartão. */
+.more-filters { margin: var(--esp-3) 0 0; }
+.more-filters > summary {
+  cursor: pointer;
+  list-style: none;
+  padding: var(--esp-2) 0;
+  font-size: var(--tipo-xs);
+  font-weight: 600;
+  letter-spacing: var(--track-label);
+  text-transform: uppercase;
+  color: var(--accent-text);
+}
+.more-filters > summary::-webkit-details-marker { display: none; }
+.more-filters > summary::before { content: '+ '; }
+.more-filters[open] > summary::before { content: '− '; }
+.more-filters > summary:hover { color: var(--brand2-soft); }
+.more-filters > summary:focus-visible { outline: 2px solid var(--accent-text); outline-offset: 2px; }
+
+/* Posição no recorte (issue #124): preço/m² do imóvel contra os comparáveis visíveis.
+   Régua P25–P50–P75 em SVG, sem cor literal; o ponto é o imóvel. */
+.detail-position { margin: var(--esp-4) 0 var(--esp-3); padding-top: var(--esp-3); border-top: 1px solid var(--borda-sutil); }
+.detail-position h3 {
+  margin: 0 0 var(--esp-2);
+  font-size: var(--tipo-xs);
+  font-weight: 600;
+  letter-spacing: var(--track-label);
+  text-transform: uppercase;
+  color: var(--texto-sec);
+}
+.detail-position-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: var(--esp-2) var(--esp-3); margin: 0 0 var(--esp-2); }
+.detail-position-value { font-size: var(--tipo-xl); font-weight: 800; letter-spacing: var(--track-tight); font-variant-numeric: tabular-nums; color: var(--texto-forte); }
+.detail-position-delta { font-size: var(--tipo-sm); font-weight: 600; color: var(--texto-sec); }
+.detail-position-delta[data-sign="above"] { color: var(--alerta); }
+.detail-position-delta[data-sign="below"] { color: var(--tone-good); }
+.detail-position-empty { margin: 0; font-size: var(--tipo-sm); color: var(--muted); }
+.detail-ruler { margin: 0 0 var(--esp-2); }
+.detail-ruler-svg { display: block; width: 100%; height: 18px; overflow: visible; }
+.detail-ruler-line { stroke: var(--borda-forte); stroke-width: 1.2; }
+.detail-ruler-tick { stroke: var(--borda-forte); stroke-width: 1; }
+.detail-ruler-dot { fill: var(--brand2); stroke: var(--bg); stroke-width: 1; }
+.detail-ruler-labels { display: flex; justify-content: space-between; margin: 0; font-family: var(--font-mono); font-size: var(--tipo-2xs); color: var(--muted); }
+.detail-ruler-labels span { display: grid; gap: 1px; }
+.detail-ruler-labels span:nth-child(2) { text-align: center; }
+.detail-ruler-labels span:last-child { text-align: right; }
+.detail-ruler-labels b { font-weight: 500; color: var(--texto-sec); font-variant-numeric: tabular-nums; }
+.detail-position-sample { display: flex; flex-wrap: wrap; gap: var(--esp-1) var(--esp-3); margin: 0; padding: 0; list-style: none; font-size: var(--tipo-xs); color: var(--muted); }
+
 .disclaimer {
   font-size: 12px;
   line-height: 1.45;

@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {
   toText, toNumber, toInteger, toBoolean, toDateISO, toCoord, pricePerM2, pricePerM2Check,
   PRICE_M2_TOLERANCE, toPriceNumber,
-  buildingOrientation, isApproximateLocation, normalizeListing, normalizeDevelopment,
+  buildingOrientation, isApproximateLocation, canUseForDistance, normalizeListing, normalizeDevelopment,
   normalizeAnchor, normalizeRaProfile, normalizeRaProfiles,
   normalizeAppMeta, appMetaRows, appMetaConflicts,
   normalizeAll,
@@ -201,6 +201,21 @@ test('isApproximateLocation trata ausência de declaração como aproximada', ()
   assert.equal(isApproximateLocation({}), true);
 
   assert.equal(isApproximateLocation({ coordinate_precision: 'school_polygon_reference_point', confidence_flag: 'high' }), false);
+});
+
+test('canUseForDistance só libera ponto exato com coordenada — centroide com jitter nunca (issue #124)', () => {
+  const coord = { lat: -15.76, lon: -47.88 };
+  assert.equal(canUseForDistance({ coord, coordinate_precision: 'locality_centroid_deterministic_jitter' }), false);
+  assert.equal(canUseForDistance({ coord, coordinate_precision: 'locality_centroid_jitter' }), false);
+  assert.equal(canUseForDistance({ coord, coordinate_precision: '' }), false, 'precisão ausente é aproximada');
+  assert.equal(canUseForDistance({ coord, coordinate_precision: 'pending_exact_parcel' }), false);
+  assert.equal(canUseForDistance({ coord, coordinate_precision: 'street_centroid_external_geocode' }), false);
+  assert.equal(canUseForDistance({ coord: null, coordinate_precision: 'school_polygon_reference_point', confidence_flag: 'high' }), false, 'sem coordenada não há distância');
+  assert.equal(canUseForDistance({ coord: { lat: NaN, lon: 1 }, coordinate_precision: 'school_polygon_reference_point', confidence_flag: 'high' }), false);
+  assert.equal(canUseForDistance(null), false);
+  assert.equal(canUseForDistance({ coord, coordinate_precision: 'school_polygon_reference_point', confidence_flag: 'high' }), true);
+  // Flag que rebaixa a precisão vence a declaração exata.
+  assert.equal(canUseForDistance({ coord, coordinate_precision: 'school_polygon_reference_point', confidence_flag: 'low_spatial_high_attribute' }), false);
 });
 
 test('normalizeListing preserva a qualidade espacial e deriva preço/m²', () => {

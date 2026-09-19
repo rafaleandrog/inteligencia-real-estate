@@ -29,6 +29,9 @@ const pass = (m) => { ok.push(m); console.log('  ✓ ' + m); };
 // Alguns ambientes trazem um Chromium pré-instalado cuja build não corresponde à que
 // esta versão do Playwright baixaria. CHROMIUM_PATH aponta para o binário existente.
 const executablePath = process.env.CHROMIUM_PATH || undefined;
+// Os filtros secundários vivem numa gaveta `<details>` recolhida (issue #124); o Playwright
+// só interage com o que está visível, então cada página a abre antes de usá-los.
+const abrirMaisFiltros = (p) => p.$eval('#moreFilters', (d) => { d.open = true; });
 const browser = await chromium.launch(executablePath ? { executablePath } : {});
 
 // Um CONTEXTO só, com viewport e rotas, em vez de `browser.newPage()` avulso por seção.
@@ -185,6 +188,18 @@ const precTitle = (await precNode.getAttribute('title')) || '';
 (await page.locator('#detailBody details').count()) === 0
   ? pass('detalhe do registro em lista plana, sem seções recolhidas (#104)')
   : fail('detalhe do registro ainda tem <details> recolhido');
+
+// Posição no recorte (issue #124): o painel do anúncio diz como o preço/m² se posiciona
+// contra os comparáveis visíveis — ou diz que não há comparáveis, nunca "0".
+const posicao = page.locator('#detailBody .detail-position');
+(await posicao.count()) === 1 ? pass('bloco "Posição no recorte" presente no detalhe do anúncio') : fail('bloco de posição ausente');
+const posicaoTexto = (await posicao.textContent()) || '';
+/comparáveis|Sem comparáveis|nenhum com preço/i.test(posicaoTexto)
+  ? pass('posição fala em comparáveis ou declara a ausência deles') : fail('texto da posição: ' + posicaoTexto.slice(0, 80));
+/vs\. mediana/.test(posicaoTexto) && (await posicao.locator('.detail-ruler-dot').count()) === 1
+  ? pass('preço/m² posicionado contra a mediana, com o ponto na régua P25–P75')
+  : (/Sem comparáveis|nenhum com preço/.test(posicaoTexto) ? pass('sem comparáveis: nenhuma régua desenhada') : fail('régua sem ponto ou sem delta'));
+!/\b0 comparáveis\b/.test(posicaoTexto) ? pass('amostra vazia nunca aparece como "0 comparáveis"') : fail('amostra vazia mostrada como zero');
 
 const link = page.locator('#detailBody a.detail-source').first();
 if (await link.count() > 0) {
@@ -444,6 +459,7 @@ glifosMapa.length > 0 && glifosMapa.every((n) => n > 0)
   : fail('âncora sem glifo no mapa');
 
 const totalAnchor = Number((await anchorPage.textContent('#kpiVisible')).replace(/\D/g, ''));
+await abrirMaisFiltros(anchorPage);
 await anchorPage.selectOption('#anchorGroup', 'infraestrutura');
 await anchorPage.waitForTimeout(400);
 const soInfra = Number((await anchorPage.textContent('#kpiVisible')).replace(/\D/g, ''));
@@ -454,7 +470,10 @@ segmentosDoGrupo.includes('Estação de metrô') && !segmentosDoGrupo.includes('
   ? pass('select de segmento fica restrito ao grupo escolhido')
   : fail('segmentos fora do grupo: ' + JSON.stringify(segmentosDoGrupo));
 
+await abrirMaisFiltros(anchorPage);
 await anchorPage.selectOption('#anchorSegment', 'estacao_metro');
+(await anchorPage.textContent('#moreFiltersSummary')).includes('ativo')
+  ? pass('o resumo da gaveta conta os filtros secundários ativos (#124)') : fail('resumo da gaveta não conta ativos');
 await anchorPage.waitForTimeout(400);
 const soMetro = Number((await anchorPage.textContent('#kpiVisible')).replace(/\D/g, ''));
 soMetro > 0 && soMetro <= soInfra ? pass(`filtro de segmento reduziu ${soInfra} -> ${soMetro}`) : fail('filtro de segmento não reduziu');
@@ -463,6 +482,7 @@ soMetro > 0 && soMetro <= soInfra ? pass(`filtro de segmento reduziu ${soInfra} 
   ? pass('filtrar âncora por grupo/segmento esconde as outras camadas')
   : fail('sobrou anúncio ou empreendimento com filtro de âncora ativo');
 
+await abrirMaisFiltros(anchorPage);
 await anchorPage.selectOption('#anchorGroup', 'comercio_servico');
 await anchorPage.waitForTimeout(400);
 (await anchorPage.inputValue('#anchorSegment')) === ''
@@ -473,6 +493,7 @@ await anchorPage.click('#clearFilters'); await anchorPage.waitForTimeout(400);
 // P1 do review do Codex na PR #42: escolher SÓ o segmento, sem tocar no grupo, e
 // limpar. Com a lista completa o segmento continua presente, e a rotina que repopula
 // o select o restaurava — "Limpar filtros" não limpava (R8.43).
+await abrirMaisFiltros(anchorPage);
 await anchorPage.selectOption('#anchorSegment', 'estacao_metro');
 await anchorPage.waitForTimeout(400);
 const comSegmento = Number((await anchorPage.textContent('#kpiVisible')).replace(/\D/g, ''));
@@ -486,6 +507,7 @@ Number((await anchorPage.textContent('#kpiVisible')).replace(/\D/g, '')) === tot
   : fail('conjunto não voltou ao total depois de limpar');
 
 // Card de âncora: os campos novos aparecem, e `brand_name` hostil continua texto (R4.4).
+await abrirMaisFiltros(anchorPage);
 await anchorPage.selectOption('#anchorSegment', 'food_hall');
 await anchorPage.waitForTimeout(400);
 await anchorPage.locator('#map .marker-anchor').first().click({ force: true });
@@ -564,6 +586,7 @@ regularizacoes.includes('Não regularizado') && regularizacoes.includes('Process
 const contarVisiveis = async () => Number((await classPage.textContent('#kpiVisible')).replace(/\D/g, ''));
 const totalClass = await contarVisiveis();
 
+await abrirMaisFiltros(classPage);
 await classPage.selectOption('#salesStage', 'oferta');
 await classPage.waitForTimeout(400);
 const emOferta = await contarVisiveis();
@@ -572,6 +595,7 @@ emOferta > 0 && emOferta < totalClass ? pass(`filtro de estágio reduziu ${total
   ? pass('filtrar por estágio esconde anúncios e âncoras') : fail('sobrou outra camada com filtro de estágio');
 await classPage.click('#clearFilters'); await classPage.waitForTimeout(400);
 
+await abrirMaisFiltros(classPage);
 await classPage.selectOption('#regularizationStatus', 'nao_regularizado');
 await classPage.waitForTimeout(400);
 const naoRegularizados = await contarVisiveis();
@@ -587,6 +611,7 @@ await classPage.click('#clearFilters'); await classPage.waitForTimeout(400);
 
 // Vertical/horizontal precisa alcançar o empreendimento, não só o anúncio — e o
 // empreendimento cuja célula veio como " Vertical " é justamente o teste do caso real.
+await abrirMaisFiltros(classPage);
 await classPage.selectOption('#buildingOrientation', 'vertical');
 await classPage.waitForTimeout(400);
 const devsVerticais = await classPage.$$eval('#map .marker-development', (ns) => ns.length);

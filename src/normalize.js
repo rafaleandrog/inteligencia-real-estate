@@ -319,6 +319,23 @@ export function isApproximateLocation(record) {
   return !(exact && !downgraded);
 }
 
+/**
+ * Pode-se medir distância a partir deste registro? (issue #124, Plano 01 §6.7)
+ *
+ * Só quando a coordenada existe E a precisão declarada é exata e não rebaixada — o mesmo
+ * critério de `isApproximateLocation()`, invertido. Centroide de localidade com jitter,
+ * precisão ausente, pendente ou geocodificada devolvem `false`: "metrô a 420 m" calculado
+ * a partir de um ponto que representa a região, não o imóvel, é um número inventado.
+ * Nenhuma distância é calculada hoje; esta é a guarda que qualquer cálculo futuro precisa
+ * atravessar primeiro.
+ */
+export function canUseForDistance(record) {
+  if (!record || typeof record !== 'object') return false;
+  const coord = record.coord;
+  if (!coord || !Number.isFinite(coord.lat) || !Number.isFinite(coord.lon)) return false;
+  return !isApproximateLocation(record);
+}
+
 /** Anúncio secundário. Chave: `listing_id`. */
 export function normalizeListing(row) {
   const coord = toCoord(row.latitude, row.longitude);
