@@ -887,3 +887,39 @@ Cada uma nasce de um erro que aconteceu de verdade.
   campo novo que atravessa camadas ganha o default no VALOR e não na chave
   (`MAPA[x] ?? padrao`), senão um typo devolve `undefined`, a classe sai `undefined-3` e a
   série some — o mesmo modo de falha, reintroduzido dentro do próprio conserto.
+
+- **R8.84** *(2026-09-19, saneamento da planilha, issues #120/#121)* **Célula monetária é
+  número; texto com `R$` é dado a corrigir, e o parser precisa ler o que a planilha de fato
+  tem enquanto isso.** 61 anúncios tinham `asking_price_brl` como `"R$ 290.000"`; os dois
+  parsers (`toNumber` no cliente, `toNumber_` no Apps Script) liam 290, e a validação acusava
+  divergência de preço/m² num dado correto. A regra de leitura: com marcador de moeda, ponto
+  único é SEMPRE milhar; sem marcador, continua decimal (a âncora fica com `toPriceNumber`).
+  A regra de dado: `normalizeMonetaryCells()` converte a célula e registra cada uma no
+  CHANGE_LOG. Mecanismo: a paridade entre os dois parsers é cobrada entrada por entrada em
+  `tests/appsscript-money-parity.test.js` — cópia à mão só é aceitável com teste que a cubra.
+
+- **R8.85** *(2026-09-19, FipeZap, issues #120/#122)* **Período é contrato de VALOR
+  (`YYYY-MM`), não de tipo de célula — e o validador aceita Date, ISO e texto antes de
+  reclamar.** O Google converte "2011-01" em Date; o validador instalado exigia texto e produziu
+  3369 erros, um por linha, para um dado correto. `validation_errors` ficou em 3370 por
+  semanas porque o número era grande demais para parecer um bug de validador. Mecanismo:
+  `periodIdOf_`/`periodIdOf` leem qualquer forma; `normalizeFipezapPeriodCells()` grava texto
+  com formato `@` ANTES de escrever, senão o Google reconverte; e uma contagem de erro fora de
+  escala é a primeira suspeita sobre o validador, não sobre o dado.
+
+- **R8.86** *(2026-09-19, sincronização do Apps Script, issue #120)* **O script instalado, o
+  arquivo do repositório e a implantação `/exec` são o MESMO código, ou não há contrato.** A
+  planilha rodava a v2.2.1 + um adendo FipeZap por monkey-patch que nunca chegou ao repositório;
+  o repositório tinha a sincronização territorial que nunca chegou à planilha. Cada lado
+  documentava e testava a própria metade. Mecanismo: função nova entra no `Code.gs` como código
+  de primeira classe (nunca `validateAll = function () { antiga(); … }`), a versão sobe junto
+  com o changelog no cabeçalho, e `docs/SHEET_SETUP.md` §9 diz a ordem de colar, implantar e
+  rodar — com a conferência pela leitura pública ao fim.
+
+- **R8.87** *(2026-09-19, comparáveis e derivados, issues #124–#127)* **Comparação só existe com
+  referência EXPLÍCITA e amostra declarada.** "+8,6% vs. mediana" precisa dizer mediana de quê
+  (38 comparáveis, 35 com preço/m²); "+31,4 p.p." precisa dizer contra a mediana de quantas
+  RAs publicadas — e nunca chamar isso de "média do DF"; "período anterior" precisa nomear o
+  intervalo comparado e sobrepor a série no MESMO eixo. Mecanismo: o módulo puro devolve o
+  `n`, a fórmula e o intervalo junto do número, e amostra vazia devolve `null` — a tela escreve
+  a frase, nunca um zero.

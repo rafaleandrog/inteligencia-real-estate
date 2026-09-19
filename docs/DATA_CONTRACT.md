@@ -22,8 +22,8 @@ atualizar validação → atualizar migração → adicionar teste.
 
 - **`confidence_flag` e `coordinate_precision` sobrevivem da planilha até a tela.**
 - **Coordenada aproximada nunca é apresentada como endereço ou lote exato.** No dataset atual
-  os **141 anúncios** usam centroide de localidade com jitter determinístico — é a regra, não a
-  exceção.
+  os **141 anúncios** (snapshot de 2026-09-19; a planilha viva já tem 158) usam centroide de
+  localidade com jitter determinístico — é a regra, não a exceção.
 - **Preço anunciado é preço pedido, não transação realizada.** A interface não pode sugerir
   o contrário.
 
@@ -47,7 +47,7 @@ e só aparece na tela.
 Ausência de qualquer uma → **estado de erro legível**. Ver R2.5.
 
 ### LISTINGS — anúncios secundários
-Chave: `listing_id`. 141 linhas no dataset atual.
+Chave: `listing_id`. 141 linhas na semente do repo; 158 na planilha viva (snapshot em 2026-09-19).
 
 | Campo | Tipo | Obrig. | Preenchimento | Exemplo |
 |---|---|---|---|---|
@@ -102,6 +102,16 @@ Valor já preenchido não é sobrescrito; divergência grande vira alerta em `DA
 `apartamento`, `predio`, `kitnet` → `vertical`; `casa`, `casa_condominio`, `terreno` →
 `horizontal`. Não precisa de mudança de backend.
 
+#### `price_m2_computed`, `price_m2_divergence_pct`, `price_m2_mismatch` — conferência do preço/m² (issue #120)
+
+**Também não são colunas da planilha.** `normalizeListing()` e `normalizeDevelopment()` derivam os
+três campos a partir de preço e área já normalizados: `price_m2_computed` é `preço ÷ área`,
+`price_m2_divergence_pct` é a diferença relativa entre o valor informado (`asking_price_brl_m2` ou
+`current_price_brl_m2`) e o calculado, e `price_m2_mismatch` é `true` quando a divergência passa
+de 5% (`PRICE_M2_TOLERANCE`). O valor publicado **nunca é sobrescrito**: `price_m2` usa o informado
+quando existe e cai no calculado só quando a planilha não informa. A divergência vira aviso em
+`normalizeAll().warnings`, espelhando o `PRICE_M2_MISMATCH` do `validateAll` do Apps Script.
+
 #### `regularization_status` — situação de regularização (issue #32)
 
 Coluna provisionada pelo Apps Script v2.0.0. Vocabulário **aberto**, com três valores previstos —
@@ -133,7 +143,7 @@ tabela e cross-checadas por `tests/contract.test.js`) **menos** `listing_id` e
   não está totalmente documentado aqui.
 
 ### DEVELOPMENTS — empreendimentos
-Chave: `development_id`. 22 linhas.
+Chave: `development_id`. 22 linhas (snapshot em 2026-09-19).
 
 | Campo | Tipo | Obrig. | Preenchimento | Observação |
 |---|---|---|---|---|
@@ -199,7 +209,7 @@ atual não têm coordenada por design, e a API não pode forçar um valor que a 
 não exige.
 
 ### ANCHORS — pontos de interesse
-Chave: `place_id`. 35 linhas.
+Chave: `place_id`. 35 linhas (snapshot em 2026-09-19).
 
 | Campo | Tipo | Obrig. | Preenchimento |
 |---|---|---|---|
@@ -295,7 +305,7 @@ abaixo. `FIPEZAP_LOCALITY_MAP`/`FIPEZAP_SOURCES`/`FIPEZAP_NOTES` existem na plan
 | `TRAFFIC_DAILY_TEST` | `traffic_daily_id` | 0 | Contagem diária de tráfego por trecho |
 | `FIPEZAP_MONTHLY` | `fipezap_id` | 0 na semente, 3369 na planilha | Preço de venda/locação FipeZap, DF inteiro e por localidade, desde 2011 — **lida pela tela** |
 | `FIPEZAP_LOCALITY_MONTHLY` | `locality_monthly_id` | 0 na semente, 1714 na planilha | Venda × locação pareadas por localidade/RA, desde 2019 — **lida pela tela** |
-| `FIPEZAP_LOCALITY_MAP` | `locality_map_id` | 0 na semente, 30 na planilha | De-para localidade → RA e metodologia de classificação — não lida ainda |
+| `FIPEZAP_LOCALITY_MAP` | `locality_map_id` | 0 na semente, 30 na planilha | De-para localidade → RA e metodologia de classificação — **lida pela tela** desde a issue #122 |
 | `FIPEZAP_SOURCES` | `source_id` | 0 na semente, 1214 na planilha | Procedência por período/segmento dos relatórios FipeZap — não lida ainda |
 | `FIPEZAP_NOTES` | `note_id` | 0 na semente, 33 na planilha | Notas metodológicas referenciadas por `note_id` — não lida ainda |
 | `PDAD_A_DATA` | `ra_geo_id`+`pdad_year`+`indicator_code`+`segment_value`+`category_standard` | 12.190 na planilha | Extração longa do PDAD-A (35 RAs × indicadores × categorias) — **lida pela tela** |
@@ -355,7 +365,7 @@ da aba continua sendo aviso, nunca erro (R2.5). Buscada por `src/data.js`
 (`config.raProfilesSheet`) com o mesmo tratamento de `APP_META` — falha vira aviso, e o filtro por
 RA (#33) segue funcionando com o código bruto de `ra_geo_id` como rótulo.
 
-Chave: `ra_geo_id`. 35 linhas.
+Chave: `ra_geo_id`. 35 linhas (snapshot em 2026-09-19).
 
 | Campo | Tipo | Obrig. | Preenchimento | Uso |
 |---|---|---|---|---|
@@ -424,7 +434,7 @@ schema (`src/pdad/normalize-pdad.js`) ↔ este contrato ↔ comportamento do nor
 desabilitada, dizendo por quê, do mesmo jeito que o Mercado fica sem `IVV_MONTHLY`.
 
 **Formato longo**, não wide: uma linha por RA × indicador × segmento × categoria de resposta —
-diferente de `RA_PROFILES`, que é uma linha por RA. 33 colunas, **12.190 linhas** na planilha viva.
+diferente de `RA_PROFILES`, que é uma linha por RA. 33 colunas, **12.190 linhas** na planilha viva (snapshot em 2026-09-19).
 Chave composta: `ra_geo_id` + `pdad_year` + `indicator_code` + `segment_value` +
 `category_standard`.
 
@@ -743,7 +753,7 @@ Aba **opcional**, buscada de verdade a partir da issue #56 (`config.ivvMonthlySh
 tratamento de `RA_PROFILES`/`POLYGONS`: promessa iniciada antes do lote obrigatório, teto de tempo
 dedicado, e falha ou ausência virando **aviso, nunca erro** (R2.5). O mapa não depende dela.
 
-Chave: `reference_date`. 66 meses (jan/2021 a jun/2026) na planilha viva; **1 linha e 18 colunas**
+Chave: `reference_date`. 66 meses (jan/2021 a jun/2026) na planilha viva (snapshot em 2026-09-19); **1 linha e 18 colunas**
 na semente. Sem recorte por Região Administrativa — a série descreve o DF inteiro.
 
 > **Esta aba não tem contrato no Apps Script, e esta seção é o único que existe.** Na v2.2.1 ela
@@ -1006,7 +1016,7 @@ validador antigo rejeitava, 3369 vezes. Os dois lados agora aceitam Date, ISO e 
 derivado de `reference_date` (ou de `period_id` quando a data falta); discordância entre os dois
 vira aviso, nunca escolha silenciosa.
 
-Chave: `fipezap_id`. 3369 linhas na planilha viva, jan/2011 a jun/2026 conforme o segmento (a
+Chave: `fipezap_id`. 3369 linhas na planilha viva (snapshot em 2026-09-19), jan/2011 a jun/2026 conforme o segmento (a
 série residencial de venda é a mais longa; comercial começa em 2019). Cabeçalhos confirmados **ao
 vivo** contra o GViz da planilha em 2026-09-03 — batem exatamente com o `.xlsx` de referência,
 sem divergência de nomes conhecida (diferente do histórico do IVV_MONTHLY).
@@ -1051,7 +1061,7 @@ Script a acusa como `FIPEZAP_DUPLICATE_OBSERVATION`.
 ### FIPEZAP_LOCALITY_MONTHLY — venda × locação por localidade/RA
 
 Aba **opcional**, mesmo tratamento de `FIPEZAP_MONTHLY`. Chave: `locality_monthly_id`. 1714
-linhas, 2019–2026, 29 localidades (26 com dado residencial, algumas só comercial — `SIA` é zona
+linhas (snapshot em 2026-09-19), 2019–2026, 29 localidades (26 com dado residencial, algumas só comercial — `SIA` é zona
 comercial/industrial e não tem série residencial, por exemplo).
 
 **Diferente de `FIPEZAP_MONTHLY`**, que publica venda e locação em LINHAS separadas
