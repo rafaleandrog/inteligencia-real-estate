@@ -4525,6 +4525,19 @@ function syncFipezapFromStaging_() {
         throw new Error('Staging FipeZAP em ' + name + ' sem cabeçalho(s) do contrato: ' +
           missing.join(', ') + '. Nada foi alterado.');
       }
+      // Cabeçalho repetido também é schema quebrado: a conversão em objeto descartaria uma
+      // das colunas em silêncio, e o DUPLICATE_HEADER do validateAll chegaria tarde demais.
+      var seen = {};
+      var duplicated = [];
+      headers.forEach(function (h) {
+        if (!h) return;
+        if (seen[h] && duplicated.indexOf(h) < 0) duplicated.push(h);
+        seen[h] = true;
+      });
+      if (duplicated.length) {
+        throw new Error('Staging FipeZAP em ' + name + ' com cabeçalho(s) repetido(s): ' +
+          duplicated.join(', ') + '. Nada foi alterado.');
+      }
       var dataRows = values.slice(1).filter(function (row) { return !isBlankRow_(row); });
       if (!dataRows.length) {
         throw new Error('Staging FipeZAP em ' + name + ' só tem cabeçalho. Nada foi alterado.');

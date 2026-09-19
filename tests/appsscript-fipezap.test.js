@@ -277,7 +277,7 @@ test('staging sem uma das cinco abas: nenhuma aba de destino é alterada', () =>
   assert.equal(sandbox.context.getMeta_('fipezap_data_load_status'), '', 'metadados não escritos');
 });
 
-test('staging com coluna renomeada ou só cabeçalho: recusado na fase 1, nada é escrito', () => {
+test('staging com coluna renomeada, repetida ou só cabeçalho: recusado na fase 1, nada é escrito', () => {
   const renomeada = FIPEZAP_CONTRACT.FIPEZAP_NOTES.map((h) => (h === 'note_text' ? 'texto_da_nota' : h));
   const sandbox = sandboxWith([monthlyRow()], {}, {
     scriptProperties: { [sandbox_placeholder()]: STAGING_ID },
@@ -286,6 +286,16 @@ test('staging com coluna renomeada ou só cabeçalho: recusado na fase 1, nada �
   const antes = JSON.stringify(sandbox.sheets.FIPEZAP_MONTHLY._rows);
   assert.throws(() => sandbox.context.syncFipezapFromStaging_(), /FIPEZAP_NOTES sem cabeçalho\(s\) do contrato: note_text/);
   assert.equal(JSON.stringify(sandbox.sheets.FIPEZAP_MONTHLY._rows), antes, 'aba lida ANTES da defeituosa não foi escrita');
+
+  const duplicado = sandboxWith([monthlyRow()], {}, {
+    scriptProperties: { [sandbox_placeholder()]: STAGING_ID },
+    externalSpreadsheets: { [STAGING_ID]: stagingBook({
+      FIPEZAP_NOTES: [[...FIPEZAP_CONTRACT.FIPEZAP_NOTES, 'note_id'], [...contractRow('FIPEZAP_NOTES', { note_id: 'N' }), 'N2']],
+    }) },
+  });
+  const antesDup = JSON.stringify(duplicado.sheets.FIPEZAP_MONTHLY._rows);
+  assert.throws(() => duplicado.context.syncFipezapFromStaging_(), /FIPEZAP_NOTES com cabeçalho\(s\) repetido\(s\): note_id/);
+  assert.equal(JSON.stringify(duplicado.sheets.FIPEZAP_MONTHLY._rows), antesDup, 'cabeçalho repetido: nada escrito');
 
   const soCabecalho = sandboxWith([monthlyRow()], {}, {
     scriptProperties: { [sandbox_placeholder()]: STAGING_ID },
