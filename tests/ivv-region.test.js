@@ -223,3 +223,19 @@ test('buildRegionScatter: DF Total é referência, RA sem eixo é nomeada, três
   assert.deepEqual(buildRegionScatter(null).pontos, []);
   assert.equal(REGION_SCATTER_MODES.length, 3);
 });
+
+test('com dois meses na aba, ranking e matriz usam só o mês mais recente e o declaram', () => {
+  const { rows } = normalizeIvvRegion([
+    linhaRegiao({ reference_month: '2026-04-01', ivv_pct_published: 10, sale_price_brl_m2: 11000 }),
+    linhaRegiao({ reference_month: '2026-05-01', ivv_pct_published: 6, sale_price_brl_m2: 11500 }),
+    linhaRegiao({ reference_month: '2026-04-01', market_region: 'DF Total', ivv_pct_published: 8 }),
+    linhaRegiao({ reference_month: '2026-05-01', market_region: 'DF Total', ivv_pct_published: 7 }),
+  ]);
+  const s = buildRegionScatter(rows, { bucket: 'TOTAL', mode: 'ivv_x_preco' });
+  assert.equal(s.mes, '2026-05-01');
+  assert.deepEqual(s.pontos.map((p) => [p.region, p.x, p.y]), [['Asa Norte', 11500, 6]], 'uma bolinha por RA');
+  assert.equal(s.referencia.y, 7, 'referência do mesmo mês');
+  const r = buildRegionRanking(rows, { bucket: 'TOTAL' });
+  assert.equal(r.mes, '2026-05-01');
+  assert.deepEqual(r.regioes.map((x) => [x.region, x.ivvPct]), [['Asa Norte', 6]]);
+});

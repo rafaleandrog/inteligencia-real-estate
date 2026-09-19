@@ -350,3 +350,65 @@ test('buildPdadCoverage cruza RA × indicador autorizado e marca missing, partia
   assert.equal(recs.length, 7);
   assert.equal(meta(sandbox, 'rows_pdad_coverage'), '7');
 });
+
+// --- Ambíguo sem R$ (P0 da revisão adversarial da #129, R8.91) ------------------------------
+
+test('normalizeMonetaryCells NÃO grava "385.000" como 385: resolve pela âncora ou preserva e conta', () => {
+  const sandbox = createAppsScriptSandbox({
+    sheets: { ...OPERATIONAL,
+      LISTINGS: [LISTING_HEADERS,
+        // Com âncora (6.416,67 × 60 ≈ 385.000): converte para o milhar.
+        listing({ listing_id: 'L1', asking_price_brl: '385.000', area_m2: 60, asking_price_brl_m2: '6.416,67', iptu_brl: '1.200' }),
+        // Sem âncora (sem preço/m² informado): preservada.
+        listing({ listing_id: 'L2', asking_price_brl: '290.000', area_m2: 37, asking_price_brl_m2: '' }),
+        // Âncora que confirma o decimal (imóvel de R$ 385 não existe, mas a conta manda): 385 × 1 = 385.
+        listing({ listing_id: 'L3', asking_price_brl: '385.000', area_m2: 1, asking_price_brl_m2: '385' }),
+      ],
+      DEVELOPMENTS: [['development_id', 'current_price_brl', 'current_price_brl_m2'], ['D1', '850.000', '']],
+    },
+    scriptProperties: { DATASET_VERSION: '1' },
+  });
+  const message = sandbox.context.normalizeMonetaryCells_();
+  const rows = sandbox.sheets.LISTINGS._rows;
+  const ix = Object.fromEntries(LISTING_HEADERS.map((h, i) => [h, i]));
+  assert.equal(rows[1][ix.asking_price_brl], 385000, 'âncora decide o milhar');
+  assert.equal(rows[1][ix.asking_price_brl_m2], 6416.67, 'vírgula decimal é inequívoca');
+  assert.equal(rows[1][ix.iptu_brl], '1.200', 'IPTU ambíguo não tem âncora: preservado');
+  assert.equal(rows[2][ix.asking_price_brl], '290.000', 'sem âncora, preservado');
+  assert.equal(rows[3][ix.asking_price_brl], 385, 'âncora que confirma o decimal converte para o decimal');
+  assert.equal(sandbox.sheets.DEVELOPMENTS._rows[1][1], '850.000', 'DEVELOPMENTS sem área/m²: preservado');
+  assert.match(message, /LISTINGS\.asking_price_brl: 2 convertida\(s\), 1 ambígua\(s\) sem âncora preservada/);
+  assert.match(message, /LISTINGS\.iptu_brl: 0 convertida\(s\), 1 ambígua/);
+  assert.match(message, /DEVELOPMENTS\.current_price_brl: 0 convertida\(s\), 1 ambígua/);
+  const log = changeLogRows(sandbox);
+  assert.ok(!log.some((r) => r[4] === '290.000' || r[4] === '1.200' || r[4] === '850.000'), 'ambíguo preservado não entra no CHANGE_LOG');
+});
+
+test('toPriceNumber_ e isAmbiguousThousands_ espelham o cliente', () => {
+  const { context } = createAppsScriptSandbox();
+  assert.equal(context.isAmbiguousThousands_('385.000'), true);
+  assert.equal(context.isAmbiguousThousands_('R$ 385.000'), false);
+  assert.equal(context.isAmbiguousThousands_('1.234.567'), false);
+  assert.equal(context.isAmbiguousThousands_('385,000'), false);
+  assert.equal(context.isAmbiguousThousands_(385000), false);
+  assert.equal(context.toPriceNumber_('385.000', 60, '6.416,67'), 385000);
+  assert.equal(context.toPriceNumber_('385.000', '', ''), null, 'sem âncora é null, não 385');
+  assert.equal(context.toPriceNumber_('R$ 385.000', '', ''), 385000, 'com R$ não precisa de âncora');
+  assert.equal(context.toPriceNumber_('12.5', '', ''), 12.5, 'um ponto e 1 dígito não é o caso ambíguo');
+  assert.equal(context.toPriceNumber_('sob consulta', 60, 6000), null);
+});
+
+test('buildListingsCoverage conta "385.000" sem âncora como sem preço, nunca como R$ 385', () => {
+  const { context } = createAppsScriptSandbox();
+  assert.equal(context.priceBucketOf_(context.toPriceNumber_('385.000', '', '')), 'sem_preco');
+  assert.equal(context.priceBucketOf_(context.toPriceNumber_('385.000', 60, '6.416,67')), '300k_500k');
+});
+
+test('periodIdOf_ recusa mês fora de 01..12 nas três formas', () => {
+  const { context } = createAppsScriptSandbox();
+  assert.equal(context.periodIdOf_('2011-13'), '');
+  assert.equal(context.periodIdOf_('2011-00-01'), '');
+  assert.equal(context.periodIdOf_('Date(2011,12)'), '');
+  assert.equal(context.periodIdOf_('2011-12'), '2011-12');
+  assert.equal(context.dateTextOf_('2011-13'), '');
+});

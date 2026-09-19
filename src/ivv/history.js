@@ -225,15 +225,23 @@ function rotuloDaComparacao(comparacao) {
 }
 
 /**
- * Pontos da série comparada alinhados por posição às categorias do recorte desenhado:
- * o i-ésimo mês da comparação cai sobre o i-ésimo mês atual. Sobra e falta viram `null`.
+ * Pontos da série comparada alinhados POR MÊS às categorias do recorte desenhado: cada mês
+ * atual recebe o valor do mês correspondente na comparação (−12 no ano anterior; −N no
+ * período anterior de N meses). Mês sem par vira `null`.
+ *
+ * Alinhar por posição parecia equivalente e não é: um mês ausente em qualquer dos dois
+ * recortes deslocava todos os pontos seguintes, e mar/2025 aparecia sob fev/2026 com o
+ * rótulo garantindo "mesmo período do ano anterior" (R8.92).
  */
-function alinharPorPosicao(pontosAtuais, pontosComparados) {
-  const categorias = pontosAtuais.map((p) => p.categoria);
-  return categorias.map((categoria, i) => ({
-    categoria,
-    valor: i < pontosComparados.length ? pontosComparados[i].valor : null,
-  }));
+function alinharPorMes(pontosAtuais, pontosComparados, comparacao) {
+  const delta = comparacao.mode === COMPARE_MODES.ANO_ANTERIOR
+    ? -12
+    : -monthsBetween(comparacao.start, comparacao.end);
+  const porMes = new Map(pontosComparados.map((p) => [p.categoria, p.valor]));
+  return pontosAtuais.map(({ categoria }) => {
+    const par = shiftMonth(categoria, delta);
+    return { categoria, valor: par !== null && porMes.has(par) ? porMes.get(par) : null };
+  });
 }
 
 const NOTA_MENSAL = 'Valores do mês.';
@@ -341,7 +349,7 @@ function modeloDe(definicao, rows, modo, comparacao = null) {
         chave: `${serie.key}${COMPARE_SUFFIX}`,
         rotulo: `${rotuloDe(serie.key)} · ${rotuloDaComparacao(comparacao)}`,
         cat: serie.cat,
-        pontos: alinharPorPosicao(atual.pontos, comparados),
+        pontos: alinharPorMes(atual.pontos, comparados, comparacao),
       }];
     }),
   );

@@ -112,6 +112,8 @@ function createRange(data, row, col, numRows, numCols) {
     // chama estes três, então precisam existir para não virar exceção disfarçada de
     // INTERNAL_ERROR na resposta da API.
     setNumberFormat() { return this; },
+    // Sem fórmulas no mock: matriz de '' do tamanho do range.
+    getFormulas() { return Array.from({ length: numRows }, () => Array.from({ length: numCols }, () => '')); },
     setFontWeight() { return this; },
     setBackground() { return this; },
     setFontColor() { return this; },

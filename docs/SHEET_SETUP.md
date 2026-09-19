@@ -242,7 +242,10 @@ Ordem de execução — cada passo depende do anterior:
 3. Menu **Imob Intelligence → Configurar projeto**. Cria o que falta (`category` em DATA_QUALITY,
    abas FipeZAP vazias se não existirem) e não toca dado.
 4. **Saneamento: normalizar células monetárias.** LISTINGS e DEVELOPMENTS: texto `R$ …` vira
-   número com formato de moeda; cada célula convertida vira uma linha do CHANGE_LOG.
+   número com formato de moeda; cada célula convertida vira uma linha do CHANGE_LOG. Texto
+   **ambíguo** sem `R$` e com um ponto só (`385.000`) só é convertido quando `preço/m² informado ×
+   área` decide entre R$ 385 e R$ 385.000; sem âncora, a célula é **preservada e contada** no
+   resumo ("N ambígua(s) sem âncora") para correção à mão. Fórmulas são mantidas.
 5. **Saneamento: normalizar períodos FipeZAP.** `period_id` → texto `YYYY-MM`, `reference_date` →
    texto `YYYY-MM-DD` em FIPEZAP_MONTHLY, FIPEZAP_LOCALITY_MONTHLY e FIPEZAP_SOURCES.
 6. **Saneamento: provisionar IVV_REGION.** Cria a aba com os 12 cabeçalhos. Cole em seguida a

@@ -146,9 +146,20 @@ export function regionMonths(rows) {
  * nomeada à parte. Zero e "não publicado" são afirmações diferentes, e uma barra vazia
  * afirma a primeira (R5.7).
  */
+/**
+ * O retrato de uma faixa: só as linhas do MÊS MAIS RECENTE publicado nela. Com dois meses na
+ * aba, misturar os dois punha a mesma RA duas vezes e a referência do mês antigo — e a nota
+ * da tela dizia "retrato de <mês>".
+ */
+function retratoMaisRecente(rows, faixa) {
+  const daFaixa = (rows || []).filter((item) => item && item.bucket === faixa);
+  const mes = regionMonths(daFaixa).at(-1) || null;
+  return { mes, linhas: mes ? daFaixa.filter((item) => item.month === mes) : daFaixa };
+}
+
 export function buildRegionRanking(rows, opcoes = {}) {
   const faixa = opcoes.bucket || FAIXA_TOTAL;
-  const doRecorte = (rows || []).filter((item) => item.bucket === faixa);
+  const { mes, linhas: doRecorte } = retratoMaisRecente(rows, faixa);
 
   const referencia = doRecorte.find((item) => item.isRegiaoTotal) || null;
   const partes = doRecorte.filter((item) => !item.isRegiaoTotal);
@@ -161,7 +172,7 @@ export function buildRegionRanking(rows, opcoes = {}) {
 
   return {
     faixa,
-    mes: doRecorte[0]?.month || null,
+    mes,
     referencia,
     regioes: comValor,
     semValor,
@@ -207,7 +218,7 @@ export function regionGapPct(item) {
 export function buildRegionScatter(rows, opcoes = {}) {
   const faixa = opcoes.bucket || FAIXA_TOTAL;
   const modo = REGION_SCATTER_MODES.find((m) => m.value === opcoes.mode) || REGION_SCATTER_MODES[0];
-  const doRecorte = (rows || []).filter((item) => item && item.bucket === faixa);
+  const { mes, linhas: doRecorte } = retratoMaisRecente(rows, faixa);
   const referencia = doRecorte.find((item) => item.isRegiaoTotal) || null;
   const partes = doRecorte.filter((item) => !item.isRegiaoTotal);
 
@@ -246,7 +257,7 @@ export function buildRegionScatter(rows, opcoes = {}) {
   return {
     modo: modo.value,
     faixa,
-    mes: doRecorte[0]?.month || null,
+    mes,
     xLabel: modo.x.rotulo,
     yLabel: modo.y.rotulo,
     pontos,

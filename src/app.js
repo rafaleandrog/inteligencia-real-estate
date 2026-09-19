@@ -1821,7 +1821,10 @@ function currentUrlParams(view) {
 function syncHash() {
   const view = viewFromHash();
   const alvo = buildHash(view, currentUrlParams(view));
-  if (location.hash !== alvo) history.replaceState(null, '', alvo);
+  if (location.hash === alvo) return;
+  // O WebKit limita `replaceState` a 100 chamadas por 30 s e lança SecurityError depois
+  // disso; a URL é conveniência, e um erro dela não pode derrubar o render.
+  try { history.replaceState(null, '', alvo); } catch { /* fica com o hash anterior */ }
 }
 
 /**
@@ -1905,7 +1908,9 @@ function setView(name) {
   if (view === 'base') renderPdadBaseView();
 
   const alvo = buildHash(view, currentUrlParams(view));
-  if (location.hash !== alvo) history.replaceState(null, '', alvo);
+  if (location.hash !== alvo) {
+    try { history.replaceState(null, '', alvo); } catch { /* idem syncHash */ }
+  }
 }
 
 /**

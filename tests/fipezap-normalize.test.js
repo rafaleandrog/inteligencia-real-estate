@@ -204,3 +204,10 @@ test('FIPEZAP_LOCALITY_MAP: preserva o nome original, a RA e o tipo de correspon
   assert.deepEqual(normalizeFipezapLocalityMap([]).rows, []);
   assert.deepEqual(normalizeFipezapLocalityMap(null).rows, []);
 });
+
+test('periodIdOf recusa mês fora de 01..12 — forma certa com mês errado é aviso, não período', () => {
+  assert.equal(periodIdOf('2011-13'), null);
+  assert.equal(periodIdOf('Date(2011,12)'), null);
+  assert.equal(periodIdOf('2011-12'), '2011-12');
+  assert.equal(periodIdOf('Date(2011,11)'), '2011-12');
+});

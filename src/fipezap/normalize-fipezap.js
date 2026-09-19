@@ -49,11 +49,20 @@ export const FIPEZAP_GEOGRAPHY_SCOPES = Object.freeze(['DF_TOTAL', 'LOCALIDADE']
  */
 export function periodIdOf(value) {
   const text = toText(value);
-  if (/^\d{4}-\d{2}$/.test(text)) return text;
-  const gviz = text.match(/^Date\((\d{4}),(\d{1,2})\)$/);
-  if (gviz) return `${gviz[1]}-${String(Number(gviz[2]) + 1).padStart(2, '0')}`;
-  const iso = toDateISO(value);
-  return iso ? iso.slice(0, 7) : null;
+  let period = null;
+  if (/^\d{4}-\d{2}$/.test(text)) period = text;
+  else {
+    const gviz = text.match(/^Date\((\d{4}),(\d{1,2})\)$/);
+    if (gviz) period = `${gviz[1]}-${String(Number(gviz[2]) + 1).padStart(2, '0')}`;
+    else {
+      const iso = toDateISO(value);
+      period = iso ? iso.slice(0, 7) : null;
+    }
+  }
+  // "2011-13" tem a forma certa e o mês errado: é aviso, não período.
+  if (!period) return null;
+  const month = Number(period.slice(5, 7));
+  return month >= 1 && month <= 12 ? period : null;
 }
 
 export const FIPEZAP_MONTHLY_COLUMNS = Object.freeze([

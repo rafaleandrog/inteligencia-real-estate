@@ -270,3 +270,45 @@ test('buildHistoryCharts sobrepõe a série comparada no mesmo eixo, tracejada p
   assert.equal(normal[0].comparacao, null);
   assert.equal(COMPARE_MODE_OPTIONS[0].value, COMPARE_MODES.NENHUM);
 });
+
+// R8.92: alinhamento por mês. Uma lacuna em qualquer dos recortes não desloca os demais pontos.
+test('série comparada alinha por MÊS: lacuna na comparação ou no recorte atual vira null no lugar certo', () => {
+  const semFev2025 = serieLonga.filter((r) => r.reference_date !== '2025-02-01');
+  const janela = semFev2025.filter((r) => r.reference_date >= '2026-01-01' && r.reference_date <= '2026-04-01');
+  const comparacao = comparisonRows(semFev2025, { start: '2026-01', end: '2026-04' }, COMPARE_MODES.ANO_ANTERIOR);
+  const graficos = buildHistoryCharts({ periodo: janela, janela, completa: semFev2025 }, SERIES_MODES.MENSAL, { comparacao });
+  const ivv = graficos.find((g) => g.key === 'ivv');
+  const comparada = ivv.series[1];
+  const valorDe = (mes) => serieLonga.find((r) => r.reference_date === `${mes}-01`).ivv_pct;
+  assert.deepEqual(comparada.pontos.map((p) => [p.categoria, p.valor]), [
+    ['2026-01', valorDe('2025-01')],
+    ['2026-02', null],
+    ['2026-03', valorDe('2025-03')],
+    ['2026-04', valorDe('2025-04')],
+  ]);
+
+  // Lacuna no recorte ATUAL: fev/2026 ausente não empurra mar/2025 para cima de mar/2026.
+  const semFev2026 = serieLonga.filter((r) => r.reference_date !== '2026-02-01');
+  const janela2 = semFev2026.filter((r) => r.reference_date >= '2026-01-01' && r.reference_date <= '2026-04-01');
+  const comparacao2 = comparisonRows(semFev2026, { start: '2026-01', end: '2026-04' }, COMPARE_MODES.ANO_ANTERIOR);
+  const ivv2 = buildHistoryCharts({ periodo: janela2, janela: janela2, completa: semFev2026 }, SERIES_MODES.MENSAL, { comparacao: comparacao2 })
+    .find((g) => g.key === 'ivv');
+  assert.deepEqual(ivv2.series[1].pontos.map((p) => [p.categoria, p.valor]), [
+    ['2026-01', valorDe('2025-01')],
+    ['2026-03', valorDe('2025-03')],
+    ['2026-04', valorDe('2025-04')],
+  ]);
+
+  // Período anterior de 4 meses: 2026-01 ↔ 2025-09, e a lacuna cai onde ela está.
+  const semNov2025 = serieLonga.filter((r) => r.reference_date !== '2025-11-01');
+  const janela3 = semNov2025.filter((r) => r.reference_date >= '2026-01-01' && r.reference_date <= '2026-04-01');
+  const comparacao3 = comparisonRows(semNov2025, { start: '2026-01', end: '2026-04' }, COMPARE_MODES.PERIODO_ANTERIOR);
+  const ivv3 = buildHistoryCharts({ periodo: janela3, janela: janela3, completa: semNov2025 }, SERIES_MODES.MENSAL, { comparacao: comparacao3 })
+    .find((g) => g.key === 'ivv');
+  assert.deepEqual(ivv3.series[1].pontos.map((p) => [p.categoria, p.valor]), [
+    ['2026-01', valorDe('2025-09')],
+    ['2026-02', valorDe('2025-10')],
+    ['2026-03', null],
+    ['2026-04', valorDe('2025-12')],
+  ]);
+});

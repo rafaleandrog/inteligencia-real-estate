@@ -941,3 +941,16 @@ Cada uma nasce de um erro que aconteceu de verdade.
   tipo de link compartilhável, o que mente. Mecanismo: cada view serializa e consome o SEU estado
   em `currentUrlParams`/`initialize*`, e o vocabulário de chaves em `URL_KEYS` só declara o que a
   view usa (o Ranking não tem ano). Teste de smoke: abrir o link e conferir o `select` da tela.
+- **R8.91** *(2026-09-19, revisão adversarial da #129)* **Saneamento grava só o inequívoco; o
+  ambíguo é preservado e CONTADO.** `toNumber_("385.000")` = 385 é uma leitura documentada, não uma
+  verdade — e uma rotina de saneamento que a grava na fonte transforma R$ 385.000 em R$ 385 para
+  sempre, com a única evidência num CHANGE_LOG de 5.000 linhas. Mecanismo: `isAmbiguousThousands_`
+  reconhece o padrão; `toPriceNumber_` resolve pela âncora `preço/m² × área` quando ela existe e
+  devolve `null` quando não; o saneamento preserva o `null` e o nomeia no resumo; a cobertura o
+  conta como "sem preço", nunca como R$ 385 em `ate_300k`. Fórmula na coluna é mantida como fórmula.
+- **R8.92** *(2026-09-19, revisão adversarial da #129)* **Série comparada alinha POR MÊS, nunca
+  por posição.** "O i-ésimo mês da comparação sobre o i-ésimo mês atual" só funciona sem lacunas;
+  com fev/2025 ausente, mar/2025 aparecia sob fev/2026 e o rótulo garantia "mesmo período do ano
+  anterior". Mecanismo: mapa mês→valor da comparação e `shiftMonth(categoria, delta)` por ponto
+  (`−12` no ano anterior, `−N` no período anterior); mês sem par é `null`. Teste com lacuna nos
+  dois lados. O retrato por região segue a mesma lógica: só o mês mais recente publicado na faixa.

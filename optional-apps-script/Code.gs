@@ -4302,11 +4302,17 @@ function periodIdOf_(value) {
     return Utilities.formatDate(value, Session.getScriptTimeZone() || 'America/Sao_Paulo', 'yyyy-MM');
   }
   var text = toText_(value);
-  if (/^\d{4}-\d{2}$/.test(text)) return text;
-  if (/^\d{4}-\d{2}-\d{2}/.test(text)) return text.slice(0, 7);
-  var gviz = /^Date\((\d{4}),(\d{1,2})(?:,\d{1,2})?\)$/.exec(text);
-  if (gviz) return gviz[1] + '-' + ('0' + (Number(gviz[2]) + 1)).slice(-2);
-  return '';
+  var period = '';
+  if (/^\d{4}-\d{2}$/.test(text)) period = text;
+  else if (/^\d{4}-\d{2}-\d{2}/.test(text)) period = text.slice(0, 7);
+  else {
+    var gviz = /^Date\((\d{4}),(\d{1,2})(?:,\d{1,2})?\)$/.exec(text);
+    if (gviz) period = gviz[1] + '-' + ('0' + (Number(gviz[2]) + 1)).slice(-2);
+  }
+  // "2011-13" tem a forma certa e o mês errado: não é período, é erro a acusar.
+  if (!period) return '';
+  var month = Number(period.slice(5, 7));
+  return month >= 1 && month <= 12 ? period : '';
 }
 
 /** `YYYY-MM-DD` a partir de Date, ISO ou `YYYY-MM` (dia 1). '' quando não há data. */
@@ -4969,8 +4975,11 @@ function normalizeFipezapPeriodCells_() {
       if (ix[column.field] === undefined) return;
       var changed = 0;
       var unreadable = 0;
-      var out = rows.map(function (row) {
+      var range = sheet.getRange(2, ix[column.field] + 1, rows.length, 1);
+      var formulaOf = columnFormulas_(range, rows.length);
+      var out = rows.map(function (row, i) {
         var current = row[ix[column.field]];
+        if (formulaOf[i][0]) return [formulaOf[i][0]];
         if (isBlank_(current)) return [current];
         var text = column.convert(current);
         if (!text) { unreadable++; return [current]; }
@@ -4979,7 +4988,6 @@ function normalizeFipezapPeriodCells_() {
         return [text];
       });
       if (changed > 0) {
-        var range = sheet.getRange(2, ix[column.field] + 1, out.length, 1);
         range.setNumberFormat('@');
         range.setValues(out);
         logRows.push([nowISO_(), name, column.field, '*', 'Date/texto misto', changed + ' célula(s) como texto',
@@ -5009,6 +5017,46 @@ var MONETARY_COLUMNS = {
   DEVELOPMENTS: ['current_price_brl', 'current_price_brl_m2']
 };
 
+/**
+ * Texto com UM ponto e exatamente três dígitos depois, sem marcador de moeda: "385.000".
+ * É o caso que `toNumber_` lê como decimal (385) e que o dataset real já trouxe como
+ * milhar (R$ 385.000). Sem âncora, ninguém decide isso com segurança — e o saneamento
+ * NUNCA grava um palpite na fonte (R8.91).
+ */
+function isAmbiguousThousands_(value) {
+  if (typeof value !== 'string') return false;
+  var raw = value.replace(/[\s\u00a0]/g, '');
+  if (/^(r\$|brl|reais?)/i.test(raw) || /(reais?|brl)$/i.test(raw)) return false;
+  return /^-?\d{1,3}\.\d{3}$/.test(raw);
+}
+
+/**
+ * Espelho de `toPriceNumber()` de src/normalize.js: resolve "385.000" pela âncora
+ * `preço/m² informado × área` quando ela existe. Sem âncora devolve `null` — quem chama
+ * decide o que fazer com o ambíguo (o saneamento preserva; a cobertura conta como sem preço).
+ */
+function toPriceNumber_(rawValue, areaValue, informedPriceM2Value) {
+  var asDecimal = toNumber_(rawValue);
+  if (asDecimal === null) return null;
+  if (!isAmbiguousThousands_(rawValue)) return asDecimal;
+  var area = toNumber_(areaValue);
+  var informed = isAmbiguousThousands_(informedPriceM2Value) ? null : toNumber_(informedPriceM2Value);
+  if (area === null || area <= 0 || informed === null || informed <= 0) return null;
+  var asThousands = asDecimal * 1000;
+  var expected = informed * area;
+  return Math.abs(asThousands - expected) < Math.abs(asDecimal - expected) ? asThousands : asDecimal;
+}
+
+/** Fórmulas de uma coluna (matriz de strings; '' onde não há). Mock sem `getFormulas` devolve tudo ''. */
+function columnFormulas_(range, count) {
+  var formulas = typeof range.getFormulas === 'function' ? range.getFormulas() : null;
+  if (!formulas || formulas.length !== count) {
+    formulas = [];
+    for (var i = 0; i < count; i++) formulas.push(['']);
+  }
+  return formulas;
+}
+
 function normalizeMonetaryCells() {
   var result = withLock_(normalizeMonetaryCells_);
   if (result === null) return 'Não foi possível obter lock.';
@@ -5035,28 +5083,47 @@ function normalizeMonetaryCells_() {
     var ix = headerIndex_(headersOf_(sheet));
     var idField = ID_FIELD[name];
     var rows = dataRowsOf_(sheet);
+    // Âncora do preço ambíguo ("385.000"): preço/m² informado × área, como no cliente.
+    var anchor = name === 'LISTINGS'
+      ? { price: 'asking_price_brl', area: 'area_m2', m2: 'asking_price_brl_m2' }
+      : { price: 'current_price_brl', area: 'area_m2', m2: 'current_price_brl_m2' };
     MONETARY_COLUMNS[name].forEach(function (field) {
       if (ix[field] === undefined) return;
       var changed = 0;
       var unparsed = 0;
+      var ambiguous = 0;
+      var formulas = 0;
+      var range = sheet.getRange(2, ix[field] + 1, rows.length, 1);
+      var formulaOf = columnFormulas_(range, rows.length);
       var out = rows.map(function (row, i) {
         var current = row[ix[field]];
+        // Fórmula fica fórmula: reescrever a coluna com `getValues()` a apagaria em silêncio.
+        if (formulaOf[i][0]) { formulas++; return [formulaOf[i][0]]; }
         if (typeof current !== 'string' || current.trim() === '') return [current];
-        var n = toNumber_(current);
-        if (n === null) { unparsed++; return [current]; }
+        var n;
+        if (isAmbiguousThousands_(current)) {
+          n = field === anchor.price && ix[anchor.area] !== undefined && ix[anchor.m2] !== undefined
+            ? toPriceNumber_(current, row[ix[anchor.area]], row[ix[anchor.m2]])
+            : null;
+          if (n === null) { ambiguous++; return [current]; }
+        } else {
+          n = toNumber_(current);
+          if (n === null) { unparsed++; return [current]; }
+        }
         changed++;
         logRows.push([nowISO_(), name, field, idField && ix[idField] !== undefined ? toText_(row[ix[idField]]) : String(i + 2),
           current, String(n), 'saneamento v2.4.0', correlation, 'ok', '']);
         return [n];
       });
       if (changed > 0) {
-        var range = sheet.getRange(2, ix[field] + 1, out.length, 1);
         range.setNumberFormat('R$ #,##0.00');
         range.setValues(out);
       }
       changedTotal += changed;
       summary.push(name + '.' + field + ': ' + changed + ' convertida(s)' +
-        (unparsed ? ', ' + unparsed + ' não numérica(s) preservada(s)' : ''));
+        (unparsed ? ', ' + unparsed + ' não numérica(s) preservada(s)' : '') +
+        (ambiguous ? ', ' + ambiguous + ' ambígua(s) sem âncora preservada(s) — corrija à mão (ex.: "385.000")' : '') +
+        (formulas ? ', ' + formulas + ' fórmula(s) mantida(s)' : ''));
     });
   });
 
@@ -5274,10 +5341,11 @@ function buildListingsCoverage_() {
     raCodes[code] = true;
     var type = toText_(row[ix.property_type]) || 'sem_tipo';
     var beds = bedroomBucketOf_(type, row[ix.bedrooms]);
-    var priceBucket = priceBucketOf_(row[ix.asking_price_brl]);
-    var price = toNumber_(row[ix.asking_price_brl]);
+    // "385.000" sem âncora é ambíguo: conta como SEM preço, nunca como R$ 385 em `ate_300k`.
+    var price = toPriceNumber_(row[ix.asking_price_brl], row[ix.area_m2], row[ix.asking_price_brl_m2]);
+    var priceBucket = priceBucketOf_(price);
     var area = toNumber_(row[ix.area_m2]);
-    var informed = toNumber_(row[ix.asking_price_brl_m2]);
+    var informed = isAmbiguousThousands_(row[ix.asking_price_brl_m2]) ? null : toNumber_(row[ix.asking_price_brl_m2]);
     var validM2 = price !== null && price > 0 && area !== null && area > 0 &&
       (informed === null || informed <= 0 || Math.abs(price / area - informed) / informed <= PRICE_M2_TOLERANCE);
     var active = toText_(row[ix.status]).toLowerCase() === 'active';
