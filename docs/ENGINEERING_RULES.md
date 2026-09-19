@@ -923,3 +923,21 @@ Cada uma nasce de um erro que aconteceu de verdade.
   intervalo comparado e sobrepor a série no MESMO eixo. Mecanismo: o módulo puro devolve o
   `n`, a fórmula e o intervalo junto do número, e amostra vazia devolve `null` — a tela escreve
   a frase, nunca um zero.
+- **R8.88** *(2026-09-19, revisão do Codex na #129)* **Identificador operacional mora em Script
+  Properties, nunca no código nem em APP_META.** O ID da planilha pública e a URL do `/exec` são
+  públicos por design (R4.2); o ID de um staging, de uma pasta do Drive ou de qualquer planilha de
+  bastidor não é — e o repositório e o `?resource=meta` são lidos por qualquer pessoa. Mecanismo:
+  `props_().getProperty('...')` com erro claro quando ausente; a rotina que antes publicava a chave
+  a remove de APP_META ao rodar. Teste: o valor não aparece em `Code.gs` nem em `APP_META`.
+- **R8.89** *(2026-09-19, revisão do Codex na #129)* **Sincronização multi-aba lê e valida TUDO
+  antes de escrever QUALQUER coisa.** Escrever aba a aba enquanto se lê deixa um retrato misto se a
+  terceira leitura falhar: duas abas trocadas, três antigas, metadados nunca atualizados — e nada
+  na tela denuncia. Mecanismo: fase 1 lê todas as fontes em memória e lança sem tocar destino;
+  fase 2 escreve guardando o conteúdo anterior e o restaura se a escrita falhar no meio. Teste:
+  staging sem uma aba → nenhuma aba de destino muda.
+- **R8.90** *(2026-09-19, revisão do Codex na #129)* **Parâmetro de URL aplica-se ao estado que a
+  view de fato lê.** `#ranking?ra=RA_20` gravado em `pdadFilters` (do Diagnóstico) enquanto o
+  Ranking lê `pdadRankState` mostra um território e anuncia outro na barra de endereço — o pior
+  tipo de link compartilhável, o que mente. Mecanismo: cada view serializa e consome o SEU estado
+  em `currentUrlParams`/`initialize*`, e o vocabulário de chaves em `URL_KEYS` só declara o que a
+  view usa (o Ranking não tem ano). Teste de smoke: abrir o link e conferir o `select` da tela.

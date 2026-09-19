@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import { createAppsScriptSandbox, readJsonOutput } from './helpers/appsScriptSandbox.mjs';
 
 // v2.4.0 (issue #120): o adendo FipeZAP que rodava só no script instalado exigia
@@ -46,8 +47,9 @@ const CONTRACT_HEADERS = (() => {
   return Object.fromEntries(['LISTINGS', 'DEVELOPMENTS', 'ANCHORS', 'RA_PROFILES'].map((s) => [s, [...context.REQUIRED_HEADERS[s]]]));
 })();
 
-function sandboxWith(monthlyRows, extra = {}) {
+function sandboxWith(monthlyRows, extra = {}, options = {}) {
   return createAppsScriptSandbox({
+    ...options,
     sheets: {
       APP_META: [['key', 'value', 'updated_at']],
       DATA_QUALITY: [['severity', 'sheet', 'row', 'record_id', 'field', 'code', 'message', 'detected_at', 'category']],
@@ -65,7 +67,7 @@ function sandboxWith(monthlyRows, extra = {}) {
         CONTRACT_HEADERS.RA_PROFILES.map((h) => ({ ra_geo_id: 'RA_20', ra_name: 'Águas Claras', ra_code: 'RA-XX' })[h] ?? '')],
       ...extra,
     },
-    scriptProperties: { DATASET_VERSION: '3' },
+    scriptProperties: { DATASET_VERSION: '3', ...(options.scriptProperties || {}) },
   });
 }
 
@@ -216,3 +218,91 @@ test('rebuildFipezapLocalityMonthly_ pareia venda e locação por período × se
   assert.equal(aguas.quality_flag, 'ok');
   assert.equal(rec(2).quality_flag, 'partial_sale_only');
 });
+
+// --- Sincronização com o staging (revisão da #129) -------------------------------------
+//
+// O ID do staging é operacional: mora em Script Properties, nunca no código nem em APP_META.
+// E a cópia é em duas fases — ler e validar as cinco abas ANTES de tocar em qualquer
+// destino — senão uma aba faltante no staging deixava a planilha pública com um retrato
+// misto (duas abas trocadas, três antigas, metadados nunca atualizados).
+
+const STAGING_ID = 'staging-fake-id';
+
+function stagingBook(over = {}) {
+  const base = {
+    FIPEZAP_MONTHLY: [MONTHLY_HEADERS, monthlyRow({ fipezap_id: 'NOVO_1' }), monthlyRow({ fipezap_id: 'NOVO_2', period_id: '2011-02' })],
+    FIPEZAP_LOCALITY_MONTHLY: [['locality_monthly_id', 'period_id'], ['LM_1', '2019-03']],
+    FIPEZAP_LOCALITY_MAP: [['locality_map_id', 'source_locality_name'], ['FZMAP_X', 'X']],
+    FIPEZAP_SOURCES: [['source_id', 'period_id', 'reference_date'], ['FZSRC_9', '2011-01', '2011-01-01']],
+    FIPEZAP_NOTES: [['note_id', 'note_text'], ['FZNOTE_9', 'n']],
+  };
+  const book = { ...base, ...over };
+  for (const name of Object.keys(book)) if (book[name] === undefined) delete book[name];
+  return book;
+}
+
+test('sem FIPEZAP_STAGING_SPREADSHEET_ID em Script Properties o sync recusa com mensagem clara e não toca nada', () => {
+  const sandbox = sandboxWith([monthlyRow()]);
+  const antes = JSON.stringify(sandbox.sheets.FIPEZAP_MONTHLY._rows);
+  assert.throws(() => sandbox.context.syncFipezapFromStaging_(), /FIPEZAP_STAGING_SPREADSHEET_ID/);
+  assert.equal(JSON.stringify(sandbox.sheets.FIPEZAP_MONTHLY._rows), antes);
+  assert.equal(sandbox.context.getMeta_('fipezap_data_load_status'), '');
+  // O ID não está em lugar nenhum do código.
+  assert.doesNotMatch(readFileSync(new URL('../optional-apps-script/Code.gs', import.meta.url), 'utf8'), /1OSjL5O4CR1OLTVC6n/);
+});
+
+test('staging sem uma das cinco abas: nenhuma aba de destino é alterada', () => {
+  const sandbox = sandboxWith([monthlyRow()], {}, {
+    scriptProperties: { [sandbox_placeholder()]: STAGING_ID },
+    externalSpreadsheets: { [STAGING_ID]: stagingBook({ FIPEZAP_NOTES: undefined }) },
+  });
+  const antes = {
+    monthly: JSON.stringify(sandbox.sheets.FIPEZAP_MONTHLY._rows),
+    sources: JSON.stringify(sandbox.sheets.FIPEZAP_SOURCES._rows),
+    map: JSON.stringify(sandbox.sheets.FIPEZAP_LOCALITY_MAP._rows),
+  };
+  assert.throws(() => sandbox.context.syncFipezapFromStaging_(), /sem a aba FIPEZAP_NOTES.*Nada foi alterado/);
+  assert.equal(JSON.stringify(sandbox.sheets.FIPEZAP_MONTHLY._rows), antes.monthly, 'FIPEZAP_MONTHLY intacta');
+  assert.equal(JSON.stringify(sandbox.sheets.FIPEZAP_SOURCES._rows), antes.sources, 'FIPEZAP_SOURCES intacta');
+  assert.equal(JSON.stringify(sandbox.sheets.FIPEZAP_LOCALITY_MAP._rows), antes.map, 'FIPEZAP_LOCALITY_MAP intacta');
+  assert.equal(sandbox.sheets.FIPEZAP_LOCALITY_MONTHLY, undefined, 'aba ausente não foi criada');
+  assert.equal(sandbox.context.getMeta_('fipezap_data_load_status'), '', 'metadados não escritos');
+});
+
+test('staging com aba vazia: mesma proteção — nada é escrito', () => {
+  const sandbox = sandboxWith([monthlyRow()], {}, {
+    scriptProperties: { [sandbox_placeholder()]: STAGING_ID },
+    externalSpreadsheets: { [STAGING_ID]: stagingBook({ FIPEZAP_SOURCES: [] }) },
+  });
+  const antes = JSON.stringify(sandbox.sheets.FIPEZAP_MONTHLY._rows);
+  assert.throws(() => sandbox.context.syncFipezapFromStaging_(), /vazio em FIPEZAP_SOURCES/);
+  assert.equal(JSON.stringify(sandbox.sheets.FIPEZAP_MONTHLY._rows), antes);
+});
+
+test('staging completo: copia as cinco abas, publica contagens e NÃO publica o ID do staging', () => {
+  const sandbox = sandboxWith([monthlyRow()], {
+    APP_META: [['key', 'value', 'updated_at'], ['fipezap_import_source_spreadsheet_id', 'id-antigo-publicado', '2026-09-01']],
+  }, {
+    scriptProperties: { [sandbox_placeholder()]: STAGING_ID },
+    externalSpreadsheets: { [STAGING_ID]: stagingBook() },
+  });
+  // `{ ...result }` porque o objeto nasce no realm do sandbox: deepStrictEqual compararia protótipos.
+  const result = { ...sandbox.context.syncFipezapFromStaging_() };
+  assert.deepEqual(result, { rowsMonthly: 2, rowsLocality: 1, rowsSources: 1, rowsMap: 1, rowsNotes: 1 });
+  assert.equal(sandbox.sheets.FIPEZAP_MONTHLY._rows.length, 3);
+  assert.equal(sandbox.sheets.FIPEZAP_MONTHLY._rows[1][0], 'NOVO_1');
+  assert.equal(sandbox.sheets.FIPEZAP_MONTHLY._rows[1][1], '2011-01', 'período do staging vira texto');
+  assert.equal(sandbox.context.getMeta_('fipezap_expected_rows_monthly'), '2');
+  assert.equal(sandbox.context.getMeta_('fipezap_data_load_status'), 'loaded');
+  assert.equal(sandbox.context.getMeta_('fipezap_import_source_spreadsheet_id'), '', 'chave antiga removida de APP_META');
+  const metaText = JSON.stringify(sandbox.sheets.APP_META._rows);
+  assert.doesNotMatch(metaText, new RegExp(STAGING_ID), 'ID do staging não aparece em APP_META');
+  // Rodar de novo é idempotente.
+  const again = { ...sandbox.context.syncFipezapFromStaging_() };
+  assert.deepEqual(again, result);
+  assert.equal(sandbox.sheets.FIPEZAP_MONTHLY._rows.length, 3);
+});
+
+function sandbox_placeholder() {
+  return createAppsScriptSandbox().context.FIPEZAP_STAGING_PROPERTY;
+}

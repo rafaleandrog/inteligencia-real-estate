@@ -1797,15 +1797,22 @@ function currentUrlParams(view) {
     if (state.marketRegionScatterMode && state.marketRegionScatterMode !== REGION_SCATTER_MODES[0].value) params.regiao_modo = state.marketRegionScatterMode;
     return params;
   }
-  if (view === 'diagnostico' || view === 'ranking') {
+  if (view === 'diagnostico') {
     const f = state.pdadFilters;
     if (!f) return {};
     const anos = pdadYearsAvailable(state.pdadData);
     return {
       ra: f.ra && f.ra !== 'all' ? f.ra : '',
       ano: f.year && f.year !== anos[0] ? String(f.year) : '',
-      tema: view === 'diagnostico' && f.tema && f.tema !== 'all' ? f.tema : '',
+      tema: f.tema && f.tema !== 'all' ? f.tema : '',
     };
+  }
+  if (view === 'ranking') {
+    // O Ranking lê `state.pdadRankState`, não `state.pdadFilters`: o link tem de refletir
+    // o estado que a tela de fato renderiza (revisão da #129). Ano não entra — o ranking
+    // é sempre sobre o ano mais recente publicado.
+    const r = state.pdadRankState;
+    return { ra: r && r.ra ? r.ra : '' };
   }
   return {};
 }
@@ -3219,7 +3226,7 @@ function initializePdadFilters() {
   }));
   dom.pdadYear.value = String(maisRecente);
   state.pdadFilters = { ra: 'all', year: maisRecente, tema: 'all' };
-  const pendente = state.pendingUrl && ['diagnostico', 'ranking'].includes(state.pendingUrl.view) ? state.pendingUrl.params : null;
+  const pendente = state.pendingUrl && state.pendingUrl.view === 'diagnostico' ? state.pendingUrl.params : null;
   if (pendente) {
     if (intParam(pendente.ano) !== null && anos.includes(intParam(pendente.ano))) {
       state.pdadFilters.year = intParam(pendente.ano);
@@ -3835,7 +3842,11 @@ function initializePdadRankState() {
   const ano = pdadPrimaryYear();
   const ras = rasForYear(state.pdadIndex, ano);
   const comFigura = PDAD_RANK_SET.filter((item) => item.key);
-  state.pdadRankState = { ra: ras[0]?.raGeoId || null, indicatorId: comFigura[0]?.id || null, mode: 'pct' };
+  // `#ranking?ra=RA_20` aplica-se AQUI, no estado que o ranking lê — não em `pdadFilters`,
+  // que pertence ao Diagnóstico. RA fora do ano publicado cai no primeiro da lista.
+  const pendente = state.pendingUrl && state.pendingUrl.view === 'ranking' ? state.pendingUrl.params : null;
+  const pedida = pendente && pendente.ra && ras.some((r) => r.raGeoId === pendente.ra) ? pendente.ra : null;
+  state.pdadRankState = { ra: pedida || ras[0]?.raGeoId || null, indicatorId: comFigura[0]?.id || null, mode: 'pct' };
 }
 
 function renderPdadRankTable() {
@@ -4585,6 +4596,7 @@ function bindEvents() {
     if (!state.pdadRankState) return;
     state.pdadRankState.ra = dom.pdadRankRa.value;
     renderPdadRankingView();
+    if (viewFromHash() === 'ranking') syncHash();
   });
   dom.pdadRankIndicator.addEventListener('change', () => {
     if (!state.pdadRankState) return;

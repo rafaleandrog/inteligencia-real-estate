@@ -62,3 +62,11 @@ test('o vocabulário de views e chaves é fechado e congelado', () => {
   assert.ok(Object.isFrozen(URL_KEYS));
   for (const view of URL_VIEWS) assert.ok(Array.isArray(URL_KEYS[view]), view);
 });
+
+// Revisão da #129: o Ranking lê `pdadRankState`, não os filtros do Diagnóstico, e não tem
+// ano — o vocabulário de chaves declara só o que a view usa (R8.90).
+test('ranking serializa apenas `ra`; `ano` e `tema` são descartados nos dois sentidos', () => {
+  assert.deepEqual([...URL_KEYS.ranking], ['ra']);
+  assert.equal(buildHash('ranking', { ra: 'RA_20', ano: 2024, tema: 'domicilios' }), '#ranking?ra=RA_20');
+  assert.deepEqual(parseHash('#ranking?ra=RA_20&ano=2024'), { view: 'ranking', params: { ra: 'RA_20' } });
+});

@@ -4218,8 +4218,14 @@ function json_(payload, params) {
 // cima por reatribuição: cada ponto de extensão (validateAll, refreshMeta, doGet,
 // handleEdit, maintenanceJob, onOpen) chama estas funções pelo nome.
 
-/** Planilha de staging de onde `syncFipezapFromStaging_()` copia as cinco abas. */
-var FIPEZAP_IMPORT_SPREADSHEET_ID = '1OSjL5O4CR1OLTVC6n-bgyFGEilteoeXtqjpczmcGcA4';
+/**
+ * Script Property com o ID da planilha de staging de onde `syncFipezapFromStaging_()` copia
+ * as cinco abas. Identificador operacional fica em Script Properties, nunca no código nem em
+ * APP_META (R8.88): o repositório e o `/exec` são públicos, o staging não.
+ */
+var FIPEZAP_STAGING_PROPERTY = 'FIPEZAP_STAGING_SPREADSHEET_ID';
+/** Chave que versões anteriores publicavam em APP_META; o sync a remove ao rodar. */
+var FIPEZAP_LEGACY_SOURCE_ID_META_KEY = 'fipezap_import_source_spreadsheet_id';
 var FIPEZAP_IMPORT_SOURCE_TITLE = 'FipeZAP Import Temp - Inteligência Real Estate';
 var FIPEZAP_SOURCE_WORKBOOK = 'FipeZAP_Brasilia_Base_Final.xlsx';
 var FIPEZAP_SCHEMA_VERSION = '1.1';
@@ -4452,8 +4458,34 @@ function syncFipezapFromStaging_UI() {
   }
 }
 
+/** ID da planilha de staging FipeZAP, lido de Script Properties. Ausente → erro claro. */
+function fipezapStagingSpreadsheetId_() {
+  var id = toText_(props_().getProperty(FIPEZAP_STAGING_PROPERTY));
+  if (!id) {
+    throw new Error('Script Property ' + FIPEZAP_STAGING_PROPERTY + ' não configurada. ' +
+      'Defina-a em Configurações do projeto → Propriedades do script com o ID da planilha de staging.');
+  }
+  return id;
+}
+
+/** Remove uma chave de APP_META, se existir. Sem chave, não faz nada. */
+function deleteMeta_(key) {
+  var sheet = ss_().getSheetByName(META_SHEET);
+  if (!sheet) return;
+  var rows = dataRowsOf_(sheet);
+  for (var i = rows.length - 1; i >= 0; i--) {
+    if (String(rows[i][0]).trim() === key) sheet.deleteRow(i + 2);
+  }
+}
+
 /**
  * Copia as cinco abas FipeZAP da planilha de staging para esta, por inteiro.
+ *
+ * Duas fases, e nesta ordem (R8.89): primeiro LÊ e valida as cinco abas do staging; só
+ * depois escreve. Escrever aba a aba enquanto lê deixaria um retrato misto na planilha
+ * pública se a terceira aba faltasse — as duas primeiras já limpas e trocadas, as
+ * demais antigas, e os metadados nunca atualizados. Se a escrita falhar no meio, o
+ * conteúdo anterior de cada aba já escrita é restaurado antes de propagar o erro.
  *
  * As contagens esperadas ficam em APP_META (`fipezap_expected_rows_*`) a partir do que o
  * staging trouxe — o script instalado as tinha fixas em 3369/1714, o que faria a primeira
@@ -4461,22 +4493,49 @@ function syncFipezapFromStaging_UI() {
  */
 function syncFipezapFromStaging_() {
   var result = withLock_(function () {
-    var source = SpreadsheetApp.openById(FIPEZAP_IMPORT_SPREADSHEET_ID);
+    var source = SpreadsheetApp.openById(fipezapStagingSpreadsheetId_());
     var target = ss_();
     var counts = {};
 
-    FIPEZAP_SHEETS.forEach(function (name) {
+    // Fase 1: ler tudo. Nenhuma aba de destino é tocada até as cinco leituras passarem.
+    var snapshots = FIPEZAP_SHEETS.map(function (name) {
       var src = source.getSheetByName(name);
-      if (!src) throw new Error('Staging FipeZAP sem a aba ' + name + '.');
+      if (!src) throw new Error('Staging FipeZAP sem a aba ' + name + '. Nada foi alterado.');
       var values = src.getDataRange().getValues();
-      if (!values.length || !values[0].length) throw new Error('Staging FipeZAP vazio em ' + name + '.');
-      var dst = target.getSheetByName(name) || target.insertSheet(name);
-      ensureSheetSize_(dst, values.length, values[0].length);
-      dst.clearContents();
-      dst.getRange(1, 1, values.length, values[0].length).setValues(values);
-      styleFipezapSheet_(dst, values.length, values[0].length);
-      counts[name] = Math.max(0, values.length - 1);
+      if (!values.length || !values[0].length || !toText_(values[0][0])) {
+        throw new Error('Staging FipeZAP vazio em ' + name + '. Nada foi alterado.');
+      }
+      return { name: name, values: values };
     });
+
+    // Fase 2: escrever, guardando o conteúdo anterior para restaurar se algo falhar.
+    var previous = [];
+    try {
+      snapshots.forEach(function (snap) {
+        var values = snap.values;
+        var dst = target.getSheetByName(snap.name) || target.insertSheet(snap.name);
+        var before = dst.getLastRow() > 0 ? dst.getDataRange().getValues() : [];
+        previous.push({ sheet: dst, values: before });
+        ensureSheetSize_(dst, values.length, values[0].length);
+        dst.clearContents();
+        dst.getRange(1, 1, values.length, values[0].length).setValues(values);
+        styleFipezapSheet_(dst, values.length, values[0].length);
+        counts[snap.name] = Math.max(0, values.length - 1);
+      });
+    } catch (error) {
+      previous.forEach(function (entry) {
+        try {
+          entry.sheet.clearContents();
+          if (entry.values.length && entry.values[0].length) {
+            entry.sheet.getRange(1, 1, entry.values.length, entry.values[0].length).setValues(entry.values);
+          }
+        } catch (restoreError) {
+          Logger.log('Falha ao restaurar %s após erro no sync FipeZAP: %s', entry.sheet.getName(), restoreError.message);
+        }
+      });
+      throw new Error('Sincronização FipeZAP interrompida e conteúdo anterior restaurado: ' +
+        (error && error.message ? error.message : error));
+    }
 
     // Períodos chegam como Date do staging; o contrato é texto (`YYYY-MM`).
     normalizeFipezapPeriodCells_();
@@ -4484,7 +4543,8 @@ function syncFipezapFromStaging_() {
     var now = nowISO_();
     setMeta_('fipezap_schema_version', FIPEZAP_SCHEMA_VERSION);
     setMeta_('fipezap_source_workbook', FIPEZAP_SOURCE_WORKBOOK);
-    setMeta_('fipezap_import_source_spreadsheet_id', FIPEZAP_IMPORT_SPREADSHEET_ID);
+    // O ID do staging não é publicado: versões anteriores o gravavam em APP_META.
+    deleteMeta_(FIPEZAP_LEGACY_SOURCE_ID_META_KEY);
     setMeta_('fipezap_import_source_title', FIPEZAP_IMPORT_SOURCE_TITLE);
     setMeta_('fipezap_expected_rows_monthly', String(counts.FIPEZAP_MONTHLY || 0));
     setMeta_('fipezap_expected_rows_locality', String(counts.FIPEZAP_LOCALITY_MONTHLY || 0));

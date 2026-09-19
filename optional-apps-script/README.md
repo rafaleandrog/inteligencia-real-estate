@@ -48,7 +48,7 @@ Depois disso o menu **Imob Intelligence** aparece ao abrir a planilha.
 | `provisionIvvRegion()` | Cria `IVV_REGION` com o cabeçalho do contrato; o dado é colado à mão |
 | `buildListingsCoverage()` | Reescreve `LISTINGS_COVERAGE` (RA × tipo × quartos × faixa de preço) |
 | `buildPdadCoverage()` | Reescreve `PDAD_A_COVERAGE` (RA × indicador autorizado em PDAD_A_FIGURE_MAP) |
-| `syncFipezapFromStaging_()` | Copia as cinco abas FipeZAP da planilha de staging (ID fixo no código) |
+| `syncFipezapFromStaging_()` | Copia as cinco abas FipeZAP da planilha de staging — ID na Script Property `FIPEZAP_STAGING_SPREADSHEET_ID`; lê e valida as cinco abas antes de escrever qualquer destino |
 | `rebuildFipezapLocalityMonthly_()` | Reconstrói a visão venda + locação por período × segmento × localidade |
 | `validateFipezapDataset_()` | Regras semânticas da série (período, segmento, operação, fonte, RA, duplicidade, lacuna) |
 | `validateIvvRegion_()` | Faixa, mês, duplicidade, escala em p.p. e conferência publicado × sold/offered |

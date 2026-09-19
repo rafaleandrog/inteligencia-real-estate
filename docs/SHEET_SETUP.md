@@ -21,7 +21,9 @@ Abas opcionais:
 - `POLYGONS` — **gerenciada**: contornos de KML/KMZ, criada por `setupProject()`
 - `ROAD_SEGMENTS`, `ROAD_SEGMENT_ALIASES`, `TRAFFIC_DAILY_TEST` — gerenciadas (v2.2.1)
 - `FIPEZAP_MONTHLY`, `FIPEZAP_LOCALITY_MONTHLY`, `FIPEZAP_LOCALITY_MAP`, `FIPEZAP_SOURCES`,
-  `FIPEZAP_NOTES` — gerenciadas (v2.4.0); o dado entra por **Sincronizar base FipeZAP**
+  `FIPEZAP_NOTES` — gerenciadas (v2.4.0); o dado entra por **Sincronizar base FipeZAP**, que lê a
+  planilha de staging cujo ID está na Script Property `FIPEZAP_STAGING_SPREADSHEET_ID` (nunca no
+  código nem em `APP_META`)
 - `PDAD_A_DATA`, `PDAD_A_FIGURE_MAP`, `PDAD_A_GUIDE` — carregadas à mão, lidas pelo Diagnóstico
 - `LISTINGS_COVERAGE`, `PDAD_A_COVERAGE` — **operacionais**, recalculadas por inteiro pelo menu
   (v2.4.0); nunca editadas à mão

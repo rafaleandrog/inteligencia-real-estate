@@ -16,7 +16,7 @@ export const URL_KEYS = Object.freeze({
   mapa: Object.freeze(['ra', 'type', 'beds', 'price_min', 'price_max', 'locality', 'q']),
   mercado: Object.freeze(['periodo', 'ano', 'mes', 'de', 'ate', 'serie', 'compare', 'faixa', 'regiao_modo']),
   diagnostico: Object.freeze(['ra', 'ano', 'tema']),
-  ranking: Object.freeze(['ra', 'ano']),
+  ranking: Object.freeze(['ra']),
   comparar: Object.freeze([]),
   base: Object.freeze([]),
 });
