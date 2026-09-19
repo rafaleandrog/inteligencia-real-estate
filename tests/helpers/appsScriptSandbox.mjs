@@ -37,6 +37,18 @@ export function createFakeSheet(name, rows) {
       data.splice(rowNumber - 1, count);
     },
     setFrozenRows() {},
+    // v2.4.0 — usados pelo sincronizador FipeZAP e pelas abas de cobertura. A grade do
+    // mock cresce sozinha em `setValues`, então "max" é só o tamanho atual e inserir
+    // linhas/colunas é no-op: o que importa aos testes é o dado escrito, não a grade.
+    getMaxRows: () => Math.max(data.length, 1),
+    getMaxColumns: () => Math.max(data[0] ? data[0].length : 0, 1),
+    insertRowsAfter() {},
+    insertColumnsAfter() {},
+    clearContents() { data.length = 0; return sheet; },
+    getDataRange() {
+      return createRange(data, 1, 1, Math.max(data.length, 1), Math.max(data[0] ? data[0].length : 0, 1));
+    },
+    getFilter: () => null,
     // Exposto só para asserção nos testes — não existe na API real do Apps Script.
     _rows: data,
   };
@@ -101,6 +113,10 @@ function createRange(data, row, col, numRows, numCols) {
     // INTERNAL_ERROR na resposta da API.
     setNumberFormat() { return this; },
     setFontWeight() { return this; },
+    setBackground() { return this; },
+    setFontColor() { return this; },
+    setVerticalAlignment() { return this; },
+    createFilter() { return this; },
     copyFormatToRange() { return this; },
     getA1Notation: () => `R${row}C${col}`,
     getRow: () => row,
@@ -136,6 +152,9 @@ export function createAppsScriptSandbox({ sheets = {}, scriptProperties = {}, go
     SpreadsheetApp: {
       getActiveSpreadsheet: () => book,
       getUi: () => { throw new Error('getUi() não é usado pelos testes de escrita'); },
+      // O sincronizador FipeZAP lê OUTRA planilha por ID. Lança de propósito: um teste que
+      // chegasse aqui sem querer passaria a depender de um staging simulado em silêncio.
+      openById: (id) => { throw new Error(`openById() não é permitido em teste (tentou ${id})`); },
     },
     PropertiesService: {
       getScriptProperties: () => ({

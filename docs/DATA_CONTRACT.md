@@ -307,10 +307,14 @@ abaixo. `FIPEZAP_LOCALITY_MAP`/`FIPEZAP_SOURCES`/`FIPEZAP_NOTES` existem na plan
 
 ### IVV_REGION — IVV por Região Administrativa e faixa de quartos (issue #87)
 
-Aba **opcional**, sem contrato de cabeçalho no `Code.gs`: como a `IVV_MONTHLY`, ela não está em
-`REQUIRED_HEADERS` nem em `FIELD_SCHEMA`, então a rede de teste é o triângulo schema
-(`src/ivv/region.js`) ↔ semente (`migration/imob-intelligence-backend.xlsx`) ↔ esta seção, fechado
-por `tests/ivv-region.test.js`.
+Aba **opcional**, sem contrato de cabeçalho em `REQUIRED_HEADERS`: como a `IVV_MONTHLY`, ela não está
+em `REQUIRED_HEADERS` nem em `FIELD_SCHEMA` (a chave é composta, não há `ID_FIELD`), então a rede de
+teste é o triângulo schema (`src/ivv/region.js`) ↔ semente (`migration/imob-intelligence-backend.xlsx`)
+↔ esta seção, fechado por `tests/ivv-region.test.js`. A partir da v2.4.0 o `Code.gs` a **provisiona**
+(`provisionIvvRegion()`, só cabeçalho — `IVV_REGION_HEADERS`) e a **valida** (`validateIvvRegion_()`:
+faixa no vocabulário, `reference_month` legível, mês × região × faixa único, IVV em 0–100 p.p.,
+`ivv_pct` = `ivv_pct_published`, conferência `sold/offered` com tolerância de 0,05 p.p. como aviso).
+O dado é colado à mão a partir da semente; `DF Total` nunca é comparado com a soma das partes.
 
 **Forma do dado.** 95 linhas, **um único mês** (mai/2026 na semente), 19 regiões — incluindo a
 linha agregada `DF Total` — e 5 faixas de quartos: `1Q`, `2Q`, `3Q`, `4+Q` e a agregada `TOTAL`.
@@ -1242,6 +1246,11 @@ o que obriga ela a encolher no dia em que alguém reexportar a planilha (R8.39).
 | `ROAD_SEGMENTS` | *(aba inteira)* | issue #50 |
 | `ROAD_SEGMENT_ALIASES` | *(aba inteira)* | issue #50 |
 | `TRAFFIC_DAILY_TEST` | *(aba inteira)* | issue #50 |
+| `FIPEZAP_MONTHLY` | *(aba inteira)* | issue #120 (v2.4.0) |
+| `FIPEZAP_LOCALITY_MONTHLY` | *(aba inteira)* | issue #120 (v2.4.0) |
+| `FIPEZAP_LOCALITY_MAP` | *(aba inteira)* | issue #120 (v2.4.0) |
+| `FIPEZAP_SOURCES` | *(aba inteira)* | issue #120 (v2.4.0) |
+| `FIPEZAP_NOTES` | *(aba inteira)* | issue #120 (v2.4.0) |
 
 ---
 
@@ -1255,7 +1264,18 @@ as preenche. `setupProject()` deve completá-las **sem sobrescrever** o que já 
 
 Chaves: `app_version`, `dataset_version`, `last_data_change_at`, `last_validation_at`,
 `validation_status`, `validation_errors`, `validation_warnings`, `last_meta_refresh_at`,
-`rows_listings`, `rows_developments`, `rows_anchors`.
+`rows_listings`, `rows_developments`, `rows_anchors`, `rows_ra_profiles`, `rows_polygons`,
+`rows_road_segments`, `rows_road_segment_aliases`, `rows_traffic_daily_test`.
+
+Chaves da v2.4.0 (`refreshMeta()`): `rows_ivv_monthly`, `rows_ivv_region`, `rows_fipezap_monthly`,
+`rows_fipezap_locality_monthly`, `rows_fipezap_locality_map`, `rows_fipezap_sources`,
+`rows_fipezap_notes`, `rows_pdad_data`, `rows_pdad_coverage`, `rows_listings_coverage`,
+`rows_polygons_active`, `fipezap_period_start`, `fipezap_period_end`. Para estas, **aba ausente
+publica valor vazio, não `0`**: "não existe" e "existe vazia" são estados diferentes. As chaves
+`fipezap_*` de procedência (`fipezap_schema_version`, `fipezap_expected_rows_*`,
+`fipezap_data_load_status`, `fipezap_view_status`, `last_fipezap_*`) são escritas pela sincronização
+FipeZAP; `fipezap_expected_rows_*` é o que `validateAll()` usa para cobrar contagem — atualize-as
+quando a série crescer de propósito.
 
 **A interface lê esta aba** e mostra a procedência do dataset no painel esquerdo — atualização,
 versão e estado da validação. É a única aba operacional exibida na tela.
@@ -1276,14 +1296,48 @@ contradiz e a interface não afirma nada — a correção é apagar a linha dupl
 
 
 ### DATA_QUALITY
-`severity | sheet | row | record_id | field | code | message | detected_at`
+`severity | sheet | row | record_id | field | code | message | detected_at | category`
 
 Validações mínimas: aba obrigatória ausente · cabeçalho ausente · ID vazio · ID duplicado ·
 latitude inválida · longitude inválida · apenas uma coordenada preenchida · URL suspeita ou
 inválida · preço não positivo · área não positiva · divergência grande de preço/m² · campo
-crítico ausente.
+crítico ausente · (v2.4.0) período FipeZAP ilegível, observação FipeZAP duplicada, fonte FipeZAP
+inexistente, faixa/mês/escala de IVV_REGION, fila de pesquisa de DEVELOPMENTS.
+
+`category` (v2.4.0) é derivada do `code` por `qualityCategoryOf_()` e agrupa os achados num
+vocabulário fechado: `schema`, `data_type`, `missing_value`, `duplicate`, `invalid_url`, `spatial`,
+`price`, `date`, `source`, `coverage` (e `other` para código desconhecido). A aba sai **ordenada por
+severidade → aba → categoria → linha**, para funcionar como painel de manutenção. A semente
+(`migration/*.xlsx`) tem 8 colunas; `setupProject()` acrescenta a nona.
+
+`severity = warning` com `category = coverage` é **fila de pesquisa**, não defeito: registra o que
+falta (coordenada, preço, unidades, entrega, estágio de um empreendimento; mês sem linha na série
+FipeZAP) para orientar a pesquisa manual do Plano 02. Não se corrige inventando valor.
 
 **Registro ruim é sinalizado, nunca apagado automaticamente.** A decisão de remover é humana.
+
+### LISTINGS_COVERAGE (v2.4.0)
+`ra_geo_id | ra_name | property_type | bedroom_bucket | price_bucket | active_count | with_price_count | with_area_count | with_valid_price_m2_count | portals_count | latest_observed_at | coverage_status | computed_at`
+
+Matriz de cobertura de anúncios, reescrita por inteiro por `buildListingsCoverage()`. Duas
+granularidades na mesma aba: uma linha `TODOS`/`TODOS` para **cada** RA de `RA_PROFILES` × tipo do
+vocabulário (inclusive com zero — é assim que a lacuna aparece) e linhas detalhadas só para as
+combinações observadas. `bedroom_bucket` ∈ `studio_kitnet`, `1Q`, `2Q`, `3Q`, `4+Q`, `sem_info`;
+`price_bucket` ∈ `ate_300k`, `300k_500k`, `500k_750k`, `750k_1M`, `1M_2M`, `2M_5M`, `5M_mais`,
+`sem_preco`; `coverage_status` ∈ `none` (0 ativo), `single` (1), `thin` (2), `single_portal` (≥3 de um
+portal só), `ok`. `ra_geo_id` usa a convenção de LISTINGS (`RA2026_RA-I`), construída a partir de
+`RA_PROFILES.ra_code`. Nunca editada à mão; nunca lida pelo mapa.
+
+### PDAD_A_COVERAGE (v2.4.0)
+`ra_geo_id | ra_name | pdad_year | indicator_code | indicator_name | figure_number | table_number | categories_expected | categories_loaded | published_count | suppressed_count | has_figure | has_table_check | coverage_status | quality_status | last_checked_at | notes`
+
+Uma linha por RA × ano × indicador **autorizado em `PDAD_A_FIGURE_MAP`**, reescrita por
+`buildPdadCoverage()`. `coverage_status` ∈ `complete`, `partial`, `suppressed_source` (só linhas
+suprimidas), `missing` (nenhuma linha), `needs_review` (indicador presente em `PDAD_A_DATA` mas fora
+do mapa canônico — nunca aceito em silêncio). `categories_expected` é o **máximo observado** entre as
+RAs para o mesmo indicador e ano: o mapa de figuras não publica a contagem, e a heurística é declarada
+em vez de inventada. Uma RA só é "completa" quando todos os indicadores autorizados têm status
+conhecido — não porque tem muitas linhas (Plano 02 §9.3).
 
 ### CHANGE_LOG
 `timestamp | sheet | range | record_id | old_value | new_value | editor | correlation_id | result | error_reason`

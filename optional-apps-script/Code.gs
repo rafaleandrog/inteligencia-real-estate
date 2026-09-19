@@ -35,6 +35,26 @@
  *     `baselineVersion`; `isNumericPosition_()` continua guardando o anel de coordenadas;
  *     `migrateLegacyAdminToken_()` continua revogando o token legado.
  *
+ * Versão 2.3.0 (sincronização territorial — issue #105):
+ *   - Regiões Administrativas por código no GeoPortal, faixa de domínio do DER, escada de
+ *     simplificação e faixas etárias agregadas de PDAD_A_DATA em RA_PROFILES.
+ *
+ * Versão 2.4.0 (sincronização com o script instalado + saneamento — issues #120, #119):
+ *   - incorpora como código de primeira classe o adendo FipeZAP que rodava só na planilha
+ *     (abas FIPEZAP_*, sincronização a partir do staging, visão de localidades, endpoint
+ *     `?resource=fipezap`, validação). O adendo sobrescrevia `validateAll`/`refreshMeta`/
+ *     `doGet` por monkey-patch e nunca chegou ao repositório (R8.48 de novo, ao contrário);
+ *   - `period_id`/`reference_date` FipeZAP aceitam célula Date, ISO ou `YYYY-MM`
+ *     (`periodIdOf_`) — a exigência de texto puro produzia 3369 erros falsos;
+ *   - `toNumber_` lê moeda brasileira com prefixo `R$` e ponto único de milhar
+ *     ("R$ 290.000" é 290000, não 290) — eram 61 PRICE_M2_MISMATCH falsos;
+ *   - saneamento pelo menu: `normalizeMonetaryCells()`, `normalizeFipezapPeriodCells()`,
+ *     `provisionIvvRegion()`, `buildListingsCoverage()`, `buildPdadCoverage()`;
+ *   - DATA_QUALITY ganha `category` e sai ordenada por severidade → aba → categoria;
+ *     DEVELOPMENTS sem coordenada/preço/unidades/entrega vira fila de pesquisa (coverage);
+ *   - `refreshMeta()` publica contagens de IVV, FipeZAP, PDAD, cobertura e polígonos ativos;
+ *   - PDAD_A_DATA, PDAD_A_FIGURE_MAP e PDAD_A_GUIDE entram em ALLOWED_DATASETS.
+ *
  * Instalação:
  *   1. Extensões → Apps Script na planilha
  *   2. Cole este arquivo
@@ -49,7 +69,7 @@
 // Constantes
 // ---------------------------------------------------------------------------
 
-var APP_VERSION = '2.3.0';
+var APP_VERSION = '2.4.0';
 
 /**
  * Protocolo da API de escrita que este script fala, exposto em `health_()`.
@@ -70,7 +90,18 @@ var REQUIRED_SHEETS = ['LISTINGS', 'DEVELOPMENTS', 'ANCHORS'];
 /** Abas previstas para as próximas fases. Ausência é aviso, nunca erro. */
 var OPTIONAL_SHEETS = [
   'PRIMARY_OFFERS', 'IVV_MONTHLY', 'IVV_REGION', 'RA_PROFILES', 'POLYGONS',
-  'ROAD_SEGMENTS', 'ROAD_SEGMENT_ALIASES', 'TRAFFIC_DAILY_TEST'
+  'ROAD_SEGMENTS', 'ROAD_SEGMENT_ALIASES', 'TRAFFIC_DAILY_TEST',
+  // v2.4.0 — série FipeZAP (sincronizada do staging) e PDAD-A (carregada à mão). Todas
+  // são lidas pelo navegador; sem elas aqui `dataset_()` recusava o nome na estratégia
+  // appsscript e o carregamento reportava sucesso com dado vazio.
+  'FIPEZAP_MONTHLY', 'FIPEZAP_LOCALITY_MONTHLY', 'FIPEZAP_LOCALITY_MAP', 'FIPEZAP_SOURCES',
+  'FIPEZAP_NOTES', 'PDAD_A_DATA', 'PDAD_A_FIGURE_MAP', 'PDAD_A_GUIDE'
+];
+
+/** Abas FipeZAP: nascem da sincronização, são somente-leitura para a API de escrita. */
+var FIPEZAP_SHEETS = [
+  'FIPEZAP_MONTHLY', 'FIPEZAP_LOCALITY_MONTHLY', 'FIPEZAP_LOCALITY_MAP', 'FIPEZAP_SOURCES',
+  'FIPEZAP_NOTES'
 ];
 
 /**
@@ -83,7 +114,9 @@ var OPTIONAL_SHEETS = [
  * de R8.40 vale para as abas obrigatórias, que vieram da semente de migração.
  */
 var MANAGED_EXTENSION_SHEETS = [
-  'RA_PROFILES', 'POLYGONS', 'ROAD_SEGMENTS', 'ROAD_SEGMENT_ALIASES', 'TRAFFIC_DAILY_TEST'
+  'RA_PROFILES', 'POLYGONS', 'ROAD_SEGMENTS', 'ROAD_SEGMENT_ALIASES', 'TRAFFIC_DAILY_TEST',
+  'FIPEZAP_MONTHLY', 'FIPEZAP_LOCALITY_MONTHLY', 'FIPEZAP_LOCALITY_MAP', 'FIPEZAP_SOURCES',
+  'FIPEZAP_NOTES'
 ];
 
 /**
@@ -117,7 +150,12 @@ var CHANGELOG_SHEET = 'CHANGE_LOG';
 
 var OPERATIONAL_HEADERS = {
   APP_META: ['key', 'value', 'updated_at'],
-  DATA_QUALITY: ['severity', 'sheet', 'row', 'record_id', 'field', 'code', 'message', 'detected_at'],
+  /**
+   * `category` (v2.4.0) agrupa o `code` numa família estável — schema, data_type,
+   * missing_value, duplicate, invalid_url, spatial, price, date, source, coverage — para a
+   * aba funcionar como painel de manutenção, não só como lista. Ver `qualityCategoryOf_()`.
+   */
+  DATA_QUALITY: ['severity', 'sheet', 'row', 'record_id', 'field', 'code', 'message', 'detected_at', 'category'],
   /**
    * `correlation_id`, `result` e `error_reason` foram acrescentadas na issue #5 para
    * cobrir o pedido de auditoria da API de escrita ("timestamp; aba; operação;
@@ -147,7 +185,12 @@ var ID_FIELD = {
   POLYGONS: 'polygon_id',
   ROAD_SEGMENTS: 'road_segment_id',
   ROAD_SEGMENT_ALIASES: 'alias_id',
-  TRAFFIC_DAILY_TEST: 'traffic_daily_id'
+  TRAFFIC_DAILY_TEST: 'traffic_daily_id',
+  FIPEZAP_MONTHLY: 'fipezap_id',
+  FIPEZAP_LOCALITY_MONTHLY: 'locality_monthly_id',
+  FIPEZAP_LOCALITY_MAP: 'locality_map_id',
+  FIPEZAP_SOURCES: 'source_id',
+  FIPEZAP_NOTES: 'note_id'
 };
 
 /** Colunas de coordenada por aba. */
@@ -239,8 +282,90 @@ var REQUIRED_HEADERS = {
     'pico_15min_fluxo', 'pico_15min_intervalo', 'soma_classes', 'divergencia_total_classes',
     'quality_flag', 'imported_at', 'road_segment_id', 'source_file', 'source_total_policy',
     'traffic_schema_version', 'profile_total_15m_json', 'profile_classes_15m_json'
+  ],
+  /**
+   * FipeZAP (v2.4.0) — cabeçalhos observados na planilha viva em 2026-09-19 e no script
+   * instalado. `period_id` é texto `YYYY-MM` por contrato; célula Date é aceita na leitura
+   * (`periodIdOf_`) e convertida por `normalizeFipezapPeriodCells()`.
+   */
+  FIPEZAP_MONTHLY: [
+    'fipezap_id', 'period_id', 'reference_date', 'year', 'month', 'month_label', 'quarter',
+    'is_latest_period', 'segment_scope', 'transaction_type', 'geography_scope',
+    'source_locality_name', 'ra_name', 'ra_geo_id', 'geography_classification', 'price_unit',
+    'sample_n', 'price_brl_m2', 'official_yield_monthly_pct', 'official_yield_annual_pct',
+    'price_mom_pct_change', 'price_ytd_pct_change', 'price_yoy_pct_change',
+    'calculated_yield_monthly_pct', 'calculated_yield_annual_pct', 'price_to_rent_months',
+    'diff_vs_df_pct', 'rank_price', 'rank_yoy', 'source_publisher', 'source_type', 'source_url',
+    'source_page', 'notes', 'quality_flag', 'imported_at', 'source_workbook', 'source_id', 'note_id'
+  ],
+  FIPEZAP_LOCALITY_MONTHLY: [
+    'locality_monthly_id', 'period_id', 'reference_date', 'year', 'month', 'month_label', 'quarter',
+    'is_latest_period', 'segment_scope', 'source_locality_name', 'ra_name', 'ra_geo_id',
+    'geography_classification', 'sale_price_brl_m2', 'rent_price_brl_m2_month',
+    'calculated_yield_monthly_pct', 'calculated_yield_annual_pct', 'sale_yoy_pct_change',
+    'rent_yoy_pct_change', 'sale_diff_vs_df_pct', 'rent_diff_vs_df_pct', 'sale_price_rank',
+    'rent_price_rank', 'quality_flag', 'source_workbook', 'rebuilt_at'
+  ],
+  FIPEZAP_LOCALITY_MAP: [
+    'locality_map_id', 'source_locality_name', 'ra_name', 'ra_geo_id',
+    'geography_classification', 'mapping_rule', 'methodology_note', 'valid_from', 'valid_to',
+    'quality_flag', 'source_workbook', 'updated_at'
+  ],
+  FIPEZAP_SOURCES: [
+    'source_id', 'period_id', 'reference_date', 'year', 'month', 'segment_scope', 'report_type',
+    'source_type', 'source_page_brasilia', 'source_url', 'source_note', 'source_publisher',
+    'source_workbook', 'quality_flag', 'imported_at'
+  ],
+  FIPEZAP_NOTES: [
+    'note_id', 'note_text', 'note_type', 'source_workbook', 'quality_flag', 'updated_at'
   ]
 };
+
+/**
+ * IVV_REGION (v2.4.0) — provisionada por `provisionIvvRegion()` e validada por
+ * `validateIvvRegion_()`. Fica FORA de `REQUIRED_HEADERS` de propósito: a chave é composta
+ * (mês × região × faixa), não há `ID_FIELD`, e a rede de teste dela é o triângulo
+ * schema (`src/ivv/region.js`) ↔ semente ↔ docs/DATA_CONTRACT.md, como a IVV_MONTHLY.
+ */
+var IVV_REGION_HEADERS = [
+  'reference_month', 'market_region', 'bedroom_bucket', 'offered_units', 'sold_units',
+  'ivv_pct_published', 'ivv_pct', 'ivv_pct_check', 'ivv_variance_pp', 'offer_price_brl_m2',
+  'sale_price_brl_m2', 'source_id'
+];
+var IVV_REGION_BUCKETS = ['TOTAL', '1Q', '2Q', '3Q', '4+Q'];
+var IVV_REGION_TOTAL_REGION = 'DF Total';
+/** Divergência tolerada, em pontos percentuais, entre IVV publicado e recalculado. */
+var IVV_REGION_TOLERANCE_PP = 0.05;
+
+/** Abas operacionais de cobertura (v2.4.0). Recalculadas por inteiro, nunca editadas à mão. */
+var LISTINGS_COVERAGE_SHEET = 'LISTINGS_COVERAGE';
+var LISTINGS_COVERAGE_HEADERS = [
+  'ra_geo_id', 'ra_name', 'property_type', 'bedroom_bucket', 'price_bucket', 'active_count',
+  'with_price_count', 'with_area_count', 'with_valid_price_m2_count', 'portals_count',
+  'latest_observed_at', 'coverage_status', 'computed_at'
+];
+var PDAD_COVERAGE_SHEET = 'PDAD_A_COVERAGE';
+var PDAD_COVERAGE_HEADERS = [
+  'ra_geo_id', 'ra_name', 'pdad_year', 'indicator_code', 'indicator_name', 'figure_number',
+  'table_number', 'categories_expected', 'categories_loaded', 'published_count',
+  'suppressed_count', 'has_figure', 'has_table_check', 'coverage_status', 'quality_status',
+  'last_checked_at', 'notes'
+];
+/** Faixas de preço de LISTINGS_COVERAGE, em R$. Limite superior exclusivo; o último é aberto. */
+var LISTINGS_PRICE_BUCKETS = [
+  { label: 'ate_300k', max: 300000 },
+  { label: '300k_500k', max: 500000 },
+  { label: '500k_750k', max: 750000 },
+  { label: '750k_1M', max: 1000000 },
+  { label: '1M_2M', max: 2000000 },
+  { label: '2M_5M', max: 5000000 },
+  { label: '5M_mais', max: null }
+];
+/** Campos de DEVELOPMENTS cuja ausência vira fila de pesquisa em DATA_QUALITY (Plano 02 §5.2). */
+var DEVELOPMENT_RESEARCH_FIELDS = [
+  'latitude', 'current_price_brl', 'units_total', 'area_min_m2', 'area_max_m2',
+  'sales_stage', 'expected_delivery', 'work_progress_pct'
+];
 
 /** Datasets que o endpoint read-only pode servir. Allowlist — nunca aceite nome livre. */
 var ALLOWED_DATASETS = REQUIRED_SHEETS.concat(OPTIONAL_SHEETS);
@@ -482,9 +607,20 @@ function onOpen() {
     .addItem('Configurar projeto', 'setupProject')
     .addItem('Validar dados agora', 'validateAll')
     .addItem('Recalcular campos derivados', 'recalculateDerivedFields')
+    .addSeparator()
+    .addItem('Saneamento: normalizar células monetárias', 'normalizeMonetaryCells')
+    .addItem('Saneamento: normalizar períodos FipeZAP', 'normalizeFipezapPeriodCells')
+    .addItem('Saneamento: provisionar IVV_REGION', 'provisionIvvRegion')
+    .addItem('Cobertura: recalcular LISTINGS_COVERAGE', 'buildListingsCoverage')
+    .addItem('Cobertura: recalcular PDAD_A_COVERAGE', 'buildPdadCoverage')
+    .addSeparator()
+    .addItem('Sincronizar base FipeZAP', 'syncFipezapFromStaging_UI')
+    .addItem('Recalcular visão FipeZAP', 'rebuildFipezapLocalityMonthly_UI')
+    .addSeparator()
     .addItem('Importar polígonos de KML/KMZ', 'importPolygonsFromDriveFile_UI')
     .addItem('Sincronizar Regiões Administrativas', 'syncAdministrativeRegions_UI')
     .addItem('Sincronizar trechos rodoviários DER', 'syncRoadSegmentsFromTraffic_UI')
+    .addSeparator()
     .addItem('Instalar gatilhos', 'installTriggers')
     .addItem('Atualizar metadados', 'refreshMeta')
     .addItem('Configurar / trocar token de administração', 'configureAdminToken')
@@ -552,26 +688,40 @@ function nowISO_() {
 /**
  * Número a partir de uma célula.
  *
- * Aceita number, decimal com ponto e formato brasileiro ("R$ 1.234,56"). Devolve
- * null quando não há número — nunca NaN, para que ausência tenha uma representação só.
- * Espelha toNumber() de src/normalize.js: mudou lá, muda aqui.
+ * Aceita number, decimal com ponto, formato brasileiro ("R$ 1.234,56"), formato
+ * americano ("2,500,000.50") e sufixo de unidade ("120 m²", "8,6%"). Devolve null
+ * quando não há número — nunca NaN, para que ausência tenha uma representação só.
+ * Espelha toNumber() de src/normalize.js: mudou lá, muda aqui (tests/appsscript-money-parity).
+ *
+ * Ponto único é ambíguo ("2.500" pode ser 2,5 ou 2500). A regra: com marcador de moeda
+ * (`R$`, `BRL`) o ponto é SEMPRE milhar — "R$ 290.000" é 290000, não 290, que era o que
+ * produzia 61 PRICE_M2_MISMATCH falsos na planilha (v2.4.0). Sem marcador, ponto único
+ * continua decimal, e a correção por âncora fica com `toPriceNumber()` no cliente.
  */
 function toNumber_(value) {
   if (typeof value === 'number') return isFinite(value) ? value : null;
   if (value === null || value === undefined) return null;
 
-  var s = String(value).replace(/[R$\s ]/gi, '');
-  if (s === '') return null;
+  var raw = String(value).trim();
+  var currency = /^\s*(R\$|BRL)\s*/i.test(raw) || /\s*(R\$|BRL)\s*$/i.test(raw);
+  var s = raw
+    .replace(/^\s*(R\$|BRL)\s*/i, '')
+    .replace(/\s*(R\$|BRL)\s*$/i, '')
+    .replace(/\s*(m²|m2|km²|km2|%|p\.p\.|pp)\s*$/i, '')
+    .replace(/[\s\u00a0]/g, '');
+  if (s === '' || !/^[-+]?[0-9.,]+$/.test(s)) return null;
 
   var lastComma = s.lastIndexOf(',');
   var lastDot = s.lastIndexOf('.');
+  var dots = (s.match(/\./g) || []).length;
 
   if (lastComma !== -1 && lastDot !== -1) {
     if (lastComma > lastDot) s = s.replace(/\./g, '').replace(',', '.');
     else s = s.replace(/,/g, '');
   } else if (lastComma !== -1) {
-    s = (s.length - lastComma - 1) === 3 ? s.replace(/,/g, '') : s.replace(',', '.');
-  } else if ((s.match(/\./g) || []).length > 1) {
+    var commas = (s.match(/,/g) || []).length;
+    s = (commas > 1 || (s.length - lastComma - 1) === 3) ? s.replace(/,/g, '') : s.replace(',', '.');
+  } else if (dots > 1 || (dots === 1 && currency && /\.\d{3}$/.test(s))) {
     s = s.replace(/\./g, '');
   }
 
@@ -618,7 +768,7 @@ function normalizeSlug_(value) {
 }
 
 function isISODate_(value) {
-  if (value instanceof Date) return !isNaN(value.getTime());
+  if (isDateValue_(value)) return !isNaN(value.getTime());
   var text = toText_(value);
   if (!/^\d{4}-\d{2}-\d{2}$/.test(text)) return false;
   var parts = text.split('-').map(Number);
@@ -744,12 +894,17 @@ function setupProject() {
     setMeta_('pending_appscript_polygon_schema_sync', 'false');
     setMeta_('appscript_target_version', APP_VERSION);
     if (!getMeta_('road_sync_status')) setMeta_('road_sync_status', 'ready_manual_sync');
+    // FipeZAP: só publica o estado do schema. A sincronização a partir do staging é ação
+    // manual do menu — o script instalado a disparava daqui quando a aba estava vazia, e um
+    // "Configurar projeto" que lê OUTRA planilha por ID é efeito colateral demais.
+    setMeta_('fipezap_schema_version', FIPEZAP_SCHEMA_VERSION);
+    if (!getMeta_('fipezap_data_load_status')) setMeta_('fipezap_data_load_status', 'pending_manual_sync');
 
     var tokenMigration = migrateLegacyAdminToken_();
     var developmentUpdates = populateDevelopmentSalesStage_();
     var anchorUpdates = populateAnchorClassification_();
     var datasetChanged = addedHeaders.some(function (item) {
-      return /^(LISTINGS|DEVELOPMENTS|ANCHORS|RA_PROFILES|POLYGONS|ROAD_SEGMENTS|ROAD_SEGMENT_ALIASES|TRAFFIC_DAILY_TEST):/.test(item);
+      return /^(LISTINGS|DEVELOPMENTS|ANCHORS|RA_PROFILES|POLYGONS|ROAD_SEGMENTS|ROAD_SEGMENT_ALIASES|TRAFFIC_DAILY_TEST|FIPEZAP_[A-Z_]+):/.test(item);
     }) || developmentUpdates > 0 || anchorUpdates > 0;
 
     if (datasetChanged) {
@@ -1027,6 +1182,8 @@ function handleEdit(e) {
     bumpDatasetVersion_();
     setMeta_('validation_status', 'dirty');
     setMeta_('last_data_change_at', nowISO_());
+    // A visão de localidades é derivada da série mensal: editar a série a torna obsoleta.
+    if (name === 'FIPEZAP_MONTHLY') setMeta_('fipezap_view_status', 'dirty');
     clearCache();
   });
 }
@@ -1129,6 +1286,7 @@ function bumpDatasetVersion_() {
 function maintenanceJob() {
   try {
     recalculateDerivedFields();
+    if (getMeta_('fipezap_view_status') === 'dirty') rebuildFipezapLocalityMonthly_();
     validateAll();
     refreshMeta();
     Logger.log('manutenção concluída em %s', nowISO_());
@@ -1216,7 +1374,8 @@ function validateAll() {
     var detectedAt = nowISO_();
 
     function report(severity, sheetName, row, recordId, field, code, message) {
-      findings.push([severity, sheetName, row, recordId, field, code, message, detectedAt]);
+      findings.push([severity, sheetName, row, recordId, field, code, message, detectedAt,
+        qualityCategoryOf_(code)]);
     }
 
     // Abas ausentes: obrigatória é erro, opcional é aviso (R2.5).
@@ -1243,12 +1402,19 @@ function validateAll() {
       validateSheet_(sheet, name, report);
     });
 
+    // v2.4.0 — validações semânticas fora do schema genérico.
+    validateFipezapDataset_(report);
+    validateIvvRegion_(report);
+    validateDevelopmentCoverage_(report);
+
+    sortFindings_(findings);
     writeQuality_(findings);
 
     var errors = findings.filter(function (f) { return f[0] === 'error'; }).length;
     var warnings = findings.filter(function (f) { return f[0] === 'warning'; }).length;
 
     setMeta_('last_validation_at', detectedAt);
+    setMeta_('last_fipezap_validation_at', detectedAt);
     setMeta_('validation_status', errors > 0 ? 'error' : (warnings > 0 ? 'warning' : 'ok'));
     setMeta_('validation_errors', String(errors));
     setMeta_('validation_warnings', String(warnings));
@@ -1338,7 +1504,8 @@ function validateSchemaFields_(row, index, name, rowNumber, id, report) {
     var result = coerceField_(schema[field], row[index[field]]);
     if (result.ok) return;
     var code = schema[field].indexOf('enum:') === 0 ? 'INVALID_ENUM' :
-      (schema[field] === 'geojson' ? 'INVALID_GEOMETRY' : 'INVALID_FIELD_VALUE');
+      (schema[field] === 'geojson' ? 'INVALID_GEOMETRY' :
+        (schema[field] === 'url' ? 'INVALID_URL' : 'INVALID_FIELD_VALUE'));
     report(schema[field] === 'url' ? 'warning' : 'error', name, rowNumber, id, field, code,
       field + ': ' + result.message);
   });
@@ -1549,6 +1716,34 @@ function refreshMeta() {
     var count = sheet ? Math.max(0, sheet.getLastRow() - 1) : 0;
     setMeta_(countKey[name], String(count));
   });
+
+  // v2.4.0 — bases analíticas e operacionais (Plano 02 §21). Aba ausente publica '' em vez
+  // de '0': "não existe" e "existe vazia" são estados diferentes, e o cliente omite chave
+  // vazia em vez de mostrar zero.
+  var extraCountKey = {
+    IVV_MONTHLY: 'rows_ivv_monthly',
+    IVV_REGION: 'rows_ivv_region',
+    FIPEZAP_MONTHLY: 'rows_fipezap_monthly',
+    FIPEZAP_LOCALITY_MONTHLY: 'rows_fipezap_locality_monthly',
+    FIPEZAP_LOCALITY_MAP: 'rows_fipezap_locality_map',
+    FIPEZAP_SOURCES: 'rows_fipezap_sources',
+    FIPEZAP_NOTES: 'rows_fipezap_notes',
+    PDAD_A_DATA: 'rows_pdad_data',
+    PDAD_A_COVERAGE: 'rows_pdad_coverage',
+    LISTINGS_COVERAGE: 'rows_listings_coverage'
+  };
+  Object.keys(extraCountKey).forEach(function (name) {
+    var sheet = book.getSheetByName(name);
+    setMeta_(extraCountKey[name], sheet ? String(Math.max(0, sheet.getLastRow() - 1)) : '');
+  });
+  setMeta_('rows_polygons_active', String(countActivePolygons_(book)));
+
+  var fipezap = book.getSheetByName('FIPEZAP_MONTHLY');
+  if (fipezap && fipezap.getLastRow() > 1) {
+    var range = fipezapPeriodRange_(fipezap);
+    if (range.start) setMeta_('fipezap_period_start', range.start);
+    if (range.end) setMeta_('fipezap_period_end', range.end);
+  }
 
   Logger.log('metadados atualizados em %s', nowISO_());
   return 'Metadados atualizados.';
@@ -2923,7 +3118,7 @@ function trafficSummaryByCode_() {
 }
 
 function sheetDateText_(value) {
-  if (value instanceof Date && !isNaN(value.getTime())) {
+  if (isDateValue_(value) && !isNaN(value.getTime())) {
     return Utilities.formatDate(value, Session.getScriptTimeZone() || 'America/Sao_Paulo', 'yyyy-MM-dd');
   }
   var text = toText_(value);
@@ -3179,6 +3374,7 @@ function doGet(e) {
     if (resource === 'health') return json_(health_(), params);
     if (resource === 'meta') return json_(meta_(), params);
     if (resource === 'dataset') return json_(dataset_(String(params.name || '')), params);
+    if (resource === 'fipezap') return json_(fipezapApi_(params), params);
     return json_({ error: 'recurso desconhecido: ' + resource }, params);
   } catch (error) {
     return json_({ error: String(error && error.message ? error.message : error) }, params);
@@ -3714,7 +3910,7 @@ function coerceField_(type, raw) {
     if (text !== '' && !isISODate_(raw)) {
       return { ok: false, message: 'data deve ser uma data real em YYYY-MM-DD.' };
     }
-    return { ok: true, value: raw instanceof Date ? raw.toISOString().slice(0, 10) : text };
+    return { ok: true, value: isDateValue_(raw) ? raw.toISOString().slice(0, 10) : text };
   }
 
   if (type === 'number' || type === 'int') {
@@ -4010,4 +4206,1215 @@ function json_(payload, params) {
   }
 
   return ContentService.createTextOutput(body).setMimeType(ContentService.MimeType.JSON);
+}
+
+// ---------------------------------------------------------------------------
+// v2.4.0 — FipeZAP, saneamento e cobertura
+// ---------------------------------------------------------------------------
+//
+// O bloco abaixo incorpora o adendo FipeZAP que rodava só no script instalado na planilha
+// (arquivo "Imob_Intelligence_Code_v2.3.0_FipeZAP.txt" no Drive) e acrescenta as rotinas
+// de saneamento e as filas de cobertura do Plano 02. Nada aqui sobrescreve função de
+// cima por reatribuição: cada ponto de extensão (validateAll, refreshMeta, doGet,
+// handleEdit, maintenanceJob, onOpen) chama estas funções pelo nome.
+
+/** Planilha de staging de onde `syncFipezapFromStaging_()` copia as cinco abas. */
+var FIPEZAP_IMPORT_SPREADSHEET_ID = '1OSjL5O4CR1OLTVC6n-bgyFGEilteoeXtqjpczmcGcA4';
+var FIPEZAP_IMPORT_SOURCE_TITLE = 'FipeZAP Import Temp - Inteligência Real Estate';
+var FIPEZAP_SOURCE_WORKBOOK = 'FipeZAP_Brasilia_Base_Final.xlsx';
+var FIPEZAP_SCHEMA_VERSION = '1.1';
+var FIPEZAP_SEGMENTS = ['RESIDENCIAL', 'COMERCIAL'];
+var FIPEZAP_OPERATIONS = ['VENDA', 'LOCACAO'];
+var FIPEZAP_GEOGRAPHIES = ['DF_TOTAL', 'LOCALIDADE'];
+/** Abas FipeZAP que carregam período; as outras duas (mapa, notas) não têm eixo temporal. */
+var FIPEZAP_PERIOD_SHEETS = ['FIPEZAP_MONTHLY', 'FIPEZAP_LOCALITY_MONTHLY', 'FIPEZAP_SOURCES'];
+
+FIELD_SCHEMA.FIPEZAP_MONTHLY = {
+  fipezap_id: 'text', period_id: 'text', reference_date: 'date', year: 'int', month: 'int',
+  month_label: 'text', quarter: 'text', is_latest_period: 'bool', segment_scope: 'text',
+  transaction_type: 'text', geography_scope: 'text', source_locality_name: 'text',
+  ra_name: 'text', ra_geo_id: 'text', geography_classification: 'text', price_unit: 'text',
+  sample_n: 'int', price_brl_m2: 'number', official_yield_monthly_pct: 'number',
+  official_yield_annual_pct: 'number', price_mom_pct_change: 'number',
+  price_ytd_pct_change: 'number', price_yoy_pct_change: 'number',
+  calculated_yield_monthly_pct: 'number', calculated_yield_annual_pct: 'number',
+  price_to_rent_months: 'number', diff_vs_df_pct: 'number', rank_price: 'int', rank_yoy: 'int',
+  source_publisher: 'text', source_type: 'text', source_url: 'url', source_page: 'text',
+  notes: 'text', quality_flag: 'text', imported_at: 'text', source_workbook: 'text',
+  source_id: 'text', note_id: 'text'
+};
+FIELD_SCHEMA.FIPEZAP_LOCALITY_MONTHLY = {
+  locality_monthly_id: 'text', period_id: 'text', reference_date: 'date', year: 'int',
+  month: 'int', month_label: 'text', quarter: 'text', is_latest_period: 'bool',
+  segment_scope: 'text', source_locality_name: 'text', ra_name: 'text', ra_geo_id: 'text',
+  geography_classification: 'text', sale_price_brl_m2: 'number',
+  rent_price_brl_m2_month: 'number', calculated_yield_monthly_pct: 'number',
+  calculated_yield_annual_pct: 'number', sale_yoy_pct_change: 'number',
+  rent_yoy_pct_change: 'number', sale_diff_vs_df_pct: 'number', rent_diff_vs_df_pct: 'number',
+  sale_price_rank: 'int', rent_price_rank: 'int', quality_flag: 'text', source_workbook: 'text',
+  rebuilt_at: 'text'
+};
+FIELD_SCHEMA.FIPEZAP_LOCALITY_MAP = {
+  locality_map_id: 'text', source_locality_name: 'text', ra_name: 'text', ra_geo_id: 'text',
+  geography_classification: 'text', mapping_rule: 'text', methodology_note: 'text',
+  valid_from: 'date', valid_to: 'date', quality_flag: 'text', source_workbook: 'text',
+  updated_at: 'text'
+};
+FIELD_SCHEMA.FIPEZAP_SOURCES = {
+  source_id: 'text', period_id: 'text', reference_date: 'date', year: 'int', month: 'int',
+  segment_scope: 'text', report_type: 'text', source_type: 'text', source_page_brasilia: 'text',
+  source_url: 'url', source_note: 'text', source_publisher: 'text', source_workbook: 'text',
+  quality_flag: 'text', imported_at: 'text'
+};
+FIELD_SCHEMA.FIPEZAP_NOTES = {
+  note_id: 'text', note_text: 'text', note_type: 'text', source_workbook: 'text',
+  quality_flag: 'text', updated_at: 'text'
+};
+
+// --- Datas e períodos ---------------------------------------------------------------
+
+/**
+ * `YYYY-MM` a partir de uma célula de período, seja ela o que for.
+ *
+ * O Google converte "2011-01" digitado numa célula para Date com formato `yyyy-mm`; o
+ * validador instalado exigia texto puro e produzia 3369 FIPEZAP_INVALID_PERIOD — um por
+ * linha — para um dado correto. Aceita Date, texto `YYYY-MM`, texto ISO `YYYY-MM-DD…` e a
+ * forma `Date(y,m,d)` do GViz. Devolve '' quando não dá para ler um período.
+ */
+/**
+ * Date de qualquer realm. `instanceof Date` falha para um Date criado fora do contexto
+ * (é o que o sandbox de teste faz); no Apps Script real as duas formas coincidem.
+ */
+function isDateValue_(value) {
+  return value instanceof Date ||
+    (value !== null && typeof value === 'object' && Object.prototype.toString.call(value) === '[object Date]');
+}
+
+function periodIdOf_(value) {
+  if (isDateValue_(value)) {
+    if (isNaN(value.getTime())) return '';
+    return Utilities.formatDate(value, Session.getScriptTimeZone() || 'America/Sao_Paulo', 'yyyy-MM');
+  }
+  var text = toText_(value);
+  if (/^\d{4}-\d{2}$/.test(text)) return text;
+  if (/^\d{4}-\d{2}-\d{2}/.test(text)) return text.slice(0, 7);
+  var gviz = /^Date\((\d{4}),(\d{1,2})(?:,\d{1,2})?\)$/.exec(text);
+  if (gviz) return gviz[1] + '-' + ('0' + (Number(gviz[2]) + 1)).slice(-2);
+  return '';
+}
+
+/** `YYYY-MM-DD` a partir de Date, ISO ou `YYYY-MM` (dia 1). '' quando não há data. */
+function dateTextOf_(value) {
+  var iso = sheetDateText_(value);
+  if (iso) return iso;
+  var period = periodIdOf_(value);
+  return period ? period + '-01' : '';
+}
+
+/** Menor e maior `period_id` de uma aba FipeZAP com coluna de período. */
+function fipezapPeriodRange_(sheet) {
+  var headers = headersOf_(sheet);
+  var ix = headerIndex_(headers);
+  if (ix.period_id === undefined) return { start: '', end: '' };
+  var start = '';
+  var end = '';
+  dataRowsOf_(sheet).forEach(function (row) {
+    var period = periodIdOf_(row[ix.period_id]);
+    if (!period) return;
+    if (!start || period < start) start = period;
+    if (!end || period > end) end = period;
+  });
+  return { start: start, end: end };
+}
+
+// --- DATA_QUALITY como painel -----------------------------------------------------
+
+/** Família estável de um código de achado. Vocabulário fechado (docs/DATA_CONTRACT.md). */
+function qualityCategoryOf_(code) {
+  var c = toText_(code).toUpperCase();
+  if (/^(MISSING_SHEET|MISSING_OPTIONAL_SHEET|DUPLICATE_HEADER|MISSING_HEADER)$/.test(c) || /_ROW_COUNT$/.test(c)) return 'schema';
+  if (/^(EMPTY_ID|MISSING_REQUIRED_VALUE)$/.test(c)) return 'missing_value';
+  if (/DUPLICATE/.test(c)) return 'duplicate';
+  if (/URL/.test(c)) return 'invalid_url';
+  if (/^(HALF_COORDINATE|INVALID_LATITUDE|INVALID_LONGITUDE|FIPEZAP_RA_NOT_MAPPED)$/.test(c)) return 'spatial';
+  if (/^(NON_POSITIVE_PRICE|NON_POSITIVE_AREA|PRICE_M2_MISMATCH|FIPEZAP_INVALID_PRICE)$/.test(c) || /_PRICE$/.test(c)) return 'price';
+  if (/PERIOD|_MONTH$|COVERAGE_RANGE|_DATE$/.test(c)) return 'date';
+  if (/SOURCE|NOTE_NOT_FOUND/.test(c)) return 'source';
+  if (/^COVERAGE_|COVERAGE_GAP|UNEXPECTED_HISTORICAL/.test(c)) return 'coverage';
+  if (/INVALID|MISMATCH|_SUM$|SCALE/.test(c)) return 'data_type';
+  return 'other';
+}
+
+/** Ordena achados por severidade → aba → categoria → linha → código, no lugar. */
+function sortFindings_(findings) {
+  var rank = { error: 0, warning: 1 };
+  findings.sort(function (a, b) {
+    var sa = rank[a[0]] === undefined ? 2 : rank[a[0]];
+    var sb = rank[b[0]] === undefined ? 2 : rank[b[0]];
+    if (sa !== sb) return sa - sb;
+    if (a[1] !== b[1]) return a[1] < b[1] ? -1 : 1;
+    var ca = toText_(a[8]);
+    var cb = toText_(b[8]);
+    if (ca !== cb) return ca < cb ? -1 : 1;
+    var ra = Number(a[2]) || 0;
+    var rb = Number(b[2]) || 0;
+    if (ra !== rb) return ra - rb;
+    if (a[5] !== b[5]) return a[5] < b[5] ? -1 : 1;
+    return 0;
+  });
+  return findings;
+}
+
+/** Polígonos com `status = active` — a contagem que interessa ao mapa. */
+function countActivePolygons_(book) {
+  var sheet = book.getSheetByName('POLYGONS');
+  if (!sheet) return 0;
+  var ix = headerIndex_(headersOf_(sheet));
+  if (ix.status === undefined) return Math.max(0, sheet.getLastRow() - 1);
+  return dataRowsOf_(sheet).filter(function (row) {
+    return toText_(row[ix.status]).toLowerCase() === 'active';
+  }).length;
+}
+
+/**
+ * Várias linhas no CHANGE_LOG numa escrita só, respeitando o teto de CHANGELOG_LIMIT.
+ * `appendChangeLogRow_` continua sendo o caminho para UMA linha; célula a célula, o
+ * saneamento monetário geraria centenas de `appendRow`, que é o que estoura a cota.
+ */
+function appendChangeLogRows_(rows) {
+  if (!rows || !rows.length) return;
+  var log = ss_().getSheetByName(CHANGELOG_SHEET);
+  if (!log) return;
+  var width = OPERATIONAL_HEADERS.CHANGE_LOG.length;
+  var block = rows.map(function (row) {
+    var line = row.slice(0, width);
+    while (line.length < width) line.push('');
+    return line;
+  });
+  log.getRange(log.getLastRow() + 1, 1, block.length, width).setValues(block);
+  var total = log.getLastRow() - 1;
+  if (total > CHANGELOG_LIMIT) log.deleteRows(2, total - CHANGELOG_LIMIT);
+}
+
+/** Cria (se preciso) e reescreve por inteiro uma aba operacional derivada. */
+function writeOperationalTable_(name, headers, rows) {
+  var book = ss_();
+  var sheet = book.getSheetByName(name) || book.insertSheet(name);
+  ensureSheetSize_(sheet, rows.length + 1, headers.length);
+  sheet.clearContents();
+  sheet.getRange(1, 1, 1, headers.length).setValues([headers]);
+  sheet.getRange(1, 1, 1, headers.length).setFontWeight('bold');
+  if (rows.length) sheet.getRange(2, 1, rows.length, headers.length).setValues(rows);
+  sheet.setFrozenRows(1);
+  return sheet;
+}
+
+function ensureSheetSize_(sheet, rows, cols) {
+  if (typeof sheet.getMaxRows === 'function' && sheet.getMaxRows() < rows) {
+    sheet.insertRowsAfter(sheet.getMaxRows(), rows - sheet.getMaxRows());
+  }
+  if (typeof sheet.getMaxColumns === 'function' && sheet.getMaxColumns() < cols) {
+    sheet.insertColumnsAfter(sheet.getMaxColumns(), cols - sheet.getMaxColumns());
+  }
+}
+
+/** Conjunto de IDs de uma aba, para checagem de referência. Aba ausente devolve vazio. */
+function idSetFromSheet_(sheetName, idField) {
+  var sheet = ss_().getSheetByName(sheetName);
+  var set = {};
+  if (!sheet || sheet.getLastRow() < 2) return set;
+  var ix = headerIndex_(headersOf_(sheet));
+  if (ix[idField] === undefined) return set;
+  dataRowsOf_(sheet).forEach(function (row) {
+    var id = toText_(row[ix[idField]]);
+    if (id) set[id] = true;
+  });
+  return set;
+}
+
+// --- FipeZAP: sincronização e visão de localidades ---------------------------------
+
+function syncFipezapFromStaging_UI() {
+  try {
+    var result = syncFipezapFromStaging_();
+    validateAll();
+    refreshMeta();
+    notify_('FipeZAP',
+      'Sincronização concluída.\nFIPEZAP_MONTHLY: ' + result.rowsMonthly +
+      '\nFIPEZAP_LOCALITY_MONTHLY: ' + result.rowsLocality +
+      '\nFIPEZAP_SOURCES: ' + result.rowsSources +
+      '\nFIPEZAP_LOCALITY_MAP: ' + result.rowsMap +
+      '\nFIPEZAP_NOTES: ' + result.rowsNotes);
+    return result;
+  } catch (error) {
+    notify_('Falha FipeZAP', String(error && error.message ? error.message : error));
+    throw error;
+  }
+}
+
+/**
+ * Copia as cinco abas FipeZAP da planilha de staging para esta, por inteiro.
+ *
+ * As contagens esperadas ficam em APP_META (`fipezap_expected_rows_*`) a partir do que o
+ * staging trouxe — o script instalado as tinha fixas em 3369/1714, o que faria a primeira
+ * atualização legítima da série (um mês novo) ser rejeitada como erro.
+ */
+function syncFipezapFromStaging_() {
+  var result = withLock_(function () {
+    var source = SpreadsheetApp.openById(FIPEZAP_IMPORT_SPREADSHEET_ID);
+    var target = ss_();
+    var counts = {};
+
+    FIPEZAP_SHEETS.forEach(function (name) {
+      var src = source.getSheetByName(name);
+      if (!src) throw new Error('Staging FipeZAP sem a aba ' + name + '.');
+      var values = src.getDataRange().getValues();
+      if (!values.length || !values[0].length) throw new Error('Staging FipeZAP vazio em ' + name + '.');
+      var dst = target.getSheetByName(name) || target.insertSheet(name);
+      ensureSheetSize_(dst, values.length, values[0].length);
+      dst.clearContents();
+      dst.getRange(1, 1, values.length, values[0].length).setValues(values);
+      styleFipezapSheet_(dst, values.length, values[0].length);
+      counts[name] = Math.max(0, values.length - 1);
+    });
+
+    // Períodos chegam como Date do staging; o contrato é texto (`YYYY-MM`).
+    normalizeFipezapPeriodCells_();
+
+    var now = nowISO_();
+    setMeta_('fipezap_schema_version', FIPEZAP_SCHEMA_VERSION);
+    setMeta_('fipezap_source_workbook', FIPEZAP_SOURCE_WORKBOOK);
+    setMeta_('fipezap_import_source_spreadsheet_id', FIPEZAP_IMPORT_SPREADSHEET_ID);
+    setMeta_('fipezap_import_source_title', FIPEZAP_IMPORT_SOURCE_TITLE);
+    setMeta_('fipezap_expected_rows_monthly', String(counts.FIPEZAP_MONTHLY || 0));
+    setMeta_('fipezap_expected_rows_locality', String(counts.FIPEZAP_LOCALITY_MONTHLY || 0));
+    setMeta_('fipezap_expected_rows_sources', String(counts.FIPEZAP_SOURCES || 0));
+    setMeta_('fipezap_expected_rows_map', String(counts.FIPEZAP_LOCALITY_MAP || 0));
+    setMeta_('fipezap_expected_rows_notes', String(counts.FIPEZAP_NOTES || 0));
+    setMeta_('fipezap_data_load_status', 'loaded');
+    setMeta_('fipezap_view_status', 'ok');
+    setMeta_('pending_appscript_fipezap_schema_sync', 'false');
+    setMeta_('last_fipezap_refresh_at', now);
+    setMeta_('last_data_change_at', now);
+    setMeta_('validation_status', 'dirty');
+    var version = bumpDatasetVersion_();
+    clearCache();
+    logWriteChange_('FIPEZAP_MONTHLY', '*', 'fipezap_full_sync', '', (counts.FIPEZAP_MONTHLY || 0) + ' registros',
+      'sincronizador FipeZAP', 'fipezap-sync-' + version, 'ok', '');
+
+    return {
+      rowsMonthly: counts.FIPEZAP_MONTHLY || 0,
+      rowsLocality: counts.FIPEZAP_LOCALITY_MONTHLY || 0,
+      rowsSources: counts.FIPEZAP_SOURCES || 0,
+      rowsMap: counts.FIPEZAP_LOCALITY_MAP || 0,
+      rowsNotes: counts.FIPEZAP_NOTES || 0
+    };
+  });
+  if (!result) throw new Error('Não foi possível obter lock para sincronizar FipeZAP.');
+  return result;
+}
+
+function styleFipezapSheet_(sheet, rows, cols) {
+  sheet.setFrozenRows(1);
+  if (cols > 0) {
+    try {
+      sheet.getRange(1, 1, 1, cols).setFontWeight('bold');
+    } catch (err) { Logger.log('Cabeçalho FipeZAP sem formato em %s: %s', sheet.getName(), err.message); }
+  }
+  try {
+    var filter = sheet.getFilter();
+    if (filter) filter.remove();
+    if (rows > 1 && cols > 0) sheet.getRange(1, 1, rows, cols).createFilter();
+  } catch (err) {
+    Logger.log('Filtro FipeZAP não aplicado em %s: %s', sheet.getName(), err.message);
+  }
+  var ix = headerIndex_(headersOf_(sheet));
+  function money(field) {
+    if (ix[field] !== undefined && rows > 1) sheet.getRange(2, ix[field] + 1, rows - 1, 1).setNumberFormat('R$ #,##0.00');
+  }
+  function pct(field) {
+    if (ix[field] !== undefined && rows > 1) sheet.getRange(2, ix[field] + 1, rows - 1, 1).setNumberFormat('0.00%');
+  }
+  if (sheet.getName() === 'FIPEZAP_MONTHLY') {
+    money('price_brl_m2');
+    ['official_yield_monthly_pct', 'official_yield_annual_pct', 'price_mom_pct_change',
+      'price_ytd_pct_change', 'price_yoy_pct_change', 'calculated_yield_monthly_pct',
+      'calculated_yield_annual_pct', 'diff_vs_df_pct'].forEach(pct);
+  }
+  if (sheet.getName() === 'FIPEZAP_LOCALITY_MONTHLY') {
+    money('sale_price_brl_m2');
+    money('rent_price_brl_m2_month');
+    ['calculated_yield_monthly_pct', 'calculated_yield_annual_pct', 'sale_yoy_pct_change',
+      'rent_yoy_pct_change', 'sale_diff_vs_df_pct', 'rent_diff_vs_df_pct'].forEach(pct);
+  }
+}
+
+function fipezapRowCounts_() {
+  function count(name) {
+    var sh = ss_().getSheetByName(name);
+    return sh ? Math.max(0, sh.getLastRow() - 1) : 0;
+  }
+  return {
+    monthly: count('FIPEZAP_MONTHLY'),
+    locality: count('FIPEZAP_LOCALITY_MONTHLY'),
+    map: count('FIPEZAP_LOCALITY_MAP'),
+    sources: count('FIPEZAP_SOURCES'),
+    notes: count('FIPEZAP_NOTES')
+  };
+}
+
+function rebuildFipezapLocalityMonthly_UI() {
+  var result = rebuildFipezapLocalityMonthly_();
+  validateAll();
+  refreshMeta();
+  notify_('FipeZAP', result + ' registros reconstruídos na visão de localidades.');
+  return result;
+}
+
+/**
+ * Reconstrói FIPEZAP_LOCALITY_MONTHLY a partir de FIPEZAP_MONTHLY: uma linha por
+ * período × segmento × localidade, com venda e locação lado a lado. Não agrega submercados
+ * (Asa Norte e Asa Sul continuam separados) — a unidade é `source_locality_name`.
+ */
+function rebuildFipezapLocalityMonthly_() {
+  var result = withLock_(function () {
+    var src = ss_().getSheetByName('FIPEZAP_MONTHLY');
+    if (!src || src.getLastRow() < 2) return 0;
+    var dst = ss_().getSheetByName('FIPEZAP_LOCALITY_MONTHLY') || ss_().insertSheet('FIPEZAP_LOCALITY_MONTHLY');
+
+    var ix = headerIndex_(headersOf_(src));
+    var pairs = {};
+    dataRowsOf_(src).forEach(function (row) {
+      if (toText_(row[ix.geography_scope]) !== 'LOCALIDADE') return;
+      var period = periodIdOf_(row[ix.period_id]) || periodIdOf_(row[ix.reference_date]);
+      var segment = toText_(row[ix.segment_scope]);
+      var locality = toText_(row[ix.source_locality_name]);
+      if (!period || !segment || !locality) return;
+      var key = period + '|' + segment + '|' + locality;
+      if (!pairs[key]) pairs[key] = {};
+      pairs[key][toText_(row[ix.transaction_type])] = row;
+    });
+
+    var targetHeaders = REQUIRED_HEADERS.FIPEZAP_LOCALITY_MONTHLY;
+    var out = [];
+    Object.keys(pairs).sort().forEach(function (key) {
+      var pair = pairs[key];
+      var sale = pair.VENDA || null;
+      var rent = pair.LOCACAO || null;
+      var base = sale || rent;
+      if (!base) return;
+      var period = key.split('|')[0];
+      var segment = key.split('|')[1];
+      var locality = key.split('|')[2];
+      var salePrice = sale ? toNumber_(sale[ix.price_brl_m2]) : null;
+      var rentPrice = rent ? toNumber_(rent[ix.price_brl_m2]) : null;
+      var yieldMonthly = salePrice && rentPrice ? rentPrice / salePrice : null;
+      var fields = {
+        locality_monthly_id: 'FZLOC_' + period.replace('-', '') + '_' + normalizeSlug_(segment).toUpperCase() + '_' + normalizeSlug_(locality).toUpperCase(),
+        period_id: period,
+        reference_date: dateTextOf_(base[ix.reference_date]) || (period + '-01'),
+        year: base[ix.year],
+        month: base[ix.month],
+        month_label: base[ix.month_label],
+        quarter: base[ix.quarter],
+        is_latest_period: base[ix.is_latest_period],
+        segment_scope: segment,
+        source_locality_name: locality,
+        ra_name: base[ix.ra_name],
+        ra_geo_id: base[ix.ra_geo_id],
+        geography_classification: base[ix.geography_classification],
+        sale_price_brl_m2: salePrice === null ? '' : salePrice,
+        rent_price_brl_m2_month: rentPrice === null ? '' : rentPrice,
+        calculated_yield_monthly_pct: yieldMonthly === null ? '' : yieldMonthly,
+        calculated_yield_annual_pct: yieldMonthly === null ? '' : yieldMonthly * 12,
+        sale_yoy_pct_change: sale ? sale[ix.price_yoy_pct_change] : '',
+        rent_yoy_pct_change: rent ? rent[ix.price_yoy_pct_change] : '',
+        sale_diff_vs_df_pct: sale ? sale[ix.diff_vs_df_pct] : '',
+        rent_diff_vs_df_pct: rent ? rent[ix.diff_vs_df_pct] : '',
+        sale_price_rank: sale ? sale[ix.rank_price] : '',
+        rent_price_rank: rent ? rent[ix.rank_price] : '',
+        quality_flag: sale && rent ? 'ok' : (sale ? 'partial_sale_only' : 'partial_rent_only'),
+        source_workbook: FIPEZAP_SOURCE_WORKBOOK,
+        rebuilt_at: nowISO_()
+      };
+      out.push(targetHeaders.map(function (h) { return fields[h] === undefined ? '' : fields[h]; }));
+    });
+
+    ensureSheetSize_(dst, out.length + 1, targetHeaders.length);
+    dst.clearContents();
+    dst.getRange(1, 1, 1, targetHeaders.length).setValues([targetHeaders]);
+    if (out.length) {
+      var ixDst = headerIndex_(targetHeaders);
+      dst.getRange(2, ixDst.period_id + 1, out.length, 1).setNumberFormat('@');
+      dst.getRange(2, ixDst.reference_date + 1, out.length, 1).setNumberFormat('@');
+      dst.getRange(2, 1, out.length, targetHeaders.length).setValues(out);
+    }
+    styleFipezapSheet_(dst, out.length + 1, targetHeaders.length);
+    setMeta_('fipezap_view_status', 'ok');
+    setMeta_('last_fipezap_view_rebuild_at', nowISO_());
+    clearCache();
+    return out.length;
+  });
+  if (result === null) throw new Error('Não foi possível obter lock para reconstruir a visão FipeZAP.');
+  return result;
+}
+
+// --- FipeZAP: validação -------------------------------------------------------------
+
+/**
+ * Regras semânticas da série FipeZAP, além do schema genérico de `validateSheet_`.
+ *
+ * Contagem esperada só é cobrada quando APP_META a publica (`fipezap_expected_rows_*`),
+ * e a cobertura é conferida por lacuna de mês na série agregada — não por datas fixas,
+ * que envelhecem a cada informe novo.
+ */
+function validateFipezapDataset_(report) {
+  var book = ss_();
+  var monthly = book.getSheetByName('FIPEZAP_MONTHLY');
+  if (!monthly || monthly.getLastRow() < 2) return;
+
+  var sourceIds = idSetFromSheet_('FIPEZAP_SOURCES', 'source_id');
+  var noteIds = idSetFromSheet_('FIPEZAP_NOTES', 'note_id');
+  var raIds = idSetFromSheet_('RA_PROFILES', 'ra_geo_id');
+  var mappedLocalities = idSetFromSheet_('FIPEZAP_LOCALITY_MAP', 'source_locality_name');
+  var ix = headerIndex_(headersOf_(monthly));
+  var rows = dataRowsOf_(monthly);
+  var required = ['fipezap_id', 'period_id', 'segment_scope', 'transaction_type', 'geography_scope',
+    'price_brl_m2', 'source_id', 'ra_geo_id', 'note_id', 'source_locality_name'];
+  for (var r = 0; r < required.length; r++) {
+    if (ix[required[r]] === undefined) return; // MISSING_HEADER já foi reportado por validateSheet_
+  }
+
+  var expectedCounts = {
+    FIPEZAP_MONTHLY: getMeta_('fipezap_expected_rows_monthly'),
+    FIPEZAP_LOCALITY_MONTHLY: getMeta_('fipezap_expected_rows_locality'),
+    FIPEZAP_SOURCES: getMeta_('fipezap_expected_rows_sources'),
+    FIPEZAP_LOCALITY_MAP: getMeta_('fipezap_expected_rows_map'),
+    FIPEZAP_NOTES: getMeta_('fipezap_expected_rows_notes')
+  };
+  Object.keys(expectedCounts).forEach(function (name) {
+    var expected = parseInt(expectedCounts[name], 10);
+    if (!isFinite(expected) || expected <= 0) return;
+    var sheet = book.getSheetByName(name);
+    var found = sheet ? Math.max(0, sheet.getLastRow() - 1) : 0;
+    if (found !== expected) {
+      report('warning', name, '', '', '', 'FIPEZAP_ROW_COUNT',
+        'Quantidade esperada em APP_META: ' + expected + '; encontrada ' + found +
+        '. Atualize fipezap_expected_rows_* se a série cresceu de propósito.');
+    }
+  });
+
+  var totalPeriods = {};
+  var seenKeys = {};
+  var commercialBefore2019 = 0;
+  var localityBefore201903 = 0;
+
+  rows.forEach(function (row, i) {
+    var rn = i + 2;
+    var id = toText_(row[ix.fipezap_id]);
+    var period = periodIdOf_(row[ix.period_id]);
+    var segment = toText_(row[ix.segment_scope]);
+    var operation = toText_(row[ix.transaction_type]);
+    var geo = toText_(row[ix.geography_scope]);
+    var price = toNumber_(row[ix.price_brl_m2]);
+    var raId = toText_(row[ix.ra_geo_id]);
+    var locality = toText_(row[ix.source_locality_name]);
+    var sourceId = toText_(row[ix.source_id]);
+    var noteId = toText_(row[ix.note_id]);
+
+    if (!period) {
+      report('error', 'FIPEZAP_MONTHLY', rn, id, 'period_id', 'FIPEZAP_INVALID_PERIOD',
+        'Período inválido: ' + toText_(row[ix.period_id]) + ' (esperado YYYY-MM, ou célula de data).');
+    } else if (ix.reference_date !== undefined) {
+      var refPeriod = periodIdOf_(row[ix.reference_date]);
+      if (refPeriod && refPeriod !== period) {
+        report('error', 'FIPEZAP_MONTHLY', rn, id, 'reference_date', 'FIPEZAP_PERIOD_MISMATCH',
+          'reference_date (' + refPeriod + ') não pertence ao period_id (' + period + ').');
+      }
+    }
+    if (FIPEZAP_SEGMENTS.indexOf(segment) === -1) {
+      report('error', 'FIPEZAP_MONTHLY', rn, id, 'segment_scope', 'FIPEZAP_INVALID_SEGMENT', 'Segmento inválido: ' + segment);
+    }
+    if (FIPEZAP_OPERATIONS.indexOf(operation) === -1) {
+      report('error', 'FIPEZAP_MONTHLY', rn, id, 'transaction_type', 'FIPEZAP_INVALID_OPERATION', 'Operação inválida: ' + operation);
+    }
+    if (FIPEZAP_GEOGRAPHIES.indexOf(geo) === -1) {
+      report('error', 'FIPEZAP_MONTHLY', rn, id, 'geography_scope', 'FIPEZAP_INVALID_GEOGRAPHY', 'Geografia inválida: ' + geo);
+    }
+    if (price === null || price <= 0) {
+      report('error', 'FIPEZAP_MONTHLY', rn, id, 'price_brl_m2', 'FIPEZAP_INVALID_PRICE', 'Preço/m² deve ser positivo.');
+    }
+    if (!sourceId || !sourceIds[sourceId]) {
+      report('error', 'FIPEZAP_MONTHLY', rn, id, 'source_id', 'FIPEZAP_MISSING_SOURCE', 'source_id ausente ou inexistente em FIPEZAP_SOURCES: ' + sourceId);
+    }
+    if (noteId && !noteIds[noteId]) {
+      report('warning', 'FIPEZAP_MONTHLY', rn, id, 'note_id', 'FIPEZAP_NOTE_NOT_FOUND', 'note_id não encontrado em FIPEZAP_NOTES: ' + noteId);
+    }
+    if (geo === 'LOCALIDADE') {
+      if (!raId || !raIds[raId]) {
+        report('error', 'FIPEZAP_MONTHLY', rn, id, 'ra_geo_id', 'FIPEZAP_RA_NOT_MAPPED',
+          'Localidade FipeZAP sem ra_geo_id válido em RA_PROFILES: ' + raId);
+      }
+      if (locality && Object.keys(mappedLocalities).length && !mappedLocalities[locality]) {
+        report('warning', 'FIPEZAP_MONTHLY', rn, id, 'source_locality_name', 'FIPEZAP_LOCALITY_NOT_IN_MAP',
+          'Localidade sem linha em FIPEZAP_LOCALITY_MAP: ' + locality);
+      }
+      if (period && period < '2019-03') localityBefore201903++;
+    }
+    if (segment === 'COMERCIAL' && period && period < '2019-01') commercialBefore2019++;
+
+    // Duplicidade lógica: mesmo período × segmento × operação × geografia × localidade.
+    var key = [period, segment, operation, geo, locality].join('|');
+    if (period && seenKeys[key]) {
+      report('error', 'FIPEZAP_MONTHLY', rn, id, 'period_id', 'FIPEZAP_DUPLICATE_OBSERVATION',
+        'Observação repetida (primeira na linha ' + seenKeys[key] + '): ' + key);
+    } else if (period) {
+      seenKeys[key] = rn;
+    }
+    if (period && geo === 'DF_TOTAL' && segment === 'RESIDENCIAL' && operation === 'VENDA') {
+      totalPeriods[period] = true;
+    }
+  });
+
+  // Lacuna de mês na série agregada residencial de venda — a espinha dorsal do índice.
+  var periods = Object.keys(totalPeriods).sort();
+  if (periods.length > 1) {
+    var missing = [];
+    var cursor = periods[0];
+    while (cursor < periods[periods.length - 1]) {
+      var y = parseInt(cursor.slice(0, 4), 10);
+      var m = parseInt(cursor.slice(5, 7), 10) + 1;
+      if (m > 12) { m = 1; y++; }
+      cursor = y + '-' + ('0' + m).slice(-2);
+      if (!totalPeriods[cursor]) missing.push(cursor);
+    }
+    if (missing.length) {
+      report('warning', 'FIPEZAP_MONTHLY', '', '', 'period_id', 'FIPEZAP_COVERAGE_GAP',
+        missing.length + ' mês(es) sem linha DF_TOTAL/RESIDENCIAL/VENDA entre ' + periods[0] +
+        ' e ' + periods[periods.length - 1] + ': ' + missing.slice(0, 12).join(', ') +
+        (missing.length > 12 ? '…' : ''));
+    }
+  }
+  if (commercialBefore2019) {
+    report('warning', 'FIPEZAP_MONTHLY', '', '', 'segment_scope', 'FIPEZAP_UNEXPECTED_HISTORICAL_COMMERCIAL',
+      commercialBefore2019 + ' linha(s) comerciais antes de 2019; Brasília/DF não tinha cobertura comercial nessa série. Confirme a fonte.');
+  }
+  if (localityBefore201903) {
+    report('warning', 'FIPEZAP_MONTHLY', '', '', 'geography_scope', 'FIPEZAP_UNEXPECTED_HISTORICAL_LOCALITY',
+      localityBefore201903 + ' linha(s) de localidade antes de 2019-03; não inferir localidades nos informes agregados antigos.');
+  }
+}
+
+// --- FipeZAP: endpoint de leitura ----------------------------------------------------
+
+/**
+ * `?resource=fipezap&view=monthly|locality|sources|map|notes` com filtros exatos e por
+ * intervalo de período. Payload menor e contrato explícito para quem não quer GViz.
+ */
+function fipezapApi_(params) {
+  var view = toText_(params.view || 'monthly').toLowerCase();
+  var sheetByView = {
+    monthly: 'FIPEZAP_MONTHLY',
+    locality: 'FIPEZAP_LOCALITY_MONTHLY',
+    sources: 'FIPEZAP_SOURCES',
+    map: 'FIPEZAP_LOCALITY_MAP',
+    notes: 'FIPEZAP_NOTES'
+  };
+  var sheetName = sheetByView[view];
+  if (!sheetName) throw new Error('view FipeZAP inválida. Use monthly, locality, sources, map ou notes.');
+  var sheet = ss_().getSheetByName(sheetName);
+  if (!sheet) return { view: view, name: sheetName, count: 0, rows: [] };
+  var headers = headersOf_(sheet);
+  var ix = headerIndex_(headers);
+  var from = periodIdOf_(params.from);
+  var to = periodIdOf_(params.to);
+  var exactFilters = {
+    period_id: periodIdOf_(params.period_id),
+    segment_scope: toText_(params.segment_scope),
+    transaction_type: toText_(params.transaction_type),
+    geography_scope: toText_(params.geography_scope),
+    ra_geo_id: toText_(params.ra_geo_id),
+    source_locality_name: toText_(params.source_locality_name),
+    source_id: toText_(params.source_id),
+    note_id: toText_(params.note_id)
+  };
+  var limit = parseInt(params.limit || '5000', 10);
+  if (!isFinite(limit) || limit <= 0) limit = 5000;
+  limit = Math.min(limit, 5000);
+
+  var rows = [];
+  dataRowsOf_(sheet).some(function (row) {
+    var period = ix.period_id !== undefined ? periodIdOf_(row[ix.period_id]) : '';
+    if (from && period && period < from) return false;
+    if (to && period && period > to) return false;
+    var fields = Object.keys(exactFilters);
+    for (var f = 0; f < fields.length; f++) {
+      var field = fields[f];
+      var expected = exactFilters[field];
+      if (!expected || ix[field] === undefined) continue;
+      var actual = field === 'period_id' ? period : toText_(row[ix[field]]);
+      if (actual !== expected) return false;
+    }
+    var record = rowToRecord_(headers, row);
+    if (ix.period_id !== undefined) record.period_id = period;
+    if (ix.reference_date !== undefined) record.reference_date = dateTextOf_(row[ix.reference_date]);
+    rows.push(record);
+    return rows.length >= limit;
+  });
+  return {
+    view: view,
+    name: sheetName,
+    dataset_version: props_().getProperty('DATASET_VERSION') || '1',
+    count: rows.length,
+    limit: limit,
+    filters: { from: from, to: to, exact: exactFilters },
+    rows: rows
+  };
+}
+
+// --- Saneamento: períodos FipeZAP como texto ---------------------------------------
+
+/**
+ * `period_id` → texto `YYYY-MM` e `reference_date` → texto `YYYY-MM-DD` nas abas FipeZAP.
+ *
+ * O formato `@` é aplicado ANTES de escrever: sem ele o Google reconverte "2011-01" em
+ * Date no mesmo instante, e a rotina não seria idempotente. Célula que já é texto no
+ * formato certo não é tocada.
+ */
+function normalizeFipezapPeriodCells() {
+  var result = withLock_(normalizeFipezapPeriodCells_);
+  if (result === null) return 'Não foi possível obter lock.';
+  Logger.log(result);
+  notify_('Saneamento FipeZAP', result);
+  return result;
+}
+
+function normalizeFipezapPeriodCells_() {
+  var book = ss_();
+  var summary = [];
+  var logRows = [];
+  var changedTotal = 0;
+  var correlation = 'fipezap-periods-' + nowISO_();
+
+  FIPEZAP_PERIOD_SHEETS.forEach(function (name) {
+    var sheet = book.getSheetByName(name);
+    if (!sheet || sheet.getLastRow() < 2) return;
+    var ix = headerIndex_(headersOf_(sheet));
+    var rows = dataRowsOf_(sheet);
+    var columns = [
+      { field: 'period_id', convert: periodIdOf_ },
+      { field: 'reference_date', convert: dateTextOf_ }
+    ];
+    columns.forEach(function (column) {
+      if (ix[column.field] === undefined) return;
+      var changed = 0;
+      var unreadable = 0;
+      var out = rows.map(function (row) {
+        var current = row[ix[column.field]];
+        if (isBlank_(current)) return [current];
+        var text = column.convert(current);
+        if (!text) { unreadable++; return [current]; }
+        if (typeof current === 'string' && current === text) return [current];
+        changed++;
+        return [text];
+      });
+      if (changed > 0) {
+        var range = sheet.getRange(2, ix[column.field] + 1, out.length, 1);
+        range.setNumberFormat('@');
+        range.setValues(out);
+        logRows.push([nowISO_(), name, column.field, '*', 'Date/texto misto', changed + ' célula(s) como texto',
+          'saneamento v2.4.0', correlation, 'ok', '']);
+      }
+      changedTotal += changed;
+      summary.push(name + '.' + column.field + ': ' + changed + ' convertida(s)' +
+        (unreadable ? ', ' + unreadable + ' ilegível(is) preservada(s)' : ''));
+    });
+  });
+
+  if (changedTotal > 0) {
+    appendChangeLogRows_(logRows);
+    bumpDatasetVersion_();
+    setMeta_('validation_status', 'dirty');
+    setMeta_('last_data_change_at', nowISO_());
+    clearCache();
+  }
+  return summary.length ? summary.join('\n') : 'Nenhuma aba FipeZAP com período encontrada.';
+}
+
+// --- Saneamento: dinheiro como número ----------------------------------------------
+
+/** Colunas monetárias por aba. Texto "R$ 2.500.000" vira 2500000 com formato de moeda. */
+var MONETARY_COLUMNS = {
+  LISTINGS: ['asking_price_brl', 'asking_price_brl_m2', 'condo_fee_brl', 'iptu_brl'],
+  DEVELOPMENTS: ['current_price_brl', 'current_price_brl_m2']
+};
+
+function normalizeMonetaryCells() {
+  var result = withLock_(normalizeMonetaryCells_);
+  if (result === null) return 'Não foi possível obter lock.';
+  Logger.log(result);
+  notify_('Saneamento monetário', result);
+  return result;
+}
+
+/**
+ * Converte célula monetária em TEXTO para número. Número já tipado não é tocado; texto
+ * que não parseia é preservado e contado — a validação continua a acusá-lo. Cada célula
+ * convertida vira uma linha do CHANGE_LOG com valor anterior e novo (Plano 02 §2.3).
+ */
+function normalizeMonetaryCells_() {
+  var book = ss_();
+  var summary = [];
+  var logRows = [];
+  var changedTotal = 0;
+  var correlation = 'monetary-cells-' + nowISO_();
+
+  Object.keys(MONETARY_COLUMNS).forEach(function (name) {
+    var sheet = book.getSheetByName(name);
+    if (!sheet || sheet.getLastRow() < 2) return;
+    var ix = headerIndex_(headersOf_(sheet));
+    var idField = ID_FIELD[name];
+    var rows = dataRowsOf_(sheet);
+    MONETARY_COLUMNS[name].forEach(function (field) {
+      if (ix[field] === undefined) return;
+      var changed = 0;
+      var unparsed = 0;
+      var out = rows.map(function (row, i) {
+        var current = row[ix[field]];
+        if (typeof current !== 'string' || current.trim() === '') return [current];
+        var n = toNumber_(current);
+        if (n === null) { unparsed++; return [current]; }
+        changed++;
+        logRows.push([nowISO_(), name, field, idField && ix[idField] !== undefined ? toText_(row[ix[idField]]) : String(i + 2),
+          current, String(n), 'saneamento v2.4.0', correlation, 'ok', '']);
+        return [n];
+      });
+      if (changed > 0) {
+        var range = sheet.getRange(2, ix[field] + 1, out.length, 1);
+        range.setNumberFormat('R$ #,##0.00');
+        range.setValues(out);
+      }
+      changedTotal += changed;
+      summary.push(name + '.' + field + ': ' + changed + ' convertida(s)' +
+        (unparsed ? ', ' + unparsed + ' não numérica(s) preservada(s)' : ''));
+    });
+  });
+
+  if (changedTotal > 0) {
+    appendChangeLogRows_(logRows);
+    bumpDatasetVersion_();
+    setMeta_('validation_status', 'dirty');
+    setMeta_('last_data_change_at', nowISO_());
+    clearCache();
+  }
+  return summary.length ? summary.join('\n') : 'Nenhuma aba com coluna monetária encontrada.';
+}
+
+// --- IVV_REGION ----------------------------------------------------------------------
+
+/**
+ * Cria a aba IVV_REGION com o cabeçalho do contrato, sem dado. A semente (95 linhas,
+ * mai/2026) mora em migration/imob-intelligence-backend.xlsx e é colada à mão — dado
+ * operacional não mora no script (R2.3).
+ */
+function provisionIvvRegion() {
+  var result = withLock_(function () {
+    var book = ss_();
+    var sheet = book.getSheetByName('IVV_REGION');
+    var created = false;
+    if (!sheet) {
+      sheet = book.insertSheet('IVV_REGION');
+      created = true;
+    }
+    var ensured = ensureHeaders_(sheet, IVV_REGION_HEADERS, null);
+    setMeta_('ivv_region_schema_version', '1.0');
+    if (created || ensured.added.length) {
+      setMeta_('validation_status', 'dirty');
+      clearCache();
+    }
+    var rows = Math.max(0, sheet.getLastRow() - 1);
+    setMeta_('rows_ivv_region', String(rows));
+    return (created ? 'IVV_REGION criada' : 'IVV_REGION já existia') +
+      (ensured.added.length ? '; cabeçalhos adicionados: ' + ensured.added.join(', ') : '') +
+      '. Linhas de dado: ' + rows +
+      (rows === 0 ? '. Cole a semente (reference_month, market_region, bedroom_bucket, …) e rode "Validar dados agora".' : '.');
+  });
+  if (result === null) return 'Não foi possível obter lock.';
+  Logger.log(result);
+  notify_('IVV_REGION', result);
+  return result;
+}
+
+/**
+ * IVV_REGION: faixas do vocabulário, mês legível, chave composta única, IVV em ponto
+ * percentual (0–100) e conferência publicado × sold/offered. `DF Total` é linha de
+ * referência — nunca somada às RAs, nunca comparada com a soma delas.
+ */
+function validateIvvRegion_(report) {
+  var sheet = ss_().getSheetByName('IVV_REGION');
+  if (!sheet) return;
+  var ix = headerIndex_(headersOf_(sheet));
+  var missing = IVV_REGION_HEADERS.filter(function (h) { return ix[h] === undefined; });
+  if (missing.length) {
+    report('error', 'IVV_REGION', 1, '', missing.join(', '), 'MISSING_HEADER',
+      'Cabeçalho(s) do contrato ausente(s): ' + missing.join(', '));
+    return;
+  }
+  var seen = {};
+  dataRowsOf_(sheet).forEach(function (row, i) {
+    var rn = i + 2;
+    var region = toText_(row[ix.market_region]);
+    var bucket = toText_(row[ix.bedroom_bucket]);
+    var month = periodIdOf_(row[ix.reference_month]);
+    var id = [month, region, bucket].join('|');
+    if (!region) {
+      report('error', 'IVV_REGION', rn, id, 'market_region', 'MISSING_REQUIRED_VALUE', 'market_region vazio.');
+    }
+    if (IVV_REGION_BUCKETS.indexOf(bucket) === -1) {
+      report('error', 'IVV_REGION', rn, id, 'bedroom_bucket', 'IVV_REGION_INVALID_BUCKET',
+        'Faixa fora do vocabulário (' + IVV_REGION_BUCKETS.join(', ') + '): ' + bucket);
+    }
+    if (!month) {
+      report('error', 'IVV_REGION', rn, id, 'reference_month', 'IVV_REGION_INVALID_MONTH',
+        'reference_month ilegível: ' + toText_(row[ix.reference_month]));
+    }
+    if (region && bucket && month) {
+      if (seen[id]) {
+        report('error', 'IVV_REGION', rn, id, 'market_region', 'IVV_REGION_DUPLICATE',
+          'Mês × região × faixa repetido (primeira na linha ' + seen[id] + ').');
+      } else {
+        seen[id] = rn;
+      }
+    }
+    var offered = isBlank_(row[ix.offered_units]) ? null : toNumber_(row[ix.offered_units]);
+    var sold = isBlank_(row[ix.sold_units]) ? null : toNumber_(row[ix.sold_units]);
+    if (offered !== null && (offered < 0 || offered !== Math.trunc(offered))) {
+      report('error', 'IVV_REGION', rn, id, 'offered_units', 'INVALID_FIELD_VALUE', 'offered_units deve ser inteiro não negativo.');
+    }
+    if (sold !== null && (sold < 0 || sold !== Math.trunc(sold))) {
+      report('error', 'IVV_REGION', rn, id, 'sold_units', 'INVALID_FIELD_VALUE', 'sold_units deve ser inteiro não negativo.');
+    }
+    var published = isBlank_(row[ix.ivv_pct_published]) ? null : toNumber_(row[ix.ivv_pct_published]);
+    var alias = isBlank_(row[ix.ivv_pct]) ? null : toNumber_(row[ix.ivv_pct]);
+    if (published !== null && (published < 0 || published > 100)) {
+      report('error', 'IVV_REGION', rn, id, 'ivv_pct_published', 'IVV_REGION_SCALE',
+        'IVV deve estar em ponto percentual (0–100): ' + published);
+    }
+    if (published !== null && alias !== null && Math.abs(published - alias) > IVV_REGION_TOLERANCE_PP) {
+      report('warning', 'IVV_REGION', rn, id, 'ivv_pct', 'IVV_REGION_ALIAS_MISMATCH',
+        'ivv_pct (' + alias + ') diverge de ivv_pct_published (' + published + '); o publicado prevalece (D2).');
+    }
+    if (published !== null && offered !== null && offered > 0 && sold !== null) {
+      var check = (sold / offered) * 100;
+      if (Math.abs(check - published) > IVV_REGION_TOLERANCE_PP) {
+        report('warning', 'IVV_REGION', rn, id, 'ivv_pct_published', 'IVV_REGION_IVV_MISMATCH',
+          'IVV publicado ' + published + ' diverge de sold/offered ' + check.toFixed(2) + ' p.p.; o publicado prevalece.');
+      }
+    }
+  });
+}
+
+// --- Cobertura: LISTINGS_COVERAGE ---------------------------------------------------
+
+/** 'RA-I' a partir de 'RA2026_RA-I', 'RA-I' ou 'RA_01' (via RA_PROFILES). */
+function raCodeFromGeoId_(value) {
+  var text = toText_(value).toUpperCase();
+  var m = /(RA-[IVXLC]+)$/.exec(text);
+  return m ? m[1] : '';
+}
+
+function bedroomBucketOf_(propertyType, bedrooms) {
+  var n = toNumber_(bedrooms);
+  if (toText_(propertyType) === 'kitnet' || n === 0) return 'studio_kitnet';
+  if (n === null) return 'sem_info';
+  if (n <= 1) return '1Q';
+  if (n === 2) return '2Q';
+  if (n === 3) return '3Q';
+  return '4+Q';
+}
+
+function priceBucketOf_(price) {
+  var n = toNumber_(price);
+  if (n === null || n <= 0) return 'sem_preco';
+  for (var i = 0; i < LISTINGS_PRICE_BUCKETS.length; i++) {
+    var bucket = LISTINGS_PRICE_BUCKETS[i];
+    if (bucket.max === null || n < bucket.max) return bucket.label;
+  }
+  return LISTINGS_PRICE_BUCKETS[LISTINGS_PRICE_BUCKETS.length - 1].label;
+}
+
+function coverageStatusOf_(activeCount, portalsCount) {
+  if (activeCount === 0) return 'none';
+  if (activeCount === 1) return 'single';
+  if (activeCount < 3) return 'thin';
+  if (portalsCount === 1) return 'single_portal';
+  return 'ok';
+}
+
+/** Perfis de RA como { 'RA-I': { geoId, name } }, para a cobertura mostrar RA com zero anúncio. */
+function raProfilesByCode_() {
+  var out = {};
+  var sheet = ss_().getSheetByName('RA_PROFILES');
+  if (!sheet) return out;
+  var ix = headerIndex_(headersOf_(sheet));
+  if (ix.ra_geo_id === undefined) return out;
+  dataRowsOf_(sheet).forEach(function (row) {
+    var code = ix.ra_code !== undefined ? raCodeFromGeoId_(row[ix.ra_code]) : '';
+    if (!code) return;
+    out[code] = {
+      geoId: toText_(row[ix.ra_geo_id]),
+      name: ix.ra_name !== undefined ? toText_(row[ix.ra_name]) : ''
+    };
+  });
+  return out;
+}
+
+function buildListingsCoverage() {
+  var result = withLock_(buildListingsCoverage_);
+  if (result === null) return 'Não foi possível obter lock.';
+  Logger.log(result);
+  notify_('LISTINGS_COVERAGE', result);
+  return result;
+}
+
+/**
+ * Matriz de cobertura de anúncios (Plano 02 §3.1): RA × tipo × faixa de quartos × faixa
+ * de preço. Duas granularidades na mesma aba: linhas `TODOS`/`TODOS` para cada RA × tipo
+ * (inclusive com zero, para a lacuna aparecer) e linhas detalhadas só para combinações
+ * observadas. Recalculada por inteiro; nunca editada à mão.
+ */
+function buildListingsCoverage_() {
+  var book = ss_();
+  var listings = book.getSheetByName('LISTINGS');
+  if (!listings) return 'Aba LISTINGS ausente.';
+  var ix = headerIndex_(headersOf_(listings));
+  var needed = ['ra_geo_id', 'property_type', 'bedrooms', 'asking_price_brl', 'area_m2',
+    'asking_price_brl_m2', 'status', 'portal', 'observed_at'];
+  for (var i = 0; i < needed.length; i++) {
+    if (ix[needed[i]] === undefined) return 'LISTINGS sem a coluna ' + needed[i] + '.';
+  }
+
+  var profiles = raProfilesByCode_();
+  var cells = {};
+  function cell(ra, type, beds, price) {
+    var key = [ra, type, beds, price].join('|');
+    if (!cells[key]) {
+      cells[key] = { ra: ra, type: type, beds: beds, price: price, active: 0, withPrice: 0,
+        withArea: 0, withValidM2: 0, portals: {}, latest: '' };
+    }
+    return cells[key];
+  }
+
+  var raCodes = {};
+  Object.keys(profiles).forEach(function (code) { raCodes[code] = true; });
+
+  dataRowsOf_(listings).forEach(function (row) {
+    var code = raCodeFromGeoId_(row[ix.ra_geo_id]);
+    if (!code) code = 'SEM_RA';
+    raCodes[code] = true;
+    var type = toText_(row[ix.property_type]) || 'sem_tipo';
+    var beds = bedroomBucketOf_(type, row[ix.bedrooms]);
+    var priceBucket = priceBucketOf_(row[ix.asking_price_brl]);
+    var price = toNumber_(row[ix.asking_price_brl]);
+    var area = toNumber_(row[ix.area_m2]);
+    var informed = toNumber_(row[ix.asking_price_brl_m2]);
+    var validM2 = price !== null && price > 0 && area !== null && area > 0 &&
+      (informed === null || informed <= 0 || Math.abs(price / area - informed) / informed <= PRICE_M2_TOLERANCE);
+    var active = toText_(row[ix.status]).toLowerCase() === 'active';
+    var portal = toText_(row[ix.portal]);
+    var observed = dateTextOf_(row[ix.observed_at]);
+
+    [cell(code, type, beds, priceBucket), cell(code, type, 'TODOS', 'TODOS')].forEach(function (c) {
+      if (active) c.active++;
+      if (price !== null && price > 0) c.withPrice++;
+      if (area !== null && area > 0) c.withArea++;
+      if (validM2) c.withValidM2++;
+      if (portal) c.portals[portal] = true;
+      if (observed && observed > c.latest) c.latest = observed;
+    });
+  });
+
+  // Toda RA × tipo do vocabulário existe como linha de resumo, mesmo com zero.
+  Object.keys(raCodes).forEach(function (code) {
+    ENUM_VALUES.property_type.forEach(function (type) { cell(code, type, 'TODOS', 'TODOS'); });
+  });
+
+  var computedAt = nowISO_();
+  var rows = Object.keys(cells).sort().map(function (key) {
+    var c = cells[key];
+    var profile = profiles[c.ra] || { geoId: '', name: '' };
+    var geoId = c.ra === 'SEM_RA' ? '' : 'RA2026_' + c.ra;
+    var portalsCount = Object.keys(c.portals).length;
+    return [
+      geoId, profile.name, c.type, c.beds, c.price, c.active, c.withPrice, c.withArea,
+      c.withValidM2, portalsCount, c.latest, coverageStatusOf_(c.active, portalsCount), computedAt
+    ];
+  });
+
+  writeOperationalTable_(LISTINGS_COVERAGE_SHEET, LISTINGS_COVERAGE_HEADERS, rows);
+  setMeta_('rows_listings_coverage', String(rows.length));
+  setMeta_('listings_coverage_computed_at', computedAt);
+  var gaps = rows.filter(function (r) { return r[3] === 'TODOS' && r[11] === 'none'; }).length;
+  return rows.length + ' linha(s) em ' + LISTINGS_COVERAGE_SHEET + '; ' + gaps +
+    ' combinação(ões) RA × tipo sem nenhum anúncio ativo.';
+}
+
+// --- Cobertura: PDAD_A_COVERAGE -----------------------------------------------------
+
+function buildPdadCoverage() {
+  var result = withLock_(buildPdadCoverage_);
+  if (result === null) return 'Não foi possível obter lock.';
+  Logger.log(result);
+  notify_('PDAD_A_COVERAGE', result);
+  return result;
+}
+
+/**
+ * Cobertura PDAD-A (Plano 02 §9): RA × indicador autorizado em PDAD_A_FIGURE_MAP, com
+ * categorias carregadas, publicadas e suprimidas. `categories_expected` é o máximo
+ * observado entre as RAs para o mesmo indicador e ano — o mapa de figuras não publica a
+ * contagem, e inventá-la seria pior que declarar a heurística. Indicador que aparece em
+ * PDAD_A_DATA sem estar no mapa vira `needs_review`, nunca é silenciosamente aceito.
+ */
+function buildPdadCoverage_() {
+  var book = ss_();
+  var data = book.getSheetByName('PDAD_A_DATA');
+  var figureMap = book.getSheetByName('PDAD_A_FIGURE_MAP');
+  if (!data) return 'Aba PDAD_A_DATA ausente.';
+  if (!figureMap) return 'Aba PDAD_A_FIGURE_MAP ausente.';
+
+  var fx = headerIndex_(headersOf_(figureMap));
+  if (fx.indicator_code === undefined) return 'PDAD_A_FIGURE_MAP sem indicator_code.';
+  var authorized = {};
+  var authorizedOrder = [];
+  dataRowsOf_(figureMap).forEach(function (row) {
+    var code = toText_(row[fx.indicator_code]);
+    if (!code || authorized[code]) return;
+    authorized[code] = {
+      name: fx.indicator_name !== undefined ? toText_(row[fx.indicator_name]) : '',
+      figure: fx.figure_number !== undefined ? toText_(row[fx.figure_number]) : '',
+      table: fx.table_number !== undefined ? toText_(row[fx.table_number]) : ''
+    };
+    authorizedOrder.push(code);
+  });
+
+  var dx = headerIndex_(headersOf_(data));
+  var needed = ['pdad_year', 'ra_geo_id', 'indicator_code', 'source_value_status'];
+  for (var i = 0; i < needed.length; i++) {
+    if (dx[needed[i]] === undefined) return 'PDAD_A_DATA sem a coluna ' + needed[i] + '.';
+  }
+
+  var ras = {};
+  var groups = {};
+  var maxCategories = {};
+  dataRowsOf_(data).forEach(function (row) {
+    var year = toText_(row[dx.pdad_year]);
+    var ra = toText_(row[dx.ra_geo_id]);
+    var code = toText_(row[dx.indicator_code]);
+    if (!year || !ra || !code) return;
+    var raKey = year + '|' + ra;
+    if (!ras[raKey]) ras[raKey] = { year: year, ra: ra, name: dx.ra_name !== undefined ? toText_(row[dx.ra_name]) : '' };
+    var key = raKey + '|' + code;
+    if (!groups[key]) {
+      groups[key] = { categories: {}, published: 0, suppressed: 0, partial: 0, other: 0,
+        figure: '', table: '', name: dx.indicator_name !== undefined ? toText_(row[dx.indicator_name]) : '' };
+    }
+    var g = groups[key];
+    var category = dx.category_standard !== undefined ? toText_(row[dx.category_standard]) : '';
+    if (!category && dx.response_category !== undefined) category = toText_(row[dx.response_category]);
+    var segment = dx.segment_value !== undefined ? toText_(row[dx.segment_value]) : '';
+    if (category) g.categories[segment + '|' + category] = true;
+    var status = toText_(row[dx.source_value_status]).toLowerCase();
+    if (status === 'published') g.published++;
+    else if (status === 'suppressed') g.suppressed++;
+    else if (status === 'partial') g.partial++;
+    else g.other++;
+    if (!g.figure && dx.figure_number !== undefined) g.figure = toText_(row[dx.figure_number]);
+    if (!g.table && dx.table_number !== undefined) g.table = toText_(row[dx.table_number]);
+  });
+  Object.keys(groups).forEach(function (key) {
+    var parts = key.split('|');
+    var indicatorKey = parts[0] + '|' + parts[2];
+    var loaded = Object.keys(groups[key].categories).length;
+    if (!maxCategories[indicatorKey] || loaded > maxCategories[indicatorKey]) maxCategories[indicatorKey] = loaded;
+  });
+
+  var checkedAt = nowISO_();
+  var rows = [];
+  Object.keys(ras).sort().forEach(function (raKey) {
+    var ra = ras[raKey];
+    authorizedOrder.forEach(function (code) {
+      var info = authorized[code];
+      var g = groups[raKey + '|' + code];
+      var expected = maxCategories[ra.year + '|' + code] || '';
+      if (!g) {
+        rows.push([ra.ra, ra.name, ra.year, code, info.name, info.figure, info.table, expected, 0, 0, 0,
+          false, false, 'missing', 'gap', checkedAt, 'nenhuma linha em PDAD_A_DATA']);
+        return;
+      }
+      var loaded = Object.keys(g.categories).length;
+      var status;
+      if (g.published === 0 && g.suppressed > 0) status = 'suppressed_source';
+      else if (g.suppressed > 0 || g.partial > 0 || g.other > 0 || (expected && loaded < expected)) status = 'partial';
+      else status = 'complete';
+      var quality = status === 'partial' ? 'review' : 'ok';
+      var notes = [];
+      if (g.partial) notes.push(g.partial + ' partial');
+      if (g.other) notes.push(g.other + ' status desconhecido');
+      if (expected && loaded < expected) notes.push('categorias ' + loaded + '/' + expected);
+      rows.push([ra.ra, ra.name, ra.year, code, info.name || g.name, info.figure || g.figure,
+        info.table || g.table, expected, loaded, g.published, g.suppressed,
+        !!(info.figure || g.figure), !!(info.table || g.table), status, quality, checkedAt, notes.join('; ')]);
+    });
+    // Indicadores fora do mapa canônico: revisão explícita (Plano 02 §10).
+    Object.keys(groups).forEach(function (key) {
+      if (key.indexOf(raKey + '|') !== 0) return;
+      var code = key.slice(raKey.length + 1);
+      if (authorized[code]) return;
+      var g = groups[key];
+      rows.push([ra.ra, ra.name, ra.year, code, g.name, g.figure, g.table, '',
+        Object.keys(g.categories).length, g.published, g.suppressed, !!g.figure, !!g.table,
+        'needs_review', 'review', checkedAt, 'indicador fora de PDAD_A_FIGURE_MAP']);
+    });
+  });
+
+  writeOperationalTable_(PDAD_COVERAGE_SHEET, PDAD_COVERAGE_HEADERS, rows);
+  setMeta_('rows_pdad_coverage', String(rows.length));
+  setMeta_('pdad_coverage_computed_at', checkedAt);
+  var counts = {};
+  rows.forEach(function (r) { counts[r[13]] = (counts[r[13]] || 0) + 1; });
+  return rows.length + ' linha(s) em ' + PDAD_COVERAGE_SHEET + ': ' +
+    Object.keys(counts).sort().map(function (k) { return k + '=' + counts[k]; }).join(', ') + '.';
+}
+
+// --- Cobertura: fila de pesquisa de DEVELOPMENTS ------------------------------------
+
+/**
+ * DEVELOPMENTS com campo de prioridade vazio vira aviso `coverage` em DATA_QUALITY — é a
+ * fila de pesquisa do Plano 02 §5.2, na aba que o operador já olha. Não inventa valor.
+ */
+function validateDevelopmentCoverage_(report) {
+  var sheet = ss_().getSheetByName('DEVELOPMENTS');
+  if (!sheet) return;
+  var ix = headerIndex_(headersOf_(sheet));
+  var idField = ID_FIELD.DEVELOPMENTS;
+  if (ix[idField] === undefined) return;
+  dataRowsOf_(sheet).forEach(function (row, i) {
+    var rn = i + 2;
+    var id = toText_(row[ix[idField]]);
+    DEVELOPMENT_RESEARCH_FIELDS.forEach(function (field) {
+      if (ix[field] === undefined) return;
+      var blank = isBlank_(row[ix[field]]);
+      if (field === 'latitude') {
+        blank = blank && (ix.longitude === undefined || isBlank_(row[ix.longitude]));
+        if (!blank) return;
+        report('warning', 'DEVELOPMENTS', rn, id, 'latitude, longitude', 'COVERAGE_MISSING_COORDINATE',
+          'Fila de pesquisa: sem coordenada. Fonte preferida: site oficial da incorporadora ou registro público.');
+        return;
+      }
+      if (!blank) return;
+      report('warning', 'DEVELOPMENTS', rn, id, field, 'COVERAGE_MISSING_' + field.toUpperCase(),
+        'Fila de pesquisa: ' + field + ' vazio. Preencher só com fonte específica (source_url).');
+    });
+  });
 }
