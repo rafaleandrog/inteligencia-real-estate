@@ -1149,6 +1149,9 @@ select:focus, input[type="number"]:focus {
 .detail-ruler-labels b { font-weight: 500; color: var(--texto-sec); font-variant-numeric: tabular-nums; }
 .detail-position-sample { display: flex; flex-wrap: wrap; gap: var(--esp-1) var(--esp-3); margin: 0; padding: 0; list-style: none; font-size: var(--tipo-xs); color: var(--muted); }
 
+/* Link compartilhável (issue #127): botão fantasma na faixa de conteúdo. */
+.copy-link { width: auto; margin: 0; padding: var(--esp-2) var(--esp-3); font-size: var(--tipo-sm); white-space: nowrap; }
+
 .disclaimer {
   font-size: 12px;
   line-height: 1.45;
@@ -1999,6 +2002,30 @@ p.precision.precision-exact {
    responde é "onde gira mais rápido?", que é comparação entre regiões. O nome da região
    fica à esquerda porque nome longo em rótulo vertical é ilegível, e a comparação se faz
    correndo o olho por uma coluna de barras que começam todas no mesmo lugar. */
+/* Comparação temporal (issue #127): a série comparada é a mesma cor, tracejada, sem área. */
+.market-serie-comparacao .market-serie-linha { stroke-dasharray: 5 4; stroke-opacity: .85; }
+.market-serie-comparacao .market-serie-area { display: none; }
+.market-serie-comparacao .market-serie-coluna { fill-opacity: .35; }
+.market-serie-comparacao .market-serie-marcador { fill-opacity: .6; }
+.market-history-controls { display: flex; flex-wrap: wrap; align-items: center; gap: var(--esp-3) var(--esp-5); }
+.market-compare { display: flex; flex-wrap: wrap; align-items: center; gap: var(--esp-2); }
+.market-compare-label {
+  font-size: var(--tipo-2xs);
+  font-weight: 500;
+  letter-spacing: var(--track-label);
+  text-transform: uppercase;
+  color: var(--texto-sec);
+}
+
+/* Matriz preço × liquidez por RA (issue #127). */
+.market-scatter-head { margin-top: var(--esp-5); }
+.market-scatter-head h3 { margin: 0; font-size: var(--tipo-md); font-weight: 700; color: var(--texto-forte); }
+.market-scatter-head p { margin: var(--esp-1) 0 0; font-size: var(--tipo-sm); color: var(--muted); }
+.market-scatter-svg { display: block; width: 100%; height: auto; }
+.market-scatter-referencia { stroke-dasharray: 4 4; }
+.market-scatter-ponto { cursor: help; }
+.market-scatter-rotulo { font-size: var(--tipo-2xs); fill: var(--texto-sec); pointer-events: none; }
+
 .market-regioes { margin-top: var(--esp-6); }
 .market-regioes[hidden] { display: none; }
 .market-regioes-lista {

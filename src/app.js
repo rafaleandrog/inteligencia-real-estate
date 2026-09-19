@@ -18,6 +18,8 @@ import { aggregatePeriod } from './ivv/aggregate.js';
 import { buildMarketDashboard, formatMetricValue } from './ivv/cards.js';
 import { buildMicroKpis } from './ivv/derived.js';
 import { raRealEstateProfile, compactIndicators, RA_PROFILE_ITEMS, PROFILE_STATUS } from './pdad/insights.js';
+import { parseHash, buildHash, intParam } from './url-state.js';
+import { buildRegionScatter, REGION_SCATTER_MODES } from './ivv/region.js';
 import {
   PERIOD_MODE_OPTIONS, PERIOD_MODES, availableYears, availableMonths, controlDisabledReason,
   defaultPeriodSelection, selectIvvPeriod, chartRowsForSelection, periodSummary,
@@ -25,6 +27,7 @@ import {
 } from './ivv/period.js';
 import {
   buildHistoryCharts, buildSeasonality, buildSparkline, SERIES_MODES,
+  COMPARE_MODES, COMPARE_MODE_OPTIONS, COMPARE_SUFFIX, comparisonRows, historyMonths,
 } from './ivv/history.js';
 import { CHART_TYPES, DIMENSOES } from './ivv/chart-model.js';
 import { chartGeometry, chartViewport, sparkViewport } from './ivv/chart-layout.js';
@@ -58,7 +61,7 @@ import {
   formatAnchorSegment, formatSalesStage, formatRegularizationStatus, formatPercent,
   percentFromPoints, raAgeBands, polygonStyle, sortPolygonsForDraw, raProfileEssentials,
   raProfileUnavailability, polygonEssentials, polygonPropertyTiers, polygonEssentialKeys,
-  polygonEntityType,
+  polygonEntityType, compactNumber,
 } from './format.js';
 import { trafficPanelRows } from './traffic/panel.js';
 import { ANCHOR_ICONS, ANCHOR_FALLBACK_ICON } from './icons.js';
@@ -102,6 +105,8 @@ const dom = {
   marketSeriesMode: el('marketSeriesMode'),
   marketRegioes: el('marketRegioes'), marketRegioesFaixa: el('marketRegioesFaixa'),
   marketRegioesLista: el('marketRegioesLista'), marketRegioesNote: el('marketRegioesNote'),
+  marketRegioesScatter: el('marketRegioesScatter'), marketRegioesModo: el('marketRegioesModo'),
+  marketCompare: el('marketCompare'), copyLink: el('copyLink'),
   marketRegioesAusentes: el('marketRegioesAusentes'),
   marketHistoryNote: el('marketHistoryNote'),
   marketProvenance: el('marketProvenance'), marketProvenanceList: el('marketProvenanceList'),
@@ -154,6 +159,11 @@ const state = {
   // Registros que passaram no filtro na última renderização — é o "recorte selecionado"
   // contra o qual o painel de detalhe posiciona um imóvel (issue #124).
   visible: [],
+  // Comparação temporal dos gráficos (issue #127) e modo da matriz por RA.
+  marketCompare: COMPARE_MODES.NENHUM,
+  marketRegionScatterMode: null,
+  // Parâmetros lidos da URL na abertura (issue #127); consumidos por quem monta cada view.
+  pendingUrl: null,
   filters: createFilterState(),
   markers: new Map(),
   selectedId: null,
@@ -1234,6 +1244,7 @@ function render() {
   renderPolygons();
   renderKpis(computeKpis(visible));
   renderRaProfile();
+  if (viewFromHash() === 'mapa') syncHash();
 
   // Detalhe aberto de um registro que saiu do filtro deixa de fazer sentido.
   if (state.selectedId && !visible.some((r) => recordKey(r) === state.selectedId)) closeDetail();
@@ -1749,8 +1760,100 @@ const VIEWS = ['mapa', 'mercado', 'diagnostico', 'ranking', 'comparar', 'base'];
 
 /** A view pedida pelo hash. Hash desconhecido cai no mapa, sem erro. */
 function viewFromHash() {
-  const wanted = (location.hash || '').replace('#', '');
-  return VIEWS.includes(wanted) ? wanted : 'mapa';
+  const { view } = parseHash(location.hash || '');
+  return VIEWS.includes(view) ? view : 'mapa';
+}
+
+/**
+ * Estado compartilhável de cada view (issue #127): só o que difere do padrão entra na
+ * URL, para `#mapa` sem filtro continuar sendo `#mapa`. O vocabulário fechado de chaves
+ * mora em src/url-state.js.
+ */
+function currentUrlParams(view) {
+  if (view === 'mapa') {
+    const f = state.filters;
+    return {
+      ra: f.ra, type: f.propertyType, beds: f.bedrooms === null ? '' : String(f.bedrooms),
+      price_min: f.priceMin === null ? '' : String(f.priceMin),
+      price_max: f.priceMax === null ? '' : String(f.priceMax),
+      locality: f.locality, q: f.search,
+    };
+  }
+  if (view === 'mercado') {
+    const sel = state.marketSelection;
+    const padrao = state.ivvMonthly.length ? defaultPeriodSelection(state.ivvMonthly) : null;
+    const params = {};
+    if (sel && padrao) {
+      if (sel.mode !== padrao.mode) params.periodo = sel.mode;
+      if (sel.mode === PERIOD_MODES.CUSTOM) { params.de = sel.start || ''; params.ate = sel.end || ''; }
+      else if (sel.year !== padrao.year || sel.month !== padrao.month) {
+        params.ano = sel.year ? String(sel.year) : '';
+        params.mes = sel.month ? String(sel.month) : '';
+      }
+    }
+    if (state.marketSeriesMode && sel && state.marketSeriesMode !== modoPadraoDaSerie(sel)) params.serie = state.marketSeriesMode;
+    if (state.marketCompare && state.marketCompare !== COMPARE_MODES.NENHUM) params.compare = state.marketCompare;
+    if (state.marketRegionBucket && state.marketRegionBucket !== FAIXA_TOTAL) params.faixa = state.marketRegionBucket;
+    if (state.marketRegionScatterMode && state.marketRegionScatterMode !== REGION_SCATTER_MODES[0].value) params.regiao_modo = state.marketRegionScatterMode;
+    return params;
+  }
+  if (view === 'diagnostico' || view === 'ranking') {
+    const f = state.pdadFilters;
+    if (!f) return {};
+    const anos = pdadYearsAvailable(state.pdadData);
+    return {
+      ra: f.ra && f.ra !== 'all' ? f.ra : '',
+      ano: f.year && f.year !== anos[0] ? String(f.year) : '',
+      tema: view === 'diagnostico' && f.tema && f.tema !== 'all' ? f.tema : '',
+    };
+  }
+  return {};
+}
+
+/** Reescreve o hash com o estado da view corrente, sem disparar `hashchange`. */
+function syncHash() {
+  const view = viewFromHash();
+  const alvo = buildHash(view, currentUrlParams(view));
+  if (location.hash !== alvo) history.replaceState(null, '', alvo);
+}
+
+/**
+ * Lê os parâmetros da URL na abertura e os aplica ao mapa; Mercado e Diagnóstico os
+ * consomem ao montar os próprios filtros (`initializeMarketFilters`, `initializePdadFilters`).
+ */
+function applyUrlParams() {
+  const { view, params } = parseHash(location.hash || '');
+  state.pendingUrl = { view, params };
+  if (view !== 'mapa') return;
+  const setIfOption = (select, value) => {
+    if (!value) return;
+    if ([...select.options].some((o) => o.value === value)) select.value = value;
+  };
+  setIfOption(dom.locality, params.locality);
+  setIfOption(dom.raFilter, params.ra);
+  setIfOption(dom.ptype, params.type);
+  setIfOption(dom.beds, params.beds);
+  if (intParam(params.price_min) !== null) dom.priceMin.value = String(intParam(params.price_min));
+  if (intParam(params.price_max) !== null) dom.priceMax.value = String(intParam(params.price_max));
+  if (params.q) dom.search.value = params.q;
+}
+
+async function copyAnalysisLink() {
+  const url = location.href;
+  const original = 'Copiar link desta análise';
+  let ok = false;
+  try {
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      await navigator.clipboard.writeText(url);
+      ok = true;
+    }
+  } catch { ok = false; }
+  if (!ok) {
+    // Sem clipboard (http, permissão negada): mostra a URL para copiar à mão.
+    window.prompt('Copie o link desta análise:', url);
+  }
+  dom.copyLink.textContent = ok ? 'Link copiado' : original;
+  if (ok) setTimeout(() => { dom.copyLink.textContent = original; }, 2000);
 }
 
 /**
@@ -1794,7 +1897,7 @@ function setView(name) {
   if (view === 'comparar') renderPdadCompareView();
   if (view === 'base') renderPdadBaseView();
 
-  const alvo = `#${view}`;
+  const alvo = buildHash(view, currentUrlParams(view));
   if (location.hash !== alvo) history.replaceState(null, '', alvo);
 }
 
@@ -2014,6 +2117,18 @@ function periodChip(item) {
 
 function initializeMarketFilters() {
   state.marketSelection = defaultPeriodSelection(state.ivvMonthly);
+  const pendente = state.pendingUrl && state.pendingUrl.view === 'mercado' ? state.pendingUrl.params : null;
+  if (pendente) {
+    if (Object.values(PERIOD_MODES).includes(pendente.periodo)) state.marketSelection.mode = pendente.periodo;
+    if (intParam(pendente.ano) !== null) state.marketSelection.year = intParam(pendente.ano);
+    if (intParam(pendente.mes) !== null) state.marketSelection.month = intParam(pendente.mes);
+    if (pendente.de) state.marketSelection.start = pendente.de;
+    if (pendente.ate) state.marketSelection.end = pendente.ate;
+    if (Object.values(SERIES_MODES).includes(pendente.serie)) state.marketSeriesMode = pendente.serie;
+    if (Object.values(COMPARE_MODES).includes(pendente.compare)) state.marketCompare = pendente.compare;
+    if (pendente.faixa) state.marketRegionBucket = pendente.faixa;
+    if (REGION_SCATTER_MODES.some((m) => m.value === pendente.regiao_modo)) state.marketRegionScatterMode = pendente.regiao_modo;
+  }
   dom.marketPeriodChips.replaceChildren(...PERIOD_MODE_OPTIONS.map(periodChip));
 
   const years = availableYears(state.ivvMonthly);
@@ -2179,7 +2294,8 @@ function chartSvg(model, viewport) {
   }
 
   for (const serie of geometria.series) {
-    const grupo = svgNode('g', { class: `market-serie ${classeDaSerie(model, serie)}` });
+    const comparada = typeof serie.chave === 'string' && serie.chave.endsWith(COMPARE_SUFFIX);
+    const grupo = svgNode('g', { class: `market-serie ${classeDaSerie(model, serie)}${comparada ? ' market-serie-comparacao' : ''}` });
     for (const area of serie.areas) grupo.append(svgNode('path', { d: area, class: 'market-serie-area' }));
     for (const segmento of serie.segmentos) {
       grupo.append(svgNode('path', { d: segmento, class: 'market-serie-linha' }));
@@ -2679,6 +2795,103 @@ function renderMarketRegioes() {
   dom.marketRegioesAusentes.textContent = ranking.semValor.length > 0
     ? `Sem IVV publicado nesta faixa: ${ranking.semValor.join(', ')}.`
     : '';
+
+  renderMarketRegioesScatter(linhas, faixa);
+}
+
+/**
+ * Matriz preço × liquidez (issue #127): um ponto por RA, `DF Total` como referência
+ * tracejada, três modos de leitura. Tooltip com RA, IVV, preço de venda, preço pedido,
+ * oferta, vendas e gap — números, sem interpretação automática.
+ */
+function renderMarketRegioesScatter(linhas, faixa) {
+  if (!dom.marketRegioesScatter) return;
+  if (dom.marketRegioesModo.childElementCount === 0) {
+    dom.marketRegioesModo.replaceChildren(...REGION_SCATTER_MODES.map((item) => {
+      const botao = periodChip(item);
+      botao.dataset.scatterModo = item.value;
+      delete botao.dataset.mode;
+      return botao;
+    }));
+  }
+  const modo = REGION_SCATTER_MODES.some((m) => m.value === state.marketRegionScatterMode)
+    ? state.marketRegionScatterMode : REGION_SCATTER_MODES[0].value;
+  state.marketRegionScatterMode = modo;
+  for (const chip of dom.marketRegioesModo.querySelectorAll('.market-chip')) {
+    chip.setAttribute('aria-pressed', String(chip.dataset.scatterModo === modo));
+  }
+
+  const scatter = buildRegionScatter(linhas, { bucket: faixa, mode: modo });
+  const wrap = document.createElement('div');
+  wrap.className = 'market-scatter';
+  if (scatter.pontos.length === 0) {
+    const p = document.createElement('p');
+    p.className = 'market-card-absent';
+    p.textContent = 'Sem RA com os dois eixos publicados nesta faixa.';
+    wrap.append(p);
+  } else {
+    const W = 600; const H = 320; const L = 56; const R = 16; const T = 16; const B = 44;
+    const { xMin, xMax, yMin, yMax } = scatter.dominio;
+    const xSpan = xMax - xMin || 1; const ySpan = yMax - yMin || 1;
+    const px = (x) => L + ((x - xMin) / xSpan) * (W - L - R);
+    const py = (y) => T + (1 - (y - yMin) / ySpan) * (H - T - B);
+    const svg = svgNode('svg', { viewBox: `0 0 ${W} ${H}`, class: 'market-chart-svg market-scatter-svg', role: 'img' });
+    svg.setAttribute('aria-label', `${scatter.xLabel} × ${scatter.yLabel}, ${scatter.pontos.length} RAs.`);
+    svg.append(svgNode('line', { x1: L, x2: W - R, y1: H - B, y2: H - B, class: 'chart-axis-line' }));
+    svg.append(svgNode('line', { x1: L, x2: L, y1: T, y2: H - B, class: 'chart-axis-line' }));
+    const fx = (v) => (v >= 1000 ? compactNumber(v) : formatNumber(Math.round(v)));
+    for (const [v, x] of [[xMin, L], [xMax, W - R]]) {
+      const t = svgNode('text', { x, y: H - B + 16, class: 'chart-axis-month', 'text-anchor': x === L ? 'start' : 'end' });
+      t.textContent = fx(v);
+      svg.append(t);
+    }
+    for (const [v, y] of [[yMin, H - B], [yMax, T + 4]]) {
+      const t = svgNode('text', { x: L - 6, y, class: 'chart-axis-value' });
+      t.textContent = formatNumber(Math.round(v * 10) / 10);
+      svg.append(t);
+    }
+    const xl = svgNode('text', { x: (L + W - R) / 2, y: H - 6, class: 'chart-axis-month', 'text-anchor': 'middle' });
+    xl.textContent = scatter.xLabel;
+    svg.append(xl);
+    const yl = svgNode('text', { x: 12, y: (T + H - B) / 2, class: 'chart-axis-value', transform: `rotate(-90 12 ${(T + H - B) / 2})`, 'text-anchor': 'middle' });
+    yl.textContent = scatter.yLabel;
+    svg.append(yl);
+    if (scatter.referencia) {
+      const rx = px(Math.min(Math.max(scatter.referencia.x, xMin), xMax));
+      const ry = py(Math.min(Math.max(scatter.referencia.y, yMin), yMax));
+      svg.append(svgNode('line', { x1: L, x2: W - R, y1: ry, y2: ry, class: 'chart-guia market-scatter-referencia' }));
+      svg.append(svgNode('line', { x1: rx, x2: rx, y1: T, y2: H - B, class: 'chart-guia market-scatter-referencia' }));
+      const rt = svgNode('text', { x: W - R, y: ry - 4, class: 'chart-axis-value', 'text-anchor': 'end' });
+      rt.textContent = `${REGIAO_TOTAL}`;
+      svg.append(rt);
+    }
+    const grupo = svgNode('g', { class: 'market-serie serie-1' });
+    for (const p of scatter.pontos) {
+      const dot = svgNode('circle', { cx: px(p.x), cy: py(p.y), r: 5, class: 'market-serie-marcador market-scatter-ponto' });
+      dot.append(tituloSvg([
+        p.region,
+        `IVV: ${p.ivvPct === null ? 'não publicado' : formatPercent(percentFromPoints(p.ivvPct))}`,
+        `Preço de venda: ${p.salePriceM2 === null ? 'não publicado' : formatPriceM2(p.salePriceM2)}`,
+        `Preço pedido: ${p.offerPriceM2 === null ? 'não publicado' : formatPriceM2(p.offerPriceM2)}`,
+        `Oferta: ${p.offeredUnits === null ? 'não publicada' : formatNumber(p.offeredUnits)} un.`,
+        `Vendas: ${p.soldUnits === null ? 'não publicadas' : formatNumber(p.soldUnits)} un.`,
+        `Gap pedido/venda: ${p.gapPct === null ? 'não calculável' : formatPercent(p.gapPct)}`,
+      ].join('\n')));
+      grupo.append(dot);
+      const label = svgNode('text', { x: px(p.x) + 7, y: py(p.y) + 3.5, class: 'chart-axis-value market-scatter-rotulo', 'text-anchor': 'start' });
+      label.textContent = p.region;
+      grupo.append(label);
+    }
+    svg.append(grupo);
+    wrap.append(svg);
+  }
+  const nota = document.createElement('p');
+  nota.className = 'market-regioes-ausentes';
+  nota.textContent = scatter.semValor.length > 0
+    ? `Fora da matriz por falta de um dos eixos: ${scatter.semValor.join(', ')}.`
+    : '';
+  wrap.append(nota);
+  dom.marketRegioesScatter.replaceChildren(wrap);
 }
 
 /**
@@ -2826,8 +3039,16 @@ function renderMarketDashboard() {
 
   renderMarketRegioes();
 
+  // Comparação temporal (issue #127): o recorte comparado vem da janela que os gráficos
+  // desenham, e a série entra tracejada NO MESMO eixo — nunca num segundo eixo Y.
+  const compare = Object.values(COMPARE_MODES).includes(state.marketCompare) ? state.marketCompare : COMPARE_MODES.NENHUM;
+  state.marketCompare = compare;
+  sincronizarComparacao(compare);
+  const mesesJanela = historyMonths(janela);
+  const comparacao = comparisonRows(state.ivvMonthly, { start: mesesJanela[0], end: mesesJanela.at(-1) }, compare);
+
   const graficos = [
-    ...buildHistoryCharts(fontes, modo),
+    ...buildHistoryCharts(fontes, modo, { comparacao }),
     buildSeasonality(state.ivvMonthly, { modo }),
   ];
   const cards = graficos.map(marketChart);
@@ -2844,7 +3065,23 @@ function renderMarketDashboard() {
   // agregação inteira.
   cardsNaTela = [...cards, ...sparks, ...fipezapCards, ...fipezapLocalidadeCards];
   desenharGraficos(cardsNaTela);
+  if (viewFromHash() === 'mercado') syncHash();
   return warnings.map((item) => `Mercado (${item.metric || 'período'}): ${item.message}`);
+}
+
+function sincronizarComparacao(compare) {
+  if (!dom.marketCompare) return;
+  if (dom.marketCompare.childElementCount === 0) {
+    dom.marketCompare.replaceChildren(...COMPARE_MODE_OPTIONS.map((item) => {
+      const botao = periodChip(item);
+      botao.dataset.compare = item.value;
+      delete botao.dataset.mode;
+      return botao;
+    }));
+  }
+  for (const chip of dom.marketCompare.querySelectorAll('.market-chip')) {
+    chip.setAttribute('aria-pressed', String(chip.dataset.compare === compare));
+  }
 }
 
 const MODOS_DE_SERIE = Object.freeze([
@@ -2982,9 +3219,18 @@ function initializePdadFilters() {
   }));
   dom.pdadYear.value = String(maisRecente);
   state.pdadFilters = { ra: 'all', year: maisRecente, tema: 'all' };
+  const pendente = state.pendingUrl && ['diagnostico', 'ranking'].includes(state.pendingUrl.view) ? state.pendingUrl.params : null;
+  if (pendente) {
+    if (intParam(pendente.ano) !== null && anos.includes(intParam(pendente.ano))) {
+      state.pdadFilters.year = intParam(pendente.ano);
+      dom.pdadYear.value = String(state.pdadFilters.year);
+    }
+    if (pendente.ra) state.pdadFilters.ra = pendente.ra;
+    if (pendente.tema && PDAD_TEMAS[pendente.tema]) state.pdadFilters.tema = pendente.tema;
+  }
   populatePdadRaFilter();
   populateSelect(dom.pdadTema, Object.keys(PDAD_TEMAS), (key) => PDAD_TEMAS[key]);
-  dom.pdadTema.value = 'all';
+  dom.pdadTema.value = state.pdadFilters.tema;
   // Metadados de Figura/Tabela por indicador (issue #102) — montados uma vez, igual ao
   // índice agregado: são constantes por `indicator_code`, recalcular a cada filtro
   // custaria as ~12 mil linhas de novo para o mesmo resultado.
@@ -3341,6 +3587,7 @@ function renderPdadView() {
   renderPdadScatter();
 
   setView(viewFromHash());
+  if (['diagnostico', 'ranking'].includes(viewFromHash())) syncHash();
   return [];
 }
 
@@ -4137,6 +4384,7 @@ async function load() {
   populateAnchorSegments('');
   renderAnchorLegend(state.records);
 
+  applyUrlParams();
   refreshMarketView();
   refreshPdadView();
   render();
@@ -4181,6 +4429,20 @@ function bindEvents() {
     renderMarketRegioes();
   });
 
+  dom.marketCompare.addEventListener('click', (event) => {
+    const chip = event.target.closest('.market-chip');
+    if (!chip || !state.marketSelection) return;
+    state.marketCompare = chip.dataset.compare;
+    refreshMarketView();
+  });
+  dom.marketRegioesModo.addEventListener('click', (event) => {
+    const chip = event.target.closest('.market-chip');
+    if (!chip) return;
+    state.marketRegionScatterMode = chip.dataset.scatterModo;
+    renderMarketRegioes();
+    syncHash();
+  });
+  dom.copyLink.addEventListener('click', () => { copyAnalysisLink(); });
   dom.marketSeriesMode.addEventListener('click', (event) => {
     const chip = event.target.closest('.market-chip');
     if (!chip) return;

@@ -154,7 +154,12 @@ await page.selectOption('#locality', { index: 1 });
 await page.waitForTimeout(300);
 const afterLoc = (await page.locator('#kpiVisible').textContent()).trim();
 n(afterLoc) > 0 && n(afterLoc) < n(visible0) ? pass(`localidade reduziu -> ${afterLoc}`) : fail('filtro de localidade não reduziu');
+// URL compartilhável (issue #127): o filtro vai para o hash, e o botão de copiar existe.
+const hashComFiltro = await page.evaluate(() => location.hash);
+/^#mapa\?.*locality=/.test(hashComFiltro) ? pass(`filtro serializado no hash: ${hashComFiltro.slice(0, 60)}`) : fail('hash sem o filtro: ' + hashComFiltro);
+(await page.locator('#copyLink').count()) === 1 ? pass('botão "Copiar link desta análise" presente') : fail('botão de copiar link ausente');
 await page.click('#clearFilters'); await page.waitForTimeout(300);
+(await page.evaluate(() => location.hash)) === '#mapa' ? pass('sem filtro, o hash volta a ser só #mapa') : fail('hash com filtro fantasma: ' + await page.evaluate(() => location.hash));
 
 await page.fill('#priceMax', '800000'); await page.waitForTimeout(400);
 const afterPrice = (await page.locator('#kpiVisible').textContent()).trim();
@@ -1178,6 +1183,37 @@ noMercado.hash === '#mercado'
   ? pass('o hash reflete a view atual') : fail('hash: ' + noMercado.hash);
 noMercado.botaoAtivo === 'mercado'
   ? pass('a aba ativa acompanha a view') : fail('aba ativa: ' + noMercado.botaoAtivo);
+// Comparação temporal (issue #127): três pílulas; escolher "Ano anterior" sobrepõe uma
+// série tracejada no mesmo eixo e vai para o hash.
+(await viewPage.locator('#marketCompare .market-chip').count()) === 3 ? pass('controle "Comparar com" com três opções') : fail('pílulas de comparação ausentes');
+await viewPage.click('#marketCompare .market-chip[data-compare="mesmo_periodo_ano_anterior"]');
+await viewPage.waitForTimeout(500);
+const comparacao = await viewPage.evaluate(() => ({
+  tracejadas: document.querySelectorAll('#marketCharts .market-serie-comparacao').length,
+  eixosY: document.querySelectorAll('#marketCharts [data-chart="ivv"] .chart-axis-value').length,
+  hash: location.hash,
+  nota: document.querySelector('#marketCharts [data-chart="ivv"] .market-chart-modo')?.textContent ?? '',
+}));
+comparacao.tracejadas > 0 || /Sem mês publicado no recorte de comparação/.test(comparacao.nota)
+  ? pass(`comparação: ${comparacao.tracejadas} série(s) tracejada(s) ou ausência declarada`) : fail('comparação sem série e sem aviso: ' + JSON.stringify(comparacao));
+/compare=mesmo_periodo_ano_anterior/.test(comparacao.hash) ? pass('modo de comparação serializado no hash') : fail('hash: ' + comparacao.hash);
+await viewPage.click('#marketCompare .market-chip[data-compare="nenhum"]');
+await viewPage.waitForTimeout(400);
+(await viewPage.evaluate(() => location.hash)) === '#mercado' ? pass('voltar a "Nenhum" limpa o hash') : fail('hash: ' + await viewPage.evaluate(() => location.hash));
+// Matriz preço × liquidez: um ponto por RA com tooltip, ou a ausência declarada.
+const matriz = await viewPage.evaluate(() => ({
+  visivel: !document.querySelector('#marketRegioes').hidden,
+  modos: document.querySelectorAll('#marketRegioesModo .market-chip').length,
+  pontos: document.querySelectorAll('#marketRegioesScatter .market-scatter-ponto').length,
+  titulo: document.querySelector('#marketRegioesScatter .market-scatter-ponto title')?.textContent ?? '',
+  ausente: document.querySelector('#marketRegioesScatter .market-card-absent')?.textContent ?? '',
+}));
+if (matriz.visivel) {
+  matriz.modos === 3 ? pass('matriz com três leituras (IVV × preço, IVV × oferta, gap × preço)') : fail('modos da matriz: ' + matriz.modos);
+  matriz.pontos > 0 && /IVV:|Preço de venda:/.test(matriz.titulo)
+    ? pass(`matriz com ${matriz.pontos} RAs e tooltip com IVV e preço`)
+    : (matriz.ausente ? pass('matriz sem eixos declara a ausência') : fail('matriz sem pontos e sem aviso'));
+}
 /Distrito Federal inteiro/.test(noMercado.escopo) && /Região Administrativa/.test(noMercado.escopo)
   ? pass('a tela declara o escopo do DF inteiro, sem recorte por RA')
   : fail('escopo não declarado: ' + noMercado.escopo);

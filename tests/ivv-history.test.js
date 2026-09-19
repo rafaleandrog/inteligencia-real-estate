@@ -198,3 +198,75 @@ test('o sparkline é uma série só, sem piso em zero', () => {
   assert.equal(spark.series[0].pontos.length, 2);
   assert.equal(buildSparkline([], 'sale_price_brl_m2').vazio, true);
 });
+
+// --- Comparação temporal (issue #127): mesma série, segundo recorte, mesmo eixo -------------
+
+import { COMPARE_MODES, COMPARE_MODE_OPTIONS, COMPARE_SUFFIX, shiftMonth, comparisonRows } from '../src/ivv/history.js';
+
+const serieLonga = (() => {
+  const out = [];
+  for (let i = 0; i < 30; i += 1) {
+    const ano = 2024 + Math.floor(i / 12);
+    const mes = (i % 12) + 1;
+    out.push({ reference_date: `${ano}-${String(mes).padStart(2, '0')}-01`, ivv_pct: 0.05 + i * 0.001, sales_units: 100 + i, offers_units: 4000 });
+  }
+  return out;
+})();
+
+test('shiftMonth: aritmética de mês, inclusive virada de ano; ilegível é null', () => {
+  assert.equal(shiftMonth('2026-03', -12), '2025-03');
+  assert.equal(shiftMonth('2026-01', -1), '2025-12');
+  assert.equal(shiftMonth('2025-12', 1), '2026-01');
+  assert.equal(shiftMonth('2026-03', -3), '2025-12');
+  assert.equal(shiftMonth('mar/26', -1), null);
+  assert.equal(shiftMonth(null, -1), null);
+});
+
+test('comparisonRows: período anterior de mesma duração e mesmo período do ano anterior', () => {
+  const anterior = comparisonRows(serieLonga, { start: '2026-01', end: '2026-06' }, COMPARE_MODES.PERIODO_ANTERIOR);
+  assert.deepEqual([anterior.start, anterior.end, anterior.rows.length], ['2025-07', '2025-12', 6]);
+  const anoAnterior = comparisonRows(serieLonga, { start: '2026-01', end: '2026-06' }, COMPARE_MODES.ANO_ANTERIOR);
+  assert.deepEqual([anoAnterior.start, anoAnterior.end, anoAnterior.rows.length], ['2025-01', '2025-06', 6]);
+  // Mês ausente na fonte: a janela é a mesma, as linhas são só as publicadas.
+  const comBuraco = comparisonRows(serieLonga.filter((r) => r.reference_date !== '2025-03-01'),
+    { start: '2026-01', end: '2026-06' }, COMPARE_MODES.ANO_ANTERIOR);
+  assert.equal(comBuraco.rows.length, 5);
+  // Antes do início da série: vazio, sem erro.
+  const foraDaSerie = comparisonRows(serieLonga, { start: '2024-01', end: '2024-03' }, COMPARE_MODES.ANO_ANTERIOR);
+  assert.deepEqual([foraDaSerie.rows, foraDaSerie.start], [[], '2023-01']);
+  assert.deepEqual(comparisonRows(serieLonga, { start: '2026-01', end: '2026-06' }, COMPARE_MODES.NENHUM).rows, []);
+  assert.deepEqual(comparisonRows(serieLonga, { start: null, end: null }, COMPARE_MODES.ANO_ANTERIOR).rows, []);
+  assert.deepEqual(comparisonRows(serieLonga, { start: '2026-06', end: '2026-01' }, COMPARE_MODES.ANO_ANTERIOR).rows, []);
+  assert.deepEqual(comparisonRows(serieLonga, { start: '2026-01', end: '2026-06' }, 'modo_inventado').rows, []);
+});
+
+test('buildHistoryCharts sobrepõe a série comparada no mesmo eixo, tracejada por chave, alinhada por posição', () => {
+  const janela = serieLonga.slice(24, 30); // 2026-01..2026-06
+  const comparacao = comparisonRows(serieLonga, { start: '2026-01', end: '2026-06' }, COMPARE_MODES.ANO_ANTERIOR);
+  const graficos = buildHistoryCharts({ periodo: janela, janela, completa: serieLonga }, SERIES_MODES.MENSAL, { comparacao });
+  const ivv = graficos.find((g) => g.key === 'ivv');
+  assert.equal(ivv.series.length, 2, 'atual + comparada');
+  const [atual, comparada] = ivv.series;
+  assert.equal(comparada.chave, `ivv_pct${COMPARE_SUFFIX}`);
+  assert.equal(comparada.comparacao, true);
+  assert.equal(atual.comparacao, false);
+  assert.equal(comparada.cat, atual.cat, 'mesma cor, traço diferente');
+  assert.match(comparada.rotulo, /ano anterior \(jan\.\/2025–jun\.\/2025\)/);
+  assert.deepEqual(comparada.pontos.map((p) => p.categoria), atual.pontos.map((p) => p.categoria), 'um eixo só');
+  assert.equal(comparada.pontos[0].valor, serieLonga[12].ivv_pct, '1º mês contra 1º mês');
+  assert.equal(ivv.comparacao.disponivel, true);
+  assert.equal(ivv.y.min, 0, 'nada de segundo eixo: o domínio continua único');
+
+  // Comparação sem mês publicado: nada sobreposto e a nota diz isso.
+  const vazia = comparisonRows(serieLonga, { start: '2024-01', end: '2024-03' }, COMPARE_MODES.ANO_ANTERIOR);
+  const semDado = buildHistoryCharts({ periodo: janela, janela, completa: serieLonga }, SERIES_MODES.MENSAL, { comparacao: vazia });
+  assert.equal(semDado[0].series.length, 1);
+  assert.match(semDado[0].notaModo, /Sem mês publicado no recorte de comparação/);
+  assert.equal(semDado[0].comparacao.disponivel, false);
+
+  // Sem comparação: modelo idêntico ao de sempre.
+  const normal = buildHistoryCharts({ periodo: janela, janela, completa: serieLonga }, SERIES_MODES.MENSAL);
+  assert.equal(normal[0].series.length, 1);
+  assert.equal(normal[0].comparacao, null);
+  assert.equal(COMPARE_MODE_OPTIONS[0].value, COMPARE_MODES.NENHUM);
+});

@@ -153,6 +153,89 @@ export const CAT_MAXIMA = 8;
  */
 export const SERIES_MODES = Object.freeze({ MENSAL: 'mensal', ACUMULADO: 'acumulado' });
 
+/**
+ * Comparação temporal (issue #127, Plano 01 §8): a mesma série num segundo recorte,
+ * sobreposta NO MESMO EIXO — nunca num segundo eixo Y, que inventaria uma escala. A série
+ * comparada é tracejada e alinhada por POSIÇÃO (1º mês contra 1º mês), que é o que
+ * "período anterior" e "mesmo período do ano anterior" significam.
+ */
+export const COMPARE_MODES = Object.freeze({
+  NENHUM: 'nenhum',
+  PERIODO_ANTERIOR: 'periodo_anterior',
+  ANO_ANTERIOR: 'mesmo_periodo_ano_anterior',
+});
+export const COMPARE_MODE_OPTIONS = Object.freeze([
+  Object.freeze({ value: COMPARE_MODES.NENHUM, chip: 'Nenhum', label: 'Sem comparação' }),
+  Object.freeze({ value: COMPARE_MODES.PERIODO_ANTERIOR, chip: 'Período anterior', label: 'Comparar com o período imediatamente anterior, de mesma duração' }),
+  Object.freeze({ value: COMPARE_MODES.ANO_ANTERIOR, chip: 'Ano anterior', label: 'Comparar com o mesmo período do ano anterior' }),
+]);
+/** Sufixo da chave da série comparada — é como o renderizador a reconhece para tracejar. */
+export const COMPARE_SUFFIX = '::comparacao';
+
+/** `2026-03` + (−12) = `2025-03`. `null` para mês ilegível. */
+export function shiftMonth(mesISO, delta) {
+  if (!/^\d{4}-\d{2}$/.test(mesISO || '')) return null;
+  const [ano, mes] = mesISO.split('-').map(Number);
+  const total = ano * 12 + (mes - 1) + delta;
+  const novoAno = Math.floor(total / 12);
+  const novoMes = (total % 12) + 1;
+  return `${novoAno}-${String(novoMes).padStart(2, '0')}`;
+}
+
+function monthsBetween(start, end) {
+  const [a1, m1] = start.split('-').map(Number);
+  const [a2, m2] = end.split('-').map(Number);
+  return (a2 * 12 + m2) - (a1 * 12 + m1) + 1;
+}
+
+/**
+ * As linhas do recorte de comparação, dado o recorte desenhado (`start`/`end`, `YYYY-MM`).
+ *
+ * @returns {{ rows: object[], start: string|null, end: string|null, mode: string }} — janela
+ *   vazia quando não há mês publicado nela; o gráfico então diz que não há comparação.
+ */
+export function comparisonRows(allRows, { start, end } = {}, mode = COMPARE_MODES.NENHUM) {
+  const vazio = { rows: [], start: null, end: null, mode };
+  if (mode === COMPARE_MODES.NENHUM || !start || !end || start > end) return vazio;
+  let alvoInicio;
+  let alvoFim;
+  if (mode === COMPARE_MODES.ANO_ANTERIOR) {
+    alvoInicio = shiftMonth(start, -12);
+    alvoFim = shiftMonth(end, -12);
+  } else if (mode === COMPARE_MODES.PERIODO_ANTERIOR) {
+    const n = monthsBetween(start, end);
+    alvoFim = shiftMonth(start, -1);
+    alvoInicio = shiftMonth(start, -n);
+  } else {
+    return vazio;
+  }
+  if (!alvoInicio || !alvoFim) return vazio;
+  const prepared = prepareRows(allRows).rows.filter((item) => item.month >= alvoInicio && item.month <= alvoFim);
+  return { rows: prepared.map((item) => item.row), start: alvoInicio, end: alvoFim, mode };
+}
+
+function rotuloDaComparacao(comparacao) {
+  const modo = COMPARE_MODE_OPTIONS.find((o) => o.value === comparacao.mode);
+  const intervalo = comparacao.start && comparacao.end
+    ? (comparacao.start === comparacao.end
+      ? monthYearLabel(comparacao.start)
+      : `${monthYearLabel(comparacao.start)}–${monthYearLabel(comparacao.end)}`)
+    : '';
+  return `${modo ? modo.chip.toLowerCase() : 'comparação'}${intervalo ? ` (${intervalo})` : ''}`;
+}
+
+/**
+ * Pontos da série comparada alinhados por posição às categorias do recorte desenhado:
+ * o i-ésimo mês da comparação cai sobre o i-ésimo mês atual. Sobra e falta viram `null`.
+ */
+function alinharPorPosicao(pontosAtuais, pontosComparados) {
+  const categorias = pontosAtuais.map((p) => p.categoria);
+  return categorias.map((categoria, i) => ({
+    categoria,
+    valor: i < pontosComparados.length ? pontosComparados[i].valor : null,
+  }));
+}
+
 const NOTA_MENSAL = 'Valores do mês.';
 const NOTA_NAO_ACUMULA = 'Sempre mensal: razão publicada por mês não acumula.';
 
@@ -223,7 +306,7 @@ function resumoDe(definicao, rows, acumulado) {
   }
 }
 
-function modeloDe(definicao, rows, modo) {
+function modeloDe(definicao, rows, modo, comparacao = null) {
   const referencia = definicao.series[0].key;
   // Definição que não acumula ignora o modo — e DIZ que ignora, em vez de mostrar um
   // acumulado inventado ou uma curva mensal calada num painel que anuncia acumulado.
@@ -243,13 +326,27 @@ function modeloDe(definicao, rows, modo) {
       formatarCurto: (valor) => formatMetricCompact(referencia, valor),
       rotuloCategoria: monthYearLabel,
     },
-    definicao.series.map((serie) => ({
-      chave: serie.key,
-      rotulo: rotuloDe(serie.key),
-      cat: serie.cat,
-      pontos: pontosDe(rows, serie, acumulado, { resetAtYearBoundary: false }),
-    })),
+    definicao.series.flatMap((serie) => {
+      const atual = {
+        chave: serie.key,
+        rotulo: rotuloDe(serie.key),
+        cat: serie.cat,
+        pontos: pontosDe(rows, serie, acumulado, { resetAtYearBoundary: false }),
+      };
+      // Série comparada: mesma métrica, mesmo índice de cor, chave com sufixo — o CSS a
+      // traceja pela classe que o renderizador deriva do sufixo.
+      if (!comparacao || comparacao.mode === COMPARE_MODES.NENHUM || comparacao.rows.length === 0) return [atual];
+      const comparados = pontosDe(comparacao.rows, serie, acumulado, { resetAtYearBoundary: false });
+      return [atual, {
+        chave: `${serie.key}${COMPARE_SUFFIX}`,
+        rotulo: `${rotuloDe(serie.key)} · ${rotuloDaComparacao(comparacao)}`,
+        cat: serie.cat,
+        pontos: alinharPorPosicao(atual.pontos, comparados),
+      }];
+    }),
   );
+  for (const serie of modelo.series) serie.comparacao = serie.chave.endsWith(COMPARE_SUFFIX);
+  const semComparacao = comparacao && comparacao.mode !== COMPARE_MODES.NENHUM && comparacao.rows.length === 0;
   // A pergunta viaja com o modelo: é ela que o card do gráfico mostra abaixo do título, e
   // é o que transforma "VGV por mês" em algo que se sabe por que está olhando.
   return {
@@ -257,7 +354,12 @@ function modeloDe(definicao, rows, modo) {
     pergunta: definicao.pergunta,
     resumo: resumoDe(definicao, rows, acumulado),
     modo: acumulado ? SERIES_MODES.ACUMULADO : SERIES_MODES.MENSAL,
-    notaModo: nota,
+    notaModo: semComparacao
+      ? `${nota} Sem mês publicado no recorte de comparação — nada foi sobreposto.`
+      : nota,
+    comparacao: comparacao && comparacao.mode !== COMPARE_MODES.NENHUM
+      ? { mode: comparacao.mode, start: comparacao.start, end: comparacao.end, disponivel: comparacao.rows.length > 0 }
+      : null,
   };
 }
 
@@ -267,8 +369,13 @@ function modeloDe(definicao, rows, modo) {
  * @param fontes `{ periodo, janela, completa }` — os três recortes de linhas. Cada
  *   definição diz de qual se serve; quem monta os recortes é a camada de tela.
  */
-export function buildHistoryCharts(fontes = {}, modo = SERIES_MODES.MENSAL) {
-  return HISTORY_CHARTS.map((definicao) => modeloDe(definicao, fontes[definicao.fonte] || [], modo));
+export function buildHistoryCharts(fontes = {}, modo = SERIES_MODES.MENSAL, opcoes = {}) {
+  // A comparação só vale para quem lê a janela do filtro: a sazonalidade já compara anos.
+  const comparacao = opcoes.comparacao || null;
+  return HISTORY_CHARTS.map((definicao) => modeloDe(
+    definicao, fontes[definicao.fonte] || [], modo,
+    definicao.fonte === CHART_SOURCES.JANELA ? comparacao : null,
+  ));
 }
 
 /**
