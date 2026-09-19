@@ -993,10 +993,18 @@ decimal (`0.12` = 12%), como todo `*_pct` desta aba.
 
 ### FIPEZAP_MONTHLY — preço de venda/locação FipeZap, DF e por localidade
 
-Aba **opcional**, sem contrato no Apps Script — mesmo tratamento de `IVV_MONTHLY`: não está em
-`REQUIRED_HEADERS`/`FIELD_SCHEMA`, `setupProject()` não a provisiona e `validateAll()` nunca a
-valida. Ausência ou falha vira aviso, nunca erro (R2.5); o mapa e o IVV continuam funcionando sem
-ela.
+Aba **opcional** e, desde o Code.gs v2.4.0, **gerenciada** (issue #120): está em
+`REQUIRED_HEADERS`/`FIELD_SCHEMA`, `setupProject()` a cria vazia se faltar, o dado entra por
+**Sincronizar base FipeZAP** e `validateAll()` a valida (`validateFipezapDataset_`). Ausência ou
+falha vira aviso, nunca erro (R2.5); o mapa e o IVV continuam funcionando sem ela.
+
+**Período (issue #122).** O contrato é `period_id = YYYY-MM` (texto) e
+`reference_date = YYYY-MM-DD` (dia 1º). A planilha guardava os dois como célula Date — o que o
+validador antigo rejeitava, 3369 vezes. Os dois lados agora aceitam Date, ISO e `YYYY-MM`
+(`periodIdOf_` no Code.gs, `periodIdOf` em `src/fipezap/normalize-fipezap.js`), e
+`normalizeFipezapPeriodCells()` converte as células para texto. No cliente `period_id` é SEMPRE
+derivado de `reference_date` (ou de `period_id` quando a data falta); discordância entre os dois
+vira aviso, nunca escolha silenciosa.
 
 Chave: `fipezap_id`. 3369 linhas na planilha viva, jan/2011 a jun/2026 conforme o segmento (a
 série residencial de venda é a mais longa; comercial começa em 2019). Cabeçalhos confirmados **ao
@@ -1014,10 +1022,11 @@ sem divergência de nomes conhecida (diferente do histórico do IVV_MONTHLY).
 | Coluna | Tipo | Papel |
 |---|---|---|
 | `fipezap_id` | texto | chave |
+| `period_id` | texto `YYYY-MM` | período; derivado de `reference_date` no cliente, cruzado com a coluna quando ela existe |
 | `reference_date` | data | eixo temporal canônico — mesmo tratamento de `IVV_MONTHLY`, normalizado para o dia 1º do mês |
-| `segment_scope` | texto | `RESIDENCIAL` / `COMERCIAL` |
-| `transaction_type` | texto | `VENDA` / `LOCACAO` |
-| `geography_scope` | texto | `DF_TOTAL` / `LOCALIDADE` |
+| `segment_scope` | texto | `RESIDENCIAL` / `COMERCIAL` — vocabulário fechado; valor estranho fica na linha e vira aviso |
+| `transaction_type` | texto | `VENDA` / `LOCACAO` — idem |
+| `geography_scope` | texto | `DF_TOTAL` / `LOCALIDADE` — idem |
 | `source_locality_name`, `ra_name`, `ra_geo_id` | texto | preenchidos só quando `geography_scope = LOCALIDADE` |
 | `price_unit` | texto | `BRL_M2` (venda) ou `BRL_M2_MES` (locação) |
 | `price_brl_m2` | número | preço publicado do mês — venda ou locação, conforme `transaction_type` |
@@ -1035,7 +1044,9 @@ sem divergência de nomes conhecida (diferente do histórico do IVV_MONTHLY).
 > nunca converte às cegas, todo valor de fração fora da faixa plausível.
 
 O normalizador nomeia em aviso toda coluna que a aba trouxer e esta seção não declare
-(`COLUNA_NAO_DECLARADA`), mesmo mecanismo do IVV_MONTHLY.
+(`COLUNA_NAO_DECLARADA`), mesmo mecanismo do IVV_MONTHLY. Observação repetida (mesmo período ×
+segmento × operação × geografia × localidade) é descartada com aviso — a primeira fica; o Apps
+Script a acusa como `FIPEZAP_DUPLICATE_OBSERVATION`.
 
 ### FIPEZAP_LOCALITY_MONTHLY — venda × locação por localidade/RA
 
@@ -1051,6 +1062,7 @@ justamente para permitir o gráfico de duas séries pareadas sem juntar linhas e
 | Coluna | Tipo | Papel |
 |---|---|---|
 | `locality_monthly_id` | texto | chave |
+| `period_id` | texto `YYYY-MM` | período; mesmo tratamento de `FIPEZAP_MONTHLY` |
 | `reference_date` | data | eixo temporal canônico, mesmo tratamento das demais abas mensais |
 | `segment_scope` | texto | `RESIDENCIAL` / `COMERCIAL` |
 | `source_locality_name`, `ra_name`, `ra_geo_id` | texto | identidade territorial |
@@ -1076,6 +1088,26 @@ o IVV_REGION não pode responder.
 > `src/fipezap/locality.js` (`localitiesAvailable`) resolve isso agrupando por `ra_name` só quando
 > ambíguo e rotulando pelo nome do submercado (`source_locality_name`) nesses casos — nunca infere
 > a hierarquia por conta própria; lê o que `geography_classification` já declara.
+
+### FIPEZAP_LOCALITY_MAP — ponte explícita localidade FipeZap → RA (issue #122)
+
+Aba **opcional** e gerenciada (v2.4.0), 30 linhas na planilha viva. Chave: `locality_map_id`.
+Lida pela tela desde a issue #122 (`config.fipezapLocalityMapSheet`), normalizada por
+`normalizeFipezapLocalityMap` e usada por `localitiesAvailable(rows, segmento, mapa)` **para
+rotular**: classificação, RA normalizada e regra aparecem no seletor; a unidade de análise
+continua sendo `source_locality_name`. **Nunca perde o nome original da localidade e nunca força
+localidade = RA** (Plano 02 §15.2, §16).
+
+| Coluna | Tipo | Papel |
+|---|---|---|
+| `locality_map_id` | texto | chave (`FZMAP_ASA_SUL`) |
+| `source_locality_name` | texto | nome original como o FipeZap publica (`ASA SUL`) — preservado sempre |
+| `ra_name`, `ra_geo_id` | texto | RA normalizada (`Plano Piloto`, `RA_01`); vazio para `BRASILIA` (agregado) |
+| `geography_classification` | texto | tipo de correspondência: `RA_OU_LOCALIDADE_FIPE`, `SUBMERCADO_FIPE`, `AGREGADO_DF` |
+| `mapping_rule` | texto | regra em prosa (`Mantém submercado FipeZAP; normaliza para Plano Piloto`) |
+| `methodology_note` | texto | nota metodológica |
+| `valid_from`, `valid_to` | data | validade da correspondência (`valid_to` vazio = vigente) |
+| `quality_flag`, `source_workbook`, `updated_at` | texto/data | procedência |
 
 ---
 

@@ -127,13 +127,16 @@ window.APP_CONFIG = {
    * residencial e comercial, publicado pelo FipeZap. A primeira é a série DF inteiro desde
    * 2011; a segunda é a série por localidade/Região Administrativa desde 2019 — mesmo
    * tratamento das demais abas opcionais: ausência ou falha vira aviso, nunca erro (R2.5).
-   * `FIPEZAP_LOCALITY_MAP`, `FIPEZAP_SOURCES` e `FIPEZAP_NOTES` existem na planilha
+   * `FIPEZAP_LOCALITY_MAP` (issue #122) é a ponte explícita localidade → RA: preserva o
+   * nome original da localidade, a RA normalizada e o tipo de correspondência; a tela a usa
+   * para rotular, nunca para fundir. `FIPEZAP_SOURCES` e `FIPEZAP_NOTES` existem na planilha
    * (procedência/metodologia) mas não são buscadas ainda — mesmo tratamento de
    * `PRIMARY_OFFERS` em `optionalSheets` abaixo. As abas `_FIPEZAP_SCRATCH_*` são staging
    * interno da importação e nunca devem ser lidas pela tela.
    */
   fipezapMonthlySheet: 'FIPEZAP_MONTHLY',
   fipezapLocalitySheet: 'FIPEZAP_LOCALITY_MONTHLY',
+  fipezapLocalityMapSheet: 'FIPEZAP_LOCALITY_MAP',
 
   /**
    * Aba `PDAD_A_DATA` (issue #100): extração longa do PDAD-A — uma linha por Região

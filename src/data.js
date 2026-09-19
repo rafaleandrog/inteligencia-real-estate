@@ -17,7 +17,7 @@ import {
 import { linkTrafficDataset } from './traffic/link.js';
 import { normalizeIvvMonthly } from './ivv/normalize-ivv.js';
 import { normalizeIvvRegion } from './ivv/region.js';
-import { normalizeFipezapMonthly, normalizeFipezapLocality } from './fipezap/normalize-fipezap.js';
+import { normalizeFipezapMonthly, normalizeFipezapLocality, normalizeFipezapLocalityMap } from './fipezap/normalize-fipezap.js';
 import { normalizePdadData } from './pdad/normalize-pdad.js';
 
 /** Entidades obrigatórias na V1. Ausência de qualquer uma é erro. */
@@ -186,6 +186,7 @@ async function loadFromGviz(config) {
   const regiaoPromise = fetchIvvRegionFromGviz(config);
   const fipezapMonthlyPromise = fetchFipezapMonthlyFromGviz(config);
   const fipezapLocalityPromise = fetchFipezapLocalityFromGviz(config);
+  const fipezapLocalityMapPromise = fetchFipezapLocalityMapFromGviz(config);
   const pdadDataPromise = fetchPdadDataFromGviz(config);
 
   const settled = await Promise.allSettled(
@@ -212,13 +213,15 @@ async function loadFromGviz(config) {
   const { ivvRegion, warnings: regiaoWarnings } = await regiaoPromise;
   const { fipezapMonthly, warnings: fipezapMonthlyWarnings } = await fipezapMonthlyPromise;
   const { fipezapLocality, warnings: fipezapLocalityWarnings } = await fipezapLocalityPromise;
+  const { fipezapLocalityMap, warnings: fipezapLocalityMapWarnings } = await fipezapLocalityMapPromise;
   const { pdadData, warnings: pdadDataWarnings } = await pdadDataPromise;
   return {
     raw,
     errors,
     warnings: [
       ...warnings, ...raProfileWarnings, ...polygonWarnings, ...trafficWarnings, ...ivvWarnings,
-      ...regiaoWarnings, ...fipezapMonthlyWarnings, ...fipezapLocalityWarnings, ...pdadDataWarnings,
+      ...regiaoWarnings, ...fipezapMonthlyWarnings, ...fipezapLocalityWarnings,
+      ...fipezapLocalityMapWarnings, ...pdadDataWarnings,
     ],
     meta: { spreadsheetId: config.spreadsheetId, ...meta },
     raProfiles,
@@ -228,6 +231,7 @@ async function loadFromGviz(config) {
     ivvRegion,
     fipezapMonthly,
     fipezapLocality,
+    fipezapLocalityMap,
     pdadData,
   };
 }
@@ -346,6 +350,32 @@ async function fetchFipezapLocalityFromGviz(config) {
     return {
       fipezapLocality: [],
       warnings: [`Preço FipeZap por RA indisponível (${sheetName}): ${error?.message || error}`],
+    };
+  }
+}
+
+/**
+ * Lê a aba `FIPEZAP_LOCALITY_MAP` (issue #122): ponte localidade FipeZap → RA. Opcional e
+ * pequena (dezenas de linhas); ausência ou falha vira aviso e a tela segue rotulando só
+ * pelo que a série de localidades já traz.
+ */
+async function fetchFipezapLocalityMapFromGviz(config) {
+  const sheetName = config.fipezapLocalityMapSheet;
+  if (!sheetName) return { fipezapLocalityMap: [], warnings: [] };
+
+  try {
+    const rows = await fetchGvizSheet(config.spreadsheetId, sheetName, {
+      timeoutMs: META_FETCH_TIMEOUT_MS,
+    });
+    const { rows: map, warnings } = normalizeFipezapLocalityMap(rows);
+    return {
+      fipezapLocalityMap: map,
+      warnings: (warnings || []).map((texto) => `Mercado (${sheetName}): ${texto}`),
+    };
+  } catch (error) {
+    return {
+      fipezapLocalityMap: [],
+      warnings: [`Mapa de localidades FipeZap indisponível (${sheetName}): ${error?.message || error}`],
     };
   }
 }
@@ -540,6 +570,7 @@ async function loadFromDemo(config) {
   const demoRegiao = normalizeIvvRegion(payload.ivv_region || []);
   const demoFipezapMonthly = normalizeFipezapMonthly(payload.fipezap_monthly || []);
   const demoFipezapLocality = normalizeFipezapLocality(payload.fipezap_locality_monthly || []);
+  const demoFipezapLocalityMap = normalizeFipezapLocalityMap(payload.fipezap_locality_map || []);
   const demoPdadData = normalizePdadData(payload.pdad_a_data || []);
 
   return {
@@ -575,6 +606,7 @@ async function loadFromDemo(config) {
     ivvRegion: demoRegiao.rows,
     fipezapMonthly: demoFipezapMonthly.rows,
     fipezapLocality: demoFipezapLocality.rows,
+    fipezapLocalityMap: demoFipezapLocalityMap.rows,
     // Mesmo tratamento: demo.json sem `pdad_a_data` vira lista vazia, e a aba
     // Diagnóstico some dizendo por quê, em vez de abrir vazia sem explicação.
     pdadData: demoPdadData.rows,
@@ -603,6 +635,7 @@ async function loadFromAppsScript(config) {
   const regiaoPromise = fetchIvvRegionFromAppsScript(config);
   const fipezapMonthlyPromise = fetchFipezapMonthlyFromAppsScript(config);
   const fipezapLocalityPromise = fetchFipezapLocalityFromAppsScript(config);
+  const fipezapLocalityMapPromise = fetchFipezapLocalityMapFromAppsScript(config);
   const pdadDataPromise = fetchPdadDataFromAppsScript(config);
 
   const settled = await Promise.allSettled(
@@ -663,12 +696,14 @@ async function loadFromAppsScript(config) {
   warnings.push(...fipezapMonthlyWarnings);
   const { fipezapLocality, warnings: fipezapLocalityWarnings } = await fipezapLocalityPromise;
   warnings.push(...fipezapLocalityWarnings);
+  const { fipezapLocalityMap, warnings: fipezapLocalityMapWarnings } = await fipezapLocalityMapPromise;
+  warnings.push(...fipezapLocalityMapWarnings);
   const { pdadData, warnings: pdadDataWarnings } = await pdadDataPromise;
   warnings.push(...pdadDataWarnings);
 
   return {
     raw, errors, warnings, meta, raProfiles, polygons, traffic, ivvMonthly, ivvRegion,
-    fipezapMonthly, fipezapLocality, pdadData,
+    fipezapMonthly, fipezapLocality, fipezapLocalityMap, pdadData,
   };
 }
 
@@ -805,6 +840,26 @@ async function fetchFipezapLocalityFromAppsScript(config) {
   }
 }
 
+/** FIPEZAP_LOCALITY_MAP pelo endpoint read-only do Web App — mesmo contrato de `fetchFipezapLocalityMapFromGviz`. */
+async function fetchFipezapLocalityMapFromAppsScript(config) {
+  if (!config.fipezapLocalityMapSheet) return { fipezapLocalityMap: [], warnings: [] };
+
+  try {
+    const url = `${config.appsScriptUrl}?resource=dataset&name=${encodeURIComponent(config.fipezapLocalityMapSheet)}`;
+    const response = await fetchWithTimeout(url, { timeoutMs: META_FETCH_TIMEOUT_MS });
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    const payload = await response.json();
+    if (payload.error) throw new Error(payload.error);
+    const { rows, warnings } = normalizeFipezapLocalityMap(payload.rows || []);
+    return {
+      fipezapLocalityMap: rows,
+      warnings: (warnings || []).map((texto) => `Mercado (${config.fipezapLocalityMapSheet}): ${texto}`),
+    };
+  } catch (error) {
+    return { fipezapLocalityMap: [], warnings: [`Mapa de localidades FipeZap indisponível: ${error?.message || error}`] };
+  }
+}
+
 /** PDAD_A_DATA pelo endpoint read-only do Web App — mesmo contrato de `fetchPdadDataFromGviz`. */
 async function fetchPdadDataFromAppsScript(config) {
   if (!config.pdadDataSheet) return { pdadData: [], warnings: [] };
@@ -894,6 +949,7 @@ export async function loadDataset(config) {
       ivvRegion: [],
       fipezapMonthly: [],
       fipezapLocality: [],
+      fipezapLocalityMap: [],
       pdadData: [],
       source: strategy,
       warnings,
@@ -938,6 +994,7 @@ export async function loadDataset(config) {
     ivvRegion: result.ivvRegion || [],
     fipezapMonthly: result.fipezapMonthly || [],
     fipezapLocality: result.fipezapLocality || [],
+    fipezapLocalityMap: result.fipezapLocalityMap || [],
     pdadData: result.pdadData || [],
     source: strategy,
     warnings,

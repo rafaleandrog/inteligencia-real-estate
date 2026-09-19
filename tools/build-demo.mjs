@@ -145,6 +145,9 @@ payload.fipezap_monthly = workbook.FIPEZAP_MONTHLY
 payload.fipezap_locality_monthly = workbook.FIPEZAP_LOCALITY_MONTHLY
   ? workbook.FIPEZAP_LOCALITY_MONTHLY.rows.map(convertDates)
   : [];
+payload.fipezap_locality_map = workbook.FIPEZAP_LOCALITY_MAP
+  ? workbook.FIPEZAP_LOCALITY_MAP.rows.map(convertDates)
+  : [];
 
 // PDAD_A_DATA (issue #100): extração longa do PDAD-A que alimenta a aba Diagnóstico. A
 // semente v1.0.0 é anterior a esta aba e não a tem, então o demo sai com lista vazia —

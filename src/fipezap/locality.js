@@ -46,24 +46,52 @@ export function formatLocalityDisplayName(nome) {
  * `raName` sozinho não identifica a linha; quem monta a tela usa isso para agrupar por
  * RA e rotular pelo nome do submercado, não pelo nome da RA repetido.
  */
-export function localitiesAvailable(rows, segmentScope) {
+export function localityMapIndex(mapRows) {
+  const index = new Map();
+  for (const row of mapRows || []) {
+    if (row && row.source_locality_name && !index.has(row.source_locality_name)) {
+      index.set(row.source_locality_name, row);
+    }
+  }
+  return index;
+}
+
+/**
+ * `localityMap` (linhas de `FIPEZAP_LOCALITY_MAP`, opcional) enriquece cada item com a
+ * classificação e a regra de mapeamento declaradas na planilha — `classification`,
+ * `mappingRule`, `raGeoId`. É rótulo, não fusão: a unidade continua sendo
+ * `source_locality_name`, e nada aqui força localidade = RA (Plano 02 §15.2/§16).
+ */
+export function localitiesAvailable(rows, segmentScope, localityMap = []) {
+  const mapa = localityMapIndex(localityMap);
   const porLocalidade = new Map();
   for (const row of rows || []) {
     if (row.segment_scope !== segmentScope || !row.source_locality_name) continue;
     if (!porLocalidade.has(row.source_locality_name)) {
-      porLocalidade.set(row.source_locality_name, row.ra_name || row.source_locality_name);
+      porLocalidade.set(row.source_locality_name, {
+        raName: row.ra_name || row.source_locality_name,
+        classification: row.geography_classification || null,
+        raGeoId: row.ra_geo_id || null,
+      });
     }
   }
   const porRaName = new Map();
-  for (const raName of porLocalidade.values()) porRaName.set(raName, (porRaName.get(raName) || 0) + 1);
+  for (const { raName } of porLocalidade.values()) porRaName.set(raName, (porRaName.get(raName) || 0) + 1);
 
   return [...porLocalidade.entries()]
-    .map(([locality, raName]) => ({
-      locality,
-      raName,
-      ambiguous: porRaName.get(raName) > 1,
-      displayName: formatLocalityDisplayName(locality),
-    }))
+    .map(([locality, info]) => {
+      const mapped = mapa.get(locality) || null;
+      return {
+        locality,
+        raName: info.raName,
+        ambiguous: porRaName.get(info.raName) > 1,
+        displayName: formatLocalityDisplayName(locality),
+        classification: info.classification || (mapped && mapped.geography_classification) || null,
+        raGeoId: info.raGeoId || (mapped && mapped.ra_geo_id) || null,
+        mappingRule: mapped ? (mapped.mapping_rule || null) : null,
+        methodologyNote: mapped ? (mapped.methodology_note || null) : null,
+      };
+    })
     .sort((a, b) => (
       a.raName.localeCompare(b.raName, 'pt-BR') || a.displayName.localeCompare(b.displayName, 'pt-BR')
     ));

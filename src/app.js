@@ -168,6 +168,7 @@ const state = {
   // mesmo tratamento de `ivvRegion` (R2.5).
   fipezapMonthly: [],
   fipezapLocality: [],
+  fipezapLocalityMap: [],
   fipezapSelection: null,
   fipezapLocalitySegment: null,
   fipezapLocalityChoice: null,
@@ -2608,7 +2609,7 @@ function renderFipezapLocalidade() {
     chip.setAttribute('aria-pressed', String(chip.dataset.segmento === segmento));
   }
 
-  const localidades = localitiesAvailable(state.fipezapLocality, segmento);
+  const localidades = localitiesAvailable(state.fipezapLocality, segmento, state.fipezapLocalityMap);
   dom.fipezapLocality.replaceChildren(...localityOptionNodes(localidades));
   const escolha = localidades.some((item) => item.locality === state.fipezapLocalityChoice)
     ? state.fipezapLocalityChoice : (localidades[0]?.locality || null);
@@ -3814,6 +3815,7 @@ async function load() {
   state.ivvRegion = result.ivvRegion || [];
   state.fipezapMonthly = result.fipezapMonthly || [];
   state.fipezapLocality = result.fipezapLocality || [];
+  state.fipezapLocalityMap = result.fipezapLocalityMap || [];
   state.pdadData = result.pdadData || [];
   state.pdadIndex = state.pdadData.length > 0 ? buildPdadIndex(state.pdadData) : {};
   state.pdadFilters = null;
