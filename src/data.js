@@ -909,12 +909,13 @@ export async function loadDataset(config) {
 
   const entities = {};
   for (const entity of REQUIRED_ENTITIES) {
-    const { records, dropped } = normalizeAll(entity, result.raw[entity]);
+    const { records, dropped, warnings: entityWarnings } = normalizeAll(entity, result.raw[entity]);
     entities[entity] = records;
 
     if (dropped > 0) {
       warnings.push(`${dropped} registro(s) de ${entity} ignorado(s) por não terem identificador.`);
     }
+    warnings.push(...(entityWarnings || []));
     // Entidade obrigatória sem nenhum registro é erro, não aviso: renderizar o mapa
     // sem os anúncios seria mostrar um dataset parcial como se estivesse completo.
     if (records.length === 0 && !(result.errors || []).some((e) => e.includes(config.sheets[entity]))) {
