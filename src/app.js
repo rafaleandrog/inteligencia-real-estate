@@ -17,6 +17,7 @@ import {
 import { aggregatePeriod } from './ivv/aggregate.js';
 import { buildMarketDashboard, formatMetricValue } from './ivv/cards.js';
 import { buildMicroKpis } from './ivv/derived.js';
+import { raRealEstateProfile, compactIndicators, RA_PROFILE_ITEMS, PROFILE_STATUS } from './pdad/insights.js';
 import {
   PERIOD_MODE_OPTIONS, PERIOD_MODES, availableYears, availableMonths, controlDisabledReason,
   defaultPeriodSelection, selectIvvPeriod, chartRowsForSelection, periodSummary,
@@ -117,7 +118,7 @@ const dom = {
   pdadTab: el('pdadTab'), pdadView: el('pdadView'), pdadScope: el('pdadScope'),
   pdadRa: el('pdadRa'), pdadYear: el('pdadYear'), pdadTema: el('pdadTema'),
   pdadReset: el('pdadReset'), pdadKpis: el('pdadKpis'), pdadYearNote: el('pdadYearNote'),
-  pdadTemaBlocks: el('pdadTemaBlocks'),
+  pdadTemaBlocks: el('pdadTemaBlocks'), pdadProfile: el('pdadProfile'),
   pdadScatterSection: el('pdadScatterSection'), pdadScatterMeta: el('pdadScatterMeta'),
   pdadScatterView: el('pdadScatterView'), pdadScatterInsight: el('pdadScatterInsight'),
   pdadScatterPlot: el('pdadScatterPlot'), pdadScatterNote: el('pdadScatterNote'),
@@ -3135,6 +3136,135 @@ function pdadIndicatorCard(indicador, raIds) {
   return article;
 }
 
+/**
+ * Perfil imobiliário da RA (issue #126, Plano 01 §10): sete leituras com referência
+ * EXPLÍCITA — a mediana das RAs que publicaram o mesmo indicador no mesmo ano, com o `n`
+ * escrito — e a posição entre elas. Só aparece com UMA RA escolhida: com várias não há
+ * "a RA" para posicionar. Nunca chama a referência de "média do DF"; nunca mostra
+ * suprimido como zero. Abaixo, os demais indicadores em lista compacta clicável, cada um
+ * com a categoria dominante — o clique abre o detalhamento até a Figura de origem.
+ */
+function renderPdadProfile(raIds) {
+  if (!dom.pdadProfile) return;
+  const { year } = state.pdadFilters;
+  const perfil = raIds.length === 1 ? raRealEstateProfile(state.pdadIndex, year, raIds[0]) : null;
+  if (!perfil) {
+    dom.pdadProfile.hidden = true;
+    dom.pdadProfile.replaceChildren();
+    return;
+  }
+
+  const frag = document.createDocumentFragment();
+  const head = document.createElement('div');
+  head.className = 'pdad-tema-head pdad-profile-head';
+  const rotulo = document.createElement('span');
+  rotulo.textContent = `Perfil imobiliário · ${perfil.raName}`;
+  head.append(rotulo);
+  frag.append(head);
+
+  const grid = document.createElement('div');
+  grid.className = 'pdad-profile-grid';
+  for (const item of perfil.items) grid.append(pdadProfileTile(item, perfil));
+  frag.append(grid);
+
+  const nota = document.createElement('p');
+  nota.className = 'pdad-footnote pdad-profile-note';
+  nota.textContent = 'Referência: mediana das RAs com valor publicado para o mesmo indicador e ano '
+    + '(não é a média do DF). Posição calculada só entre RAs publicadas; suprimido não entra.';
+  frag.append(nota);
+
+  const outros = compactIndicators(state.pdadIndex, year, perfil.raGeoId, RA_PROFILE_ITEMS.map((i) => i.key));
+  if (outros.length) {
+    const subhead = document.createElement('div');
+    subhead.className = 'pdad-tema-head';
+    const sub = document.createElement('span');
+    sub.textContent = 'Outros indicadores';
+    subhead.append(sub);
+    frag.append(subhead);
+
+    const lista = document.createElement('ul');
+    lista.className = 'pdad-compact-list';
+    for (const item of outros) lista.append(pdadCompactRow(item, perfil));
+    frag.append(lista);
+  }
+
+  dom.pdadProfile.replaceChildren(frag);
+  dom.pdadProfile.hidden = false;
+}
+
+function pdadProfileTile(item, perfil) {
+  const tile = document.createElement('article');
+  tile.className = 'pdad-profile-item';
+  tile.dataset.profileItem = item.id;
+  tile.title = item.hint;
+
+  const label = document.createElement('span');
+  label.className = 'pdad-profile-label';
+  label.textContent = item.label;
+  tile.append(label);
+
+  const valor = document.createElement('strong');
+  valor.className = 'pdad-profile-value';
+  if (item.status === PROFILE_STATUS.PUBLISHED) {
+    valor.textContent = formatPercent(item.value);
+  } else {
+    valor.className += ' pdad-profile-absent';
+    valor.textContent = item.status === PROFILE_STATUS.SUPPRESSED ? 'suprimido' : 'não publicado';
+  }
+  tile.append(valor);
+
+  const ref = document.createElement('span');
+  ref.className = 'pdad-profile-ref';
+  if (item.deltaPp !== null) {
+    const sinal = item.deltaPp > 0 ? '+' : (item.deltaPp < 0 ? '−' : '');
+    ref.textContent = `${sinal}${formatPercent(Math.abs(item.deltaPp)).replace('%', ' p.p.')} vs. mediana de ${item.reference.n} RAs`;
+    ref.dataset.sign = item.deltaPp > 0 ? 'above' : (item.deltaPp < 0 ? 'below' : 'equal');
+  } else if (item.status === PROFILE_STATUS.PUBLISHED) {
+    ref.textContent = 'sem referência publicada';
+  } else {
+    ref.textContent = '';
+  }
+  tile.append(ref);
+
+  if (item.rank) {
+    const rank = document.createElement('span');
+    rank.className = 'pdad-profile-rank';
+    rank.textContent = `${item.rank.position}ª de ${item.rank.total} RAs`;
+    tile.append(rank);
+  }
+
+  tile.tabIndex = 0;
+  tile.setAttribute('role', 'button');
+  const abrir = () => openPdadDrill({ key: item.key, raGeoId: perfil.raGeoId, year: perfil.year });
+  tile.addEventListener('click', abrir);
+  tile.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); abrir(); } });
+  return tile;
+}
+
+function pdadCompactRow(item, perfil) {
+  const li = document.createElement('li');
+  const botao = document.createElement('button');
+  botao.type = 'button';
+  botao.className = 'pdad-compact-row';
+  botao.dataset.pdadIndicatorKey = item.key;
+  const nome = document.createElement('span');
+  nome.className = 'pdad-compact-label';
+  nome.textContent = item.label;
+  const valor = document.createElement('span');
+  valor.className = 'pdad-compact-value';
+  valor.textContent = item.leader !== null && Number.isFinite(item.leaderPct)
+    ? `${item.leader} · ${formatPercent(item.leaderPct)}`
+    : 'sem valor publicado';
+  const seta = document.createElement('span');
+  seta.className = 'pdad-compact-arrow';
+  seta.setAttribute('aria-hidden', 'true');
+  seta.textContent = '→';
+  botao.append(nome, valor, seta);
+  botao.addEventListener('click', () => openPdadDrill({ key: item.key, raGeoId: perfil.raGeoId, year: perfil.year }));
+  li.append(botao);
+  return li;
+}
+
 function renderPdadTemaBlocks(raIds) {
   const { tema } = state.pdadFilters;
   const temas = tema === 'all' ? Object.keys(PDAD_TEMAS) : [tema];
@@ -3205,6 +3335,7 @@ function renderPdadView() {
 
   const raIds = pdadSelectedRaIds();
   renderPdadKpis(raIds);
+  renderPdadProfile(raIds);
   dom.pdadYearNote.textContent = pdadYearNoteText();
   renderPdadTemaBlocks(raIds);
   renderPdadScatter();

@@ -2332,6 +2332,57 @@ p.precision.precision-exact {
   font-size: var(--tipo-xs);
   color: var(--muted);
 }
+/* Perfil imobiliário da RA (issue #126): sete tiles compactos + lista clicável dos demais
+   indicadores. Tile é botão (abre o detalhamento), sem moldura em repouso. */
+.pdad-profile { margin-bottom: var(--esp-5); }
+.pdad-profile[hidden] { display: none; }
+.pdad-profile-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  gap: var(--esp-3);
+}
+.pdad-profile-item {
+  display: grid;
+  gap: var(--esp-1);
+  padding: var(--esp-3) var(--esp-4);
+  border: 1px solid transparent;
+  border-radius: var(--raio-lg);
+  background: var(--superficie-base);
+  cursor: pointer;
+  transition: border-color .2s;
+}
+.pdad-profile-item:hover, .pdad-profile-item:focus-visible { border-color: var(--accent-line); outline: none; }
+.pdad-profile-label { font-size: var(--tipo-xs); font-weight: 600; color: var(--texto-sec); }
+.pdad-profile-value { font-size: var(--tipo-xl); font-weight: 800; letter-spacing: var(--track-tight); font-variant-numeric: tabular-nums; color: var(--texto-forte); }
+.pdad-profile-absent { font-size: var(--tipo-md); font-weight: 500; color: var(--muted); }
+.pdad-profile-ref { font-size: var(--tipo-xs); color: var(--texto-sec); font-variant-numeric: tabular-nums; }
+.pdad-profile-ref[data-sign="above"] { color: var(--tone-good); }
+.pdad-profile-ref[data-sign="below"] { color: var(--alerta); }
+.pdad-profile-ref:empty { display: none; }
+.pdad-profile-rank { font-family: var(--font-mono); font-size: var(--tipo-2xs); color: var(--muted); }
+.pdad-profile-note { margin: var(--esp-2) 0 var(--esp-4); }
+.pdad-compact-list { margin: 0 0 var(--esp-5); padding: 0; list-style: none; display: grid; gap: 2px; }
+.pdad-compact-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  gap: var(--esp-3);
+  align-items: center;
+  width: 100%;
+  padding: var(--esp-2) var(--esp-3);
+  border: 0;
+  border-radius: var(--raio-md);
+  background: transparent;
+  color: var(--texto-base);
+  font: inherit;
+  font-size: var(--tipo-sm);
+  text-align: left;
+  cursor: pointer;
+}
+.pdad-compact-row:hover, .pdad-compact-row:focus-visible { background: var(--linha-hover); outline: none; }
+.pdad-compact-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pdad-compact-value { font-variant-numeric: tabular-nums; color: var(--texto-sec); white-space: nowrap; }
+.pdad-compact-arrow { color: var(--accent-text); }
+
 .pdad-empty { margin: 0; padding: var(--esp-4) 0; font-size: var(--tipo-base); line-height: 1.55; color: var(--muted); }
 
 .pdad-card-wide { grid-column: 1 / -1; }
