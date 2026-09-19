@@ -1215,6 +1215,9 @@ const cards = await viewPage.evaluate(() => ({
     tiles: n.querySelectorAll('.market-card').length,
   })),
   sparks: document.querySelectorAll('#marketDestaques .market-spark-svg').length,
+  micro: [...document.querySelectorAll('#marketMicroKpis .market-micro')].map((n) => ({
+    key: n.dataset.derivado, formula: n.title, valor: n.querySelector('.market-micro-value')?.textContent ?? '',
+  })),
   ausentes: document.querySelectorAll('#marketView .market-card-absent').length,
   travessoes: [...document.querySelectorAll('#marketView .market-kpi-valor, #marketView .market-card-value')]
     .filter((n) => n.textContent.trim() === '\u2014').length,
@@ -1226,6 +1229,14 @@ const cards = await viewPage.evaluate(() => ({
 JSON.stringify(cards.destaques) === JSON.stringify([...CARD_DESTAQUES])
   ? pass(`os ${CARD_DESTAQUES.length} indicadores em destaque abrem a tela, na ordem declarada`)
   : fail('destaques fora do declarado: ' + JSON.stringify(cards.destaques));
+// Derivados (issue #125): seis micro-indicadores, cada um com a fórmula no title, e nenhum
+// valor "0" no lugar de dado não publicado.
+cards.micro.length === 6 && cards.micro.every((m) => m.key && m.formula.length > 0)
+  ? pass('faixa de derivados com 6 micro-indicadores, todos com fórmula declarada')
+  : fail('micro-indicadores: ' + JSON.stringify(cards.micro));
+cards.micro.every((m) => m.valor !== '0' && m.valor !== '')
+  ? pass('derivado sem dado diz "não publicado", nunca zero')
+  : fail('derivado com valor vazio ou zero: ' + JSON.stringify(cards.micro));
 cards.grupos.length === CARD_GRUPOS.length
   && cards.grupos.every((g, i) => g.tiles === CARD_GRUPOS[i].metricas.length && g.titulo.length > 0)
   ? pass(`os ${CARD_GRUPOS.length} grupos trazem o restante dos indicadores, cada um sob seu rótulo`)

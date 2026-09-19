@@ -16,6 +16,7 @@ import {
 } from './ivv/region.js';
 import { aggregatePeriod } from './ivv/aggregate.js';
 import { buildMarketDashboard, formatMetricValue } from './ivv/cards.js';
+import { buildMicroKpis } from './ivv/derived.js';
 import {
   PERIOD_MODE_OPTIONS, PERIOD_MODES, availableYears, availableMonths, controlDisabledReason,
   defaultPeriodSelection, selectIvvPeriod, chartRowsForSelection, periodSummary,
@@ -96,7 +97,7 @@ const dom = {
   marketMonth: el('marketMonth'),
   marketStart: el('marketStart'), marketEnd: el('marketEnd'),
   marketPeriodLabel: el('marketPeriodLabel'), marketPeriodBase: el('marketPeriodBase'),
-  marketDestaques: el('marketDestaques'), marketCharts: el('marketCharts'),
+  marketDestaques: el('marketDestaques'), marketMicroKpis: el('marketMicroKpis'), marketCharts: el('marketCharts'),
   marketSeriesMode: el('marketSeriesMode'),
   marketRegioes: el('marketRegioes'), marketRegioesFaixa: el('marketRegioesFaixa'),
   marketRegioesLista: el('marketRegioesLista'), marketRegioesNote: el('marketRegioesNote'),
@@ -1926,7 +1927,33 @@ function renderMarketCards(months, janela) {
     sparks,
   })));
   dom.marketBody.replaceChildren(...grupos.map(marketGrupo));
+  // Faixa compacta de derivados (issue #125), abaixo dos destaques: razões entre o que o
+  // motor já agregou — nunca mais uma linha de seis cards grandes.
+  dom.marketMicroKpis.replaceChildren(...buildMicroKpis(aggregated, months).map(marketMicroKpi));
   return { warnings: aggregated.warnings, mesReferencia, sparks };
+}
+
+/**
+ * Um micro-indicador: rótulo, valor (ou a frase de ausência) e a fórmula no `title` — a
+ * metodologia fica a um hover de distância, no mesmo elemento que mostra o número.
+ */
+function marketMicroKpi(item) {
+  const node = document.createElement('div');
+  node.className = 'market-micro';
+  node.dataset.derivado = item.key;
+  node.title = item.formula;
+
+  const label = document.createElement('span');
+  label.className = 'market-micro-label';
+  label.textContent = item.label;
+  node.append(label);
+
+  const value = document.createElement('span');
+  value.className = item.value === null ? 'market-micro-value market-micro-absent' : 'market-micro-value';
+  value.textContent = item.value === null ? 'não publicado' : item.value;
+  if (item.value === null) value.title = item.absent;
+  node.append(value);
+  return node;
 }
 
 function option(value, label) {

@@ -2687,6 +2687,37 @@ p.precision.precision-exact {
   color: var(--texto-forte);
 }
 
+/* Faixa de micro-indicadores derivados (issue #125): uma linha compacta entre os
+   destaques e os grupos. Sem moldura — separada por uma borda sutil em cima e embaixo —
+   para não virar mais uma linha de cards do mesmo peso dos destaques. */
+.market-micro-kpis {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--esp-2) var(--esp-5);
+  margin: 0 0 var(--esp-5);
+  padding: var(--esp-3) 0;
+  border-top: 1px solid var(--borda-sutil);
+  border-bottom: 1px solid var(--borda-sutil);
+}
+.market-micro-kpis:empty { display: none; }
+.market-micro { display: grid; gap: var(--esp-1); min-width: 0; cursor: help; }
+.market-micro-label {
+  font-size: var(--tipo-2xs);
+  font-weight: 500;
+  letter-spacing: var(--track-label);
+  text-transform: uppercase;
+  color: var(--texto-sec);
+  white-space: nowrap;
+}
+.market-micro-value {
+  font-size: var(--tipo-md);
+  font-weight: 700;
+  letter-spacing: var(--track-tight);
+  font-variant-numeric: tabular-nums;
+  color: var(--texto-forte);
+}
+.market-micro-absent { font-weight: 500; color: var(--muted); }
+
 /* Grupos: o restante dos indicadores, sob o rótulo do que eles compõem. */
 .market-grupo { margin-bottom: var(--esp-5); }
 .market-grupo-titulo {
