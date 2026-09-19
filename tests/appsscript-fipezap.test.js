@@ -228,13 +228,21 @@ test('rebuildFipezapLocalityMonthly_ pareia venda e locação por período × se
 
 const STAGING_ID = 'staging-fake-id';
 
+// Cada aba do staging traz o cabeçalho COMPLETO do contrato: é isso que a fase 1 exige.
+const FIPEZAP_CONTRACT = (() => {
+  const { context } = createAppsScriptSandbox();
+  return Object.fromEntries(['FIPEZAP_MONTHLY', 'FIPEZAP_LOCALITY_MONTHLY', 'FIPEZAP_LOCALITY_MAP',
+    'FIPEZAP_SOURCES', 'FIPEZAP_NOTES'].map((s) => [s, [...context.REQUIRED_HEADERS[s]]]));
+})();
+const contractRow = (sheet, values) => FIPEZAP_CONTRACT[sheet].map((h) => (values[h] === undefined ? '' : values[h]));
+
 function stagingBook(over = {}) {
   const base = {
     FIPEZAP_MONTHLY: [MONTHLY_HEADERS, monthlyRow({ fipezap_id: 'NOVO_1' }), monthlyRow({ fipezap_id: 'NOVO_2', period_id: '2011-02' })],
-    FIPEZAP_LOCALITY_MONTHLY: [['locality_monthly_id', 'period_id'], ['LM_1', '2019-03']],
-    FIPEZAP_LOCALITY_MAP: [['locality_map_id', 'source_locality_name'], ['FZMAP_X', 'X']],
-    FIPEZAP_SOURCES: [['source_id', 'period_id', 'reference_date'], ['FZSRC_9', '2011-01', '2011-01-01']],
-    FIPEZAP_NOTES: [['note_id', 'note_text'], ['FZNOTE_9', 'n']],
+    FIPEZAP_LOCALITY_MONTHLY: [FIPEZAP_CONTRACT.FIPEZAP_LOCALITY_MONTHLY, contractRow('FIPEZAP_LOCALITY_MONTHLY', { locality_monthly_id: 'LM_1', period_id: '2019-03' })],
+    FIPEZAP_LOCALITY_MAP: [FIPEZAP_CONTRACT.FIPEZAP_LOCALITY_MAP, contractRow('FIPEZAP_LOCALITY_MAP', { locality_map_id: 'FZMAP_X', source_locality_name: 'X' })],
+    FIPEZAP_SOURCES: [FIPEZAP_CONTRACT.FIPEZAP_SOURCES, contractRow('FIPEZAP_SOURCES', { source_id: 'FZSRC_9', period_id: '2011-01', reference_date: '2011-01-01' })],
+    FIPEZAP_NOTES: [FIPEZAP_CONTRACT.FIPEZAP_NOTES, contractRow('FIPEZAP_NOTES', { note_id: 'FZNOTE_9', note_text: 'n' })],
   };
   const book = { ...base, ...over };
   for (const name of Object.keys(book)) if (book[name] === undefined) delete book[name];
@@ -267,6 +275,24 @@ test('staging sem uma das cinco abas: nenhuma aba de destino é alterada', () =>
   assert.equal(JSON.stringify(sandbox.sheets.FIPEZAP_LOCALITY_MAP._rows), antes.map, 'FIPEZAP_LOCALITY_MAP intacta');
   assert.equal(sandbox.sheets.FIPEZAP_LOCALITY_MONTHLY, undefined, 'aba ausente não foi criada');
   assert.equal(sandbox.context.getMeta_('fipezap_data_load_status'), '', 'metadados não escritos');
+});
+
+test('staging com coluna renomeada ou só cabeçalho: recusado na fase 1, nada é escrito', () => {
+  const renomeada = FIPEZAP_CONTRACT.FIPEZAP_NOTES.map((h) => (h === 'note_text' ? 'texto_da_nota' : h));
+  const sandbox = sandboxWith([monthlyRow()], {}, {
+    scriptProperties: { [sandbox_placeholder()]: STAGING_ID },
+    externalSpreadsheets: { [STAGING_ID]: stagingBook({ FIPEZAP_NOTES: [renomeada, contractRow('FIPEZAP_NOTES', { note_id: 'N' })] }) },
+  });
+  const antes = JSON.stringify(sandbox.sheets.FIPEZAP_MONTHLY._rows);
+  assert.throws(() => sandbox.context.syncFipezapFromStaging_(), /FIPEZAP_NOTES sem cabeçalho\(s\) do contrato: note_text/);
+  assert.equal(JSON.stringify(sandbox.sheets.FIPEZAP_MONTHLY._rows), antes, 'aba lida ANTES da defeituosa não foi escrita');
+
+  const soCabecalho = sandboxWith([monthlyRow()], {}, {
+    scriptProperties: { [sandbox_placeholder()]: STAGING_ID },
+    externalSpreadsheets: { [STAGING_ID]: stagingBook({ FIPEZAP_SOURCES: [FIPEZAP_CONTRACT.FIPEZAP_SOURCES] }) },
+  });
+  assert.throws(() => soCabecalho.context.syncFipezapFromStaging_(), /FIPEZAP_SOURCES só tem cabeçalho/);
+  assert.equal(soCabecalho.context.getMeta_('fipezap_data_load_status'), '');
 });
 
 test('staging com aba vazia: mesma proteção — nada é escrito', () => {

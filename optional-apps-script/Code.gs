@@ -4474,6 +4474,12 @@ function fipezapStagingSpreadsheetId_() {
   return id;
 }
 
+/** Linha sem nenhum valor (só '' / null). */
+function isBlankRow_(row) {
+  for (var i = 0; i < row.length; i++) if (!isBlank_(row[i])) return false;
+  return true;
+}
+
 /** Remove uma chave de APP_META, se existir. Sem chave, não faz nada. */
 function deleteMeta_(key) {
   var sheet = ss_().getSheetByName(META_SHEET);
@@ -4503,13 +4509,25 @@ function syncFipezapFromStaging_() {
     var target = ss_();
     var counts = {};
 
-    // Fase 1: ler tudo. Nenhuma aba de destino é tocada até as cinco leituras passarem.
+    // Fase 1: ler tudo e validar o SCHEMA de cada aba contra o contrato. Nenhuma aba de
+    // destino é tocada até as cinco passarem: exportação truncada, só cabeçalho ou com
+    // coluna renomeada é recusada aqui, não descoberta pelo validateAll depois do estrago.
     var snapshots = FIPEZAP_SHEETS.map(function (name) {
       var src = source.getSheetByName(name);
       if (!src) throw new Error('Staging FipeZAP sem a aba ' + name + '. Nada foi alterado.');
       var values = src.getDataRange().getValues();
       if (!values.length || !values[0].length || !toText_(values[0][0])) {
         throw new Error('Staging FipeZAP vazio em ' + name + '. Nada foi alterado.');
+      }
+      var headers = values[0].map(function (h) { return toText_(h); });
+      var missing = (REQUIRED_HEADERS[name] || []).filter(function (h) { return headers.indexOf(h) < 0; });
+      if (missing.length) {
+        throw new Error('Staging FipeZAP em ' + name + ' sem cabeçalho(s) do contrato: ' +
+          missing.join(', ') + '. Nada foi alterado.');
+      }
+      var dataRows = values.slice(1).filter(function (row) { return !isBlankRow_(row); });
+      if (!dataRows.length) {
+        throw new Error('Staging FipeZAP em ' + name + ' só tem cabeçalho. Nada foi alterado.');
       }
       return { name: name, values: values };
     });
