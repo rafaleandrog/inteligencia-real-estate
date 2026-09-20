@@ -31,12 +31,24 @@ Uma linguagem por arquivo, uma responsabilidade por módulo.
 | `src/format.js` | Formatação e saneamento — **funções puras** |
 | `src/ivv/chart-model.js` | Significado do gráfico: categorias, séries, eixo, ausência — **funções puras** |
 | `src/ivv/chart-layout.js` | Geometria do gráfico: coordenadas, caminhos, colunas — **funções puras** |
-| `src/ivv/history.js` | Quais gráficos existem, o que cada um pergunta, de que recorte lê e se acumula |
+| `src/ivv/history.js` | Quais gráficos existem, o que cada um pergunta, de que recorte lê, se acumula e com que recorte se compara |
+| `src/ivv/derived.js` | Indicadores derivados do Mercado (gap, meses de oferta, reposição, tickets, áreas) — **funções puras** |
+| `src/ivv/region.js` | IVV por RA: normalização, ranking e matriz preço × liquidez — **funções puras** |
+| `src/map/comparables.js` | Comparáveis do recorte: percentis, posição contra a mediana, qualidade da amostra — **funções puras** |
+| `src/pdad/*` | PDAD-A: normalização, agregação por RA, indicadores, gráficos e perfil imobiliário (`insights.js`) — **funções puras** |
+| `src/fipezap/*` | FipeZap: normalização (período, duplicidade, vocabulário), histórico e localidades com o mapa localidade → RA — **funções puras** |
+| `src/url-state.js` | View e filtros na URL (`parseHash`/`buildHash`), vocabulário fechado de chaves — **funções puras** |
 | `src/app.js` | Interação, mapa e DOM |
 | Google Sheet | Registros e governança |
 
 A divisão não é estética: as camadas de funções puras são as que a suíte cobre sem navegador
 e sem rede. `app.js` concentra o que só dá para verificar por smoke test.
+
+Regra que vale para todo módulo puro novo: **ausência de dado nunca vira zero** (amostra vazia,
+denominador zero, categoria suprimida devolvem `null` e a tela escreve a frase), **a fórmula
+fica ao lado do número** e **nenhum módulo conhece cor** — a série declara um índice e o CSS
+resolve. Distância a âncora só se calcula a partir de coordenada exata (`canUseForDistance`
+em `src/normalize.js`); hoje nenhuma é calculada, e a guarda existe para o dia em que for.
 
 O gráfico é dividido em **dois** módulos puros de propósito. `chart-model.js` decide
 significado e `chart-layout.js` decide pixel, porque as duas decisões envelhecem em ritmos

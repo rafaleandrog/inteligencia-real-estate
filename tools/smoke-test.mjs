@@ -29,6 +29,9 @@ const pass = (m) => { ok.push(m); console.log('  ✓ ' + m); };
 // Alguns ambientes trazem um Chromium pré-instalado cuja build não corresponde à que
 // esta versão do Playwright baixaria. CHROMIUM_PATH aponta para o binário existente.
 const executablePath = process.env.CHROMIUM_PATH || undefined;
+// Os filtros secundários vivem numa gaveta `<details>` recolhida (issue #124); o Playwright
+// só interage com o que está visível, então cada página a abre antes de usá-los.
+const abrirMaisFiltros = (p) => p.$eval('#moreFilters', (d) => { d.open = true; });
 const browser = await chromium.launch(executablePath ? { executablePath } : {});
 
 // Um CONTEXTO só, com viewport e rotas, em vez de `browser.newPage()` avulso por seção.
@@ -151,7 +154,12 @@ await page.selectOption('#locality', { index: 1 });
 await page.waitForTimeout(300);
 const afterLoc = (await page.locator('#kpiVisible').textContent()).trim();
 n(afterLoc) > 0 && n(afterLoc) < n(visible0) ? pass(`localidade reduziu -> ${afterLoc}`) : fail('filtro de localidade não reduziu');
+// URL compartilhável (issue #127): o filtro vai para o hash, e o botão de copiar existe.
+const hashComFiltro = await page.evaluate(() => location.hash);
+/^#mapa\?.*locality=/.test(hashComFiltro) ? pass(`filtro serializado no hash: ${hashComFiltro.slice(0, 60)}`) : fail('hash sem o filtro: ' + hashComFiltro);
+(await page.locator('#copyLink').count()) === 1 ? pass('botão "Copiar link desta análise" presente') : fail('botão de copiar link ausente');
 await page.click('#clearFilters'); await page.waitForTimeout(300);
+(await page.evaluate(() => location.hash)) === '#mapa' ? pass('sem filtro, o hash volta a ser só #mapa') : fail('hash com filtro fantasma: ' + await page.evaluate(() => location.hash));
 
 await page.fill('#priceMax', '800000'); await page.waitForTimeout(400);
 const afterPrice = (await page.locator('#kpiVisible').textContent()).trim();
@@ -185,6 +193,18 @@ const precTitle = (await precNode.getAttribute('title')) || '';
 (await page.locator('#detailBody details').count()) === 0
   ? pass('detalhe do registro em lista plana, sem seções recolhidas (#104)')
   : fail('detalhe do registro ainda tem <details> recolhido');
+
+// Posição no recorte (issue #124): o painel do anúncio diz como o preço/m² se posiciona
+// contra os comparáveis visíveis — ou diz que não há comparáveis, nunca "0".
+const posicao = page.locator('#detailBody .detail-position');
+(await posicao.count()) === 1 ? pass('bloco "Posição no recorte" presente no detalhe do anúncio') : fail('bloco de posição ausente');
+const posicaoTexto = (await posicao.textContent()) || '';
+/comparáveis|Sem comparáveis|nenhum com preço/i.test(posicaoTexto)
+  ? pass('posição fala em comparáveis ou declara a ausência deles') : fail('texto da posição: ' + posicaoTexto.slice(0, 80));
+/vs\. mediana/.test(posicaoTexto) && (await posicao.locator('.detail-ruler-dot').count()) === 1
+  ? pass('preço/m² posicionado contra a mediana, com o ponto na régua P25–P75')
+  : (/Sem comparáveis|nenhum com preço/.test(posicaoTexto) ? pass('sem comparáveis: nenhuma régua desenhada') : fail('régua sem ponto ou sem delta'));
+!/\b0 comparáveis\b/.test(posicaoTexto) ? pass('amostra vazia nunca aparece como "0 comparáveis"') : fail('amostra vazia mostrada como zero');
 
 const link = page.locator('#detailBody a.detail-source').first();
 if (await link.count() > 0) {
@@ -444,6 +464,7 @@ glifosMapa.length > 0 && glifosMapa.every((n) => n > 0)
   : fail('âncora sem glifo no mapa');
 
 const totalAnchor = Number((await anchorPage.textContent('#kpiVisible')).replace(/\D/g, ''));
+await abrirMaisFiltros(anchorPage);
 await anchorPage.selectOption('#anchorGroup', 'infraestrutura');
 await anchorPage.waitForTimeout(400);
 const soInfra = Number((await anchorPage.textContent('#kpiVisible')).replace(/\D/g, ''));
@@ -454,7 +475,10 @@ segmentosDoGrupo.includes('Estação de metrô') && !segmentosDoGrupo.includes('
   ? pass('select de segmento fica restrito ao grupo escolhido')
   : fail('segmentos fora do grupo: ' + JSON.stringify(segmentosDoGrupo));
 
+await abrirMaisFiltros(anchorPage);
 await anchorPage.selectOption('#anchorSegment', 'estacao_metro');
+(await anchorPage.textContent('#moreFiltersSummary')).includes('ativo')
+  ? pass('o resumo da gaveta conta os filtros secundários ativos (#124)') : fail('resumo da gaveta não conta ativos');
 await anchorPage.waitForTimeout(400);
 const soMetro = Number((await anchorPage.textContent('#kpiVisible')).replace(/\D/g, ''));
 soMetro > 0 && soMetro <= soInfra ? pass(`filtro de segmento reduziu ${soInfra} -> ${soMetro}`) : fail('filtro de segmento não reduziu');
@@ -463,6 +487,7 @@ soMetro > 0 && soMetro <= soInfra ? pass(`filtro de segmento reduziu ${soInfra} 
   ? pass('filtrar âncora por grupo/segmento esconde as outras camadas')
   : fail('sobrou anúncio ou empreendimento com filtro de âncora ativo');
 
+await abrirMaisFiltros(anchorPage);
 await anchorPage.selectOption('#anchorGroup', 'comercio_servico');
 await anchorPage.waitForTimeout(400);
 (await anchorPage.inputValue('#anchorSegment')) === ''
@@ -473,6 +498,7 @@ await anchorPage.click('#clearFilters'); await anchorPage.waitForTimeout(400);
 // P1 do review do Codex na PR #42: escolher SÓ o segmento, sem tocar no grupo, e
 // limpar. Com a lista completa o segmento continua presente, e a rotina que repopula
 // o select o restaurava — "Limpar filtros" não limpava (R8.43).
+await abrirMaisFiltros(anchorPage);
 await anchorPage.selectOption('#anchorSegment', 'estacao_metro');
 await anchorPage.waitForTimeout(400);
 const comSegmento = Number((await anchorPage.textContent('#kpiVisible')).replace(/\D/g, ''));
@@ -486,6 +512,7 @@ Number((await anchorPage.textContent('#kpiVisible')).replace(/\D/g, '')) === tot
   : fail('conjunto não voltou ao total depois de limpar');
 
 // Card de âncora: os campos novos aparecem, e `brand_name` hostil continua texto (R4.4).
+await abrirMaisFiltros(anchorPage);
 await anchorPage.selectOption('#anchorSegment', 'food_hall');
 await anchorPage.waitForTimeout(400);
 await anchorPage.locator('#map .marker-anchor').first().click({ force: true });
@@ -564,6 +591,7 @@ regularizacoes.includes('Não regularizado') && regularizacoes.includes('Process
 const contarVisiveis = async () => Number((await classPage.textContent('#kpiVisible')).replace(/\D/g, ''));
 const totalClass = await contarVisiveis();
 
+await abrirMaisFiltros(classPage);
 await classPage.selectOption('#salesStage', 'oferta');
 await classPage.waitForTimeout(400);
 const emOferta = await contarVisiveis();
@@ -572,6 +600,7 @@ emOferta > 0 && emOferta < totalClass ? pass(`filtro de estágio reduziu ${total
   ? pass('filtrar por estágio esconde anúncios e âncoras') : fail('sobrou outra camada com filtro de estágio');
 await classPage.click('#clearFilters'); await classPage.waitForTimeout(400);
 
+await abrirMaisFiltros(classPage);
 await classPage.selectOption('#regularizationStatus', 'nao_regularizado');
 await classPage.waitForTimeout(400);
 const naoRegularizados = await contarVisiveis();
@@ -587,6 +616,7 @@ await classPage.click('#clearFilters'); await classPage.waitForTimeout(400);
 
 // Vertical/horizontal precisa alcançar o empreendimento, não só o anúncio — e o
 // empreendimento cuja célula veio como " Vertical " é justamente o teste do caso real.
+await abrirMaisFiltros(classPage);
 await classPage.selectOption('#buildingOrientation', 'vertical');
 await classPage.waitForTimeout(400);
 const devsVerticais = await classPage.$$eval('#map .marker-development', (ns) => ns.length);
@@ -1153,6 +1183,37 @@ noMercado.hash === '#mercado'
   ? pass('o hash reflete a view atual') : fail('hash: ' + noMercado.hash);
 noMercado.botaoAtivo === 'mercado'
   ? pass('a aba ativa acompanha a view') : fail('aba ativa: ' + noMercado.botaoAtivo);
+// Comparação temporal (issue #127): três pílulas; escolher "Ano anterior" sobrepõe uma
+// série tracejada no mesmo eixo e vai para o hash.
+(await viewPage.locator('#marketCompare .market-chip').count()) === 3 ? pass('controle "Comparar com" com três opções') : fail('pílulas de comparação ausentes');
+await viewPage.click('#marketCompare .market-chip[data-compare="mesmo_periodo_ano_anterior"]');
+await viewPage.waitForTimeout(500);
+const comparacao = await viewPage.evaluate(() => ({
+  tracejadas: document.querySelectorAll('#marketCharts .market-serie-comparacao').length,
+  eixosY: document.querySelectorAll('#marketCharts [data-chart="ivv"] .chart-axis-value').length,
+  hash: location.hash,
+  nota: document.querySelector('#marketCharts [data-chart="ivv"] .market-chart-modo')?.textContent ?? '',
+}));
+comparacao.tracejadas > 0 || /Sem mês publicado no recorte de comparação/.test(comparacao.nota)
+  ? pass(`comparação: ${comparacao.tracejadas} série(s) tracejada(s) ou ausência declarada`) : fail('comparação sem série e sem aviso: ' + JSON.stringify(comparacao));
+/compare=mesmo_periodo_ano_anterior/.test(comparacao.hash) ? pass('modo de comparação serializado no hash') : fail('hash: ' + comparacao.hash);
+await viewPage.click('#marketCompare .market-chip[data-compare="nenhum"]');
+await viewPage.waitForTimeout(400);
+(await viewPage.evaluate(() => location.hash)) === '#mercado' ? pass('voltar a "Nenhum" limpa o hash') : fail('hash: ' + await viewPage.evaluate(() => location.hash));
+// Matriz preço × liquidez: um ponto por RA com tooltip, ou a ausência declarada.
+const matriz = await viewPage.evaluate(() => ({
+  visivel: !document.querySelector('#marketRegioes').hidden,
+  modos: document.querySelectorAll('#marketRegioesModo .market-chip').length,
+  pontos: document.querySelectorAll('#marketRegioesScatter .market-scatter-ponto').length,
+  titulo: document.querySelector('#marketRegioesScatter .market-scatter-ponto title')?.textContent ?? '',
+  ausente: document.querySelector('#marketRegioesScatter .market-card-absent')?.textContent ?? '',
+}));
+if (matriz.visivel) {
+  matriz.modos === 3 ? pass('matriz com três leituras (IVV × preço, IVV × oferta, gap × preço)') : fail('modos da matriz: ' + matriz.modos);
+  matriz.pontos > 0 && /IVV:|Preço de venda:/.test(matriz.titulo)
+    ? pass(`matriz com ${matriz.pontos} RAs e tooltip com IVV e preço`)
+    : (matriz.ausente ? pass('matriz sem eixos declara a ausência') : fail('matriz sem pontos e sem aviso'));
+}
 /Distrito Federal inteiro/.test(noMercado.escopo) && /Região Administrativa/.test(noMercado.escopo)
   ? pass('a tela declara o escopo do DF inteiro, sem recorte por RA')
   : fail('escopo não declarado: ' + noMercado.escopo);
@@ -1190,6 +1251,9 @@ const cards = await viewPage.evaluate(() => ({
     tiles: n.querySelectorAll('.market-card').length,
   })),
   sparks: document.querySelectorAll('#marketDestaques .market-spark-svg').length,
+  micro: [...document.querySelectorAll('#marketMicroKpis .market-micro')].map((n) => ({
+    key: n.dataset.derivado, formula: n.title, valor: n.querySelector('.market-micro-value')?.textContent ?? '',
+  })),
   ausentes: document.querySelectorAll('#marketView .market-card-absent').length,
   travessoes: [...document.querySelectorAll('#marketView .market-kpi-valor, #marketView .market-card-value')]
     .filter((n) => n.textContent.trim() === '\u2014').length,
@@ -1201,6 +1265,14 @@ const cards = await viewPage.evaluate(() => ({
 JSON.stringify(cards.destaques) === JSON.stringify([...CARD_DESTAQUES])
   ? pass(`os ${CARD_DESTAQUES.length} indicadores em destaque abrem a tela, na ordem declarada`)
   : fail('destaques fora do declarado: ' + JSON.stringify(cards.destaques));
+// Derivados (issue #125): seis micro-indicadores, cada um com a fórmula no title, e nenhum
+// valor "0" no lugar de dado não publicado.
+cards.micro.length === 6 && cards.micro.every((m) => m.key && m.formula.length > 0)
+  ? pass('faixa de derivados com 6 micro-indicadores, todos com fórmula declarada')
+  : fail('micro-indicadores: ' + JSON.stringify(cards.micro));
+cards.micro.every((m) => m.valor !== '0' && m.valor !== '')
+  ? pass('derivado sem dado diz "não publicado", nunca zero')
+  : fail('derivado com valor vazio ou zero: ' + JSON.stringify(cards.micro));
 cards.grupos.length === CARD_GRUPOS.length
   && cards.grupos.every((g, i) => g.tiles === CARD_GRUPOS[i].metricas.length && g.titulo.length > 0)
   ? pass(`os ${CARD_GRUPOS.length} grupos trazem o restante dos indicadores, cada um sob seu rótulo`)

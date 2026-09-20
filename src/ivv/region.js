@@ -146,9 +146,20 @@ export function regionMonths(rows) {
  * nomeada à parte. Zero e "não publicado" são afirmações diferentes, e uma barra vazia
  * afirma a primeira (R5.7).
  */
+/**
+ * O retrato de uma faixa: só as linhas do MÊS MAIS RECENTE publicado nela. Com dois meses na
+ * aba, misturar os dois punha a mesma RA duas vezes e a referência do mês antigo — e a nota
+ * da tela dizia "retrato de <mês>".
+ */
+function retratoMaisRecente(rows, faixa) {
+  const daFaixa = (rows || []).filter((item) => item && item.bucket === faixa);
+  const mes = regionMonths(daFaixa).at(-1) || null;
+  return { mes, linhas: mes ? daFaixa.filter((item) => item.month === mes) : daFaixa };
+}
+
 export function buildRegionRanking(rows, opcoes = {}) {
   const faixa = opcoes.bucket || FAIXA_TOTAL;
-  const doRecorte = (rows || []).filter((item) => item.bucket === faixa);
+  const { mes, linhas: doRecorte } = retratoMaisRecente(rows, faixa);
 
   const referencia = doRecorte.find((item) => item.isRegiaoTotal) || null;
   const partes = doRecorte.filter((item) => !item.isRegiaoTotal);
@@ -161,7 +172,7 @@ export function buildRegionRanking(rows, opcoes = {}) {
 
   return {
     faixa,
-    mes: doRecorte[0]?.month || null,
+    mes,
     referencia,
     regioes: comValor,
     semValor,
@@ -173,4 +184,88 @@ export function buildRegionRanking(rows, opcoes = {}) {
 export function faixasDisponiveis(rows) {
   const presentes = new Set((rows || []).map((item) => item.bucket));
   return FAIXAS_DE_QUARTOS.filter((faixa) => presentes.has(faixa));
+}
+
+/**
+ * Matriz preço × liquidez por Região Administrativa (issue #127, Plano 01 §9.2–9.3).
+ *
+ * Três leituras, todas sobre o mesmo retrato mensal e a mesma faixa de quartos:
+ *   `ivv_x_preco`  — x = preço de venda/m², y = IVV
+ *   `ivv_x_oferta` — x = unidades em oferta,  y = IVV
+ *   `gap_x_preco`  — x = preço de venda/m²,   y = gap pedido/venda = (pedido − venda) ÷ pedido
+ *
+ * Cada ponto é uma RA; `DF Total` sai como referência, nunca como ponto — é o mesmo
+ * mercado somado. RA sem os dois eixos é NOMEADA em `semValor`, não some. Nenhuma
+ * interpretação automática: o módulo entrega números e rótulos, e a tela desenha.
+ */
+export const REGION_SCATTER_MODES = Object.freeze([
+  { value: 'ivv_x_preco', chip: 'IVV × preço', label: 'IVV contra preço de venda por m²',
+    x: { campo: 'salePriceM2', rotulo: 'Preço de venda (R$/m²)' }, y: { campo: 'ivvPct', rotulo: 'IVV (p.p.)' } },
+  { value: 'ivv_x_oferta', chip: 'IVV × oferta', label: 'IVV contra unidades em oferta',
+    x: { campo: 'offeredUnits', rotulo: 'Unidades em oferta' }, y: { campo: 'ivvPct', rotulo: 'IVV (p.p.)' } },
+  { value: 'gap_x_preco', chip: 'Gap × preço', label: 'Gap pedido/venda contra preço de venda por m²',
+    x: { campo: 'salePriceM2', rotulo: 'Preço de venda (R$/m²)' }, y: { campo: 'gapPct', rotulo: 'Gap pedido/venda (%)' } },
+]);
+
+/** Gap pedido × venda de uma linha, em %: `(pedido − venda) ÷ pedido × 100`. `null` sem os dois. */
+export function regionGapPct(item) {
+  const pedido = item ? item.offerPriceM2 : null;
+  const venda = item ? item.salePriceM2 : null;
+  if (!Number.isFinite(pedido) || !Number.isFinite(venda) || pedido === 0) return null;
+  return ((pedido - venda) / pedido) * 100;
+}
+
+export function buildRegionScatter(rows, opcoes = {}) {
+  const faixa = opcoes.bucket || FAIXA_TOTAL;
+  const modo = REGION_SCATTER_MODES.find((m) => m.value === opcoes.mode) || REGION_SCATTER_MODES[0];
+  const { mes, linhas: doRecorte } = retratoMaisRecente(rows, faixa);
+  const referencia = doRecorte.find((item) => item.isRegiaoTotal) || null;
+  const partes = doRecorte.filter((item) => !item.isRegiaoTotal);
+
+  const ler = (item, campo) => {
+    const valor = campo === 'gapPct' ? regionGapPct(item) : item[campo];
+    return Number.isFinite(valor) ? valor : null;
+  };
+
+  const pontos = [];
+  const semValor = [];
+  for (const item of partes) {
+    const x = ler(item, modo.x.campo);
+    const y = ler(item, modo.y.campo);
+    if (x === null || y === null) { semValor.push(item.region); continue; }
+    pontos.push({
+      region: item.region,
+      x,
+      y,
+      ivvPct: item.ivvPct,
+      salePriceM2: item.salePriceM2,
+      offerPriceM2: item.offerPriceM2,
+      offeredUnits: item.offeredUnits,
+      soldUnits: item.soldUnits,
+      gapPct: regionGapPct(item),
+    });
+  }
+  pontos.sort((a, b) => a.region.localeCompare(b.region, 'pt-BR'));
+  semValor.sort((a, b) => a.localeCompare(b, 'pt-BR'));
+
+  const referenciaPonto = referencia ? {
+    region: referencia.region,
+    x: ler(referencia, modo.x.campo),
+    y: ler(referencia, modo.y.campo),
+  } : null;
+
+  return {
+    modo: modo.value,
+    faixa,
+    mes,
+    xLabel: modo.x.rotulo,
+    yLabel: modo.y.rotulo,
+    pontos,
+    semValor,
+    referencia: referenciaPonto && referenciaPonto.x !== null && referenciaPonto.y !== null ? referenciaPonto : null,
+    dominio: pontos.length ? {
+      xMin: Math.min(...pontos.map((p) => p.x)), xMax: Math.max(...pontos.map((p) => p.x)),
+      yMin: Math.min(0, ...pontos.map((p) => p.y)), yMax: Math.max(...pontos.map((p) => p.y)),
+    } : null,
+  };
 }

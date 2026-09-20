@@ -37,6 +37,18 @@ export function createFakeSheet(name, rows) {
       data.splice(rowNumber - 1, count);
     },
     setFrozenRows() {},
+    // v2.4.0 — usados pelo sincronizador FipeZAP e pelas abas de cobertura. A grade do
+    // mock cresce sozinha em `setValues`, então "max" é só o tamanho atual e inserir
+    // linhas/colunas é no-op: o que importa aos testes é o dado escrito, não a grade.
+    getMaxRows: () => Math.max(data.length, 1),
+    getMaxColumns: () => Math.max(data[0] ? data[0].length : 0, 1),
+    insertRowsAfter() {},
+    insertColumnsAfter() {},
+    clearContents() { data.length = 0; return sheet; },
+    getDataRange() {
+      return createRange(data, 1, 1, Math.max(data.length, 1), Math.max(data[0] ? data[0].length : 0, 1));
+    },
+    getFilter: () => null,
     // Exposto só para asserção nos testes — não existe na API real do Apps Script.
     _rows: data,
   };
@@ -100,7 +112,13 @@ function createRange(data, row, col, numRows, numCols) {
     // chama estes três, então precisam existir para não virar exceção disfarçada de
     // INTERNAL_ERROR na resposta da API.
     setNumberFormat() { return this; },
+    // Sem fórmulas no mock: matriz de '' do tamanho do range.
+    getFormulas() { return Array.from({ length: numRows }, () => Array.from({ length: numCols }, () => '')); },
     setFontWeight() { return this; },
+    setBackground() { return this; },
+    setFontColor() { return this; },
+    setVerticalAlignment() { return this; },
+    createFilter() { return this; },
     copyFormatToRange() { return this; },
     getA1Notation: () => `R${row}C${col}`,
     getRow: () => row,
@@ -114,10 +132,17 @@ function createRange(data, row, col, numRows, numCols) {
  * Cria o sandbox com Code.gs carregado. `sheets` é `{NOME: [[header...], [linha...]]}`.
  * `scriptProperties` é o estado inicial de PropertiesService.getScriptProperties().
  */
-export function createAppsScriptSandbox({ sheets = {}, scriptProperties = {}, googleEmail = '' } = {}) {
+export function createAppsScriptSandbox({ sheets = {}, scriptProperties = {}, googleEmail = '', externalSpreadsheets = {} } = {}) {
   const fakeSheets = {};
   for (const [name, rows] of Object.entries(sheets)) {
     fakeSheets[name] = createFakeSheet(name, rows);
+  }
+  // Planilhas "de fora" (staging FipeZAP), por ID: `{ ID: { ABA: [[header], [linha]] } }`.
+  const externalBooks = {};
+  for (const [id, book] of Object.entries(externalSpreadsheets)) {
+    const external = {};
+    for (const [name, rows] of Object.entries(book)) external[name] = createFakeSheet(name, rows);
+    externalBooks[id] = { getSheetByName: (name) => external[name] || null, _sheets: external };
   }
 
   const properties = { ...scriptProperties };
@@ -136,6 +161,13 @@ export function createAppsScriptSandbox({ sheets = {}, scriptProperties = {}, go
     SpreadsheetApp: {
       getActiveSpreadsheet: () => book,
       getUi: () => { throw new Error('getUi() não é usado pelos testes de escrita'); },
+      // O sincronizador FipeZAP lê OUTRA planilha por ID. Só devolve o que o teste registrou
+      // em `externalSpreadsheets`; qualquer outro ID lança de propósito, para que um teste
+      // que chegasse aqui sem querer não passe a depender de um staging simulado em silêncio.
+      openById: (id) => {
+        if (externalBooks[id]) return externalBooks[id];
+        throw new Error(`openById() não é permitido em teste (tentou ${id})`);
+      },
     },
     PropertiesService: {
       getScriptProperties: () => ({

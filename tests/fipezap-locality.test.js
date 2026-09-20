@@ -103,3 +103,42 @@ test('localidade sem nenhuma linha no segmento produz os dois gráficos vazios, 
   assert.equal(venda.vazio, true);
   assert.equal(locacao.vazio, true);
 });
+
+// --- FIPEZAP_LOCALITY_MAP como rótulo, nunca como fusão (issue #122) -------------------
+
+import { localityMapIndex } from '../src/fipezap/locality.js';
+
+test('localitiesAvailable com o mapa rotula classificação, RA e regra sem mudar a unidade', () => {
+  const rows = [
+    linha({ source_locality_name: 'ASA SUL', ra_name: 'Plano Piloto' }),
+    linha({ source_locality_name: 'ASA NORTE', ra_name: 'Plano Piloto' }),
+    linha({ source_locality_name: 'GAMA', ra_name: 'Gama', geography_classification: 'RA_OU_LOCALIDADE_FIPE', ra_geo_id: 'RA_02' }),
+  ];
+  const mapa = [
+    { source_locality_name: 'ASA SUL', ra_name: 'Plano Piloto', ra_geo_id: 'RA_01', geography_classification: 'SUBMERCADO_FIPE', mapping_rule: 'Mantém submercado FipeZAP; normaliza para Plano Piloto' },
+    { source_locality_name: 'ASA NORTE', ra_name: 'Plano Piloto', ra_geo_id: 'RA_01', geography_classification: 'SUBMERCADO_FIPE' },
+  ];
+  const lista = localitiesAvailable(rows, 'RESIDENCIAL', mapa);
+  assert.equal(lista.length, 3, 'duas localidades do Plano Piloto continuam sendo duas — nunca fundidas');
+  const asaSul = lista.find((i) => i.locality === 'ASA SUL');
+  assert.equal(asaSul.classification, 'SUBMERCADO_FIPE');
+  assert.equal(asaSul.raGeoId, 'RA_01');
+  assert.match(asaSul.mappingRule, /Mantém submercado/);
+  assert.equal(asaSul.ambiguous, true);
+  assert.equal(asaSul.displayName, 'Asa Sul', 'nome original preservado');
+
+  // O que a própria série declara vence o mapa; sem mapa, os campos ficam nulos e nada quebra.
+  const gama = lista.find((i) => i.locality === 'GAMA');
+  assert.equal(gama.classification, 'RA_OU_LOCALIDADE_FIPE');
+  assert.equal(gama.mappingRule, null);
+  const semMapa = localitiesAvailable(rows, 'RESIDENCIAL');
+  assert.equal(semMapa.find((i) => i.locality === 'ASA SUL').classification, null);
+  assert.equal(semMapa.find((i) => i.locality === 'ASA SUL').mappingRule, null);
+});
+
+test('localityMapIndex indexa pelo nome original e ignora linha sem nome', () => {
+  const index = localityMapIndex([{ source_locality_name: 'GAMA', ra_geo_id: 'RA_02' }, { ra_geo_id: 'RA_99' }, null]);
+  assert.equal(index.size, 1);
+  assert.equal(index.get('GAMA').ra_geo_id, 'RA_02');
+  assert.equal(localityMapIndex(undefined).size, 0);
+});

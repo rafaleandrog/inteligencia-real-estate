@@ -1,8 +1,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  toText, toNumber, toInteger, toBoolean, toDateISO, toCoord, pricePerM2, toPriceNumber,
-  buildingOrientation, isApproximateLocation, normalizeListing, normalizeDevelopment,
+  toText, toNumber, toInteger, toBoolean, toDateISO, toCoord, pricePerM2, pricePerM2Check,
+  PRICE_M2_TOLERANCE, toPriceNumber,
+  buildingOrientation, isApproximateLocation, canUseForDistance, normalizeListing, normalizeDevelopment,
   normalizeAnchor, normalizeRaProfile, normalizeRaProfiles,
   normalizeAppMeta, appMetaRows, appMetaConflicts,
   normalizeAll,
@@ -33,6 +34,35 @@ test('toNumber: formatos que realmente chegam da planilha', () => {
   assert.equal(toNumber('-15.7645675'), -15.7645675);
   assert.equal(toNumber(0), 0, 'zero é um número, não ausência');
   assert.equal(toNumber('0'), 0);
+});
+
+test('toNumber: moeda brasileira com ponto único de milhar, formato americano e sufixo de unidade (issue #121)', () => {
+  // O bug real: "R$ 290.000" lido como 290 gerava PRICE_M2_MISMATCH em 61 anúncios.
+  assert.equal(toNumber('R$ 290.000'), 290000);
+  assert.equal(toNumber('R$ 385.000'), 385000);
+  assert.equal(toNumber('290.000 BRL'), 290000);
+  assert.equal(toNumber('R$ 2.500.000,50'), 2500000.5);
+  assert.equal(toNumber('R$ 7.837,84'), 7837.84);
+  assert.equal(toNumber('R$ 0,00'), 0);
+  assert.equal(toNumber('R$ -1.500'), -1500, 'negativo com moeda');
+
+  // Formato americano com mais de um separador de milhar.
+  assert.equal(toNumber('2,500,000.50'), 2500000.5);
+  assert.equal(toNumber('2,500,000'), 2500000);
+
+  // Sufixo de unidade não derruba a leitura.
+  assert.equal(toNumber('120 m²'), 120);
+  assert.equal(toNumber('37,5 m2'), 37.5);
+  assert.equal(toNumber('8,6%'), 8.6);
+  assert.equal(toNumber('2,5 p.p.'), 2.5);
+
+  // Sem marcador de moeda, ponto único continua decimal (a âncora fica com toPriceNumber).
+  assert.equal(toNumber('385.000'), 385);
+  assert.equal(toNumber('R$ 1234.5'), 1234.5, 'ponto único sem três dígitos é decimal mesmo com moeda');
+
+  // Lixo entre os dígitos é ausência, não número parcial.
+  assert.equal(toNumber('1.2.3,4,5'), null);
+  assert.equal(toNumber('12abc'), null);
 });
 
 test('toNumber: ausência devolve null, nunca NaN', () => {
@@ -104,6 +134,63 @@ test('pricePerM2 usa o informado e calcula quando falta', () => {
   assert.equal(pricePerM2('', 160, ''), null);
 });
 
+test('pricePerM2Check confere sem sobrescrever: o informado prevalece e a divergência vira sinal', () => {
+  // Bate: informado 15625 para 2.500.000 / 160.
+  const ok = pricePerM2Check(2500000, 160, 15625);
+  assert.deepEqual(ok, { value: 15625, informed: 15625, computed: 15625, divergence_pct: 0, mismatch: false });
+
+  // Diverge (outro critério de área na fonte): informado continua sendo o valor.
+  const off = pricePerM2Check(2500000, 160, 20000);
+  assert.equal(off.value, 20000, 'nunca substitui o publicado');
+  assert.equal(off.computed, 15625);
+  assert.equal(off.divergence_pct, Math.abs(15625 - 20000) / 20000);
+  assert.equal(off.mismatch, true);
+
+  // Dentro da tolerância não é divergência.
+  assert.equal(pricePerM2Check(2500000, 160, 15625 * (1 + PRICE_M2_TOLERANCE * 0.9)).mismatch, false);
+
+  // Sem informado: calcula, sem divergência a medir.
+  assert.deepEqual(pricePerM2Check(2500000, 160, ''), { value: 15625, informed: null, computed: 15625, divergence_pct: null, mismatch: false });
+
+  // Divisão por zero, área negativa, preço ausente: computed null, nunca Infinity/NaN.
+  for (const [p, a] of [[2500000, 0], [2500000, -10], [2500000, ''], ['', 160], [0, 160]]) {
+    const r = pricePerM2Check(p, a, '');
+    assert.equal(r.computed, null, `computed para ${p}/${a}`);
+    assert.equal(r.value, null);
+    assert.equal(r.mismatch, false);
+  }
+  // Informado zero ou negativo não é "publicado": cai no calculado.
+  assert.equal(pricePerM2Check(2500000, 160, 0).value, 15625);
+  assert.equal(pricePerM2Check(2500000, 160, -5).value, 15625);
+  // Moeda brasileira como texto nos três argumentos.
+  assert.equal(pricePerM2Check('R$ 290.000', '37', 'R$ 7.837,84').mismatch, false);
+});
+
+test('normalizeListing registra a divergência de preço/m² sem sobrescrever, e normalizeAll a resume em aviso', () => {
+  const row = (id, informed) => ({
+    listing_id: id, title: id, property_type: 'apartamento', latitude: '-15.7', longitude: '-47.9',
+    asking_price_brl: 'R$ 1.500.000', area_m2: '76', asking_price_brl_m2: informed,
+  });
+  const fine = normalizeListing(row('OK', 'R$ 19.736,84'));
+  assert.equal(fine.price, 1500000);
+  assert.equal(fine.price_m2, 19736.84, 'o publicado é o valor');
+  assert.equal(fine.price_m2_mismatch, false);
+
+  const off = normalizeListing(row('OFF', '30000'));
+  assert.equal(off.price_m2, 30000, 'divergente, mas o publicado continua sendo o valor');
+  assert.equal(off.price_m2_computed, 1500000 / 76);
+  assert.equal(off.price_m2_mismatch, true);
+
+  const { records, warnings } = normalizeAll('listings', [row('OK', '19736.84'), row('OFF', '30000'), row('OFF2', '40000')]);
+  assert.equal(records.length, 3);
+  assert.equal(warnings.length, 1);
+  assert.match(warnings[0], /2 registro\(s\) de listings/);
+  assert.match(warnings[0], /OFF, OFF2/);
+  assert.match(warnings[0], /o informado prevalece/);
+
+  assert.deepEqual(normalizeAll('listings', []).warnings, [], 'lista vazia não avisa nada');
+});
+
 test('isApproximateLocation trata ausência de declaração como aproximada', () => {
   assert.equal(isApproximateLocation({ coordinate_precision: 'locality_centroid_deterministic_jitter' }), true);
   assert.equal(isApproximateLocation({ coordinate_precision: 'locality_centroid_jitter' }), true);
@@ -114,6 +201,21 @@ test('isApproximateLocation trata ausência de declaração como aproximada', ()
   assert.equal(isApproximateLocation({}), true);
 
   assert.equal(isApproximateLocation({ coordinate_precision: 'school_polygon_reference_point', confidence_flag: 'high' }), false);
+});
+
+test('canUseForDistance só libera ponto exato com coordenada — centroide com jitter nunca (issue #124)', () => {
+  const coord = { lat: -15.76, lon: -47.88 };
+  assert.equal(canUseForDistance({ coord, coordinate_precision: 'locality_centroid_deterministic_jitter' }), false);
+  assert.equal(canUseForDistance({ coord, coordinate_precision: 'locality_centroid_jitter' }), false);
+  assert.equal(canUseForDistance({ coord, coordinate_precision: '' }), false, 'precisão ausente é aproximada');
+  assert.equal(canUseForDistance({ coord, coordinate_precision: 'pending_exact_parcel' }), false);
+  assert.equal(canUseForDistance({ coord, coordinate_precision: 'street_centroid_external_geocode' }), false);
+  assert.equal(canUseForDistance({ coord: null, coordinate_precision: 'school_polygon_reference_point', confidence_flag: 'high' }), false, 'sem coordenada não há distância');
+  assert.equal(canUseForDistance({ coord: { lat: NaN, lon: 1 }, coordinate_precision: 'school_polygon_reference_point', confidence_flag: 'high' }), false);
+  assert.equal(canUseForDistance(null), false);
+  assert.equal(canUseForDistance({ coord, coordinate_precision: 'school_polygon_reference_point', confidence_flag: 'high' }), true);
+  // Flag que rebaixa a precisão vence a declaração exata.
+  assert.equal(canUseForDistance({ coord, coordinate_precision: 'school_polygon_reference_point', confidence_flag: 'low_spatial_high_attribute' }), false);
 });
 
 test('normalizeListing preserva a qualidade espacial e deriva preço/m²', () => {
@@ -277,8 +379,8 @@ test('normalizeAll descarta registro sem ID e conta o descarte', () => {
 });
 
 test('normalizeAll não quebra com entrada ausente ou entidade inválida', () => {
-  assert.deepEqual(normalizeAll('listings', undefined), { records: [], dropped: 0 });
-  assert.deepEqual(normalizeAll('listings', []), { records: [], dropped: 0 });
+  assert.deepEqual(normalizeAll('listings', undefined), { records: [], dropped: 0, warnings: [] });
+  assert.deepEqual(normalizeAll('listings', []), { records: [], dropped: 0, warnings: [] });
   assert.throws(() => normalizeAll('inexistente', []), /entidade desconhecida/);
 });
 

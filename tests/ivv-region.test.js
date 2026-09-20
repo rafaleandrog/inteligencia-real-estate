@@ -171,3 +171,71 @@ test('o contrato descreve a aba com a mesma chave composta', () => {
     assert.ok(contrato.includes(`\`${coluna}\``), `${coluna} fora do contrato`);
   }
 });
+
+// --- Matriz preço × liquidez (issue #127) ---------------------------------------------
+
+import { buildRegionScatter, regionGapPct, REGION_SCATTER_MODES } from '../src/ivv/region.js';
+
+const linhaRegiao = (over = {}) => ({
+  reference_month: '2026-05-01', market_region: 'Asa Norte', bedroom_bucket: 'TOTAL',
+  offered_units: 100, sold_units: 12, ivv_pct_published: 12, offer_price_brl_m2: 24000, sale_price_brl_m2: 22800, ...over,
+});
+
+test('regionGapPct: (pedido − venda) ÷ pedido em %; null sem os dois ou pedido zero', () => {
+  assert.ok(Math.abs(regionGapPct({ offerPriceM2: 24000, salePriceM2: 22800 }) - 5) < 1e-9);
+  assert.equal(regionGapPct({ offerPriceM2: null, salePriceM2: 22800 }), null);
+  assert.equal(regionGapPct({ offerPriceM2: 0, salePriceM2: 22800 }), null);
+  assert.equal(regionGapPct(null), null);
+});
+
+test('buildRegionScatter: DF Total é referência, RA sem eixo é nomeada, três modos', () => {
+  const { rows } = normalizeIvvRegion([
+    linhaRegiao(),
+    linhaRegiao({ market_region: 'Gama', offered_units: 40, sold_units: 2, ivv_pct_published: 5, offer_price_brl_m2: 9000, sale_price_brl_m2: 8500 }),
+    linhaRegiao({ market_region: 'Guará', offered_units: 30, sold_units: 0, ivv_pct_published: '', offer_price_brl_m2: 11000, sale_price_brl_m2: '' }),
+    linhaRegiao({ market_region: 'DF Total', offered_units: 1000, sold_units: 80, ivv_pct_published: 8, offer_price_brl_m2: 12000, sale_price_brl_m2: 11500 }),
+    linhaRegiao({ market_region: 'Lago Sul', bedroom_bucket: '4+Q', ivv_pct_published: 3 }),
+  ]);
+  const s = buildRegionScatter(rows, { bucket: 'TOTAL', mode: 'ivv_x_preco' });
+  assert.deepEqual(s.pontos.map((p) => p.region), ['Asa Norte', 'Gama']);
+  assert.deepEqual(s.semValor, ['Guará']);
+  assert.equal(s.referencia.region, 'DF Total');
+  assert.equal(s.referencia.x, 11500);
+  assert.equal(s.referencia.y, 8);
+  assert.equal(s.xLabel, 'Preço de venda (R$/m²)');
+  assert.equal(s.pontos[0].x, 22800);
+  assert.equal(s.pontos[0].y, 12);
+  assert.ok(Math.abs(s.pontos[0].gapPct - 5) < 1e-9);
+  assert.deepEqual(s.dominio, { xMin: 8500, xMax: 22800, yMin: 0, yMax: 12 });
+
+  const oferta = buildRegionScatter(rows, { bucket: 'TOTAL', mode: 'ivv_x_oferta' });
+  assert.deepEqual(oferta.pontos.map((p) => [p.region, p.x]), [['Asa Norte', 100], ['Gama', 40]]);
+  assert.deepEqual(oferta.semValor, ['Guará'], 'Guará tem oferta mas não IVV');
+
+  const gap = buildRegionScatter(rows, { bucket: 'TOTAL', mode: 'gap_x_preco' });
+  assert.equal(gap.pontos.length, 2);
+  assert.ok(Math.abs(gap.pontos[1].y - ((9000 - 8500) / 9000) * 100) < 1e-9);
+
+  // Modo desconhecido cai no primeiro; faixa sem linha devolve tudo vazio, sem erro.
+  assert.equal(buildRegionScatter(rows, { mode: 'inventado' }).modo, 'ivv_x_preco');
+  const vazio = buildRegionScatter(rows, { bucket: '2Q' });
+  assert.deepEqual([vazio.pontos, vazio.semValor, vazio.referencia, vazio.dominio], [[], [], null, null]);
+  assert.deepEqual(buildRegionScatter(null).pontos, []);
+  assert.equal(REGION_SCATTER_MODES.length, 3);
+});
+
+test('com dois meses na aba, ranking e matriz usam só o mês mais recente e o declaram', () => {
+  const { rows } = normalizeIvvRegion([
+    linhaRegiao({ reference_month: '2026-04-01', ivv_pct_published: 10, sale_price_brl_m2: 11000 }),
+    linhaRegiao({ reference_month: '2026-05-01', ivv_pct_published: 6, sale_price_brl_m2: 11500 }),
+    linhaRegiao({ reference_month: '2026-04-01', market_region: 'DF Total', ivv_pct_published: 8 }),
+    linhaRegiao({ reference_month: '2026-05-01', market_region: 'DF Total', ivv_pct_published: 7 }),
+  ]);
+  const s = buildRegionScatter(rows, { bucket: 'TOTAL', mode: 'ivv_x_preco' });
+  assert.equal(s.mes, '2026-05-01');
+  assert.deepEqual(s.pontos.map((p) => [p.region, p.x, p.y]), [['Asa Norte', 11500, 6]], 'uma bolinha por RA');
+  assert.equal(s.referencia.y, 7, 'referência do mesmo mês');
+  const r = buildRegionRanking(rows, { bucket: 'TOTAL' });
+  assert.equal(r.mes, '2026-05-01');
+  assert.deepEqual(r.regioes.map((x) => [x.region, x.ivvPct]), [['Asa Norte', 6]]);
+});

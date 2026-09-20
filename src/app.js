@@ -8,13 +8,18 @@
 // createElement (docs/ENGINEERING_RULES.md, R4.4).
 
 import { loadDataset, flattenEntities } from './data.js';
-import { isApproximateLocation, appMetaRows } from './normalize.js';
+import { isApproximateLocation, canUseForDistance, appMetaRows } from './normalize.js';
+import { comparableSample, comparableStats, positionVsMedian, rulerPosition, RECENT_DAYS } from './map/comparables.js';
 import { ivvProvenance, IVV_SCOPE_NOTICE } from './ivv/scope.js';
 import {
   buildRegionRanking, faixasDisponiveis, regionMonths, REGIAO_TOTAL, FAIXA_TOTAL,
 } from './ivv/region.js';
 import { aggregatePeriod } from './ivv/aggregate.js';
 import { buildMarketDashboard, formatMetricValue } from './ivv/cards.js';
+import { buildMicroKpis } from './ivv/derived.js';
+import { raRealEstateProfile, compactIndicators, RA_PROFILE_ITEMS, PROFILE_STATUS } from './pdad/insights.js';
+import { parseHash, buildHash, intParam } from './url-state.js';
+import { buildRegionScatter, REGION_SCATTER_MODES } from './ivv/region.js';
 import {
   PERIOD_MODE_OPTIONS, PERIOD_MODES, availableYears, availableMonths, controlDisabledReason,
   defaultPeriodSelection, selectIvvPeriod, chartRowsForSelection, periodSummary,
@@ -22,6 +27,7 @@ import {
 } from './ivv/period.js';
 import {
   buildHistoryCharts, buildSeasonality, buildSparkline, SERIES_MODES,
+  COMPARE_MODES, COMPARE_MODE_OPTIONS, COMPARE_SUFFIX, comparisonRows, historyMonths,
 } from './ivv/history.js';
 import { CHART_TYPES, DIMENSOES } from './ivv/chart-model.js';
 import { chartGeometry, chartViewport, sparkViewport } from './ivv/chart-layout.js';
@@ -55,7 +61,7 @@ import {
   formatAnchorSegment, formatSalesStage, formatRegularizationStatus, formatPercent,
   percentFromPoints, raAgeBands, polygonStyle, sortPolygonsForDraw, raProfileEssentials,
   raProfileUnavailability, polygonEssentials, polygonPropertyTiers, polygonEssentialKeys,
-  polygonEntityType,
+  polygonEntityType, compactNumber,
 } from './format.js';
 import { trafficPanelRows } from './traffic/panel.js';
 import { ANCHOR_ICONS, ANCHOR_FALLBACK_ICON } from './icons.js';
@@ -71,7 +77,8 @@ const dom = {
   anchorGroup: el('anchorGroup'), anchorSegment: el('anchorSegment'),
   salesStage: el('salesStage'), regularizationStatus: el('regularizationStatus'),
   priceMin: el('priceMin'), priceMax: el('priceMax'), beds: el('beds'),
-  clearFilters: el('clearFilters'), layers: el('layersSection'),
+  clearFilters: el('clearFilters'),
+  moreFilters: el('moreFilters'), moreFiltersSummary: el('moreFiltersSummary'), layers: el('layersSection'),
   kpiVisible: el('kpiVisible'), kpiMedian: el('kpiMedian'), kpiNote: el('kpiNote'),
   loadingState: el('loadingState'), errorState: el('errorState'),
   errorTitle: el('errorTitle'), errorDetail: el('errorDetail'), retryBtn: el('retryBtn'),
@@ -94,10 +101,12 @@ const dom = {
   marketMonth: el('marketMonth'),
   marketStart: el('marketStart'), marketEnd: el('marketEnd'),
   marketPeriodLabel: el('marketPeriodLabel'), marketPeriodBase: el('marketPeriodBase'),
-  marketDestaques: el('marketDestaques'), marketCharts: el('marketCharts'),
+  marketDestaques: el('marketDestaques'), marketMicroKpis: el('marketMicroKpis'), marketCharts: el('marketCharts'),
   marketSeriesMode: el('marketSeriesMode'),
   marketRegioes: el('marketRegioes'), marketRegioesFaixa: el('marketRegioesFaixa'),
   marketRegioesLista: el('marketRegioesLista'), marketRegioesNote: el('marketRegioesNote'),
+  marketRegioesScatter: el('marketRegioesScatter'), marketRegioesModo: el('marketRegioesModo'),
+  marketCompare: el('marketCompare'), copyLink: el('copyLink'),
   marketRegioesAusentes: el('marketRegioesAusentes'),
   marketHistoryNote: el('marketHistoryNote'),
   marketProvenance: el('marketProvenance'), marketProvenanceList: el('marketProvenanceList'),
@@ -114,7 +123,7 @@ const dom = {
   pdadTab: el('pdadTab'), pdadView: el('pdadView'), pdadScope: el('pdadScope'),
   pdadRa: el('pdadRa'), pdadYear: el('pdadYear'), pdadTema: el('pdadTema'),
   pdadReset: el('pdadReset'), pdadKpis: el('pdadKpis'), pdadYearNote: el('pdadYearNote'),
-  pdadTemaBlocks: el('pdadTemaBlocks'),
+  pdadTemaBlocks: el('pdadTemaBlocks'), pdadProfile: el('pdadProfile'),
   pdadScatterSection: el('pdadScatterSection'), pdadScatterMeta: el('pdadScatterMeta'),
   pdadScatterView: el('pdadScatterView'), pdadScatterInsight: el('pdadScatterInsight'),
   pdadScatterPlot: el('pdadScatterPlot'), pdadScatterNote: el('pdadScatterNote'),
@@ -147,6 +156,14 @@ const dom = {
 
 const state = {
   records: [],
+  // Registros que passaram no filtro na última renderização — é o "recorte selecionado"
+  // contra o qual o painel de detalhe posiciona um imóvel (issue #124).
+  visible: [],
+  // Comparação temporal dos gráficos (issue #127) e modo da matriz por RA.
+  marketCompare: COMPARE_MODES.NENHUM,
+  marketRegionScatterMode: null,
+  // Parâmetros lidos da URL na abertura (issue #127); consumidos por quem monta cada view.
+  pendingUrl: null,
   filters: createFilterState(),
   markers: new Map(),
   selectedId: null,
@@ -168,6 +185,7 @@ const state = {
   // mesmo tratamento de `ivvRegion` (R2.5).
   fipezapMonthly: [],
   fipezapLocality: [],
+  fipezapLocalityMap: [],
   fipezapSelection: null,
   fipezapLocalitySegment: null,
   fipezapLocalityChoice: null,
@@ -645,12 +663,120 @@ function precisionRow(record) {
   // ausente/pendente/geocodificada, e dizer "centro da localidade" ali seria inventar
   // método (achado P1 do Codex na #109; R3.6).
   const metodo = approximate && record.coordinate_precision ? formatSpatialPrecision(record.coordinate_precision) : '';
+  // Distância só se mede a partir de ponto exato (issue #124): a frase deixa isso dito
+  // onde a precisão é declarada, para ninguém ler "aproximada" e pedir "a quantos metros".
+  const distancia = canUseForDistance(record) ? '' : ' Distâncias a âncoras não são calculadas para este ponto.';
   return {
     label: 'Localização',
     value: approximate ? (metodo ? `Aproximada · ${metodo.charAt(0).toLowerCase()}${metodo.slice(1)}` : 'Aproximada') : 'Verificada na fonte',
     className: approximate ? 'precision' : 'precision precision-exact',
-    title: detalhe ? `${frase} ${detalhe}.` : frase,
+    title: (detalhe ? `${frase} ${detalhe}.` : frase) + distancia,
   };
+}
+
+/**
+ * "Posição no recorte" (issue #124): o preço/m² do imóvel contra a distribuição dos
+ * comparáveis que estão na tela — os registros do mesmo tipo que passaram no filtro,
+ * sem ele próprio. Régua P25–P50–P75 e qualidade da amostra vêm de `src/map/comparables.js`;
+ * aqui só se desenha. Amostra sem preço/m² diz isso em texto — nunca "0 comparáveis"
+ * como se fosse um resultado (R5.7).
+ */
+function buildPositionBlock(record) {
+  if (record.kind !== 'listing' && record.kind !== 'development') return null;
+  const sample = comparableSample(state.visible, record);
+  const stats = comparableStats(sample);
+
+  const section = document.createElement('section');
+  section.className = 'detail-position';
+  section.setAttribute('aria-label', 'Posição no recorte');
+  const title = document.createElement('h3');
+  title.textContent = 'Posição no recorte';
+  section.append(title);
+
+  if (stats.withPriceM2 === 0) {
+    const empty = document.createElement('p');
+    empty.className = 'detail-position-empty';
+    empty.textContent = sample.length === 0
+      ? 'Sem comparáveis no recorte atual — amplie os filtros.'
+      : `${formatNumber(sample.length)} registro(s) no recorte, nenhum com preço/m² para comparar.`;
+    section.append(empty);
+    return section;
+  }
+
+  const { deltaPct, sampleN } = positionVsMedian(record.price_m2, stats);
+  const head = document.createElement('p');
+  head.className = 'detail-position-head';
+  const value = document.createElement('strong');
+  value.className = 'detail-position-value';
+  value.textContent = formatPriceM2(record.price_m2);
+  head.append(value);
+  const delta = document.createElement('span');
+  delta.className = 'detail-position-delta';
+  if (deltaPct === null) {
+    delta.textContent = 'sem preço/m² para posicionar';
+    delta.dataset.sign = 'none';
+  } else {
+    const sinal = deltaPct > 0 ? '+' : (deltaPct < 0 ? '−' : '');
+    delta.textContent = `${sinal}${formatPercent(Math.abs(deltaPct) * 100)} vs. mediana`;
+    delta.dataset.sign = deltaPct > 0 ? 'above' : (deltaPct < 0 ? 'below' : 'equal');
+  }
+  head.append(delta);
+  section.append(head);
+
+  // Régua P25 ── P50 ── P75, com o imóvel como ponto. Fração em `rulerPosition`: o SVG
+  // só desenha. Sem cor literal: as classes vivem em assets/styles.css.
+  const ruler = document.createElement('figure');
+  ruler.className = 'detail-ruler';
+  const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+  svg.setAttribute('viewBox', '0 0 100 14');
+  svg.setAttribute('class', 'detail-ruler-svg');
+  svg.setAttribute('aria-hidden', 'true');
+  const line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+  line.setAttribute('x1', '6'); line.setAttribute('x2', '94'); line.setAttribute('y1', '7'); line.setAttribute('y2', '7');
+  line.setAttribute('class', 'detail-ruler-line');
+  svg.append(line);
+  for (const x of [6, 50, 94]) {
+    const tick = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+    tick.setAttribute('x1', String(x)); tick.setAttribute('x2', String(x)); tick.setAttribute('y1', '3'); tick.setAttribute('y2', '11');
+    tick.setAttribute('class', 'detail-ruler-tick');
+    svg.append(tick);
+  }
+  const pos = rulerPosition(record.price_m2, stats);
+  if (pos !== null) {
+    const dot = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+    dot.setAttribute('cx', String(6 + 88 * pos)); dot.setAttribute('cy', '7'); dot.setAttribute('r', '3.2');
+    dot.setAttribute('class', 'detail-ruler-dot');
+    svg.append(dot);
+  }
+  ruler.append(svg);
+  const labels = document.createElement('figcaption');
+  labels.className = 'detail-ruler-labels';
+  for (const [rotulo, v] of [['P25', stats.p25], ['P50', stats.median], ['P75', stats.p75]]) {
+    const item = document.createElement('span');
+    const k = document.createElement('small');
+    k.textContent = rotulo;
+    const n = document.createElement('b');
+    n.textContent = formatNumber(Math.round(v));
+    item.append(k, n);
+    labels.append(item);
+  }
+  ruler.append(labels);
+  section.append(ruler);
+
+  const quality = document.createElement('ul');
+  quality.className = 'detail-position-sample';
+  for (const texto of [
+    `${formatNumber(sample.length)} comparáveis`,
+    `${formatNumber(sampleN)} com preço/m²`,
+    `${formatNumber(stats.active)} ativos`,
+    `${formatNumber(stats.recent)} recentes (${RECENT_DAYS} dias)`,
+  ]) {
+    const li = document.createElement('li');
+    li.textContent = texto;
+    quality.append(li);
+  }
+  section.append(quality);
+  return section;
 }
 
 /** Link para a fonte, com esquema validado e rel de segurança (R4.5, R4.6). */
@@ -791,6 +917,9 @@ function buildDetailBody(record) {
 
   appendTiers(frag, { essencial, complementar, tecnico }, { collapse: false });
 
+  const position = buildPositionBlock(record);
+  if (position) frag.append(position);
+
   const regularization = buildRegularizationNotice(record);
   if (regularization) frag.append(regularization);
 
@@ -889,6 +1018,7 @@ function readFilters() {
   state.filters.anchorSegment = dom.anchorSegment.value;
   state.filters.priceMin = numberFieldValue(dom.priceMin);
   state.filters.priceMax = numberFieldValue(dom.priceMax);
+  updateMoreFiltersSummary();
 
   const beds = dom.beds.value;
   state.filters.bedrooms = beds === '' ? null : Number(beds);
@@ -912,6 +1042,21 @@ function readFilters() {
   state.filters.polygonTypes = typeInputs.length === 0
     ? null
     : new Set([...typeInputs].filter((i) => i.checked).map((i) => i.dataset.polygonType));
+}
+
+/**
+ * "+ Mais filtros" (issue #124): os filtros secundários vivem numa gaveta recolhida.
+ * O resumo diz quantos estão ativos, e a gaveta ABRE sozinha quando algum está — um
+ * filtro invisível reduzindo o mapa é a forma mais barata de "plausível e errado".
+ */
+function updateMoreFiltersSummary() {
+  if (!dom.moreFilters || !dom.moreFiltersSummary) return;
+  const ativos = [
+    state.filters.buildingOrientation, state.filters.salesStage, state.filters.regularizationStatus,
+    state.filters.anchorGroup, state.filters.anchorSegment,
+  ].filter((v) => v !== '' && v !== null && v !== undefined).length;
+  dom.moreFiltersSummary.textContent = ativos > 0 ? `Mais filtros (${ativos} ativo${ativos > 1 ? 's' : ''})` : 'Mais filtros';
+  if (ativos > 0) dom.moreFilters.open = true;
 }
 
 function renderKpis(kpis) {
@@ -1094,10 +1239,12 @@ function renderRaProfile() {
 function render() {
   readFilters();
   const visible = applyFilters(state.records, state.filters);
+  state.visible = visible;
   renderMarkers(visible);
   renderPolygons();
   renderKpis(computeKpis(visible));
   renderRaProfile();
+  if (viewFromHash() === 'mapa') syncHash();
 
   // Detalhe aberto de um registro que saiu do filtro deixa de fazer sentido.
   if (state.selectedId && !visible.some((r) => recordKey(r) === state.selectedId)) closeDetail();
@@ -1613,8 +1760,110 @@ const VIEWS = ['mapa', 'mercado', 'diagnostico', 'ranking', 'comparar', 'base'];
 
 /** A view pedida pelo hash. Hash desconhecido cai no mapa, sem erro. */
 function viewFromHash() {
-  const wanted = (location.hash || '').replace('#', '');
-  return VIEWS.includes(wanted) ? wanted : 'mapa';
+  const { view } = parseHash(location.hash || '');
+  return VIEWS.includes(view) ? view : 'mapa';
+}
+
+/**
+ * Estado compartilhável de cada view (issue #127): só o que difere do padrão entra na
+ * URL, para `#mapa` sem filtro continuar sendo `#mapa`. O vocabulário fechado de chaves
+ * mora em src/url-state.js.
+ */
+function currentUrlParams(view) {
+  if (view === 'mapa') {
+    const f = state.filters;
+    return {
+      ra: f.ra, type: f.propertyType, beds: f.bedrooms === null ? '' : String(f.bedrooms),
+      price_min: f.priceMin === null ? '' : String(f.priceMin),
+      price_max: f.priceMax === null ? '' : String(f.priceMax),
+      locality: f.locality, q: f.search,
+    };
+  }
+  if (view === 'mercado') {
+    const sel = state.marketSelection;
+    const padrao = state.ivvMonthly.length ? defaultPeriodSelection(state.ivvMonthly) : null;
+    const params = {};
+    if (sel && padrao) {
+      if (sel.mode !== padrao.mode) params.periodo = sel.mode;
+      if (sel.mode === PERIOD_MODES.CUSTOM) { params.de = sel.start || ''; params.ate = sel.end || ''; }
+      else if (sel.year !== padrao.year || sel.month !== padrao.month) {
+        params.ano = sel.year ? String(sel.year) : '';
+        params.mes = sel.month ? String(sel.month) : '';
+      }
+    }
+    if (state.marketSeriesMode && sel && state.marketSeriesMode !== modoPadraoDaSerie(sel)) params.serie = state.marketSeriesMode;
+    if (state.marketCompare && state.marketCompare !== COMPARE_MODES.NENHUM) params.compare = state.marketCompare;
+    if (state.marketRegionBucket && state.marketRegionBucket !== FAIXA_TOTAL) params.faixa = state.marketRegionBucket;
+    if (state.marketRegionScatterMode && state.marketRegionScatterMode !== REGION_SCATTER_MODES[0].value) params.regiao_modo = state.marketRegionScatterMode;
+    return params;
+  }
+  if (view === 'diagnostico') {
+    const f = state.pdadFilters;
+    if (!f) return {};
+    const anos = pdadYearsAvailable(state.pdadData);
+    return {
+      ra: f.ra && f.ra !== 'all' ? f.ra : '',
+      ano: f.year && f.year !== anos[0] ? String(f.year) : '',
+      tema: f.tema && f.tema !== 'all' ? f.tema : '',
+    };
+  }
+  if (view === 'ranking') {
+    // O Ranking lê `state.pdadRankState`, não `state.pdadFilters`: o link tem de refletir
+    // o estado que a tela de fato renderiza (revisão da #129). Ano não entra — o ranking
+    // é sempre sobre o ano mais recente publicado.
+    const r = state.pdadRankState;
+    return { ra: r && r.ra ? r.ra : '' };
+  }
+  return {};
+}
+
+/** Reescreve o hash com o estado da view corrente, sem disparar `hashchange`. */
+function syncHash() {
+  const view = viewFromHash();
+  const alvo = buildHash(view, currentUrlParams(view));
+  if (location.hash === alvo) return;
+  // O WebKit limita `replaceState` a 100 chamadas por 30 s e lança SecurityError depois
+  // disso; a URL é conveniência, e um erro dela não pode derrubar o render.
+  try { history.replaceState(null, '', alvo); } catch { /* fica com o hash anterior */ }
+}
+
+/**
+ * Lê os parâmetros da URL na abertura e os aplica ao mapa; Mercado e Diagnóstico os
+ * consomem ao montar os próprios filtros (`initializeMarketFilters`, `initializePdadFilters`).
+ */
+function applyUrlParams() {
+  const { view, params } = parseHash(location.hash || '');
+  state.pendingUrl = { view, params };
+  if (view !== 'mapa') return;
+  const setIfOption = (select, value) => {
+    if (!value) return;
+    if ([...select.options].some((o) => o.value === value)) select.value = value;
+  };
+  setIfOption(dom.locality, params.locality);
+  setIfOption(dom.raFilter, params.ra);
+  setIfOption(dom.ptype, params.type);
+  setIfOption(dom.beds, params.beds);
+  if (intParam(params.price_min) !== null) dom.priceMin.value = String(intParam(params.price_min));
+  if (intParam(params.price_max) !== null) dom.priceMax.value = String(intParam(params.price_max));
+  if (params.q) dom.search.value = params.q;
+}
+
+async function copyAnalysisLink() {
+  const url = location.href;
+  const original = 'Copiar link desta análise';
+  let ok = false;
+  try {
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      await navigator.clipboard.writeText(url);
+      ok = true;
+    }
+  } catch { ok = false; }
+  if (!ok) {
+    // Sem clipboard (http, permissão negada): mostra a URL para copiar à mão.
+    window.prompt('Copie o link desta análise:', url);
+  }
+  dom.copyLink.textContent = ok ? 'Link copiado' : original;
+  if (ok) setTimeout(() => { dom.copyLink.textContent = original; }, 2000);
 }
 
 /**
@@ -1658,8 +1907,10 @@ function setView(name) {
   if (view === 'comparar') renderPdadCompareView();
   if (view === 'base') renderPdadBaseView();
 
-  const alvo = `#${view}`;
-  if (location.hash !== alvo) history.replaceState(null, '', alvo);
+  const alvo = buildHash(view, currentUrlParams(view));
+  if (location.hash !== alvo) {
+    try { history.replaceState(null, '', alvo); } catch { /* idem syncHash */ }
+  }
 }
 
 /**
@@ -1792,7 +2043,33 @@ function renderMarketCards(months, janela) {
     sparks,
   })));
   dom.marketBody.replaceChildren(...grupos.map(marketGrupo));
+  // Faixa compacta de derivados (issue #125), abaixo dos destaques: razões entre o que o
+  // motor já agregou — nunca mais uma linha de seis cards grandes.
+  dom.marketMicroKpis.replaceChildren(...buildMicroKpis(aggregated, months).map(marketMicroKpi));
   return { warnings: aggregated.warnings, mesReferencia, sparks };
+}
+
+/**
+ * Um micro-indicador: rótulo, valor (ou a frase de ausência) e a fórmula no `title` — a
+ * metodologia fica a um hover de distância, no mesmo elemento que mostra o número.
+ */
+function marketMicroKpi(item) {
+  const node = document.createElement('div');
+  node.className = 'market-micro';
+  node.dataset.derivado = item.key;
+  node.title = item.formula;
+
+  const label = document.createElement('span');
+  label.className = 'market-micro-label';
+  label.textContent = item.label;
+  node.append(label);
+
+  const value = document.createElement('span');
+  value.className = item.value === null ? 'market-micro-value market-micro-absent' : 'market-micro-value';
+  value.textContent = item.value === null ? 'não publicado' : item.value;
+  if (item.value === null) value.title = item.absent;
+  node.append(value);
+  return node;
 }
 
 function option(value, label) {
@@ -1852,6 +2129,18 @@ function periodChip(item) {
 
 function initializeMarketFilters() {
   state.marketSelection = defaultPeriodSelection(state.ivvMonthly);
+  const pendente = state.pendingUrl && state.pendingUrl.view === 'mercado' ? state.pendingUrl.params : null;
+  if (pendente) {
+    if (Object.values(PERIOD_MODES).includes(pendente.periodo)) state.marketSelection.mode = pendente.periodo;
+    if (intParam(pendente.ano) !== null) state.marketSelection.year = intParam(pendente.ano);
+    if (intParam(pendente.mes) !== null) state.marketSelection.month = intParam(pendente.mes);
+    if (pendente.de) state.marketSelection.start = pendente.de;
+    if (pendente.ate) state.marketSelection.end = pendente.ate;
+    if (Object.values(SERIES_MODES).includes(pendente.serie)) state.marketSeriesMode = pendente.serie;
+    if (Object.values(COMPARE_MODES).includes(pendente.compare)) state.marketCompare = pendente.compare;
+    if (pendente.faixa) state.marketRegionBucket = pendente.faixa;
+    if (REGION_SCATTER_MODES.some((m) => m.value === pendente.regiao_modo)) state.marketRegionScatterMode = pendente.regiao_modo;
+  }
   dom.marketPeriodChips.replaceChildren(...PERIOD_MODE_OPTIONS.map(periodChip));
 
   const years = availableYears(state.ivvMonthly);
@@ -2017,7 +2306,8 @@ function chartSvg(model, viewport) {
   }
 
   for (const serie of geometria.series) {
-    const grupo = svgNode('g', { class: `market-serie ${classeDaSerie(model, serie)}` });
+    const comparada = typeof serie.chave === 'string' && serie.chave.endsWith(COMPARE_SUFFIX);
+    const grupo = svgNode('g', { class: `market-serie ${classeDaSerie(model, serie)}${comparada ? ' market-serie-comparacao' : ''}` });
     for (const area of serie.areas) grupo.append(svgNode('path', { d: area, class: 'market-serie-area' }));
     for (const segmento of serie.segmentos) {
       grupo.append(svgNode('path', { d: segmento, class: 'market-serie-linha' }));
@@ -2517,6 +2807,103 @@ function renderMarketRegioes() {
   dom.marketRegioesAusentes.textContent = ranking.semValor.length > 0
     ? `Sem IVV publicado nesta faixa: ${ranking.semValor.join(', ')}.`
     : '';
+
+  renderMarketRegioesScatter(linhas, faixa);
+}
+
+/**
+ * Matriz preço × liquidez (issue #127): um ponto por RA, `DF Total` como referência
+ * tracejada, três modos de leitura. Tooltip com RA, IVV, preço de venda, preço pedido,
+ * oferta, vendas e gap — números, sem interpretação automática.
+ */
+function renderMarketRegioesScatter(linhas, faixa) {
+  if (!dom.marketRegioesScatter) return;
+  if (dom.marketRegioesModo.childElementCount === 0) {
+    dom.marketRegioesModo.replaceChildren(...REGION_SCATTER_MODES.map((item) => {
+      const botao = periodChip(item);
+      botao.dataset.scatterModo = item.value;
+      delete botao.dataset.mode;
+      return botao;
+    }));
+  }
+  const modo = REGION_SCATTER_MODES.some((m) => m.value === state.marketRegionScatterMode)
+    ? state.marketRegionScatterMode : REGION_SCATTER_MODES[0].value;
+  state.marketRegionScatterMode = modo;
+  for (const chip of dom.marketRegioesModo.querySelectorAll('.market-chip')) {
+    chip.setAttribute('aria-pressed', String(chip.dataset.scatterModo === modo));
+  }
+
+  const scatter = buildRegionScatter(linhas, { bucket: faixa, mode: modo });
+  const wrap = document.createElement('div');
+  wrap.className = 'market-scatter';
+  if (scatter.pontos.length === 0) {
+    const p = document.createElement('p');
+    p.className = 'market-card-absent';
+    p.textContent = 'Sem RA com os dois eixos publicados nesta faixa.';
+    wrap.append(p);
+  } else {
+    const W = 600; const H = 320; const L = 56; const R = 16; const T = 16; const B = 44;
+    const { xMin, xMax, yMin, yMax } = scatter.dominio;
+    const xSpan = xMax - xMin || 1; const ySpan = yMax - yMin || 1;
+    const px = (x) => L + ((x - xMin) / xSpan) * (W - L - R);
+    const py = (y) => T + (1 - (y - yMin) / ySpan) * (H - T - B);
+    const svg = svgNode('svg', { viewBox: `0 0 ${W} ${H}`, class: 'market-chart-svg market-scatter-svg', role: 'img' });
+    svg.setAttribute('aria-label', `${scatter.xLabel} × ${scatter.yLabel}, ${scatter.pontos.length} RAs.`);
+    svg.append(svgNode('line', { x1: L, x2: W - R, y1: H - B, y2: H - B, class: 'chart-axis-line' }));
+    svg.append(svgNode('line', { x1: L, x2: L, y1: T, y2: H - B, class: 'chart-axis-line' }));
+    const fx = (v) => (v >= 1000 ? compactNumber(v) : formatNumber(Math.round(v)));
+    for (const [v, x] of [[xMin, L], [xMax, W - R]]) {
+      const t = svgNode('text', { x, y: H - B + 16, class: 'chart-axis-month', 'text-anchor': x === L ? 'start' : 'end' });
+      t.textContent = fx(v);
+      svg.append(t);
+    }
+    for (const [v, y] of [[yMin, H - B], [yMax, T + 4]]) {
+      const t = svgNode('text', { x: L - 6, y, class: 'chart-axis-value' });
+      t.textContent = formatNumber(Math.round(v * 10) / 10);
+      svg.append(t);
+    }
+    const xl = svgNode('text', { x: (L + W - R) / 2, y: H - 6, class: 'chart-axis-month', 'text-anchor': 'middle' });
+    xl.textContent = scatter.xLabel;
+    svg.append(xl);
+    const yl = svgNode('text', { x: 12, y: (T + H - B) / 2, class: 'chart-axis-value', transform: `rotate(-90 12 ${(T + H - B) / 2})`, 'text-anchor': 'middle' });
+    yl.textContent = scatter.yLabel;
+    svg.append(yl);
+    if (scatter.referencia) {
+      const rx = px(Math.min(Math.max(scatter.referencia.x, xMin), xMax));
+      const ry = py(Math.min(Math.max(scatter.referencia.y, yMin), yMax));
+      svg.append(svgNode('line', { x1: L, x2: W - R, y1: ry, y2: ry, class: 'chart-guia market-scatter-referencia' }));
+      svg.append(svgNode('line', { x1: rx, x2: rx, y1: T, y2: H - B, class: 'chart-guia market-scatter-referencia' }));
+      const rt = svgNode('text', { x: W - R, y: ry - 4, class: 'chart-axis-value', 'text-anchor': 'end' });
+      rt.textContent = `${REGIAO_TOTAL}`;
+      svg.append(rt);
+    }
+    const grupo = svgNode('g', { class: 'market-serie serie-1' });
+    for (const p of scatter.pontos) {
+      const dot = svgNode('circle', { cx: px(p.x), cy: py(p.y), r: 5, class: 'market-serie-marcador market-scatter-ponto' });
+      dot.append(tituloSvg([
+        p.region,
+        `IVV: ${p.ivvPct === null ? 'não publicado' : formatPercent(percentFromPoints(p.ivvPct))}`,
+        `Preço de venda: ${p.salePriceM2 === null ? 'não publicado' : formatPriceM2(p.salePriceM2)}`,
+        `Preço pedido: ${p.offerPriceM2 === null ? 'não publicado' : formatPriceM2(p.offerPriceM2)}`,
+        `Oferta: ${p.offeredUnits === null ? 'não publicada' : formatNumber(p.offeredUnits)} un.`,
+        `Vendas: ${p.soldUnits === null ? 'não publicadas' : formatNumber(p.soldUnits)} un.`,
+        `Gap pedido/venda: ${p.gapPct === null ? 'não calculável' : formatPercent(p.gapPct)}`,
+      ].join('\n')));
+      grupo.append(dot);
+      const label = svgNode('text', { x: px(p.x) + 7, y: py(p.y) + 3.5, class: 'chart-axis-value market-scatter-rotulo', 'text-anchor': 'start' });
+      label.textContent = p.region;
+      grupo.append(label);
+    }
+    svg.append(grupo);
+    wrap.append(svg);
+  }
+  const nota = document.createElement('p');
+  nota.className = 'market-regioes-ausentes';
+  nota.textContent = scatter.semValor.length > 0
+    ? `Fora da matriz por falta de um dos eixos: ${scatter.semValor.join(', ')}.`
+    : '';
+  wrap.append(nota);
+  dom.marketRegioesScatter.replaceChildren(wrap);
 }
 
 /**
@@ -2608,7 +2995,7 @@ function renderFipezapLocalidade() {
     chip.setAttribute('aria-pressed', String(chip.dataset.segmento === segmento));
   }
 
-  const localidades = localitiesAvailable(state.fipezapLocality, segmento);
+  const localidades = localitiesAvailable(state.fipezapLocality, segmento, state.fipezapLocalityMap);
   dom.fipezapLocality.replaceChildren(...localityOptionNodes(localidades));
   const escolha = localidades.some((item) => item.locality === state.fipezapLocalityChoice)
     ? state.fipezapLocalityChoice : (localidades[0]?.locality || null);
@@ -2664,8 +3051,16 @@ function renderMarketDashboard() {
 
   renderMarketRegioes();
 
+  // Comparação temporal (issue #127): o recorte comparado vem da janela que os gráficos
+  // desenham, e a série entra tracejada NO MESMO eixo — nunca num segundo eixo Y.
+  const compare = Object.values(COMPARE_MODES).includes(state.marketCompare) ? state.marketCompare : COMPARE_MODES.NENHUM;
+  state.marketCompare = compare;
+  sincronizarComparacao(compare);
+  const mesesJanela = historyMonths(janela);
+  const comparacao = comparisonRows(state.ivvMonthly, { start: mesesJanela[0], end: mesesJanela.at(-1) }, compare);
+
   const graficos = [
-    ...buildHistoryCharts(fontes, modo),
+    ...buildHistoryCharts(fontes, modo, { comparacao }),
     buildSeasonality(state.ivvMonthly, { modo }),
   ];
   const cards = graficos.map(marketChart);
@@ -2682,7 +3077,23 @@ function renderMarketDashboard() {
   // agregação inteira.
   cardsNaTela = [...cards, ...sparks, ...fipezapCards, ...fipezapLocalidadeCards];
   desenharGraficos(cardsNaTela);
+  if (viewFromHash() === 'mercado') syncHash();
   return warnings.map((item) => `Mercado (${item.metric || 'período'}): ${item.message}`);
+}
+
+function sincronizarComparacao(compare) {
+  if (!dom.marketCompare) return;
+  if (dom.marketCompare.childElementCount === 0) {
+    dom.marketCompare.replaceChildren(...COMPARE_MODE_OPTIONS.map((item) => {
+      const botao = periodChip(item);
+      botao.dataset.compare = item.value;
+      delete botao.dataset.mode;
+      return botao;
+    }));
+  }
+  for (const chip of dom.marketCompare.querySelectorAll('.market-chip')) {
+    chip.setAttribute('aria-pressed', String(chip.dataset.compare === compare));
+  }
 }
 
 const MODOS_DE_SERIE = Object.freeze([
@@ -2820,9 +3231,18 @@ function initializePdadFilters() {
   }));
   dom.pdadYear.value = String(maisRecente);
   state.pdadFilters = { ra: 'all', year: maisRecente, tema: 'all' };
+  const pendente = state.pendingUrl && state.pendingUrl.view === 'diagnostico' ? state.pendingUrl.params : null;
+  if (pendente) {
+    if (intParam(pendente.ano) !== null && anos.includes(intParam(pendente.ano))) {
+      state.pdadFilters.year = intParam(pendente.ano);
+      dom.pdadYear.value = String(state.pdadFilters.year);
+    }
+    if (pendente.ra) state.pdadFilters.ra = pendente.ra;
+    if (pendente.tema && PDAD_TEMAS[pendente.tema]) state.pdadFilters.tema = pendente.tema;
+  }
   populatePdadRaFilter();
   populateSelect(dom.pdadTema, Object.keys(PDAD_TEMAS), (key) => PDAD_TEMAS[key]);
-  dom.pdadTema.value = 'all';
+  dom.pdadTema.value = state.pdadFilters.tema;
   // Metadados de Figura/Tabela por indicador (issue #102) — montados uma vez, igual ao
   // índice agregado: são constantes por `indicator_code`, recalcular a cada filtro
   // custaria as ~12 mil linhas de novo para o mesmo resultado.
@@ -2974,6 +3394,135 @@ function pdadIndicatorCard(indicador, raIds) {
   return article;
 }
 
+/**
+ * Perfil imobiliário da RA (issue #126, Plano 01 §10): sete leituras com referência
+ * EXPLÍCITA — a mediana das RAs que publicaram o mesmo indicador no mesmo ano, com o `n`
+ * escrito — e a posição entre elas. Só aparece com UMA RA escolhida: com várias não há
+ * "a RA" para posicionar. Nunca chama a referência de "média do DF"; nunca mostra
+ * suprimido como zero. Abaixo, os demais indicadores em lista compacta clicável, cada um
+ * com a categoria dominante — o clique abre o detalhamento até a Figura de origem.
+ */
+function renderPdadProfile(raIds) {
+  if (!dom.pdadProfile) return;
+  const { year } = state.pdadFilters;
+  const perfil = raIds.length === 1 ? raRealEstateProfile(state.pdadIndex, year, raIds[0]) : null;
+  if (!perfil) {
+    dom.pdadProfile.hidden = true;
+    dom.pdadProfile.replaceChildren();
+    return;
+  }
+
+  const frag = document.createDocumentFragment();
+  const head = document.createElement('div');
+  head.className = 'pdad-tema-head pdad-profile-head';
+  const rotulo = document.createElement('span');
+  rotulo.textContent = `Perfil imobiliário · ${perfil.raName}`;
+  head.append(rotulo);
+  frag.append(head);
+
+  const grid = document.createElement('div');
+  grid.className = 'pdad-profile-grid';
+  for (const item of perfil.items) grid.append(pdadProfileTile(item, perfil));
+  frag.append(grid);
+
+  const nota = document.createElement('p');
+  nota.className = 'pdad-footnote pdad-profile-note';
+  nota.textContent = 'Referência: mediana das RAs com valor publicado para o mesmo indicador e ano '
+    + '(não é a média do DF). Posição calculada só entre RAs publicadas; suprimido não entra.';
+  frag.append(nota);
+
+  const outros = compactIndicators(state.pdadIndex, year, perfil.raGeoId, RA_PROFILE_ITEMS.map((i) => i.key));
+  if (outros.length) {
+    const subhead = document.createElement('div');
+    subhead.className = 'pdad-tema-head';
+    const sub = document.createElement('span');
+    sub.textContent = 'Outros indicadores';
+    subhead.append(sub);
+    frag.append(subhead);
+
+    const lista = document.createElement('ul');
+    lista.className = 'pdad-compact-list';
+    for (const item of outros) lista.append(pdadCompactRow(item, perfil));
+    frag.append(lista);
+  }
+
+  dom.pdadProfile.replaceChildren(frag);
+  dom.pdadProfile.hidden = false;
+}
+
+function pdadProfileTile(item, perfil) {
+  const tile = document.createElement('article');
+  tile.className = 'pdad-profile-item';
+  tile.dataset.profileItem = item.id;
+  tile.title = item.hint;
+
+  const label = document.createElement('span');
+  label.className = 'pdad-profile-label';
+  label.textContent = item.label;
+  tile.append(label);
+
+  const valor = document.createElement('strong');
+  valor.className = 'pdad-profile-value';
+  if (item.status === PROFILE_STATUS.PUBLISHED) {
+    valor.textContent = formatPercent(item.value);
+  } else {
+    valor.className += ' pdad-profile-absent';
+    valor.textContent = item.status === PROFILE_STATUS.SUPPRESSED ? 'suprimido' : 'não publicado';
+  }
+  tile.append(valor);
+
+  const ref = document.createElement('span');
+  ref.className = 'pdad-profile-ref';
+  if (item.deltaPp !== null) {
+    const sinal = item.deltaPp > 0 ? '+' : (item.deltaPp < 0 ? '−' : '');
+    ref.textContent = `${sinal}${formatPercent(Math.abs(item.deltaPp)).replace('%', ' p.p.')} vs. mediana de ${item.reference.n} RAs`;
+    ref.dataset.sign = item.deltaPp > 0 ? 'above' : (item.deltaPp < 0 ? 'below' : 'equal');
+  } else if (item.status === PROFILE_STATUS.PUBLISHED) {
+    ref.textContent = 'sem referência publicada';
+  } else {
+    ref.textContent = '';
+  }
+  tile.append(ref);
+
+  if (item.rank) {
+    const rank = document.createElement('span');
+    rank.className = 'pdad-profile-rank';
+    rank.textContent = `${item.rank.position}ª de ${item.rank.total} RAs`;
+    tile.append(rank);
+  }
+
+  tile.tabIndex = 0;
+  tile.setAttribute('role', 'button');
+  const abrir = () => openPdadDrill({ key: item.key, raGeoId: perfil.raGeoId, year: perfil.year });
+  tile.addEventListener('click', abrir);
+  tile.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); abrir(); } });
+  return tile;
+}
+
+function pdadCompactRow(item, perfil) {
+  const li = document.createElement('li');
+  const botao = document.createElement('button');
+  botao.type = 'button';
+  botao.className = 'pdad-compact-row';
+  botao.dataset.pdadIndicatorKey = item.key;
+  const nome = document.createElement('span');
+  nome.className = 'pdad-compact-label';
+  nome.textContent = item.label;
+  const valor = document.createElement('span');
+  valor.className = 'pdad-compact-value';
+  valor.textContent = item.leader !== null && Number.isFinite(item.leaderPct)
+    ? `${item.leader} · ${formatPercent(item.leaderPct)}`
+    : 'sem valor publicado';
+  const seta = document.createElement('span');
+  seta.className = 'pdad-compact-arrow';
+  seta.setAttribute('aria-hidden', 'true');
+  seta.textContent = '→';
+  botao.append(nome, valor, seta);
+  botao.addEventListener('click', () => openPdadDrill({ key: item.key, raGeoId: perfil.raGeoId, year: perfil.year }));
+  li.append(botao);
+  return li;
+}
+
 function renderPdadTemaBlocks(raIds) {
   const { tema } = state.pdadFilters;
   const temas = tema === 'all' ? Object.keys(PDAD_TEMAS) : [tema];
@@ -3044,11 +3593,13 @@ function renderPdadView() {
 
   const raIds = pdadSelectedRaIds();
   renderPdadKpis(raIds);
+  renderPdadProfile(raIds);
   dom.pdadYearNote.textContent = pdadYearNoteText();
   renderPdadTemaBlocks(raIds);
   renderPdadScatter();
 
   setView(viewFromHash());
+  if (['diagnostico', 'ranking'].includes(viewFromHash())) syncHash();
   return [];
 }
 
@@ -3296,7 +3847,11 @@ function initializePdadRankState() {
   const ano = pdadPrimaryYear();
   const ras = rasForYear(state.pdadIndex, ano);
   const comFigura = PDAD_RANK_SET.filter((item) => item.key);
-  state.pdadRankState = { ra: ras[0]?.raGeoId || null, indicatorId: comFigura[0]?.id || null, mode: 'pct' };
+  // `#ranking?ra=RA_20` aplica-se AQUI, no estado que o ranking lê — não em `pdadFilters`,
+  // que pertence ao Diagnóstico. RA fora do ano publicado cai no primeiro da lista.
+  const pendente = state.pendingUrl && state.pendingUrl.view === 'ranking' ? state.pendingUrl.params : null;
+  const pedida = pendente && pendente.ra && ras.some((r) => r.raGeoId === pendente.ra) ? pendente.ra : null;
+  state.pdadRankState = { ra: pedida || ras[0]?.raGeoId || null, indicatorId: comFigura[0]?.id || null, mode: 'pct' };
 }
 
 function renderPdadRankTable() {
@@ -3814,6 +4369,7 @@ async function load() {
   state.ivvRegion = result.ivvRegion || [];
   state.fipezapMonthly = result.fipezapMonthly || [];
   state.fipezapLocality = result.fipezapLocality || [];
+  state.fipezapLocalityMap = result.fipezapLocalityMap || [];
   state.pdadData = result.pdadData || [];
   state.pdadIndex = state.pdadData.length > 0 ? buildPdadIndex(state.pdadData) : {};
   state.pdadFilters = null;
@@ -3844,6 +4400,7 @@ async function load() {
   populateAnchorSegments('');
   renderAnchorLegend(state.records);
 
+  applyUrlParams();
   refreshMarketView();
   refreshPdadView();
   render();
@@ -3888,6 +4445,20 @@ function bindEvents() {
     renderMarketRegioes();
   });
 
+  dom.marketCompare.addEventListener('click', (event) => {
+    const chip = event.target.closest('.market-chip');
+    if (!chip || !state.marketSelection) return;
+    state.marketCompare = chip.dataset.compare;
+    refreshMarketView();
+  });
+  dom.marketRegioesModo.addEventListener('click', (event) => {
+    const chip = event.target.closest('.market-chip');
+    if (!chip) return;
+    state.marketRegionScatterMode = chip.dataset.scatterModo;
+    renderMarketRegioes();
+    syncHash();
+  });
+  dom.copyLink.addEventListener('click', () => { copyAnalysisLink(); });
   dom.marketSeriesMode.addEventListener('click', (event) => {
     const chip = event.target.closest('.market-chip');
     if (!chip) return;
@@ -4030,6 +4601,7 @@ function bindEvents() {
     if (!state.pdadRankState) return;
     state.pdadRankState.ra = dom.pdadRankRa.value;
     renderPdadRankingView();
+    if (viewFromHash() === 'ranking') syncHash();
   });
   dom.pdadRankIndicator.addEventListener('change', () => {
     if (!state.pdadRankState) return;

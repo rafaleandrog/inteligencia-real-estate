@@ -19,16 +19,32 @@ export function toText(value) {
   return String(value).trim();
 }
 
+/** Marcador de moeda no início ou no fim do texto ("R$ 1.234", "1.234 BRL"). */
+const CURRENCY_PREFIX = /^\s*(R\$|BRL)\s*/i;
+const CURRENCY_SUFFIX = /\s*(R\$|BRL)\s*$/i;
+/** Sufixos de unidade que uma célula formatada carrega junto com o número. */
+const UNIT_SUFFIX = /\s*(m²|m2|km²|km2|%|p\.p\.|pp)\s*$/i;
+
 /**
  * Número a partir de qualquer representação que aparece no pipeline.
  *
  * Aceita number puro, decimal com ponto ("19117.647"), formato brasileiro
- * ("1.234,56", "R$ 1.234,56") e formato inglês ("1,234.56"). Devolve `null` quando
- * não há número — nunca `NaN`, para que `null` signifique "ausente" em todo o código.
+ * ("1.234,56", "R$ 1.234,56", "R$ 2.500.000"), formato inglês ("2,500,000.50") e sufixo
+ * de unidade ("120 m²", "8,6%"). Devolve `null` quando não há número — nunca `NaN`,
+ * para que `null` signifique "ausente" em todo o código.
  *
  * A distinção pt-BR × en depende de qual separador aparece por último: em "1.234,56"
  * a vírgula é decimal; em "1,234.56" o ponto é. É a única heurística confiável sem
  * saber a locale de origem da célula.
+ *
+ * Um ponto só é ambíguo — "2.500" é 2500 em pt-BR e 2.5 em JavaScript. A regra: com
+ * marcador de moeda o ponto é SEMPRE milhar ("R$ 290.000" é 290000 — lido como 290, era
+ * o que produzia 61 alertas falsos de preço/m² na planilha, issue #121). Sem marcador,
+ * fica como decimal, que preserva os valores de precisão cheia do dataset
+ * ("19117.64705882353"); a correção por âncora fica com `toPriceNumber()`.
+ *
+ * Espelha `toNumber_()` de optional-apps-script/Code.gs: mudou aqui, muda lá
+ * (tests/appsscript-money-parity.test.js cobra a paridade).
  */
 export function toNumber(value) {
   if (typeof value === 'number') return Number.isFinite(value) ? value : null;
@@ -36,30 +52,32 @@ export function toNumber(value) {
   const raw = toText(value);
   if (raw === '') return null;
 
-  // Remove símbolo de moeda, sufixos de unidade e espaços (inclusive o NBSP que o
-  // Sheets insere ao formatar moeda).
-  let s = raw.replace(/[R$\s ]/gi, '');
-  if (s === '') return null;
+  const currency = CURRENCY_PREFIX.test(raw) || CURRENCY_SUFFIX.test(raw);
+  // Remove símbolo de moeda, sufixo de unidade e espaços (inclusive o NBSP que o
+  // Sheets insere ao formatar moeda). O que sobrar precisa ser só dígito e separador.
+  let s = raw
+    .replace(CURRENCY_PREFIX, '')
+    .replace(CURRENCY_SUFFIX, '')
+    .replace(UNIT_SUFFIX, '')
+    .replace(/[\s ]/g, '');
+  if (s === '' || !/^[-+]?[0-9.,]+$/.test(s)) return null;
 
   const lastComma = s.lastIndexOf(',');
   const lastDot = s.lastIndexOf('.');
+  const dots = (s.match(/\./g) || []).length;
 
   if (lastComma !== -1 && lastDot !== -1) {
     if (lastComma > lastDot) s = s.replace(/\./g, '').replace(',', '.'); // pt-BR
     else s = s.replace(/,/g, ''); // en
   } else if (lastComma !== -1) {
-    // Só vírgula. Com exatamente 3 dígitos depois é separador de milhar ("1,234");
-    // caso contrário é decimal ("1,5").
+    // Só vírgula. Mais de uma ("2,500,000") ou exatamente 3 dígitos depois ("1,234") é
+    // separador de milhar; caso contrário é decimal ("1,5").
+    const commas = (s.match(/,/g) || []).length;
     const decimals = s.length - lastComma - 1;
-    s = decimals === 3 ? s.replace(/,/g, '') : s.replace(',', '.');
-  } else if ((s.match(/\./g) || []).length > 1) {
-    // Só pontos, mais de um: só podem ser separadores de milhar ("2.500.000").
-    //
-    // Com UM ponto a leitura é ambígua — "2.500" é 2500 em pt-BR e 2.5 em JavaScript —
-    // e não há como decidir sem saber a locale da célula. Fica como decimal, que
-    // preserva os valores de precisão cheia do dataset ("19117.64705882353").
-    // Casos assim devem ser corrigidos na planilha: docs/DATA_CONTRACT.md exige
-    // valor monetário como número, sem formatação dentro da célula.
+    s = (commas > 1 || decimals === 3) ? s.replace(/,/g, '') : s.replace(',', '.');
+  } else if (dots > 1 || (dots === 1 && currency && /\.\d{3}$/.test(s))) {
+    // Só pontos: mais de um só pode ser milhar ("2.500.000"); um ponto com marcador de
+    // moeda e três dígitos depois também ("R$ 290.000").
     s = s.replace(/\./g, '');
   }
 
@@ -149,17 +167,47 @@ export function toCoord(latValue, lonValue) {
 }
 
 /**
+ * Divergência tolerada entre preço/m² informado e calculado antes de virar aviso.
+ * Mesmo valor de `PRICE_M2_TOLERANCE` no Code.gs: os dois lados apontam o mesmo caso.
+ */
+export const PRICE_M2_TOLERANCE = 0.05;
+
+/**
+ * Preço por m² com conferência (issue #121).
+ *
+ * `value` é o que a tela usa: o informado quando existe, senão o calculado. O informado
+ * NUNCA é sobrescrito — a fonte pode usar outro critério de área (útil × total), e
+ * substituí-lo em silêncio apagaria a evidência. `computed` e `divergence_pct` existem
+ * para a divergência virar aviso, não correção. Área ausente, zero ou negativa devolve
+ * `computed: null` em vez de `Infinity`.
+ */
+export function pricePerM2Check(priceValue, areaValue, informedValue) {
+  const informedRaw = toNumber(informedValue);
+  const informed = informedRaw !== null && informedRaw > 0 ? informedRaw : null;
+
+  const price = toNumber(priceValue);
+  const area = toNumber(areaValue);
+  const computed = (price === null || area === null || area <= 0 || price <= 0) ? null : price / area;
+
+  const divergence = (informed !== null && computed !== null)
+    ? Math.abs(computed - informed) / informed
+    : null;
+
+  return {
+    value: informed !== null ? informed : computed,
+    informed,
+    computed,
+    divergence_pct: divergence,
+    mismatch: divergence !== null && divergence > PRICE_M2_TOLERANCE,
+  };
+}
+
+/**
  * Preço por m². Usa o valor informado quando existe; calcula a partir de preço e área
  * quando não. Área ausente, zero ou negativa devolve `null` em vez de `Infinity`.
  */
 export function pricePerM2(priceValue, areaValue, informedValue) {
-  const informed = toNumber(informedValue);
-  if (informed !== null && informed > 0) return informed;
-
-  const price = toNumber(priceValue);
-  const area = toNumber(areaValue);
-  if (price === null || area === null || area <= 0 || price <= 0) return null;
-  return price / area;
+  return pricePerM2Check(priceValue, areaValue, informedValue).value;
 }
 
 /**
@@ -182,7 +230,9 @@ export function toPriceNumber(rawValue, { areaValue, informedPriceM2Value } = {}
   const asDecimal = toNumber(rawValue);
   if (asDecimal === null) return null;
 
-  const raw = toText(rawValue).replace(/[R$\s ]/gi, '');
+  // Com marcador de moeda, `toNumber()` já resolveu o ponto como milhar.
+  if (CURRENCY_PREFIX.test(toText(rawValue)) || CURRENCY_SUFFIX.test(toText(rawValue))) return asDecimal;
+  const raw = toText(rawValue).replace(/[\s\u00a0]/g, '');
   if (!/^-?\d{1,3}\.\d{3}$/.test(raw)) return asDecimal; // não é o caso ambíguo de 1 ponto
 
   const area = toNumber(areaValue);
@@ -269,9 +319,33 @@ export function isApproximateLocation(record) {
   return !(exact && !downgraded);
 }
 
+/**
+ * Pode-se medir distância a partir deste registro? (issue #124, Plano 01 §6.7)
+ *
+ * Só quando a coordenada existe E a precisão declarada é exata e não rebaixada — o mesmo
+ * critério de `isApproximateLocation()`, invertido. Centroide de localidade com jitter,
+ * precisão ausente, pendente ou geocodificada devolvem `false`: "metrô a 420 m" calculado
+ * a partir de um ponto que representa a região, não o imóvel, é um número inventado.
+ * Nenhuma distância é calculada hoje; esta é a guarda que qualquer cálculo futuro precisa
+ * atravessar primeiro.
+ */
+export function canUseForDistance(record) {
+  if (!record || typeof record !== 'object') return false;
+  const coord = record.coord;
+  if (!coord || !Number.isFinite(coord.lat) || !Number.isFinite(coord.lon)) return false;
+  return !isApproximateLocation(record);
+}
+
 /** Anúncio secundário. Chave: `listing_id`. */
 export function normalizeListing(row) {
   const coord = toCoord(row.latitude, row.longitude);
+  const price = toPriceNumber(row.asking_price_brl, {
+    areaValue: row.area_m2,
+    informedPriceM2Value: row.asking_price_brl_m2,
+  });
+  // A conferência parte do preço já corrigido: `price` e `price_m2` precisam ser
+  // leituras da MESMA célula, não duas interpretações dela (issue #121).
+  const priceM2 = pricePerM2Check(price, row.area_m2, row.asking_price_brl_m2);
   return {
     kind: 'listing',
     id: toText(row.listing_id),
@@ -284,12 +358,12 @@ export function normalizeListing(row) {
     address: toText(row.address),
     ra_geo_id: toText(row.ra_geo_id),
     coord,
-    price: toPriceNumber(row.asking_price_brl, {
-      areaValue: row.area_m2,
-      informedPriceM2Value: row.asking_price_brl_m2,
-    }),
+    price,
     area_m2: toNumber(row.area_m2),
-    price_m2: pricePerM2(row.asking_price_brl, row.area_m2, row.asking_price_brl_m2),
+    price_m2: priceM2.value,
+    price_m2_computed: priceM2.computed,
+    price_m2_divergence_pct: priceM2.divergence_pct,
+    price_m2_mismatch: priceM2.mismatch,
     bedrooms: toInteger(row.bedrooms),
     suites: toInteger(row.suites),
     parking_spaces: toInteger(row.parking_spaces),
@@ -309,6 +383,11 @@ export function normalizeListing(row) {
 
 /** Empreendimento canônico. Chave: `development_id`. */
 export function normalizeDevelopment(row) {
+  const developmentPrice = toPriceNumber(row.current_price_brl, {
+    areaValue: row.area_min_m2,
+    informedPriceM2Value: row.current_price_brl_m2,
+  });
+  const developmentPriceM2 = pricePerM2Check(developmentPrice, row.area_min_m2, row.current_price_brl_m2);
   const coord = toCoord(row.latitude, row.longitude);
   return {
     kind: 'development',
@@ -331,11 +410,11 @@ export function normalizeDevelopment(row) {
     units_total: toInteger(row.units_total),
     area_min_m2: toNumber(row.area_min_m2),
     area_max_m2: toNumber(row.area_max_m2),
-    price: toPriceNumber(row.current_price_brl, {
-      areaValue: row.area_min_m2,
-      informedPriceM2Value: row.current_price_brl_m2,
-    }),
-    price_m2: pricePerM2(row.current_price_brl, row.area_min_m2, row.current_price_brl_m2),
+    price: developmentPrice,
+    price_m2: developmentPriceM2.value,
+    price_m2_computed: developmentPriceM2.computed,
+    price_m2_divergence_pct: developmentPriceM2.divergence_pct,
+    price_m2_mismatch: developmentPriceM2.mismatch,
     work_progress_pct: toNumber(row.work_progress_pct),
     expected_delivery: toDateISO(row.expected_delivery),
     unit_mix: toText(row.unit_mix),
@@ -587,14 +666,29 @@ export function normalizeAll(entity, rows) {
   if (!fn) throw new Error(`entidade desconhecida: ${entity}`);
 
   const records = [];
+  const mismatched = [];
   let dropped = 0;
   for (const row of rows || []) {
     if (!row || typeof row !== 'object') { dropped += 1; continue; }
     const record = fn(row);
     if (!record.id) { dropped += 1; continue; }
+    if (record.price_m2_mismatch) mismatched.push(record.id);
     records.push(record);
   }
-  return { records, dropped };
+
+  // Divergência de preço/m² é aviso com nome, nunca correção (issue #121): o publicado
+  // prevalece na tela e o operador vê quais registros conferir na planilha.
+  const warnings = [];
+  if (mismatched.length > 0) {
+    const pct = Math.round(PRICE_M2_TOLERANCE * 100);
+    const sample = mismatched.slice(0, 5).join(', ');
+    warnings.push(
+      `${mismatched.length} registro(s) de ${entity} com preço/m² informado divergindo mais de `
+      + `${pct}% do calculado (preço ÷ área); o informado prevalece. Ex.: ${sample}`
+      + (mismatched.length > 5 ? '…' : '.'),
+    );
+  }
+  return { records, dropped, warnings };
 }
 
 // --- APP_META --------------------------------------------------------------

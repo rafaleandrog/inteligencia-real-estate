@@ -102,11 +102,15 @@
   /* Tema escuro por padrão e marca azul (issue #100) — ver o histórico da decisão
      anterior mais abaixo. Régua de quatro degraus herdada do que era só o modo escuro
      da #95 (fundo #0a0e0c → painel #121815 → hover #1a211c → elevada #1e2620). */
-  --bg: #0b0f15;
-  --panel: #131924;
-  --ink: #eef2f6;
-  --muted: #7f8c99;
-  --line: #242e3a;
+  /* Paleta da issue #123 (Plano 01 §5.4): três níveis de superfície — fundo #0B1017,
+     trilho #0D141D, superfície #111A25, elevada #16202C — azul para dado e interação,
+     dourado para marca e destaque, verde/vermelho só para variação com sentido. Os
+     NOMES dos tokens não mudaram (a regra que os consome fala por papel); só o valor. */
+  --bg: #0b1017;
+  --panel: #111a25;
+  --ink: #f4f7fa;
+  --muted: #9caaba;
+  --line: #1f2a38;
   /* `--brand` continua sendo o preenchimento SÓLIDO (trilho, botão primário) e
      `--brand2` o tom mais claro de hover/destaque — mesmos dois papéis de sempre, só
      a cor mudou de verde para azul. `--brand` é um azul-marinho ESCURO, não o azul
@@ -115,29 +119,34 @@
      os rótulos do trilho são texto de corpo, não título grande. O azul vivo do
      protótipo vira `--brand2`, com o mesmo papel de acento que já tinha. */
   --brand: #0f2847;
-  --brand2: #3987e5;
+  --brand2: #4d9cfb;
   /* Um degrau mais claro da série principal: ponta do gradiente da barra de ranking e
      destaque do título (`.hl` do protótipo). */
-  --brand2-soft: #6da7ec;
+  --brand2-soft: #77b8ff;
   /* Cor de texto/ícone sobre --bg/--panel (nunca de preenchimento sólido). O protótipo
      separa o acento de TEXTO (`--accent`, #5598e7) da cor de SÉRIE (`--s1`, #3987e5): o
      primeiro é um passo mais claro para passar em contraste sobre o painel escuro. Por
      isso deixou de ser apelido de `--brand2` (issue #104). */
-  --accent-text: #5598e7;
+  --accent-text: #77b8ff;
   /* Acento em lavagem: fundo de estado ligado (`.on`, foco de campo) e contorno de hover
      de cartão. Rgba de propósito — é o acento com alfa, não uma quinta cor. */
-  --accent-soft: rgba(85, 152, 231, .13);
-  --accent-line: rgba(85, 152, 231, .45);
+  --accent-soft: rgba(77, 156, 251, .13);
+  --accent-line: rgba(77, 156, 251, .45);
   /* Fundo do trilho de navegação: um degrau ABAIXO do fundo da página, como no protótipo
      (`aside { background: #0a0e14 }`). Token próprio, e não `--brand`, porque `--brand`
      continua sendo o preenchimento sólido do botão primário, do spinner e do cabeçalho do
      `admin.html` — pintar tudo isso de quase-preto seria o efeito colateral. */
-  --trilho-fundo: #0a0e14;
+  --trilho-fundo: #0d141d;
   /* Fundo de campo (`select`, `input`) e trilho vazio das barras de indicador. */
-  --campo-fundo: #0e141c;
-  --trilho-barra: #1b2431;
+  --campo-fundo: #0d141d;
+  --trilho-barra: #1b2633;
+  /* Marca (issue #123): dourado é identidade e destaque — monograma do trilho e o
+     realce do título de página. NUNCA cor de série nem de estado: dado é azul,
+     variação é verde/vermelho (R8.75). */
+  --marca: #d5a44a;
+  --marca-suave: #f1c570;
   /* Lavagem de hover de linha de tabela: a série principal com alfa, como no protótipo. */
-  --linha-hover: rgba(57, 135, 229, .05);
+  --linha-hover: rgba(77, 156, 251, .05);
 
   --listing: #3478b9;
   --primary: #e27a2c;
@@ -156,7 +165,7 @@
      porque --accent-text existe para TEXTO sobre --bg/--panel e não para
      preenchimento sólido; misturar os dois usos faria um ajuste de contraste de
      texto mexer no gráfico sem ninguém perceber. */
-  --chart-bar: #3987e5;
+  --chart-bar: #4d9cfb;
 
   --shadow: 0 10px 30px #00000066;
   --radius: 10px;
@@ -182,24 +191,24 @@
      feature, que é exatamente o que a R5.2 proíbe. */
 
   /* Ênfase do texto. `--texto-base` e `--texto-sec` são os de sempre com o nome do papel. */
-  --texto-forte: #eef2f6;
+  --texto-forte: #f4f7fa;
   --texto-base: var(--ink);
   /* Deixou de ser apelido de `--muted`: o protótipo tem `--text-2` (#aab6c2) para o corpo
      secundário e `--muted` (#7f8c99) para o micro-rótulo, e a diferença é o que separa
      "legenda" de "rodapé" na mesma coluna. */
-  --texto-sec: #aab6c2;
-  --texto-fraco: #6f7c89;
+  --texto-sec: #b3bfcc;
+  --texto-fraco: #7a8899;
 
   /* Ênfase da borda. `--borda-base` é `--line`. */
-  --borda-sutil: #1e2732;
+  --borda-sutil: #182230;
   --borda-base: var(--line);
-  --borda-forte: #2b3644;
+  --borda-forte: #2a3646;
 
   /* Camadas de superfície sobre o fundo da página. */
   --superficie-sutil: var(--bg);
   --superficie-base: var(--panel);
-  --superficie-hover: #182029;
-  --superficie-elevada: #1e2732;
+  --superficie-hover: #141e2a;
+  --superficie-elevada: #16202c;
 
   /* Forma. `--radius` (10px) continua valendo para o que já o usa. */
   --raio-xs: 4px;
@@ -250,17 +259,17 @@
   /* Estados semânticos: saturada para traço e texto, tinta para bloco, borda para o contorno.
      A saturada NUNCA é superfície de texto — quem preenche é o par `-fundo`/`-borda`.
      `--tone-good`/`--tone-bad` já eram os tons de variação dos cards; agora têm família. */
-  --tone-good: #8fd6ac;
-  --tone-bad: #f0a3a3;
+  --tone-good: #43c59e;
+  --tone-bad: #f16d7a;
   --sucesso: var(--tone-good);
-  --sucesso-fundo: #163524;
-  --sucesso-borda: #29553c;
+  --sucesso-fundo: #143327;
+  --sucesso-borda: #23553f;
   --alerta: #f0b877;
   --alerta-fundo: #3a2a12;
   --alerta-borda: #5c4526;
   --erro: var(--tone-bad);
-  --erro-fundo: #3a1a1a;
-  --erro-borda: #5c2c2c;
+  --erro-fundo: #3a1d22;
+  --erro-borda: #5c2f37;
   --info: #8fb4e8;
   --info-fundo: #1a2536;
   --info-borda: #2e415c;
@@ -299,11 +308,11 @@
      carrega significado no tile é o valor e o rótulo. Deriva da categórica para não
      abrir uma quinta família de cor, mas é consumida por posição (`.tinta-2`), e não
      por nome, pelo mesmo motivo que a série é consumida por índice (R8.71). */
-  --tinta-1: #6da7ec;
+  --tinta-1: #77b8ff;
   --tinta-2: #2fbe8f;
   --tinta-3: #d9a441;
   --tinta-4: #e07ba1;
-  --tinta-1-fundo: rgba(57, 135, 229, .16);
+  --tinta-1-fundo: rgba(77, 156, 251, .16);
   --tinta-2-fundo: rgba(25, 158, 112, .16);
   --tinta-3-fundo: rgba(201, 133, 0, .16);
   --tinta-4-fundo: rgba(213, 81, 129, .16);
@@ -313,7 +322,7 @@
      Mercado foi validada por script (R8.75) e não se mexe nela para casar com outro
      desenho; o PDAD-A consome por índice, igual, e cada RA selecionada em Comparar
      mantém a mesma cor enquanto estiver na seleção. */
-  --pdad-serie-1: #3987e5;
+  --pdad-serie-1: #4d9cfb;
   --pdad-serie-2: #d95926;
   --pdad-serie-3: #199e70;
   --pdad-serie-4: #c98500;
@@ -479,8 +488,8 @@ h1, h2 { margin: 0; font-size: 1rem; }
   display: grid;
   place-items: center;
   border-radius: var(--raio-md);
-  background: var(--brand2);
-  color: #fff;
+  background: var(--marca);
+  color: var(--trilho-fundo);
   font-size: var(--tipo-md);
   font-weight: 800;
   letter-spacing: -.04em;
@@ -490,7 +499,6 @@ h1, h2 { margin: 0; font-size: 1rem; }
 .brand-sub {
   display: block;
   margin-top: var(--esp-1);
-  font-family: var(--font-mono);
   font-size: var(--tipo-2xs);
   opacity: .7;
 }
@@ -726,7 +734,6 @@ h1, h2 { margin: 0; font-size: 1rem; }
 .kpi-label {
   display: block;
   margin-top: var(--esp-1);
-  font-family: var(--font-mono);
   font-size: var(--tipo-2xs);
   color: var(--muted);
   text-transform: uppercase;
@@ -831,7 +838,6 @@ h1, h2 { margin: 0; font-size: 1rem; }
 
 .field {
   display: block;
-  font-family: var(--font-mono);
   font-size: var(--tipo-2xs);
   text-transform: uppercase;
   letter-spacing: var(--track-label);
@@ -872,7 +878,6 @@ h1, h2 { margin: 0; font-size: 1rem; }
 .ra-stat-label { color: var(--muted); }
 .ra-stat-value {
   margin-left: auto;
-  font-family: var(--font-mono);
   font-variant-numeric: tabular-nums;
   color: var(--ink);
 }
@@ -914,7 +919,6 @@ h1, h2 { margin: 0; font-size: 1rem; }
 }
 .ra-age-value {
   text-align: right;
-  font-family: var(--font-mono);
   font-variant-numeric: tabular-nums;
   color: var(--ink);
 }
@@ -1030,7 +1034,6 @@ select:focus, input[type="number"]:focus {
 
 .count {
   margin-left: auto;
-  font-family: var(--font-mono);
   font-size: 12px;
   color: var(--muted);
   font-variant-numeric: tabular-nums;
@@ -1097,6 +1100,58 @@ select:focus, input[type="number"]:focus {
 .polygon-type-row { margin-left: 16px; }
 .polygon-type-row label { font-size: 12px; color: var(--muted); }
 
+/* Gaveta de filtros secundários (issue #124). O resumo tem a mesma anatomia de rótulo
+   de campo; aberta, ela só acrescenta os campos abaixo, sem moldura — é agrupamento,
+   não cartão. */
+.more-filters { margin: var(--esp-3) 0 0; }
+.more-filters > summary {
+  cursor: pointer;
+  list-style: none;
+  padding: var(--esp-2) 0;
+  font-size: var(--tipo-xs);
+  font-weight: 600;
+  letter-spacing: var(--track-label);
+  text-transform: uppercase;
+  color: var(--accent-text);
+}
+.more-filters > summary::-webkit-details-marker { display: none; }
+.more-filters > summary::before { content: '+ '; }
+.more-filters[open] > summary::before { content: '− '; }
+.more-filters > summary:hover { color: var(--brand2-soft); }
+.more-filters > summary:focus-visible { outline: 2px solid var(--accent-text); outline-offset: 2px; }
+
+/* Posição no recorte (issue #124): preço/m² do imóvel contra os comparáveis visíveis.
+   Régua P25–P50–P75 em SVG, sem cor literal; o ponto é o imóvel. */
+.detail-position { margin: var(--esp-4) 0 var(--esp-3); padding-top: var(--esp-3); border-top: 1px solid var(--borda-sutil); }
+.detail-position h3 {
+  margin: 0 0 var(--esp-2);
+  font-size: var(--tipo-xs);
+  font-weight: 600;
+  letter-spacing: var(--track-label);
+  text-transform: uppercase;
+  color: var(--texto-sec);
+}
+.detail-position-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: var(--esp-2) var(--esp-3); margin: 0 0 var(--esp-2); }
+.detail-position-value { font-size: var(--tipo-xl); font-weight: 800; letter-spacing: var(--track-tight); font-variant-numeric: tabular-nums; color: var(--texto-forte); }
+.detail-position-delta { font-size: var(--tipo-sm); font-weight: 600; color: var(--texto-sec); }
+.detail-position-delta[data-sign="above"] { color: var(--alerta); }
+.detail-position-delta[data-sign="below"] { color: var(--tone-good); }
+.detail-position-empty { margin: 0; font-size: var(--tipo-sm); color: var(--muted); }
+.detail-ruler { margin: 0 0 var(--esp-2); }
+.detail-ruler-svg { display: block; width: 100%; height: 18px; overflow: visible; }
+.detail-ruler-line { stroke: var(--borda-forte); stroke-width: 1.2; }
+.detail-ruler-tick { stroke: var(--borda-forte); stroke-width: 1; }
+.detail-ruler-dot { fill: var(--brand2); stroke: var(--bg); stroke-width: 1; }
+.detail-ruler-labels { display: flex; justify-content: space-between; margin: 0; font-family: var(--font-mono); font-size: var(--tipo-2xs); color: var(--muted); }
+.detail-ruler-labels span { display: grid; gap: 1px; }
+.detail-ruler-labels span:nth-child(2) { text-align: center; }
+.detail-ruler-labels span:last-child { text-align: right; }
+.detail-ruler-labels b { font-weight: 500; color: var(--texto-sec); font-variant-numeric: tabular-nums; }
+.detail-position-sample { display: flex; flex-wrap: wrap; gap: var(--esp-1) var(--esp-3); margin: 0; padding: 0; list-style: none; font-size: var(--tipo-xs); color: var(--muted); }
+
+/* Link compartilhável (issue #127): botão fantasma na faixa de conteúdo. */
+.copy-link { width: auto; margin: 0; padding: var(--esp-2) var(--esp-3); font-size: var(--tipo-sm); white-space: nowrap; }
+
 .disclaimer {
   font-size: 12px;
   line-height: 1.45;
@@ -1155,7 +1210,6 @@ button.traffic-item-head:hover .traffic-item-name { color: var(--accent-text); }
 .traffic-direction-label { color: var(--muted); }
 .traffic-direction-value {
   margin-left: auto;
-  font-family: var(--font-mono);
   font-variant-numeric: tabular-nums;
   color: var(--ink);
 }
@@ -1531,7 +1585,7 @@ p.precision.precision-exact {
   line-height: 1.12;
   letter-spacing: var(--track-tight);
 }
-.market-hl { color: var(--accent-text); }
+.market-hl { color: var(--marca-suave); }
 
 /* A declaração de escopo NÃO é rodapé nem letra miúda: quem chega aqui vindo de um mapa
    com filtro de Região Administrativa espera, por continuidade, que os números respondam
@@ -1666,9 +1720,11 @@ p.precision.precision-exact {
 .market-chart {
   min-width: 0;
   padding: var(--esp-4);
-  border: 1px solid var(--line);
+  /* Agrupamento visual, não moldura: a superfície um degrau acima do fundo já o separa
+     da página, e a borda que havia aqui era a de fora do par borda-card-borda (#123). */
+  border: 0;
   border-radius: var(--raio-lg);
-  background: var(--panel);
+  background: var(--superficie-base);
 }
 .market-chart-head {
   display: flex;
@@ -1946,6 +2002,30 @@ p.precision.precision-exact {
    responde é "onde gira mais rápido?", que é comparação entre regiões. O nome da região
    fica à esquerda porque nome longo em rótulo vertical é ilegível, e a comparação se faz
    correndo o olho por uma coluna de barras que começam todas no mesmo lugar. */
+/* Comparação temporal (issue #127): a série comparada é a mesma cor, tracejada, sem área. */
+.market-serie-comparacao .market-serie-linha { stroke-dasharray: 5 4; stroke-opacity: .85; }
+.market-serie-comparacao .market-serie-area { display: none; }
+.market-serie-comparacao .market-serie-coluna { fill-opacity: .35; }
+.market-serie-comparacao .market-serie-marcador { fill-opacity: .6; }
+.market-history-controls { display: flex; flex-wrap: wrap; align-items: center; gap: var(--esp-3) var(--esp-5); }
+.market-compare { display: flex; flex-wrap: wrap; align-items: center; gap: var(--esp-2); }
+.market-compare-label {
+  font-size: var(--tipo-2xs);
+  font-weight: 500;
+  letter-spacing: var(--track-label);
+  text-transform: uppercase;
+  color: var(--texto-sec);
+}
+
+/* Matriz preço × liquidez por RA (issue #127). */
+.market-scatter-head { margin-top: var(--esp-5); }
+.market-scatter-head h3 { margin: 0; font-size: var(--tipo-md); font-weight: 700; color: var(--texto-forte); }
+.market-scatter-head p { margin: var(--esp-1) 0 0; font-size: var(--tipo-sm); color: var(--muted); }
+.market-scatter-svg { display: block; width: 100%; height: auto; }
+.market-scatter-referencia { stroke-dasharray: 4 4; }
+.market-scatter-ponto { cursor: help; }
+.market-scatter-rotulo { font-size: var(--tipo-2xs); fill: var(--texto-sec); pointer-events: none; }
+
 .market-regioes { margin-top: var(--esp-6); }
 .market-regioes[hidden] { display: none; }
 .market-regioes-lista {
@@ -2090,7 +2170,6 @@ p.precision.precision-exact {
 .pdad-filter > span,
 .pdad-cv-label,
 .pdad-section-label {
-  font-family: var(--font-mono);
   font-size: var(--tipo-2xs);
   font-weight: 500;
   text-transform: uppercase;
@@ -2117,7 +2196,7 @@ p.precision.precision-exact {
   gap: var(--esp-3);
   margin-bottom: var(--esp-4);
 }
-.kpis-4 .kpi { min-height: 104px; padding: var(--esp-4); background: var(--panel); border-color: var(--line); }
+.kpis-4 .kpi { min-height: 104px; padding: var(--esp-4); background: var(--superficie-base); border-color: var(--borda-sutil); }
 .kpis-4 .kpi-value { font-size: var(--tipo-2xl); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .kpis-4 .kpi-value-sm { font-size: var(--tipo-lg); }
 /* Rótulo do tile em texto corrido (o protótipo não põe o rótulo do KPI em caixa-alta). */
@@ -2194,9 +2273,11 @@ p.precision.precision-exact {
 .pdad-card {
   min-width: 0;
   padding: var(--esp-4) var(--esp-5);
-  border: 1px solid var(--line);
+  /* Borda transparente, não ausente: o hover continua pintando-a com o acento sem que
+     o cartão mude de tamanho. Em repouso, quem separa o cartão do fundo é a superfície. */
+  border: 1px solid transparent;
   border-radius: var(--raio-lg);
-  background: var(--panel);
+  background: var(--superficie-base);
   transition: border-color .2s;
 }
 .pdad-ind-grid > .pdad-card { cursor: pointer; }
@@ -2266,7 +2347,6 @@ p.precision.precision-exact {
 }
 .pdad-bar-valor {
   text-align: right;
-  font-family: var(--font-mono);
   font-size: var(--tipo-sm);
   font-weight: 500;
   color: var(--texto-forte);
@@ -2279,6 +2359,57 @@ p.precision.precision-exact {
   font-size: var(--tipo-xs);
   color: var(--muted);
 }
+/* Perfil imobiliário da RA (issue #126): sete tiles compactos + lista clicável dos demais
+   indicadores. Tile é botão (abre o detalhamento), sem moldura em repouso. */
+.pdad-profile { margin-bottom: var(--esp-5); }
+.pdad-profile[hidden] { display: none; }
+.pdad-profile-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  gap: var(--esp-3);
+}
+.pdad-profile-item {
+  display: grid;
+  gap: var(--esp-1);
+  padding: var(--esp-3) var(--esp-4);
+  border: 1px solid transparent;
+  border-radius: var(--raio-lg);
+  background: var(--superficie-base);
+  cursor: pointer;
+  transition: border-color .2s;
+}
+.pdad-profile-item:hover, .pdad-profile-item:focus-visible { border-color: var(--accent-line); outline: none; }
+.pdad-profile-label { font-size: var(--tipo-xs); font-weight: 600; color: var(--texto-sec); }
+.pdad-profile-value { font-size: var(--tipo-xl); font-weight: 800; letter-spacing: var(--track-tight); font-variant-numeric: tabular-nums; color: var(--texto-forte); }
+.pdad-profile-absent { font-size: var(--tipo-md); font-weight: 500; color: var(--muted); }
+.pdad-profile-ref { font-size: var(--tipo-xs); color: var(--texto-sec); font-variant-numeric: tabular-nums; }
+.pdad-profile-ref[data-sign="above"] { color: var(--tone-good); }
+.pdad-profile-ref[data-sign="below"] { color: var(--alerta); }
+.pdad-profile-ref:empty { display: none; }
+.pdad-profile-rank { font-family: var(--font-mono); font-size: var(--tipo-2xs); color: var(--muted); }
+.pdad-profile-note { margin: var(--esp-2) 0 var(--esp-4); }
+.pdad-compact-list { margin: 0 0 var(--esp-5); padding: 0; list-style: none; display: grid; gap: 2px; }
+.pdad-compact-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  gap: var(--esp-3);
+  align-items: center;
+  width: 100%;
+  padding: var(--esp-2) var(--esp-3);
+  border: 0;
+  border-radius: var(--raio-md);
+  background: transparent;
+  color: var(--texto-base);
+  font: inherit;
+  font-size: var(--tipo-sm);
+  text-align: left;
+  cursor: pointer;
+}
+.pdad-compact-row:hover, .pdad-compact-row:focus-visible { background: var(--linha-hover); outline: none; }
+.pdad-compact-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pdad-compact-value { font-variant-numeric: tabular-nums; color: var(--texto-sec); white-space: nowrap; }
+.pdad-compact-arrow { color: var(--accent-text); }
+
 .pdad-empty { margin: 0; padding: var(--esp-4) 0; font-size: var(--tipo-base); line-height: 1.55; color: var(--muted); }
 
 .pdad-card-wide { grid-column: 1 / -1; }
@@ -2326,7 +2457,7 @@ p.precision.precision-exact {
 }
 .pdad-legend-row > i { width: 9px; height: 9px; border-radius: 2px; }
 .pdad-legend-row > span { overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; line-height: 1.3; }
-.pdad-legend-row > b { font-family: var(--font-mono); font-size: var(--tipo-xs); font-weight: 500; color: var(--texto-forte); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.pdad-legend-row > b { font-size: var(--tipo-xs); font-weight: 500; color: var(--texto-forte); font-variant-numeric: tabular-nums; white-space: nowrap; }
 
 /* Barra empilhada (`stack`, `marital`). */
 .pdad-stack-bar {
@@ -2358,7 +2489,7 @@ p.precision.precision-exact {
 .pdad-mini-row > span { color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .pdad-mini-trilho { height: 6px; border-radius: 0 var(--raio-xs) var(--raio-xs) 0; background: var(--trilho-barra); }
 .pdad-mini-fill { display: block; height: 100%; border-radius: 0 var(--raio-xs) var(--raio-xs) 0; background: var(--pdad-serie-1); }
-.pdad-mini-row > b { text-align: right; font-family: var(--font-mono); font-size: var(--tipo-xs); font-weight: 500; color: var(--texto-forte); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.pdad-mini-row > b { text-align: right; font-size: var(--tipo-xs); font-weight: 500; color: var(--texto-forte); font-variant-numeric: tabular-nums; white-space: nowrap; }
 
 [data-drill-category] { cursor: pointer; }
 
@@ -2405,7 +2536,7 @@ p.precision.precision-exact {
 }
 .pdad-rank-card {
   padding: var(--esp-4) var(--esp-4) var(--esp-3);
-  border: 1px solid var(--line);
+  border: 1px solid var(--borda-sutil);
   border-radius: var(--raio-lg);
   background: var(--superficie-hover);
   display: grid;
@@ -2416,7 +2547,6 @@ p.precision.precision-exact {
 .pdad-rank-card[data-pdad-indicator-key]:hover { border-color: var(--accent-line); }
 .pdad-rank-off { opacity: .55; }
 .pdad-rank-tema {
-  font-family: var(--font-mono);
   font-size: var(--tipo-2xs);
   font-weight: 600;
   text-transform: uppercase;
@@ -2605,7 +2735,7 @@ p.precision.precision-exact {
 .market-kpi {
   min-width: 0;
   padding: var(--esp-4);
-  border: 1px solid var(--borda-base);
+  border: 1px solid var(--borda-sutil);
   border-radius: var(--raio-lg);
   background: var(--superficie-base);
 }
@@ -2615,7 +2745,6 @@ p.precision.precision-exact {
 .market-kpi-rotulo {
   min-height: calc(var(--tipo-2xs) * 1.35 * 2);
   margin: 0 0 var(--esp-1);
-  font-family: var(--font-mono);
   font-size: var(--tipo-2xs);
   font-weight: 500;
   letter-spacing: var(--track-label);
@@ -2636,13 +2765,43 @@ p.precision.precision-exact {
   color: var(--texto-forte);
 }
 
+/* Faixa de micro-indicadores derivados (issue #125): uma linha compacta entre os
+   destaques e os grupos. Sem moldura — separada por uma borda sutil em cima e embaixo —
+   para não virar mais uma linha de cards do mesmo peso dos destaques. */
+.market-micro-kpis {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--esp-2) var(--esp-5);
+  margin: 0 0 var(--esp-5);
+  padding: var(--esp-3) 0;
+  border-top: 1px solid var(--borda-sutil);
+  border-bottom: 1px solid var(--borda-sutil);
+}
+.market-micro-kpis:empty { display: none; }
+.market-micro { display: grid; gap: var(--esp-1); min-width: 0; cursor: help; }
+.market-micro-label {
+  font-size: var(--tipo-2xs);
+  font-weight: 500;
+  letter-spacing: var(--track-label);
+  text-transform: uppercase;
+  color: var(--texto-sec);
+  white-space: nowrap;
+}
+.market-micro-value {
+  font-size: var(--tipo-md);
+  font-weight: 700;
+  letter-spacing: var(--track-tight);
+  font-variant-numeric: tabular-nums;
+  color: var(--texto-forte);
+}
+.market-micro-absent { font-weight: 500; color: var(--muted); }
+
 /* Grupos: o restante dos indicadores, sob o rótulo do que eles compõem. */
 .market-grupo { margin-bottom: var(--esp-5); }
 .market-grupo-titulo {
   margin: 0 0 var(--esp-3);
   padding-bottom: var(--esp-2);
   border-bottom: 1px solid var(--borda-sutil);
-  font-family: var(--font-mono);
   font-size: var(--tipo-2xs);
   font-weight: 500;
   letter-spacing: var(--track-label);
@@ -2658,7 +2817,7 @@ p.precision.precision-exact {
 .market-card {
   min-width: 0;
   padding: var(--esp-3);
-  border: 1px solid var(--borda-base);
+  border: 1px solid var(--borda-sutil);
   border-radius: var(--raio-lg);
   background: var(--superficie-base);
 }
@@ -2667,7 +2826,6 @@ p.precision.precision-exact {
    destaque (12px caixa-baixa contra 10px caixa-alta), o que invertia a leitura. */
 .market-card-label {
   margin: 0 0 var(--esp-1);
-  font-family: var(--font-mono);
   font-size: var(--tipo-2xs);
   font-weight: 500;
   letter-spacing: var(--track-label);

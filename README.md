@@ -108,5 +108,12 @@ para habilitar.
 
 ## Estado atual
 
-Em construção — V1 sendo implementada por etapas. Ver
-[`docs/PRODUCT_PLAN.md`](docs/PRODUCT_PLAN.md) para o escopo e as fases.
+Três views em produção — Mapa, Mercado Residencial DF e Diagnóstico Territorial PDAD-A (com
+Ranking, Comparar e Base de dados) — alimentadas pela Google Sheet via GViz. Fases Explorar,
+Entender e Comparar entregues; ver [`docs/PRODUCT_PLAN.md`](docs/PRODUCT_PLAN.md).
+
+O Apps Script v2.4.0 (`optional-apps-script/Code.gs`) é a camada de governança da planilha:
+validação, saneamento (dinheiro como número, período FipeZap como texto), filas de cobertura e
+metadados. O runbook de instalação e sincronização está em
+[`docs/SHEET_SETUP.md`](docs/SHEET_SETUP.md) §9. Contagens de registros vivem em `APP_META`, não
+neste README — qualquer número escrito aqui envelheceria no dia seguinte.

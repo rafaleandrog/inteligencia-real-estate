@@ -38,7 +38,15 @@ export const SHEETS = [...REQUIRED_SHEETS, ...OPTIONAL_SCHEMA_SHEETS];
  * não vazio, chave primária declarada, aba opcional e gerenciada, e ausência de qualquer
  * caminho de erro fatal.
  */
-export const BACKEND_SCHEMA_SHEETS = ['ROAD_SEGMENTS', 'ROAD_SEGMENT_ALIASES', 'TRAFFIC_DAILY_TEST'];
+export const BACKEND_SCHEMA_SHEETS = [
+  'ROAD_SEGMENTS', 'ROAD_SEGMENT_ALIASES', 'TRAFFIC_DAILY_TEST',
+  // v2.4.0 (issue #120): as cinco abas FipeZAP ganharam REQUIRED_HEADERS/FIELD_SCHEMA no
+  // Code.gs ao incorporar o adendo que rodava só na planilha. Os normalizadores delas moram
+  // em src/fipezap/ (não em src/normalize.js), e o cruzamento contrato × cliente é feito
+  // por tests/fipezap-*.test.js — aqui elas recebem o que se cobra de aba só-backend.
+  'FIPEZAP_MONTHLY', 'FIPEZAP_LOCALITY_MONTHLY', 'FIPEZAP_LOCALITY_MAP', 'FIPEZAP_SOURCES',
+  'FIPEZAP_NOTES',
+];
 
 /** Domínio completo de `REQUIRED_HEADERS` no Code.gs. */
 export const SCHEMA_SHEETS = [...SHEETS, ...BACKEND_SCHEMA_SHEETS];
@@ -98,6 +106,8 @@ export const POST_SEED_COLUMNS = {
 /** Abas inteiras que só existem depois de `setupProject()`. */
 export const POST_SEED_SHEETS = [
   'POLYGONS', 'ROAD_SEGMENTS', 'ROAD_SEGMENT_ALIASES', 'TRAFFIC_DAILY_TEST',
+  'FIPEZAP_MONTHLY', 'FIPEZAP_LOCALITY_MONTHLY', 'FIPEZAP_LOCALITY_MAP', 'FIPEZAP_SOURCES',
+  'FIPEZAP_NOTES',
 ];
 
 /**

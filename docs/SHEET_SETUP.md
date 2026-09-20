@@ -16,9 +16,17 @@ Abas opcionais:
 
 - `PRIMARY_OFFERS`
 - `IVV_MONTHLY`
-- `IVV_REGION`
+- `IVV_REGION` — provisionada (só cabeçalho) por **Saneamento: provisionar IVV_REGION** (v2.4.0)
 - `RA_PROFILES` — **gerenciada** a partir da v2.0.0: se não existir, `setupProject()` cria
 - `POLYGONS` — **gerenciada**: contornos de KML/KMZ, criada por `setupProject()`
+- `ROAD_SEGMENTS`, `ROAD_SEGMENT_ALIASES`, `TRAFFIC_DAILY_TEST` — gerenciadas (v2.2.1)
+- `FIPEZAP_MONTHLY`, `FIPEZAP_LOCALITY_MONTHLY`, `FIPEZAP_LOCALITY_MAP`, `FIPEZAP_SOURCES`,
+  `FIPEZAP_NOTES` — gerenciadas (v2.4.0); o dado entra por **Sincronizar base FipeZAP**, que lê a
+  planilha de staging cujo ID está na Script Property `FIPEZAP_STAGING_SPREADSHEET_ID` (nunca no
+  código nem em `APP_META`)
+- `PDAD_A_DATA`, `PDAD_A_FIGURE_MAP`, `PDAD_A_GUIDE` — carregadas à mão, lidas pelo Diagnóstico
+- `LISTINGS_COVERAGE`, `PDAD_A_COVERAGE` — **operacionais**, recalculadas por inteiro pelo menu
+  (v2.4.0); nunca editadas à mão
 
 Não é preciso criar coluna à mão. A partir do Apps Script **v2.0.0**, **Configurar projeto**
 provisiona de forma **aditiva** toda coluna que falta nas abas do contrato: cria a coluna nova no
@@ -211,3 +219,58 @@ requisição. Sem este passo, toda tentativa de escrita é recusada — não exi
    barreira é o token: qualquer pessoa que abra a URL vê a tela de login, mas só grava dados quem
    tiver o `ADMIN_TOKEN`. Não é uma página secreta (R4.3) — o link não é divulgado publicamente,
    mas a segurança real está no token, não em ele não ser linkado.
+
+## 9. Runbook de sincronização v2.4.0 (issues #119, #120)
+
+Estado que este runbook resolve (leitura pública de 2026-09-19): `validation_errors = 3370`, dos quais
+3369 eram `FIPEZAP_INVALID_PERIOD` (célula Date validada como texto) e 61 avisos eram
+`PRICE_M2_MISMATCH` falsos (preço como texto `"R$ 290.000"` lido como 290). O script instalado na
+planilha era a v2.2.1 + um adendo FipeZAP; o repositório era a v2.3.0 sem FipeZAP. A v2.4.0 é a
+união dos dois, e o estado final esperado é:
+
+```text
+GitHub Code.gs  =  Apps Script salvo  =  Apps Script implantado no /exec  =  2.4.0
+```
+
+Ordem de execução — cada passo depende do anterior:
+
+1. **Extensões → Apps Script**: substitua TODO o conteúdo por `optional-apps-script/Code.gs` e salve.
+   Não mantenha o adendo antigo abaixo: a 2.4.0 já o contém, e duas definições da mesma função
+   fariam a última vencer em silêncio.
+2. **Implantar → Gerenciar implantações → lápis → Versão: Nova versão → Implantar.** Salvar não
+   atualiza o `/exec` (ver §8). Confira em `…/exec?resource=health` que `app_version` é `2.4.0`.
+3. Menu **Imob Intelligence → Configurar projeto**. Cria o que falta (`category` em DATA_QUALITY,
+   abas FipeZAP vazias se não existirem) e não toca dado.
+4. **Saneamento: normalizar células monetárias.** LISTINGS e DEVELOPMENTS: texto `R$ …` vira
+   número com formato de moeda; cada célula convertida vira uma linha do CHANGE_LOG. Texto
+   **ambíguo** sem `R$` e com um ponto só (`385.000`) só é convertido quando `preço/m² informado ×
+   área` decide entre R$ 385 e R$ 385.000; sem âncora, a célula é **preservada e contada** no
+   resumo ("N ambígua(s) sem âncora") para correção à mão. Fórmulas são mantidas.
+5. **Saneamento: normalizar períodos FipeZAP.** `period_id` → texto `YYYY-MM`, `reference_date` →
+   texto `YYYY-MM-DD` em FIPEZAP_MONTHLY, FIPEZAP_LOCALITY_MONTHLY e FIPEZAP_SOURCES.
+6. **Saneamento: provisionar IVV_REGION.** Cria a aba com os 12 cabeçalhos. Cole em seguida a
+   semente (95 linhas, mai/2026 — `IVV_REGION` de `migration/imob-intelligence-backend.xlsx`;
+   o CSV pronto para colar foi entregue junto com esta versão). `reference_month` pode ficar como
+   data; `ivv_pct_published` e `ivv_pct` são ponto percentual (`12.5` = 12,5%).
+7. **Validar dados agora.** Esperado: `validation_errors = 0`. Os avisos que sobram são legítimos e
+   nomeados: `MISSING_OPTIONAL_SHEET` (PRIMARY_OFFERS), a fila de pesquisa de DEVELOPMENTS
+   (`COVERAGE_MISSING_*`), lacunas históricas FipeZAP (`FIPEZAP_COVERAGE_GAP`) e o que a planilha
+   de fato tiver de divergente. Erro que sobrar é dado a corrigir, não validador a afrouxar.
+8. **Cobertura: recalcular LISTINGS_COVERAGE** e **Cobertura: recalcular PDAD_A_COVERAGE.** Abas
+   operacionais, reescritas por inteiro; são a fila de pesquisa do Plano 02.
+9. **Atualizar metadados.** Publica em APP_META `rows_ivv_monthly`, `rows_ivv_region`,
+   `rows_fipezap_*`, `rows_pdad_data`, `rows_pdad_coverage`, `rows_listings_coverage`,
+   `rows_polygons_active`, `fipezap_period_start/end`.
+10. Conferência final pela leitura pública (qualquer um pode fazer, sem token):
+    `…/gviz/tq?sheet=APP_META&tqx=out:csv` → `validation_errors = 0`, `app_version = 2.4.0`;
+    `…/gviz/tq?sheet=FIPEZAP_MONTHLY&tq=select%20B%20limit%201` → coluna `period_id` com
+    `"type":"string"`; `…/gviz/tq?sheet=LISTINGS&tq=select%20W%20limit%201` → `asking_price_brl`
+    com `"type":"number"`.
+
+Rodar qualquer passo duas vezes é seguro: as rotinas são idempotentes e registram no CHANGE_LOG só o
+que mudou. Os gatilhos (`Instalar gatilhos`) só precisam ser reinstalados se ainda não existirem.
+
+Menu completo da v2.4.0: Configurar projeto · Validar dados agora · Recalcular campos derivados ·
+Saneamento (3 itens) · Cobertura (2 itens) · Sincronizar base FipeZAP · Recalcular visão FipeZAP ·
+Importar polígonos · Sincronizar Regiões Administrativas · Sincronizar trechos rodoviários DER ·
+Instalar gatilhos · Atualizar metadados · Configurar / trocar token · Limpar cache.
