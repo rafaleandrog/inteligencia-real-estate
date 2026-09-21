@@ -679,7 +679,7 @@ As 42 colunas, em cinco grupos:
 | `source_system` | texto | não | — | `user_upload`, `GeoPortal_SEDUH_DF`, `DER_DF` |
 | `source_layer_name` | texto | não | — | camada de origem |
 | `source_feature_id` | texto | não | — | id da feição na fonte |
-| `source_crs` | texto | não | — | sempre `EPSG:4326` na planilha |
+| `source_crs` | texto | não | — | **CRS NATIVO da camada de origem**, não o da geometria gravada. `EPSG:4326` nas RAs e nos KML (o GeoPortal publica em 4326); `EPSG:31983` no eixo rodoviário (o cadastro do DER é SIRGAS 2000 / UTM 23S). Ver a nota abaixo |
 | `source_page_verified_at` | data | não | — | data da verificação da fonte |
 | `confidence_flag` | texto | não | — | confiança na geometria |
 | `quality_flag` | texto | não | — | ex.: `official_boundary_simplified_for_sheet` |
@@ -699,6 +699,29 @@ As 42 colunas, em cinco grupos:
 | `source_geometry_type` | texto | não | — | tipo da geometria original |
 | `display_buffer_m` | número | não | — | buffer por lado usado para derivar o corredor rodoviário da v2.2.1: faixa de domínio do DER quando publicada (teto 100 m), senão o valor do menu (padrão 20 m); origem em `properties_json.display_buffer_source`. **`0` no eixo rodoviário de hoje**, que não é bufferizado |
 | `source_geometry_geojson` | texto | não | — | geometria ORIGINAL; ver abaixo |
+
+#### `source_crs` é o CRS da FONTE, não o da geometria gravada
+
+**A geometria de `geometry_geojson` e de `source_geometry_geojson` está SEMPRE em
+`EPSG:4326`**, em toda linha da aba, sem exceção — é `[longitude, latitude]` em graus. A
+consulta ao DER leva `outSR=4326` e a do GeoPortal já devolve 4326.
+
+`source_crs` responde outra pergunta: em que sistema a camada de origem MANTÉM o cadastro.
+
+| Feição | `source_crs` | Por quê |
+|---|---|---|
+| Região Administrativa, KML | `EPSG:4326` | o GeoPortal/SEDUH publica e mantém em 4326 |
+| Eixo rodoviário | `EPSG:31983` | o DER cadastra em SIRGAS 2000 / UTM 23S |
+
+A versão anterior deste contrato dizia "sempre `EPSG:4326` na planilha", o que era verdade
+enquanto só havia RA e KML. Com o eixo rodoviário a frase passou a esconder uma distinção
+real — e um consumidor que lesse `EPSG:31983` como o CRS das coordenadas interpretaria graus
+como metros UTM (achado P1 do Codex na PR #135).
+
+Quem precisa do CRS das coordenadas GRAVADAS usa
+`properties_json.display_geometry_crs` (`EPSG:4326`), e
+`properties_json.geometry_source_crs` repete o nativo. No painel, a linha aparece rotulada
+como **"CRS nativo da fonte"**, nunca como "sistema de coordenadas" sem qualificação.
 
 #### Eixo rodoviário: a `LineString` É a geometria desenhada (issue #131)
 

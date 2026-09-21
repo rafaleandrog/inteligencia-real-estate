@@ -51,7 +51,7 @@ import {
   anchorLegendGroups, applyFilters, computeKpis, createFilterState, distinctAnchorGroups,
   distinctAnchorSegments, distinctLocalities, distinctPropertyTypes, distinctRegions,
   distinctRegularizationStatuses, distinctSalesStages, LAYERS,
-  groupPolygonsForLegend, polygonPassesLayerFilters, raProfileForPolygon,
+  groupPolygonsForLegend, isActivePolygon, polygonPassesLayerFilters, raProfileForPolygon,
 } from './filters.js';
 import {
   formatBRL, formatBRLCompact, formatM2, formatNumber, formatPriceM2, formatDate,
@@ -546,7 +546,11 @@ function openPolygonDetail(polygon) {
     ['Verificado em', dateOrNull(polygon.source_page_verified_at)],
     ['Confiança', polygon.confidence_flag],
     ['Qualidade', polygon.quality_flag],
-    ['Sistema de coordenadas', polygon.source_crs],
+    // "CRS nativo da fonte", nunca "sistema de coordenadas" sem qualificação: a coluna diz
+    // em que sistema a CAMADA DE ORIGEM mantém o cadastro (4326 no GeoPortal, 31983 no
+    // DER), enquanto a geometria gravada está sempre em 4326. Sem o qualificador, alguém lê
+    // `EPSG:31983` e interpreta graus como metros UTM (achado P1 do Codex na PR #135).
+    ['CRS nativo da fonte', polygon.source_crs],
     ['Papel da geometria', polygon.geometry_role],
     ['Buffer de exibição', polygon.display_buffer_m === null || polygon.display_buffer_m === undefined
       ? null : `${formatNumber(polygon.display_buffer_m)} m por lado`],
@@ -1737,8 +1741,13 @@ function renderPolygonLegend() {
     }
 
     // Os códigos do piloto, um por linha, com a cor do respectivo eixo (issue #134).
+    //
+    // `isActivePolygon` é a MESMA regra do renderizador e de `groupPolygonsForLegend`. Sem
+    // ela, uma linha aposentada do grupo reapareceria como item clicável de uma geometria
+    // que `renderPolygons` se recusa a desenhar — legenda prometendo o que o mapa não tem
+    // (achado P2 do Codex na PR #135, e a mesma classe do P1 da PR #133).
     const eixos = selectRoadSegmentPolygons(
-      state.polygons.filter((p) => polygonLayerGroup(p) === group.key)
+      state.polygons.filter((p) => isActivePolygon(p) && polygonLayerGroup(p) === group.key)
     );
     for (const no of roadSegmentLegendRows(eixos)) list.append(no);
 

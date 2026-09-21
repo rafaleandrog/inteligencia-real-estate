@@ -3000,10 +3000,19 @@ function lineMetricsApprox_(geometry) {
 function roadAttributesForSheet_(attrs, code) {
   var num = function (v) { var n = toNumber_(v); return n === null ? null : n; };
   var txt = function (v) { return sanitizePlainText_(v); };
-  return {
+  var primario = txt(attrs.cod_distrital);
+  var secundario = txt(attrs.cod_distrital2);
+  var out = {
     road_segment_id: canonicalRoadSegmentId_(code),
     source_segment_code: code,
-    cod_distrital: txt(attrs.cod_distrital) || code,
+    // O código PEDIDO, não o primário da feição. `fetchDerRoadByCode_` casa por
+    // `cod_distrital` OU `cod_distrital2`, e numa feição encontrada pelo secundário o
+    // primário é OUTRO código (na DF-001, `001EDF0090` tem `cod_distrital2 = 025EDF0110`).
+    // Gravar o primário fazia a legenda identificar o trecho pelo código errado e a
+    // validação da camada acusar o código pedido como ausente — achado P2 do Codex na
+    // PR #135. O código pedido é o que a série de tráfego usa, e é por ele que o trecho é
+    // procurado em todo lugar.
+    cod_distrital: code,
     rodovia: toText_(attrs.rodovia),
     descricao_inicial: txt(attrs.descricao_inicial),
     descricao_final: txt(attrs.descricao_final),
@@ -3019,6 +3028,13 @@ function roadAttributesForSheet_(attrs, code) {
     fx_direita: num(attrs.fx_direita),
     fx_esquerda: num(attrs.fx_esquerda)
   };
+
+  // Os códigos da FEIÇÃO entram só quando divergem do pedido — que é o caso do casamento
+  // pelo secundário. Incluí-los sempre acrescentaria duas linhas iguais ao código pedido em
+  // todo painel; incluí-los nunca apagaria a evidência de qual feição respondeu.
+  if (primario && primario !== code) out.cod_distrital_na_feicao = primario;
+  if (secundario && secundario !== code) out.cod_distrital2_na_feicao = secundario;
+  return out;
 }
 
 /** Procedência da geometria consultada, para `properties_json`. */

@@ -928,6 +928,16 @@ await polyPage.route('**/data/demo.json', async (route) => {
     // `SMOKE_ROAD` acima é um corredor `Polygon` e CONTINUA sendo área, porque um trecho
     // gravado assim precisa continuar desenhando assim.
     ...trechosOficiais(),
+    // Trecho APOSENTADO: `supersedePolygonsOfEntity_` deixa a geometria antiga na aba com
+    // `status: inactive`. Ele não pode ser desenhado nem virar item de legenda — sem esta
+    // linha no payload, as asserções de "inativo não aparece" passariam de qualquer jeito, e
+    // teste que não pode falhar não é teste.
+    {
+      ...trechosOficiais()[0],
+      polygon_id: 'ROADSEG_APOSENTADO',
+      entity_id: 'ROADSEG_APOSENTADO',
+      status: 'inactive',
+    },
   ];
   // As três abas de tráfego, para o painel do trecho ter o que mostrar. Sem elas o
   // bloco de fluxo abriria dizendo "sem dias medidos", que é um estado válido mas não é
@@ -1074,6 +1084,14 @@ coresLegenda.length === PILOT_ROAD_SEGMENT_CODES.length
 (itens || []).every((i) => i.traco)
   ? pass('a amostra de cada eixo é um traço, como o mapa desenha')
   : fail('algum eixo ficou com amostra de área na legenda');
+
+// Contorno INATIVO não entra na legenda: o renderizador se recusa a desenhá-lo, e um item
+// clicável para geometria que não está no mapa promete o que o mapa não tem (achado P2 do
+// Codex na PR #135 — mesma classe do P1 da PR #133).
+const inativoNaLegenda = (itens || []).some((i) => i.codigo === 'ROADSEG_APOSENTADO');
+!inativoNaLegenda
+  ? pass('trecho aposentado não aparece na legenda')
+  : fail('um trecho inativo virou item clicável da legenda');
 const corredores = await polyPage.evaluate(() => {
   const input = document.querySelector('#polygonLayers input[data-polygon-group="road_network"]');
   const lista = input && input.closest('ul');

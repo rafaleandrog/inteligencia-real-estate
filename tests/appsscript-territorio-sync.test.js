@@ -230,6 +230,50 @@ test('o sync das rodovias casa por cod_distrital e grava o EIXO oficial, não um
   assert.equal(meta.road_sync_buffer_m, '0', 'o eixo não é bufferizado');
 });
 
+test('feição achada pelo cod_distrital2 guarda o código PEDIDO, não o primário dela', () => {
+  // `fetchDerRoadByCode_` casa por `cod_distrital` OU `cod_distrital2`. Na DF-001 a feição
+  // 188 tem `cod_distrital: 001EDF0090` e `cod_distrital2: 025EDF0110` — pedindo o
+  // secundário, gravar o primário faria a legenda identificar o trecho pelo código errado e
+  // a validação da camada acusar o código pedido como ausente (achado P2 do Codex, PR #135).
+  const probe = createAppsScriptSandbox().context;
+  const H = probe.REQUIRED_HEADERS;
+  const sheets = sheetsBase(probe);
+  sheets.TRAFFIC_DAILY_TEST.push(trafficRow(H, 'T9', '025EDF0110', '2026-04-01', 700));
+
+  const sandbox = createAppsScriptSandbox({ sheets });
+  sandbox.context.UrlFetchApp.fetch = fakeFetch([
+    [/Rodovias_2025\/FeatureServer\/0\/query\?/, DER_ONLY('001EDF0090')],
+  ], []);
+  sandbox.context.syncRoadSegmentsFromTraffic_();
+
+  const [p] = rowsOf(sandbox.sheets.POLYGONS, H.POLYGONS);
+  const props = JSON.parse(p.properties_json);
+  assert.equal(props.cod_distrital, '025EDF0110', 'gravou o código primário da feição');
+  assert.equal(props.source_segment_code, '025EDF0110');
+  assert.equal(p.polygon_id, 'ROADSEG_025EDF0110');
+  assert.equal(p.entity_id, 'ROADSEG_025EDF0110');
+  // O código da feição não some: ele vira procedência, porque é a evidência de QUAL linha
+  // da camada respondeu à consulta.
+  assert.equal(props.cod_distrital_na_feicao, '001EDF0090');
+
+  // E o trecho continua ligado ao código que a série de tráfego usa.
+  const [seg] = rowsOf(sandbox.sheets.ROAD_SEGMENTS, H.ROAD_SEGMENTS);
+  assert.equal(seg.road_segment_id, 'ROADSEG_025EDF0110');
+  assert.equal(seg.current_polygon_id, 'ROADSEG_025EDF0110');
+});
+
+test('quando o código pedido É o primário, nenhuma chave de procedência sobra', () => {
+  // A chave só entra quando há divergência: incluí-la sempre acrescentaria, em todo painel,
+  // uma linha repetindo o código que já está uma linha acima.
+  const { context, sheets, H } = sandboxRodovias();
+  context.syncRoadSegmentsFromTraffic_();
+  const p70 = rowsOf(sheets.POLYGONS, H.POLYGONS).find((p) => p.entity_id === 'ROADSEG_001EDF0070');
+  const props = JSON.parse(p70.properties_json);
+  assert.equal(props.cod_distrital, '001EDF0070');
+  assert.equal('cod_distrital_na_feicao' in props, false);
+  assert.equal('cod_distrital2_na_feicao' in props, false);
+});
+
 test('re-sincronizar NÃO troca o id, a geometria nem a cartografia do eixo já cadastrado', () => {
   // É o critério de aceite da issue #132: rodar o menu numa planilha que já tem os eixos
   // oficiais não pode mexer neles. Antes, cada execução gerava um `polygon_id` novo (o hash

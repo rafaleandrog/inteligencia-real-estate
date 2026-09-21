@@ -509,9 +509,8 @@ test('trecho sem geometry_geojson cai para source_geometry_geojson', () => {
 });
 
 test('o CORREDOR com buffer nunca cai para o campo de origem', () => {
-  // É o caso que a regra antiga protegia, e ele continua protegido: ali `geometry_geojson`
-  // é a área e `source_geometry_geojson` é o eixo — cair de um para o outro trocaria o
-  // desenho sem ninguém perceber.
+  // É o caso que a regra antiga protegia, e ele continua protegido — agora pela guarda
+  // POSITIVA de `route_axis`, que cobre também o corredor gravado sem o marcador.
   const corredor = contorno({
     entity_type: 'road_segment', geometry_role: 'display_corridor', geometry_geojson: '',
     source_geometry_geojson: '{"type":"LineString","coordinates":[[-47.8,-15.8],[-47.7,-15.7]]}',
@@ -584,4 +583,38 @@ test('sem pico medido, o campo some — não vira zero', () => {
     normalizeTrafficDailyRecords(trafficRows({ dias: 2 }).map((r) => ({ ...r, pico_15min_fluxo: '' }))).records, [],
   );
   assert.equal(roadSegmentTrafficDetail(bySegmentId.get('ROADSEG_001EDF0070')).geral.pico, null);
+});
+
+// --- Achados do Codex na PR #135 -----------------------------------------------------
+
+test('o fallback exige route_axis POSITIVAMENTE, não apenas "não é corredor"', () => {
+  // `geometry_role` é opcional no contrato. Excluir só o caso conhecido de discordância
+  // (`display_corridor`) deixa passar um corredor legado gravado SEM o marcador: ele cairia
+  // para o próprio eixo e trocaria o desenho em silêncio. Exigir o papel certo fecha a
+  // classe inteira, não uma instância dela.
+  const semPapel = contorno({
+    entity_type: 'road_segment', geometry_role: '', geometry_geojson: '',
+    source_geometry_geojson: '{"type":"LineString","coordinates":[[-47.8,-15.8],[-47.7,-15.7]]}',
+  });
+  assert.equal(roadAxisGeometry(semPapel), null);
+
+  const papelDesconhecido = contorno({
+    entity_type: 'road_segment', geometry_role: 'papel_que_ninguem_previu', geometry_geojson: '',
+    source_geometry_geojson: '{"type":"LineString","coordinates":[[-47.8,-15.8],[-47.7,-15.7]]}',
+  });
+  assert.equal(roadAxisGeometry(papelDesconhecido), null);
+
+  // Com `route_axis` declarado, o fallback vale.
+  const eixo = contorno({
+    entity_type: 'road_segment', geometry_role: 'route_axis', geometry_geojson: '',
+    source_geometry_geojson: '{"type":"LineString","coordinates":[[-47.8,-15.8],[-47.7,-15.7]]}',
+  });
+  assert.equal(roadAxisGeometry(eixo).type, 'LineString');
+
+  // `geometry_geojson` legível NÃO depende do papel: quem desenha é a geometria.
+  const semPapelComGeometria = contorno({
+    entity_type: 'road_segment', geometry_role: '',
+    geometry_geojson: '{"type":"LineString","coordinates":[[-47.8,-15.8],[-47.7,-15.7]]}',
+  });
+  assert.equal(roadAxisGeometry(semPapelComGeometria).type, 'LineString');
 });

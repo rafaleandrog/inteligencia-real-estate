@@ -137,14 +137,23 @@ export function polygonFeatureType(polygon) {
  *
  * As duas guardas que mantêm a regra antiga de pé onde ela vale:
  *   - só para `road` — RA nenhuma cai para o campo de origem;
- *   - nunca quando `geometry_role` é `display_corridor`, que é exatamente o caso em que os
- *     dois campos discordam por construção.
+ *   - só com `geometry_role: 'route_axis'` DECLARADO.
+ *
+ * A segunda guarda é POSITIVA de propósito. A primeira versão desta função apenas excluía
+ * `display_corridor`, o caso conhecido de discordância entre os dois campos — e
+ * `geometry_role` é opcional no contrato, então um corredor legado gravado SEM o marcador
+ * passava pela exclusão e era trocado pelo próprio eixo, em silêncio (achado P1 do Codex na
+ * PR #135). Exigir o papel certo fecha a classe inteira; excluir um valor fecha uma
+ * instância dela.
+ *
+ * O papel só governa o FALLBACK. Um `geometry_geojson` legível é desenhado com papel
+ * declarado ou sem ele — quem decide a forma do desenho é a geometria.
  */
 export function roadAxisGeometry(polygon) {
   const desenhada = parseLineGeometry(polygon && polygon.geometry_geojson);
   if (desenhada) return desenhada;
   if (polygonFeatureType(polygon) !== 'road') return null;
-  if (text(polygon.geometry_role) === 'display_corridor') return null;
+  if (text(polygon.geometry_role) !== 'route_axis') return null;
   return parseLineGeometry(polygon.source_geometry_geojson);
 }
 
