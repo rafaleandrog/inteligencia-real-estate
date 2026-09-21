@@ -105,6 +105,50 @@ export function parseLineGeometry(geometryText) {
 }
 
 /**
+ * Tipo de feição de um contorno, num ponto só (issue #134).
+ *
+ * `ra` e `road` são as duas coisas que a aba POLYGONS carrega e que a tela trata de forma
+ * diferente ponta a ponta — desenho, legenda, painel e vínculo com fluxo. Antes cada um
+ * desses pontos perguntava à sua maneira (`entity_type`, `category`, tipo da geometria), e
+ * perguntas parecidas com respostas diferentes é como um trecho some de um lugar e aparece
+ * em outro.
+ *
+ * NÃO responde "como desenhar" — para isso existe `drawsAsLine`, que olha a geometria. Um
+ * corredor da v2.2.1 é `road` e é desenhado como ÁREA.
+ */
+export function polygonFeatureType(polygon) {
+  if (!polygon) return 'other';
+  if (isRoadSegmentPolygon(polygon)) return 'road';
+  if (text(polygon.entity_type) === 'administrative_region') return 'ra';
+  return 'other';
+}
+
+/**
+ * Geometria de linha de um trecho, com `source_geometry_geojson` como FALLBACK (issue #134).
+ *
+ * A regra anterior era categórica: "`source_geometry_geojson` é lido e nunca desenhado".
+ * Ela nasceu quando os dois campos guardavam desenhos DIFERENTES — `geometry_geojson` era o
+ * corredor com buffer e o de origem era o eixo —, e ali o fallback trocaria um desenho pelo
+ * outro sem ninguém perceber.
+ *
+ * No eixo do DER os dois campos trazem a MESMA LineString, então cair para o de origem não
+ * troca nada: recupera o desenho quando a célula principal chega vazia ou truncada (a
+ * geometria de um trecho longo flerta com o teto de caracteres da célula).
+ *
+ * As duas guardas que mantêm a regra antiga de pé onde ela vale:
+ *   - só para `road` — RA nenhuma cai para o campo de origem;
+ *   - nunca quando `geometry_role` é `display_corridor`, que é exatamente o caso em que os
+ *     dois campos discordam por construção.
+ */
+export function roadAxisGeometry(polygon) {
+  const desenhada = parseLineGeometry(polygon && polygon.geometry_geojson);
+  if (desenhada) return desenhada;
+  if (polygonFeatureType(polygon) !== 'road') return null;
+  if (text(polygon.geometry_role) === 'display_corridor') return null;
+  return parseLineGeometry(polygon.source_geometry_geojson);
+}
+
+/**
  * Este contorno é desenhado como LINHA?
  *
  * A pergunta é sobre a GEOMETRIA, não sobre o tipo da entidade — e a diferença não é
@@ -114,7 +158,7 @@ export function parseLineGeometry(geometryText) {
  * antigo — e faria a legenda anunciar um traço onde o mapa desenha uma área.
  */
 export function drawsAsLine(polygon) {
-  return parseLineGeometry(polygon && polygon.geometry_geojson) !== null;
+  return roadAxisGeometry(polygon) !== null;
 }
 
 /**
@@ -143,7 +187,7 @@ export function lineParts(geometry) {
 export function roadSegmentBounds(polygons) {
   const bounds = [];
   for (const polygon of selectRoadSegmentPolygons(polygons)) {
-    const geometry = parseLineGeometry(polygon.geometry_geojson);
+    const geometry = roadAxisGeometry(polygon);
     for (const part of lineParts(geometry)) {
       for (const position of part || []) {
         if (!Array.isArray(position) || position.length < 2) continue;
@@ -235,9 +279,10 @@ export function validateRoadSegmentLayer(polygons, options = {}) {
       );
     }
 
-    // Geometria ilegível ou de tipo de área: o trecho não é desenhado, e o motivo é dito.
-    // Converter uma dessas em linha "para não sumir" seria inventar geografia.
-    if (parseLineGeometry(segment.geometry_geojson) === null) {
+    // Geometria ilegível ou de tipo de área — contando já o fallback para
+    // `source_geometry_geojson`. O trecho não é desenhado, e o motivo é dito. Converter uma
+    // geometria de área em linha "para não sumir" seria inventar geografia.
+    if (roadAxisGeometry(segment) === null) {
       warnings.push(
         `Trecho rodoviário ${codigo}: geometria ausente, ilegível ou fora de `
         + 'LineString/MultiLineString — não será desenhado.'

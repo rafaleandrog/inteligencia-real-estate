@@ -61,13 +61,13 @@ import {
   formatAnchorSegment, formatSalesStage, formatRegularizationStatus, formatPercent,
   percentFromPoints, raAgeBands, polygonStyle, sortPolygonsForDraw, raProfileEssentials,
   raProfileUnavailability, polygonEssentials, polygonPropertyTiers, polygonEssentialKeys,
-  polygonEntityType, compactNumber,
+  polygonEntityType, polygonLayerGroup, compactNumber,
 } from './format.js';
 import { trafficPanelRows, roadSegmentTrafficDetail } from './traffic/panel.js';
 import { segmentIdsWithTraffic } from './traffic/link.js';
 import {
-  drawsAsLine, isRoadSegmentPolygon, parseLineGeometry, roadSegmentBounds, roadSegmentIdOf,
-  validateRoadSegmentLayer,
+  drawsAsLine, isRoadSegmentPolygon, roadAxisGeometry, roadSegmentBounds, roadSegmentIdOf,
+  roadSegmentCodeOf, selectRoadSegmentPolygons, validateRoadSegmentLayer,
 } from './traffic/road-geometry.js';
 import { ANCHOR_ICONS, ANCHOR_FALLBACK_ICON } from './icons.js';
 
@@ -201,6 +201,14 @@ const state = {
   // Trechos rodoviários com tráfego ligado (issue #62/#63). `bySegmentId` vazio é o
   // estado normal enquanto ROAD_SEGMENTS não vier — o painel simplesmente não aparece.
   traffic: { bySegmentId: new Map(), orphaned: [], unmatchedSegmentIds: [] },
+  /**
+   * `polygon_id` do trecho rodoviário em destaque (issue #134), ou `null`.
+   *
+   * Fica fora de `selectedId`, que identifica um REGISTRO plotável e é zerado pelo
+   * `render()` quando o id sai do filtro — um contorno não passa pelos filtros de
+   * registro, e guardá-lo ali faria o destaque piscar no primeiro render.
+   */
+  selectedRoadId: null,
   // Diagnóstico Territorial PDAD-A (issue #100). `pdadData` são as linhas normalizadas
   // (formato longo); `pdadIndex` é `buildPdadIndex(pdadData)`, calculado uma vez no
   // carregamento — recalcular a cada troca de filtro custaria as ~12 mil linhas de novo
@@ -329,6 +337,16 @@ function renderPolygons() {
   for (const polygon of sortPolygonsForDraw(state.polygons)) {
     if (!polygonPassesLayerFilters(polygon, state.filters)) continue;
 
+    // Geometria de LINHA primeiro. `roadAxisGeometry` tenta `geometry_geojson` e, num
+    // trecho rodoviário cuja célula principal chegou vazia ou truncada, cai para
+    // `source_geometry_geojson` (issue #134) — nunca num corredor com buffer, onde os dois
+    // campos guardam desenhos diferentes por construção.
+    const eixo = roadAxisGeometry(polygon);
+    if (eixo) {
+      renderRoadSegment(polygon, eixo);
+      continue;
+    }
+
     let geometry = null;
     try {
       geometry = JSON.parse(polygon.geometry_geojson);
@@ -348,10 +366,6 @@ function renderPolygons() {
     //
     // Pelo tipo da geometria, os dois convivem: corredor antigo continua área, eixo novo
     // é linha, e nenhum dos dois depende de como a outra coluna foi preenchida.
-    if (geometry.type === 'LineString' || geometry.type === 'MultiLineString') {
-      renderRoadSegment(polygon, geometry);
-      continue;
-    }
     if (geometry.type !== 'Polygon' && geometry.type !== 'MultiPolygon') continue;
 
     const style = polygonStyle(polygon);
@@ -406,16 +420,16 @@ function renderPolygons() {
  * Administrativa, como antes.
  */
 function renderRoadSegment(polygon, parsed = null) {
-  // `renderPolygons` já parseou e já conferiu o tipo; `parseLineGeometry` cobre a chamada
-  // direta e recusa área, que é o que impede uma `Polygon` de entrar por esta porta.
-  const geometry = parsed || parseLineGeometry(polygon.geometry_geojson);
+  // `renderPolygons` já resolveu a geometria; `roadAxisGeometry` cobre a chamada direta e
+  // recusa área, que é o que impede uma `Polygon` de entrar por esta porta.
+  const geometry = parsed || roadAxisGeometry(polygon);
   // Geometria ausente, ilegível ou de tipo de área: o trecho não é desenhado, e
   // `validateRoadSegmentLayer` já disse o motivo no canal de avisos. Um traço inventado
   // aqui seria o mesmo que apagar a evidência de que o dado está errado.
   if (!geometry) return;
 
   const style = polygonStyle(polygon);
-  const rotulo = polygon.name || polygon.id;
+  const selecionado = state.selectedRoadId === polygon.id;
 
   let alvo = null;
   let traco = null;
@@ -431,10 +445,13 @@ function renderRoadSegment(polygon, parsed = null) {
       // `.road-segment-shape` — regra de classe vence o atributo que o Leaflet escreve
       // no SVG, que foi como todas as âncoras acabaram verdes na PR #40 (R8.31, R8.45).
       style: {
-        className: 'road-segment-shape',
+        // O destaque é ESTRUTURAL (espessura), não uma troca de cor: a cor do eixo é dado
+        // da planilha e identifica QUAL trecho é; trocá-la no clique faria a legenda deixar
+        // de bater com o mapa no exato momento em que alguém está conferindo os dois.
+        className: selecionado ? 'road-segment-shape road-segment-selected' : 'road-segment-shape',
         color: style.color,
-        weight: style.weight,
-        opacity: 0.95,
+        weight: selecionado ? style.weight + 4 : style.weight,
+        opacity: selecionado ? 1 : 0.95,
         fill: false,
         dashArray: style.dashArray,
       },
@@ -443,13 +460,37 @@ function renderRoadSegment(polygon, parsed = null) {
     return; // coordenada fora de faixa faz o Leaflet lançar; mesmo tratamento de renderPolygons
   }
 
+  const rotulo = roadSegmentTooltipText(polygon);
   for (const camada of [alvo, traco]) {
     const tooltip = document.createElement('span');
     tooltip.textContent = rotulo;
     camada.bindTooltip(tooltip, { sticky: true });
-    camada.on('click', () => openPolygonDetail(polygon));
+    camada.on('click', () => selectRoadSegment(polygon));
     camada.addTo(roadLayer);
   }
+}
+
+/**
+ * Texto do balão de um eixo: nome e, quando há medição, a métrica de fluxo (issue #134).
+ *
+ * A métrica é a MÉDIA DIÁRIA do trecho, derivada de `TRAFFIC_DAILY_TEST` — e o balão diz
+ * que é média, não "fluxo". Um número sem o que ele mede vira o número errado na cabeça de
+ * quem lê. Trecho sem medição mostra só o nome: travessão ali seria ruído.
+ */
+function roadSegmentTooltipText(polygon) {
+  const nome = polygon.name || polygon.id;
+  const segmentId = roadSegmentIdOf(polygon);
+  const detalhe = segmentId ? roadSegmentTrafficDetail(state.traffic.bySegmentId.get(segmentId)) : null;
+  const media = detalhe && detalhe.hasTraffic ? detalhe.geral.resumo.avgDailyFlow : null;
+  if (media === null || media === undefined) return nome;
+  return `${nome} — média ${formatNumber(Math.round(media))} veíc./dia`;
+}
+
+/** Destaca o trecho no mapa e abre o painel dele. */
+function selectRoadSegment(polygon) {
+  state.selectedRoadId = polygon.id;
+  renderPolygons();
+  openPolygonDetail(polygon);
 }
 
 /**
@@ -527,6 +568,15 @@ function openPolygonDetail(polygon) {
     p.textContent = polygon.description;
     frag.append(p);
   }
+
+  // Procedência oficial em prosa, antes do bloco de fluxo (issue #134). A planilha diz
+  // `geometry_status: "official"` e `source_system: "DER_DF"`; despejar as duas chaves cruas
+  // em "Origem e qualidade" é verdade, mas não é leitura — e a pergunta que essa linha
+  // responde ("de onde veio esse traço?") é a primeira que um eixo desenhado sobre um mapa
+  // levanta. Só aparece quando os DOIS campos confirmam: a frase afirma oficialidade, e
+  // afirmá-la sem o dado seria inventá-la.
+  const oficial = buildOfficialGeometryNote(polygon);
+  if (oficial) frag.append(oficial);
 
   // Fluxo diário do trecho (issue #131), vinculado ESTRITAMENTE por `road_segment_id`.
   if (isRoadSegmentPolygon(polygon)) appendRoadTrafficBlock(frag, polygon);
@@ -666,6 +716,20 @@ function trafficCutNode(corte) {
     });
   }
 
+  if (corte.pico) {
+    // O MAIOR pico de 15 min do período, com o dia — nunca uma soma nem uma média de
+    // máximos, que produziria um número que nenhum quarto de hora registrou.
+    const quando = corte.pico.interval
+      ? `${formatDate(corte.pico.date)}, ${corte.pico.interval}`
+      : formatDate(corte.pico.date);
+    linhas.push({
+      label: 'Maior pico de 15 min',
+      value: `${veiculos(corte.pico.flow)} (${quando})`,
+      title: 'Maior quarto de hora observado no período. Não é soma nem média: cada dia tem '
+        + 'o seu pico, e este é o maior deles.',
+    });
+  }
+
   if (corte.qualityFlags.length > 0) {
     linhas.push({
       label: 'Qualidade',
@@ -697,6 +761,25 @@ function trafficCutNode(corte) {
   }
 
   return bloco;
+}
+
+/**
+ * Frase declarando que a geometria é oficial do DER/DF, ou `null` (issue #134).
+ *
+ * Exige `geometry_status: 'official'` E `source_system: 'DER_DF'`. Um dos dois sozinho não
+ * basta: `official` sem o sistema não diz oficial de quem, e o sistema sem o status
+ * descreveria como oficial uma linha que a própria planilha não marcou assim.
+ */
+function buildOfficialGeometryNote(polygon) {
+  const props = (polygon && polygon.properties) || {};
+  if (props.geometry_status !== 'official') return null;
+  if (polygon.source_system !== 'DER_DF') return null;
+
+  const p = document.createElement('p');
+  p.className = 'detail-official';
+  const camada = polygon.source_layer_name ? ` (camada ${polygon.source_layer_name})` : '';
+  p.textContent = `Geometria oficial do DER/DF${camada}, sem simplificação nem buffer.`;
+  return p;
 }
 
 /** Data formatada, ou `null` quando não há data — o travessão não é informação. */
@@ -1264,7 +1347,11 @@ function togglePanel() {
 
 function closeDetail() {
   state.selectedId = null;
+  // Destaque aceso com o painel fechado seria um trecho marcado sem nada explicando por quê.
+  const tinhaDestaque = state.selectedRoadId !== null;
+  state.selectedRoadId = null;
   dom.detail.hidden = true;
+  if (tinhaDestaque) renderPolygons();
 }
 
 // --- Filtros e render -----------------------------------------------------
@@ -1649,10 +1736,69 @@ function renderPolygonLegend() {
       list.append(holder);
     }
 
+    // Os códigos do piloto, um por linha, com a cor do respectivo eixo (issue #134).
+    const eixos = selectRoadSegmentPolygons(
+      state.polygons.filter((p) => polygonLayerGroup(p) === group.key)
+    );
+    for (const no of roadSegmentLegendRows(eixos)) list.append(no);
+
     frag.append(list);
   }
 
   dom.polygonLayers.replaceChildren(frag);
+}
+
+/**
+ * Uma linha de legenda por TRECHO, com o código e a cor do eixo (issue #134).
+ *
+ * A legenda de grupo diz "Trechos rodoviários piloto — 5", e cinco linhas de cores
+ * diferentes no mapa não têm como ser lidas a partir disso: a cor identifica QUAL trecho é,
+ * e sem a lista ela não identifica nada. Aqui cada código aparece com a sua cor.
+ *
+ * São BOTÕES, não caixas de seleção: o filtro da camada é por grupo e por tipo, e uma caixa
+ * por trecho prometeria um liga/desliga individual que não existe. Clicar seleciona o
+ * trecho — o mesmo efeito de clicar na linha no mapa.
+ *
+ * Ordena por código para a lista não trocar de ordem entre carregamentos.
+ */
+function roadSegmentLegendRows(eixos) {
+  return [...eixos]
+    .sort((a, b) => String(roadSegmentCodeOf(a) || a.id).localeCompare(String(roadSegmentCodeOf(b) || b.id)))
+    .map((eixo) => {
+      const li = document.createElement('li');
+      li.className = 'polygon-type-row road-segment-row';
+
+      const botao = document.createElement('button');
+      botao.type = 'button';
+      botao.className = 'road-segment-legend-item';
+      if (state.selectedRoadId === eixo.id) botao.setAttribute('aria-current', 'true');
+      botao.addEventListener('click', () => selectRoadSegment(eixo));
+
+      // A amostra tem a FORMA do que o mapa desenha, mesma regra de `polygonLegendRow`:
+      // traço para o eixo, quadrado vazado para o corredor com buffer da v2.2.1, que é
+      // `road_segment` desenhado como ÁREA. Um traço ali descreveria errado.
+      const linha = drawsAsLine(eixo);
+      const estilo = polygonStyle(eixo);
+      const dot = document.createElement('span');
+      dot.className = linha ? 'dot dot-polygon-sample dot-road-sample' : 'dot dot-polygon-sample';
+      if (linha) {
+        dot.style.background = estilo.color;
+      } else {
+        dot.style.borderColor = estilo.color;
+        dot.style.background = estilo.fillColor;
+      }
+      dot.style.opacity = '0.95';
+
+      const texto = document.createElement('span');
+      texto.className = 'polygon-legend-label';
+      // O CÓDIGO do DER, não o nome: os cinco se chamam "DF-001 · trecho NNNN", e é o
+      // código que alguém procura na planilha e no cadastro do DER.
+      texto.textContent = roadSegmentCodeOf(eixo) || eixo.id;
+
+      botao.append(dot, texto);
+      li.append(botao);
+      return li;
+    });
 }
 
 /**

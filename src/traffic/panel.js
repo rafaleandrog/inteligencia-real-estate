@@ -182,6 +182,24 @@ function fluxoTotal(records) {
   return { total, daysUsed, daysExcluded };
 }
 
+/**
+ * O maior pico de 15 min do recorte, com o dia e a janela em que aconteceu (issue #134).
+ *
+ * O pico NÃO é somado nem promediado entre dias: `pico_15min_fluxo` é o maior quarto de
+ * hora DAQUELE dia, e somar máximos de dias diferentes produz um número que nunca foi
+ * medido. O que se pode dizer do período é qual foi o maior deles — e quando.
+ */
+function picoDoPeriodo(records) {
+  let melhor = null;
+  for (const record of records || []) {
+    if (!Number.isFinite(record?.peakFlow)) continue;
+    if (melhor === null || record.peakFlow > melhor.flow) {
+      melhor = { flow: record.peakFlow, interval: record.peakInterval || null, date: record.date };
+    }
+  }
+  return melhor;
+}
+
 /** Um recorte de dias (um sentido, ou o trecho inteiro) pronto para a tela. */
 function recorte(label, records) {
   const ordenados = ordenadosPorData(records);
@@ -193,6 +211,7 @@ function recorte(label, records) {
     classes: classTotals(ordenados),
     cobertura: resumoCobertura(ordenados),
     qualityFlags: bandeirasDeQualidade(ordenados),
+    pico: picoDoPeriodo(ordenados),
   };
 }
 

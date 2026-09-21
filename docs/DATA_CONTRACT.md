@@ -736,9 +736,21 @@ em `src/traffic/road-geometry.js`): cinco códigos do piloto presentes, sem dupl
 `LineString`, todos `DER_DF`/`Rodovias_2025`, todos com fluxo em `TRAFFIC_DAILY_TEST`. Cada desvio
 vira **aviso** no canal de avisos, nunca erro fatal (R2.5) e nunca silêncio.
 
-**`source_geometry_geojson` continua sendo procedência e nunca é desenhada.** No eixo de hoje ela
-traz a mesma linha de `geometry_geojson`; ler as duas daria dois desenhos possíveis para o mesmo
-trecho sem ninguém saber qual está na tela.
+**`source_geometry_geojson` é procedência, e só vira desenho como FALLBACK de um eixo** (issue
+#134). A regra era categórica — "lida e nunca desenhada" — e ela vale onde nasceu: no corredor com
+buffer, em que os dois campos guardam desenhos DIFERENTES, cair de um para o outro trocaria o
+desenho sem ninguém perceber. No eixo do DER os dois trazem a MESMA `LineString`, e o fallback
+recupera o traço quando a célula principal chega vazia ou truncada (a geometria de um trecho longo
+flerta com o teto de caracteres da célula).
+
+`roadAxisGeometry` (`src/traffic/road-geometry.js`) aplica as duas guardas que mantêm a regra antiga
+de pé onde ela vale:
+
+- só para feição `road` — RA nenhuma cai para o campo de origem;
+- nunca quando `geometry_role` é `display_corridor`, que é exatamente o caso em que os dois campos
+  discordam por construção.
+
+`geometry_geojson` legível tem precedência sempre.
 
 No cliente, os dois campos atravessam `normalizePolygon()` como **texto cru, sem `JSON.parse`** —
 parsear no normalizador transformaria um blob malformado numa linha em exceção no carregamento de

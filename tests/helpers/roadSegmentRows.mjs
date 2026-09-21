@@ -182,6 +182,10 @@ export function trafficRows({ segmentos = null, dias = 3, parcialNoUltimo = fals
         caminhao,
         medio,
         indefinido,
+        // Pico do dia: um quarto de hora, nunca a soma do dia. Varia por dia para o maior
+        // deles ser identificável.
+        pico_15min_fluxo: 300 + (d * 40),
+        pico_15min_intervalo: '06:00 - 06:15',
         intervalos_15min_observados: parcial ? 90 : 96,
         // Gravado com o MESMO erro de separador decimal que o backend produz num dia
         // parcial (R8.58): 9375 no lugar de 0,9375. Está aqui de propósito, para que

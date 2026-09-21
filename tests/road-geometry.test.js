@@ -16,7 +16,7 @@ import {
   PILOT_ROAD_SEGMENT_CODES, OFFICIAL_SOURCE_SYSTEM, OFFICIAL_SOURCE_LAYER,
   isRoadSegmentPolygon, selectRoadSegmentPolygons, parseLineGeometry, lineParts,
   roadSegmentBounds, roadSegmentIdOf, roadSegmentCodeOf, validateRoadSegmentLayer,
-  drawsAsLine,
+  drawsAsLine, roadAxisGeometry, polygonFeatureType,
 } from '../src/traffic/road-geometry.js';
 import { normalizePolygons, normalizePolygon } from '../src/normalize.js';
 import {
@@ -483,4 +483,105 @@ test('o vínculo e o renderizador usam a MESMA regra de contorno ativo', () => {
       `renderizador discorda em "${caso.status}"`,
     );
   }
+});
+
+// --- Fallback para `source_geometry_geojson` e tipo de feição (issue #134) ------------
+//
+// A regra antiga era categórica: "`source_geometry_geojson` é lido e nunca desenhado". Ela
+// vale onde nasceu — no corredor com buffer, em que os dois campos guardam desenhos
+// DIFERENTES. No eixo do DER os dois trazem a mesma LineString, e cair para o de origem
+// recupera o desenho quando a célula principal chega vazia ou truncada.
+
+test('trecho sem geometry_geojson cai para source_geometry_geojson', () => {
+  const linha = '{"type":"LineString","coordinates":[[-47.8,-15.8],[-47.7,-15.7]]}';
+  const sem = contorno({
+    entity_type: 'road_segment', geometry_geojson: '',
+    source_geometry_geojson: linha, geometry_role: 'route_axis',
+  });
+  assert.equal(roadAxisGeometry(sem).type, 'LineString');
+  assert.equal(drawsAsLine(sem), true);
+
+  const ilegivel = contorno({
+    entity_type: 'road_segment', geometry_geojson: '{isto nao e json',
+    source_geometry_geojson: linha, geometry_role: 'route_axis',
+  });
+  assert.equal(roadAxisGeometry(ilegivel).type, 'LineString');
+});
+
+test('o CORREDOR com buffer nunca cai para o campo de origem', () => {
+  // É o caso que a regra antiga protegia, e ele continua protegido: ali `geometry_geojson`
+  // é a área e `source_geometry_geojson` é o eixo — cair de um para o outro trocaria o
+  // desenho sem ninguém perceber.
+  const corredor = contorno({
+    entity_type: 'road_segment', geometry_role: 'display_corridor', geometry_geojson: '',
+    source_geometry_geojson: '{"type":"LineString","coordinates":[[-47.8,-15.8],[-47.7,-15.7]]}',
+  });
+  assert.equal(roadAxisGeometry(corredor), null);
+  assert.equal(drawsAsLine(corredor), false);
+});
+
+test('RA nenhuma cai para o campo de origem', () => {
+  const ra = contorno({
+    entity_type: 'administrative_region', geometry_geojson: '',
+    source_geometry_geojson: '{"type":"LineString","coordinates":[[-47.8,-15.8],[-47.7,-15.7]]}',
+  });
+  assert.equal(roadAxisGeometry(ra), null);
+});
+
+test('geometry_geojson válido tem PRECEDÊNCIA sobre o de origem', () => {
+  const p = contorno({
+    entity_type: 'road_segment', geometry_role: 'route_axis',
+    geometry_geojson: '{"type":"LineString","coordinates":[[-47.8,-15.8],[-47.7,-15.7]]}',
+    source_geometry_geojson: '{"type":"LineString","coordinates":[[-47.1,-15.1],[-47.2,-15.2]]}',
+  });
+  assert.deepEqual(roadAxisGeometry(p).coordinates[0], [-47.8, -15.8]);
+});
+
+test('o fallback também vale para o enquadramento e para a validação', () => {
+  const linhas = polygonRows().map((r) => ({ ...r, geometry_geojson: '' }));
+  const polygons = normalizePolygons(linhas);
+  assert.ok(roadSegmentBounds(polygons).length > 100, 'o enquadramento ignorou o campo de origem');
+  // Com o fallback, os cinco continuam desenháveis — nenhum aviso de geometria ausente.
+  const { warnings } = validateRoadSegmentLayer(polygons);
+  assert.deepEqual(warnings.filter((w) => /ilegível ou fora de/.test(w)), []);
+});
+
+test('featureType distingue RA, trecho e o resto num ponto só', () => {
+  assert.equal(polygonFeatureType(contorno({ entity_type: 'road_segment' })), 'road');
+  assert.equal(polygonFeatureType(contorno({ category: 'trecho_rodoviario' })), 'road');
+  assert.equal(polygonFeatureType(contorno({ entity_type: 'administrative_region' })), 'ra');
+  assert.equal(polygonFeatureType(contorno({ entity_type: 'custom_area' })), 'other');
+  assert.equal(polygonFeatureType(null), 'other');
+  // Corredor da v2.2.1 é `road` — mas desenhado como ÁREA. As duas perguntas são
+  // diferentes, e é por isso que são duas funções.
+  const corredor = contorno({
+    entity_type: 'road_segment', geometry_role: 'display_corridor',
+    geometry_geojson: '{"type":"Polygon","coordinates":[[[-47.9,-15.8],[-47.8,-15.8],[-47.8,-15.7],[-47.9,-15.8]]]}',
+  });
+  assert.equal(polygonFeatureType(corredor), 'road');
+  assert.equal(drawsAsLine(corredor), false);
+});
+
+// --- Pico de 15 min (issue #134) ------------------------------------------------------
+
+test('o pico do período é o MAIOR dia, nunca a soma nem a média dos picos', () => {
+  const linhas = trafficRows({ dias: 3 });
+  linhas[0].pico_15min_fluxo = 300; linhas[0].pico_15min_intervalo = '06:00 - 06:15';
+  linhas[1].pico_15min_fluxo = 520; linhas[1].pico_15min_intervalo = '18:00 - 18:15';
+  linhas[2].pico_15min_fluxo = 410; linhas[2].pico_15min_intervalo = '07:30 - 07:45';
+  const { bySegmentId } = linkTrafficDataset(
+    normalizeRoadSegments(roadSegmentRows()).records, trechos(),
+    normalizeTrafficDailyRecords(linhas).records, [],
+  );
+  const pico = roadSegmentTrafficDetail(bySegmentId.get('ROADSEG_001EDF0070')).geral.pico;
+  assert.equal(pico.flow, 520, 'somar ou promediar máximos produz um número nunca medido');
+  assert.equal(pico.interval, '18:00 - 18:15');
+});
+
+test('sem pico medido, o campo some — não vira zero', () => {
+  const { bySegmentId } = linkTrafficDataset(
+    normalizeRoadSegments(roadSegmentRows()).records, trechos(),
+    normalizeTrafficDailyRecords(trafficRows({ dias: 2 }).map((r) => ({ ...r, pico_15min_fluxo: '' }))).records, [],
+  );
+  assert.equal(roadSegmentTrafficDetail(bySegmentId.get('ROADSEG_001EDF0070')).geral.pico, null);
 });
