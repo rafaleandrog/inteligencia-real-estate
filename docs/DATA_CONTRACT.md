@@ -679,7 +679,7 @@ As 42 colunas, em cinco grupos:
 | `source_system` | texto | não | — | `user_upload`, `GeoPortal_SEDUH_DF`, `DER_DF` |
 | `source_layer_name` | texto | não | — | camada de origem |
 | `source_feature_id` | texto | não | — | id da feição na fonte |
-| `source_crs` | texto | não | — | sempre `EPSG:4326` na planilha |
+| `source_crs` | texto | não | — | **CRS NATIVO da camada de origem**, não o da geometria gravada. `EPSG:4326` nas RAs e nos KML (o GeoPortal publica em 4326); `EPSG:31983` no eixo rodoviário (o cadastro do DER é SIRGAS 2000 / UTM 23S). Ver a nota abaixo |
 | `source_page_verified_at` | data | não | — | data da verificação da fonte |
 | `confidence_flag` | texto | não | — | confiança na geometria |
 | `quality_flag` | texto | não | — | ex.: `official_boundary_simplified_for_sheet` |
@@ -700,6 +700,29 @@ As 42 colunas, em cinco grupos:
 | `display_buffer_m` | número | não | — | buffer por lado usado para derivar o corredor rodoviário da v2.2.1: faixa de domínio do DER quando publicada (teto 100 m), senão o valor do menu (padrão 20 m); origem em `properties_json.display_buffer_source`. **`0` no eixo rodoviário de hoje**, que não é bufferizado |
 | `source_geometry_geojson` | texto | não | — | geometria ORIGINAL; ver abaixo |
 
+#### `source_crs` é o CRS da FONTE, não o da geometria gravada
+
+**A geometria de `geometry_geojson` e de `source_geometry_geojson` está SEMPRE em
+`EPSG:4326`**, em toda linha da aba, sem exceção — é `[longitude, latitude]` em graus. A
+consulta ao DER leva `outSR=4326` e a do GeoPortal já devolve 4326.
+
+`source_crs` responde outra pergunta: em que sistema a camada de origem MANTÉM o cadastro.
+
+| Feição | `source_crs` | Por quê |
+|---|---|---|
+| Região Administrativa, KML | `EPSG:4326` | o GeoPortal/SEDUH publica e mantém em 4326 |
+| Eixo rodoviário | `EPSG:31983` | o DER cadastra em SIRGAS 2000 / UTM 23S |
+
+A versão anterior deste contrato dizia "sempre `EPSG:4326` na planilha", o que era verdade
+enquanto só havia RA e KML. Com o eixo rodoviário a frase passou a esconder uma distinção
+real — e um consumidor que lesse `EPSG:31983` como o CRS das coordenadas interpretaria graus
+como metros UTM (achado P1 do Codex na PR #135).
+
+Quem precisa do CRS das coordenadas GRAVADAS usa
+`properties_json.display_geometry_crs` (`EPSG:4326`), e
+`properties_json.geometry_source_crs` repete o nativo. No painel, a linha aparece rotulada
+como **"CRS nativo da fonte"**, nunca como "sistema de coordenadas" sem qualificação.
+
 #### Eixo rodoviário: a `LineString` É a geometria desenhada (issue #131)
 
 O DER publica o **eixo** do trecho rodoviário, que é `LineString`. Houve duas gerações disso, e as
@@ -714,6 +737,12 @@ A primeira derivava um corredor por buffer porque o mapa só sabia desenhar áre
 passou a desenhar linha na issue #131, então a sincronização grava o **eixo oficial direto**, sem
 buffer: uma faixa de 65 m por lado é uma afirmação sobre a faixa de domínio, não sobre a via, e
 desenhá-la no lugar do eixo engorda a DF-001 em 130 m de largura na tela.
+
+Desde a issue #132, `optional-apps-script/Code.gs` produz a segunda geração, e o `polygon_id` de um
+eixo é **o próprio `road_segment_id`** — a regra de vínculo da planilha é
+`current_polygon_id = polygon_id = road_segment_id`. O hash que a versão anterior punha dentro da
+chave (`POLY_ROAD_<código>_<hash12>`) fazia cada revisão de geometria gerar um id novo, e foi assim
+que `current_polygon_id` acabou apontando para linha que não existia mais.
 
 Por isso **o cliente despacha o desenho pelo TIPO DA GEOMETRIA, nunca pelo `entity_type`**
 (`renderPolygons` em `src/app.js`): `LineString`/`MultiLineString` vão para `renderRoadSegment`,
@@ -730,9 +759,21 @@ em `src/traffic/road-geometry.js`): cinco códigos do piloto presentes, sem dupl
 `LineString`, todos `DER_DF`/`Rodovias_2025`, todos com fluxo em `TRAFFIC_DAILY_TEST`. Cada desvio
 vira **aviso** no canal de avisos, nunca erro fatal (R2.5) e nunca silêncio.
 
-**`source_geometry_geojson` continua sendo procedência e nunca é desenhada.** No eixo de hoje ela
-traz a mesma linha de `geometry_geojson`; ler as duas daria dois desenhos possíveis para o mesmo
-trecho sem ninguém saber qual está na tela.
+**`source_geometry_geojson` é procedência, e só vira desenho como FALLBACK de um eixo** (issue
+#134). A regra era categórica — "lida e nunca desenhada" — e ela vale onde nasceu: no corredor com
+buffer, em que os dois campos guardam desenhos DIFERENTES, cair de um para o outro trocaria o
+desenho sem ninguém perceber. No eixo do DER os dois trazem a MESMA `LineString`, e o fallback
+recupera o traço quando a célula principal chega vazia ou truncada (a geometria de um trecho longo
+flerta com o teto de caracteres da célula).
+
+`roadAxisGeometry` (`src/traffic/road-geometry.js`) aplica as duas guardas que mantêm a regra antiga
+de pé onde ela vale:
+
+- só para feição `road` — RA nenhuma cai para o campo de origem;
+- nunca quando `geometry_role` é `display_corridor`, que é exatamente o caso em que os dois campos
+  discordam por construção.
+
+`geometry_geojson` legível tem precedência sempre.
 
 No cliente, os dois campos atravessam `normalizePolygon()` como **texto cru, sem `JSON.parse`** —
 parsear no normalizador transformaria um blob malformado numa linha em exceção no carregamento de
@@ -1200,10 +1241,11 @@ Chave: `road_segment_id`, canônico `ROADSEG_<código do trecho normalizado>`.
 > `road_code` vem de `rodovia` (`DF001`) e `road_name` de `descricao_inicial → descricao_final`.
 >
 > **`properties_json` NÃO usa prefixo `der_`.** Uma versão anterior deste documento declarava
-> `der_tmd`, `der_lanes_total`, `der_extension_km` e companhia; a sincronização nunca gravou
+> `der_tmd`, `der_lanes_total`, `der_extension_km` e companhia; o script implantado nunca gravou
 > nenhuma delas, e o cliente que as lia mostrava um painel de trecho **vazio** — o defeito estava
-> no contrato, não no dado (issue #131). As chaves reais, verificadas na planilha, são os nomes da
-> própria camada do DER:
+> no contrato, não no dado (issue #131). Desde a issue #132 a sincronização versionada em
+> `optional-apps-script/Code.gs` grava exatamente as chaves abaixo, que são os nomes da própria
+> camada do DER:
 >
 > | Chave | Conteúdo |
 > |---|---|

@@ -1094,6 +1094,39 @@ select:focus, input[type="number"]:focus {
 
 .polygon-legend-label { min-width: 0; overflow-wrap: anywhere; }
 
+/* Um item por trecho na legenda (issue #134): código + cor do eixo, clicável.
+
+   É BOTÃO, não caixa de seleção — o filtro da camada é por grupo/tipo, e uma caixa por
+   trecho prometeria um liga/desliga individual que não existe. A cor do ponto vem inline,
+   de `polygonStyle()`, como em toda amostra de contorno. */
+.road-segment-legend-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 2px 0;
+  background: none;
+  border: 0;
+  cursor: pointer;
+  font: inherit;
+  color: var(--muted);
+  text-align: left;
+  font-variant-numeric: tabular-nums;
+}
+.road-segment-legend-item:hover .polygon-legend-label { color: var(--accent-text); }
+.road-segment-legend-item[aria-current='true'] .polygon-legend-label {
+  color: var(--ink);
+  font-weight: 600;
+}
+.road-segment-row + .road-segment-row { margin-top: 2px; }
+
+/* Procedência oficial da geometria, no painel do trecho. */
+.detail-official {
+  margin: 8px 0 0;
+  font-size: 11px;
+  color: var(--muted);
+}
+
 /* Amostra de EIXO rodoviário (issue #131): um traço, não um quadrado. A forma da amostra
    é o que diz se o mapa desenha uma área ou uma linha, e um quadrado ali afirmaria um
    preenchimento que o trecho não tem (`fill_opacity: 0` na planilha).

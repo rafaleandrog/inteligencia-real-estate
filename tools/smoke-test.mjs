@@ -928,6 +928,16 @@ await polyPage.route('**/data/demo.json', async (route) => {
     // `SMOKE_ROAD` acima é um corredor `Polygon` e CONTINUA sendo área, porque um trecho
     // gravado assim precisa continuar desenhando assim.
     ...trechosOficiais(),
+    // Trecho APOSENTADO: `supersedePolygonsOfEntity_` deixa a geometria antiga na aba com
+    // `status: inactive`. Ele não pode ser desenhado nem virar item de legenda — sem esta
+    // linha no payload, as asserções de "inativo não aparece" passariam de qualquer jeito, e
+    // teste que não pode falhar não é teste.
+    {
+      ...trechosOficiais()[0],
+      polygon_id: 'ROADSEG_APOSENTADO',
+      entity_id: 'ROADSEG_APOSENTADO',
+      status: 'inactive',
+    },
   ];
   // As três abas de tráfego, para o painel do trecho ter o que mostrar. Sem elas o
   // bloco de fluxo abriria dizendo "sem dias medidos", que é um estado válido mas não é
@@ -1040,6 +1050,89 @@ const avisosTexto = (await polyPage.textContent('#dataWarnings').catch(() => '')
   ? pass('camada rodoviária íntegra não gera aviso')
   : fail('aviso inesperado sobre a camada rodoviária: ' + avisosTexto);
 
+// == Legenda por código, seleção e procedência (issue #134) ==
+// Escopo: a sublista do GRUPO `road_segments`. Os corredores sintéticos deste teste também
+// são `entity_type: road_segment`, mas vivem no grupo `road_network` e têm a sua própria
+// sublista — o que está certo, e é por isso que a asserção é por grupo, não global.
+const legendaDoGrupo = (page) => page.evaluate(() => {
+  const input = document.querySelector('#polygonLayers input[data-polygon-group="road_segments"]');
+  const lista = input && input.closest('ul');
+  if (!lista) return null;
+  return [...lista.querySelectorAll('.road-segment-legend-item')].map((b) => ({
+    codigo: b.querySelector('.polygon-legend-label').textContent.trim(),
+    cor: b.querySelector('.dot').style.background,
+    traco: b.querySelector('.dot').classList.contains('dot-road-sample'),
+  }));
+});
+
+const itens = await legendaDoGrupo(polyPage);
+const codigosNaLegenda = (itens || []).map((i) => i.codigo).sort();
+const codigosEsperados = [...PILOT_ROAD_SEGMENT_CODES].sort();
+JSON.stringify(codigosNaLegenda) === JSON.stringify(codigosEsperados)
+  ? pass('a legenda lista os cinco códigos do piloto')
+  : fail(`códigos na legenda: ${JSON.stringify(codigosNaLegenda)}`);
+
+// Cada código com a cor do seu eixo: a cor identifica QUAL trecho é, e sem isso a lista
+// não identifica nada.
+const coresLegenda = [...new Set((itens || []).map((i) => i.cor))];
+coresLegenda.length === PILOT_ROAD_SEGMENT_CODES.length
+  ? pass('cada código da legenda tem a cor do seu eixo')
+  : fail(`cores distintas na legenda: ${coresLegenda.length}`);
+
+// A amostra é TRAÇO para eixo. O corredor com buffer, que o mapa desenha como área, ganha
+// quadrado — legenda que não bate com o mapa é pior que legenda nenhuma (issue #52).
+(itens || []).every((i) => i.traco)
+  ? pass('a amostra de cada eixo é um traço, como o mapa desenha')
+  : fail('algum eixo ficou com amostra de área na legenda');
+
+// Contorno INATIVO não entra na legenda: o renderizador se recusa a desenhá-lo, e um item
+// clicável para geometria que não está no mapa promete o que o mapa não tem (achado P2 do
+// Codex na PR #135 — mesma classe do P1 da PR #133).
+const inativoNaLegenda = (itens || []).some((i) => i.codigo === 'ROADSEG_APOSENTADO');
+!inativoNaLegenda
+  ? pass('trecho aposentado não aparece na legenda')
+  : fail('um trecho inativo virou item clicável da legenda');
+const corredores = await polyPage.evaluate(() => {
+  const input = document.querySelector('#polygonLayers input[data-polygon-group="road_network"]');
+  const lista = input && input.closest('ul');
+  if (!lista) return [];
+  return [...lista.querySelectorAll('.road-segment-legend-item .dot')]
+    .map((d) => d.classList.contains('dot-road-sample'));
+});
+corredores.length > 0 && corredores.every((traco) => traco === false)
+  ? pass('o corredor com buffer aparece com amostra de ÁREA, não de traço')
+  : fail(`amostras do grupo road_network: ${JSON.stringify(corredores)}`);
+
+// Clicar num código da legenda seleciona o trecho e destaca a linha.
+await polyPage.locator('.road-segment-legend-item').first().click();
+await polyPage.waitForTimeout(400);
+const destacados = await polyPage.evaluate(() => document.querySelectorAll('#map .road-segment-selected').length);
+destacados === 1
+  ? pass('clicar no código da legenda destaca exatamente um eixo')
+  : fail(`eixos destacados: ${destacados}`);
+
+const painelLegenda = (await polyPage.textContent('#detail')) || '';
+/Geometria oficial do DER\/DF/.test(painelLegenda)
+  ? pass('o painel declara que a geometria é oficial do DER/DF')
+  : fail('procedência oficial ausente do painel');
+/Maior pico de 15 min/.test(painelLegenda)
+  ? pass('o painel mostra o maior pico de 15 min do período')
+  : fail('pico de 15 min ausente do painel');
+
+// Fechar o painel desfaz o destaque: eixo marcado sem painel é uma marca sem explicação.
+//
+// Fechar o painel ALARGA `.map-wrap`, e o Leaflet remede o container — as feições mudam de
+// posição na tela. Os blocos seguintes clicam por COORDENADA dentro da caixa do contorno
+// (ver `clicarContornoKml`), medindo a caixa antes e clicando depois: com o layout em
+// movimento, os 85% medidos numa largura caem fora da forma na outra, e o clique acerta a
+// RA que fica logo abaixo. Por isso a espera aqui não é folclore — é o tempo de o mapa
+// voltar a ficar parado.
+await polyPage.click('#closeDetail');
+await polyPage.waitForTimeout(900);
+(await polyPage.evaluate(() => document.querySelectorAll('#map .road-segment-selected').length)) === 0
+  ? pass('fechar o painel desfaz o destaque do eixo')
+  : fail('o destaque sobreviveu ao fechamento do painel');
+
 // Clique numa RA continua funcionando com os trechos por cima.
 await polyPage.click('#map .polygon-shape[fill="#2f6f4f"]');
 await polyPage.waitForTimeout(400);
@@ -1047,6 +1140,8 @@ const raAindaAbre = (await polyPage.textContent('#detail')) || '';
 /População/.test(raAindaAbre)
   ? pass('clique numa RA continua abrindo o perfil, com os eixos desenhados por cima')
   : fail('o eixo rodoviário roubou o clique da RA: ' + raAindaAbre.slice(0, 300));
+// Painel aberto de novo: mesma razão da espera acima, o mapa volta a estreitar.
+await polyPage.waitForTimeout(900);
 
 // Desligar a camada tira as linhas e NÃO toca nas áreas.
 await polyPage.locator('#polygonLayers input[data-polygon-group="road_segments"]').uncheck();
