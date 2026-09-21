@@ -97,6 +97,28 @@ Leaflet é a única, e fica **versionada em `assets/vendor/`** em vez de vir de 
 não deve depender da disponibilidade de terceiro, não há SRI para manter, e ambientes sem acesso a
 CDN conseguem rodar o smoke test.
 
+### Por que Leaflet, e não Google Maps
+
+É decisão, não acidente — e foi reafirmada em 2026-09-21 (issue #134), quando um pedido explicitou
+`google.maps.Polyline` como critério.
+
+**Google Maps exigiria uma chave de API no frontend.** O GitHub Pages serve o repositório inteiro
+como estático, então essa chave seria pública por construção. Isso colide com três coisas de uma vez:
+
+- a **R4.1/R4.2** ([`ENGINEERING_RULES.md`](ENGINEERING_RULES.md)) — o ID da planilha e a URL do
+  `/exec` são públicos **por design**; qualquer outro identificador não é;
+- a **varredura de secrets da CI** (`.github/workflows/validate.yml`), que bloqueia o padrão `AIza…`;
+- o próprio pedido que levantou a questão, que trazia "nenhuma credencial privada exposta" como
+  critério ao lado do Google Maps — os dois não fecham juntos neste modelo de publicação.
+
+E não havia ganho funcional a compensar: a camada de trechos rodoviários oficiais do DER/DF —
+eixos `LineString` sobre as poligonais das RAs, com seleção, painel de propriedades e fluxo diário —
+foi entregue inteira em Leaflet (issues #131 e #134).
+
+**Uma reavaliação não é trocar uma linha de código.** Ela precisa cobrir restrição da chave por
+domínio no console do Google, conta de cobrança, política de cota e — o que costuma ser esquecido —
+o que a página faz quando a cota estourar. Enquanto isso não for endereçado, a resposta é Leaflet.
+
 ## Regra anti-dessincronização
 
 **Não commitar snapshots de dados para produção.** O navegador consulta a planilha quando a aplicação abre. O GitHub guarda código; a Google Sheet guarda dados.
