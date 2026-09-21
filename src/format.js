@@ -709,7 +709,12 @@ function asText(value) {
  */
 const POLYGON_LAYER_GROUP_LABELS = {
   administrative_regions: 'Regiões administrativas',
+  // Dois grupos rodoviários, e os dois valem. `road_network` é o corredor de ÁREA
+  // (eixo com buffer) que a v2.2.1 gravava; `road_segments` é o que a sincronização do
+  // DER grava hoje, com o EIXO oficial em LineString (issue #131). Tirar o primeiro
+  // faria um corredor já gravado cair em "Outros" — vocabulário aberto não se estreita.
   road_network: 'Malha rodoviária',
+  road_segments: 'Trechos rodoviários piloto',
   poligonais_importadas: 'Poligonais importadas',
 };
 
@@ -841,6 +846,10 @@ const POLYGON_GROUP_DEPTH = {
   // cobrir rouba o clique, não só a cor.
   [POLYGON_UNCLASSIFIED]: 1,
   road_network: 2,
+  // Eixo rodoviário é a geometria mais estreita do mapa: embaixo de qualquer área ele
+  // fica invisível e sem clique. Mesma profundidade do corredor, que é o mesmo objeto
+  // desenhado de outro jeito (issue #131).
+  road_segments: 2,
 };
 const UNKNOWN_GROUP_DEPTH = 3;
 
@@ -1019,6 +1028,12 @@ export function raProfileUnavailability(profile) {
  * detalhe de implementação — `display_simplification_tolerance_m` não é informação de
  * usuário em lugar nenhum, mas no topo do painel ela empurra para baixo o que é.
  */
+export const DETAIL_TIERS = Object.freeze({
+  ESSENCIAL: 'essencial',
+  COMPLEMENTAR: 'complementar',
+  TECNICO: 'tecnico',
+});
+
 const POLYGON_PROPERTY_LABELS = {
   road_name: 'Rodovia',
   road_code: 'Código',
@@ -1039,13 +1054,43 @@ const POLYGON_PROPERTY_LABELS = {
   dominant_dwelling_type: 'Tipo de domicílio predominante',
   dominant_tenure: 'Situação de ocupação predominante',
   profile_reference_year: 'Ano de referência do perfil',
+
+  // --- Trecho rodoviário do DER/DF (issue #131) ------------------------------------
+  //
+  // Estas chaves são as que a aba POLYGONS realmente traz. A versão anterior desta lista
+  // declarava `der_*` — nomes que o contrato previu e a sincronização nunca gravou —, e o
+  // efeito era o painel despejar `Tmd_der` e `Fx_total` crus em ordem alfabética.
+  //
+  // Um valor com `tier` explícito é procedência da geometria: fica legível, mas embaixo,
+  // em "Origem e qualidade". Sem `tier`, a chave é informação de usuário (complementar).
+  cod_distrital: 'Código do trecho',
+  road_segment_id: 'ID do trecho',
+  source_segment_code: 'Código na fonte',
+  rodovia: 'Rodovia',
+  descricao_inicial: 'Início do trecho',
+  descricao_final: 'Fim do trecho',
+  extensao_km: 'Extensão declarada (km)',
+  tmd_der: 'TMD oficial do DER/DF',
+  situacao_fisica: 'Situação física',
+  tipo_revestimento: 'Tipo de revestimento',
+  administracao: 'Administração',
+  fx_total: 'Faixas (total)',
+  fx_direita: 'Faixas à direita',
+  fx_esquerda: 'Faixas à esquerda',
+  traffic_dataset: 'Aba de fluxo',
+  traffic_link_key: 'Chave de vínculo do fluxo',
+  geometry_status: { label: 'Situação da geometria', tier: DETAIL_TIERS.TECNICO },
+  geometry_source_url: { label: 'Fonte oficial da geometria', tier: DETAIL_TIERS.TECNICO },
+  geometry_source_layer: { label: 'Camada oficial', tier: DETAIL_TIERS.TECNICO },
+  geometry_source_feature_id: { label: 'OBJECTID na camada oficial', tier: DETAIL_TIERS.TECNICO },
+  geometry_source_crs: { label: 'CRS da geometria original', tier: DETAIL_TIERS.TECNICO },
+  display_geometry_crs: { label: 'CRS da geometria exibida', tier: DETAIL_TIERS.TECNICO },
+  geometry_query_out_sr: { label: 'outSR da consulta oficial', tier: DETAIL_TIERS.TECNICO },
+  geometry_sha256: { label: 'Hash da geometria consultada', tier: DETAIL_TIERS.TECNICO },
+  geometry_type: { label: 'Tipo de geometria', tier: DETAIL_TIERS.TECNICO },
+  source_geometry_type: { label: 'Tipo na fonte', tier: DETAIL_TIERS.TECNICO },
 };
 
-export const DETAIL_TIERS = Object.freeze({
-  ESSENCIAL: 'essencial',
-  COMPLEMENTAR: 'complementar',
-  TECNICO: 'tecnico',
-});
 
 /** Em que nível uma chave de `properties_json` entra, e com que rótulo. */
 export function classifyPolygonProperty(key) {
@@ -1057,10 +1102,48 @@ export function classifyPolygonProperty(key) {
   // `display_simplification_tolerance_m` (que termina em `_m`) e pegaria uma chave de
   // usuário que por acaso termine em `_id`. Um padrão que precisa de exceções para
   // funcionar é mais frágil que a lista que ele tentava evitar.
-  const label = POLYGON_PROPERTY_LABELS[key];
-  return label
-    ? { tier: DETAIL_TIERS.COMPLEMENTAR, label }
-    : { tier: DETAIL_TIERS.TECNICO, label: humanizeSlug(key) };
+  //
+  // Uma entrada pode declarar o NÍVEL além do rótulo. Sem isso, dar nome legível a
+  // `geometry_sha256` promoveria um hash para o bloco que o usuário lê primeiro — e a
+  // alternativa (deixá-lo sem rótulo para ficar no técnico) o devolvia cru como
+  // "Geometry sha256". Rótulo e nível são decisões separadas, e agora se declaram separadas.
+  const entry = POLYGON_PROPERTY_LABELS[key];
+  if (!entry) return { tier: DETAIL_TIERS.TECNICO, label: humanizeSlug(key) };
+  if (typeof entry === 'string') return { tier: DETAIL_TIERS.COMPLEMENTAR, label: entry };
+  return { tier: entry.tier, label: entry.label };
+}
+
+/**
+ * Extensão do trecho com UMA casa decimal.
+ *
+ * A planilha traz `0.9`, `1.9`, `5.6` — décimos de quilômetro são a precisão real do
+ * cadastro do DER. `formatNumber` arredondaria 0,9 km para "1", inventando 100 m num
+ * trecho de 900, e mostraria "5.6" com ponto no lugar da vírgula.
+ */
+const EXTENSION_DECIMAL = new Intl.NumberFormat('pt-BR', {
+  minimumFractionDigits: 1,
+  maximumFractionDigits: 1,
+});
+
+/**
+ * Faixas do trecho: o total e, entre parênteses, a divisão por sentido.
+ *
+ * A divisão só aparece quando os dois lados existem E somam o total. Se não somarem, o
+ * parêntese seria uma afirmação que o próprio registro contradiz — e o total sozinho
+ * continua sendo o dado oficial, então a linha não some por causa disso.
+ *
+ * Sem `fx_total`, a soma dos dois lados NÃO é usada como substituta: somar dois campos
+ * para preencher um terceiro é derivar um número que a fonte não publicou.
+ */
+function lanesText(props) {
+  const total = toFiniteNumber(props.fx_total);
+  if (total === null) return null;
+  const direita = toFiniteNumber(props.fx_direita);
+  const esquerda = toFiniteNumber(props.fx_esquerda);
+  if (direita === null || esquerda === null || direita + esquerda !== total) {
+    return formatNumber(total);
+  }
+  return `${formatNumber(total)} (${formatNumber(direita)} + ${formatNumber(esquerda)})`;
 }
 
 /** Um valor escalar de `properties_json` vira texto; objeto e lista não viram linha. */
@@ -1089,16 +1172,7 @@ export function polygonEssentials(polygon, raProfile) {
 
   if (type === 'administrative_region') return raProfileEssentials(raProfile);
 
-  if (type === 'road_segment') {
-    add('Código', scalarText(props.road_code));
-    add('Tipo de trecho', scalarText(props.segment_type));
-    add('Jurisdição', scalarText(props.jurisdiction));
-    const flow = toFiniteNumber(props.traffic_avg_daily_flow);
-    // Fluxo é contagem de veículos por dia: sem medição nenhuma, a linha some. Zero
-    // aqui seria uma rodovia por onde ninguém passa, que é afirmação diferente.
-    add('Fluxo médio diário', flow === null ? null : `${formatNumber(Math.round(flow))} veíc./dia`);
-    return rows;
-  }
+  if (type === 'road_segment') return roadSegmentEssentials(props);
 
   add('Categoria', polygon.category);
   add('Área', polygon.area_ha === null || polygon.area_ha === undefined
@@ -1139,9 +1213,76 @@ export function polygonPropertyTiers(polygon, { skip = [] } = {}) {
   return { complementar, tecnico };
 }
 
+/**
+ * Chaves do vocabulário que a sincronização do DER grava hoje (issue #131). Basta UMA
+ * delas para o registro ser lido por esse vocabulário.
+ */
+const DER_ESSENTIAL_KEYS = ['cod_distrital', 'rodovia', 'extensao_km', 'tmd_der', 'fx_total', 'situacao_fisica'];
+
+/** Chaves do vocabulário anterior (corredor com buffer, v2.2.1). */
+const LEGACY_ROAD_ESSENTIAL_KEYS = ['road_code', 'segment_type', 'jurisdiction', 'traffic_avg_daily_flow'];
+
+/** O registro usa o vocabulário do DER de hoje? */
+function usesDerVocabulary(props) {
+  return DER_ESSENTIAL_KEYS.some((key) => scalarText(props[key]) !== null);
+}
+
+/**
+ * Essencial de um trecho rodoviário.
+ *
+ * DOIS vocabulários, escolhidos por registro e nunca misturados:
+ *
+ *   DER de hoje (issue #131)   cod_distrital, rodovia, extensao_km, tmd_der, fx_*, situacao_fisica
+ *   v2.2.1 (corredor)          road_code, segment_type, jurisdiction, traffic_avg_daily_flow
+ *
+ * Até esta issue só o segundo era lido — e ele é o que o backend NUNCA gravou em POLYGONS,
+ * então o bloco essencial de todo trecho real saía vazio. Um painel que abre sem nada
+ * parece um trecho sem dado; era um leitor procurando a chave errada.
+ *
+ * Somar as duas listas daria até dez linhas e quebraria o teto de seis itens que é o
+ * contrato da issue #55. Escolher por registro mantém o teto sem descartar o legado: um
+ * corredor gravado antes da migração continua com o essencial que sempre teve.
+ */
+function roadSegmentEssentials(props) {
+  const rows = [];
+  const add = (label, value) => { if (value !== null && value !== undefined && value !== '') rows.push({ label, value }); };
+
+  if (!usesDerVocabulary(props)) {
+    add('Código', scalarText(props.road_code));
+    add('Tipo de trecho', scalarText(props.segment_type));
+    add('Jurisdição', scalarText(props.jurisdiction));
+    const flow = toFiniteNumber(props.traffic_avg_daily_flow);
+    // Fluxo é contagem de veículos por dia: sem medição nenhuma, a linha some. Zero
+    // aqui seria uma rodovia por onde ninguém passa, que é afirmação diferente.
+    add('Fluxo médio diário', flow === null ? null : `${formatNumber(Math.round(flow))} veíc./dia`);
+    return rows;
+  }
+
+  add('Código do trecho', scalarText(props.cod_distrital) || scalarText(props.source_segment_code));
+  add('Rodovia', scalarText(props.rodovia));
+  const extensao = toFiniteNumber(props.extensao_km);
+  add('Extensão', extensao === null ? null : `${EXTENSION_DECIMAL.format(extensao)} km`);
+  // O TMD chega como TEXTO na planilha ("26402"). `toFiniteNumber` já cobre isso; o que
+  // não pode acontecer é o valor ir para a tela sem separador de milhar, porque
+  // "26402 veíc./dia" e "2.6402" se leem errado com a mesma facilidade.
+  const tmd = toFiniteNumber(props.tmd_der);
+  add('TMD oficial do DER/DF', tmd === null ? null : `${formatNumber(Math.round(tmd))} veíc./dia`);
+  add('Faixas', lanesText(props));
+  add('Situação física', scalarText(props.situacao_fisica));
+  return rows;
+}
+
 /** Chaves de `properties_json` que o essencial já consumiu, por tipo de entidade. */
 export function polygonEssentialKeys(polygon) {
-  return polygonEntityType(polygon) === 'road_segment'
-    ? ['road_code', 'segment_type', 'jurisdiction', 'traffic_avg_daily_flow']
-    : [];
+  if (polygonEntityType(polygon) !== 'road_segment') return [];
+  const props = (polygon && polygon.properties) || {};
+  // A lista acompanha o vocabulário que o essencial realmente usou. Devolver as duas
+  // esconderia embaixo uma chave que o topo não mostrou.
+  //
+  // `fx_direita`/`fx_esquerda` NÃO entram: `lanesText` só os cita entre parênteses quando
+  // somam o total, e num trecho onde não somarem eles são o dado que explica a
+  // divergência — omiti-los apagaria a evidência justamente no caso que importa.
+  return usesDerVocabulary(props)
+    ? [...DER_ESSENTIAL_KEYS, 'source_segment_code']
+    : [...LEGACY_ROAD_ESSENTIAL_KEYS];
 }

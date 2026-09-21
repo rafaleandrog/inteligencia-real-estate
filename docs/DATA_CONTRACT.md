@@ -636,14 +636,14 @@ As 42 colunas, em cinco grupos:
 | `subcategory` | texto | não | — | `regiao_administrativa`, `rodovia_der`, `kml_kmz` |
 | `entity_type` | texto | não | — | `administrative_region`, `road_segment`, `custom_area` |
 | `entity_id` | texto | não | — | id da entidade do mundo real; é por ele que uma versão anterior é superada |
-| `geometry_role` | texto | não | — | `boundary` (RA e KML) ou `display_corridor` (rodovia) |
+| `geometry_role` | texto | não | — | `display_boundary` (RA), `boundary` (KML) ou `route_axis` (eixo rodoviário do DER). `display_corridor` é o valor do corredor com buffer da v2.2.1, ainda válido para linha gravada antes da migração |
 | `ra_geo_id` | texto | não | — | RA a que o contorno pertence, quando aplicável |
 
 **Camada**
 
 | Campo | Tipo | Obrig. | Preenchimento | Observação |
 |---|---|---|---|---|
-| `layer_group` | texto | não | — | `administrative_regions`, `road_network`, `poligonais_importadas` |
+| `layer_group` | texto | não | — | `administrative_regions`, `road_segments` (eixo do DER, o que a sincronização grava hoje), `road_network` (corredor com buffer da v2.2.1), `poligonais_importadas` |
 
 **Cartografia** — o estilo é declarado pelo backend; o cliente não inventa cor.
 
@@ -695,29 +695,50 @@ As 42 colunas, em cinco grupos:
 | Campo | Tipo | Obrig. | Preenchimento | Observação |
 |---|---|---|---|---|
 | `geometry_type` | texto | não | — | tipo da geometria desenhada |
-| `geometry_geojson` | texto | **sim** | — | `Polygon` ou `MultiPolygon`, `[longitude, latitude]`; **é esta que vai ao mapa** |
+| `geometry_geojson` | texto | **sim** | — | `[longitude, latitude]`; **é esta que vai ao mapa**. `Polygon`/`MultiPolygon` para território e corredor; `LineString`/`MultiLineString` para o eixo rodoviário do DER (ver abaixo) |
 | `source_geometry_type` | texto | não | — | tipo da geometria original |
-| `display_buffer_m` | número | não | — | buffer por lado usado para derivar o corredor rodoviário: faixa de domínio do DER quando publicada (teto 100 m), senão o valor do menu (padrão 20 m); origem em `properties_json.display_buffer_source` |
+| `display_buffer_m` | número | não | — | buffer por lado usado para derivar o corredor rodoviário da v2.2.1: faixa de domínio do DER quando publicada (teto 100 m), senão o valor do menu (padrão 20 m); origem em `properties_json.display_buffer_source`. **`0` no eixo rodoviário de hoje**, que não é bufferizado |
 | `source_geometry_geojson` | texto | não | — | geometria ORIGINAL; ver abaixo |
 
-#### `source_geometry_geojson` é lido e nunca desenhado
+#### Eixo rodoviário: a `LineString` É a geometria desenhada (issue #131)
 
-O DER publica o **eixo** do trecho rodoviário, que é `LineString`. O mapa desenha área, então o
-corredor visual é derivado do eixo por um buffer de alguns metros por lado — e é esse polígono que
-vai para `geometry_geojson`. O eixo original fica em `source_geometry_geojson`, como procedência.
+O DER publica o **eixo** do trecho rodoviário, que é `LineString`. Houve duas gerações disso, e as
+duas continuam válidas na aba:
 
-Por isso os dois campos têm validadores diferentes no servidor: `geometry_geojson` aceita só
-`Polygon`/`MultiPolygon` (`validateGeoJsonGeometry_`), enquanto `source_geometry_geojson` aceita
-também `LineString`/`MultiLineString` (`validateGeoJsonSourceGeometry_`, tipo `geojson_source` em
-`FIELD_SCHEMA`).
+| Geração | `layer_group` | `geometry_role` | `geometry_geojson` | `display_buffer_m` |
+|---|---|---|---|---|
+| v2.2.1 — corredor | `road_network` | `display_corridor` | `Polygon` (eixo com buffer) | largura por lado |
+| Hoje — eixo | `road_segments` | `route_axis` | **`LineString`** | `0` |
 
-No cliente, os dois atravessam `normalizePolygon()` como **texto cru, sem `JSON.parse`** — parsear
-no normalizador transformaria um blob malformado numa linha em exceção no carregamento de todas as
-camadas. O parse acontece no render, por registro, isolado (R2.6). E **desenhar
-`source_geometry_geojson` é erro**: para rodovia ela é de um tipo que a camada de contorno não sabe
-desenhar.
+A primeira derivava um corredor por buffer porque o mapa só sabia desenhar área. A camada do mapa
+passou a desenhar linha na issue #131, então a sincronização grava o **eixo oficial direto**, sem
+buffer: uma faixa de 65 m por lado é uma afirmação sobre a faixa de domínio, não sobre a via, e
+desenhá-la no lugar do eixo engorda a DF-001 em 130 m de largura na tela.
 
-**A geometria é validada no servidor** antes de ser gravada: precisa ser `Polygon` ou
+Por isso **o cliente despacha o desenho pelo TIPO DA GEOMETRIA, nunca pelo `entity_type`**
+(`renderPolygons` em `src/app.js`): `LineString`/`MultiLineString` vão para `renderRoadSegment`,
+`Polygon`/`MultiPolygon` para a camada de área. Despachar por `entity_type` apaga do mapa todo
+corredor da v2.2.1, que é `entity_type: road_segment` com geometria de área — regressão real,
+introduzida e revertida dentro da própria issue #131.
+
+Os validadores do servidor continuam diferentes: `geometry_geojson` aceita só `Polygon`/
+`MultiPolygon` (`validateGeoJsonGeometry_`), enquanto `source_geometry_geojson` aceita também
+`LineString`/`MultiLineString` (`validateGeoJsonSourceGeometry_`, tipo `geojson_source` em
+`FIELD_SCHEMA`). **A sincronização rodoviária não passa por esse validador** — ela grava a linha
+direto —, e é por isso que o cliente valida a camada por conta própria (`validateRoadSegmentLayer`
+em `src/traffic/road-geometry.js`): cinco códigos do piloto presentes, sem duplicata, todos
+`LineString`, todos `DER_DF`/`Rodovias_2025`, todos com fluxo em `TRAFFIC_DAILY_TEST`. Cada desvio
+vira **aviso** no canal de avisos, nunca erro fatal (R2.5) e nunca silêncio.
+
+**`source_geometry_geojson` continua sendo procedência e nunca é desenhada.** No eixo de hoje ela
+traz a mesma linha de `geometry_geojson`; ler as duas daria dois desenhos possíveis para o mesmo
+trecho sem ninguém saber qual está na tela.
+
+No cliente, os dois campos atravessam `normalizePolygon()` como **texto cru, sem `JSON.parse`** —
+parsear no normalizador transformaria um blob malformado numa linha em exceção no carregamento de
+todas as camadas. O parse acontece no render, por registro, isolado (R2.6).
+
+**A geometria de ÁREA é validada no servidor** antes de ser gravada: precisa ser `Polygon` ou
 `MultiPolygon`, cada anel precisa de ao menos quatro posições e três distintas, o anel precisa
 estar fechado (primeira posição igual à última), e longitude/latitude precisam estar na faixa
 válida. Ordem é sempre `[longitude, latitude]`, como manda o GeoJSON — invertida seria o Golfo da
@@ -1129,8 +1150,15 @@ cliente ainda** e **não estão em `WRITE_ALLOWLIST`**: nenhuma delas é graváv
 São preenchidas pela sincronização rodoviária do menu e pela importação de tráfego.
 
 A rodovia que aparece no mapa **não vem daqui**: vem de `POLYGONS`, com
-`layer_group = 'road_network'`. Estas abas guardam o cadastro do trecho e a contagem; `POLYGONS`
-guarda a geometria desenhável.
+`layer_group = 'road_segments'` (`road_network` no corredor da v2.2.1). Estas abas guardam o
+cadastro do trecho e a contagem; `POLYGONS` guarda a geometria desenhável.
+
+> **`current_polygon_id` está VAZIO nas cinco linhas do piloto.** A sincronização rodoviária grava
+> a geometria em `POLYGONS` com `entity_id = road_segment_id` e não volta para preencher a coluna
+> aqui. O cliente atravessa isso com um segundo caminho declarado — `POLYGONS.entity_type =
+> 'road_segment'` + `entity_id` → `road_segment_id` (`linkSegmentToPolygon` em
+> `src/traffic/link.js`) —, mantendo `current_polygon_id` como caminho primário. **A correção
+> canônica é o backend preencher essa coluna**; o segundo caminho é ponte, não substituição.
 
 ### ROAD_SEGMENTS — cadastro do trecho rodoviário
 
@@ -1169,18 +1197,38 @@ Chave: `road_segment_id`, canônico `ROADSEG_<código do trecho normalizado>`.
 > deixou de ser usada. Resultado: `quality_flag: official_centerline_synced` /
 > `confidence_flag: high_official_der_geometry` (aqui e na linha de `POLYGONS`).
 >
-> `road_code` vem de `rodovia` (`DF001` → `DF-001`), `road_name` de `descricao_inicial → descricao_final`
-> e `properties_json` carrega os atributos oficiais com prefixo `der_`: `der_tmd` (tráfego médio
-> diário do DER), `der_lanes_total` (`fx_total`), `der_speed_limit_kmh`, `der_class_ctb`,
-> `der_physical_status`, `der_extension_km`, `der_km_start`/`der_km_end`, `der_description_start`/`der_description_end`,
-> `der_fd_right_m`/`der_fd_left_m` (faixa de domínio por lado, com `der_fd_group` e `der_fd_legislation`), `der_lanes_left`/`der_lanes_right`, `der_surface`, `der_jurisdiction`, `der_administration`, `der_source_layer`
-> (`Rodovias_2025`) e `der_feature_id`. O resumo de tráfego (`traffic_*`) continua sendo um
-> **snapshot** da sincronização; o valor vivo vem de `TRAFFIC_DAILY_TEST`.
+> `road_code` vem de `rodovia` (`DF001`) e `road_name` de `descricao_inicial → descricao_final`.
 >
-> A largura do corredor em `POLYGONS.display_buffer_m` é a **faixa de domínio oficial por lado**
-> (média de `fd_direita_larg`/`fd_esquerda_largu`, 65 m na DF-001), com teto de 100 m; sem esse dado,
-> vale o buffer informado no menu (padrão 20 m). A origem fica em
-> `properties_json.display_buffer_source` (`der_faixa_de_dominio` ou `default_buffer`).
+> **`properties_json` NÃO usa prefixo `der_`.** Uma versão anterior deste documento declarava
+> `der_tmd`, `der_lanes_total`, `der_extension_km` e companhia; a sincronização nunca gravou
+> nenhuma delas, e o cliente que as lia mostrava um painel de trecho **vazio** — o defeito estava
+> no contrato, não no dado (issue #131). As chaves reais, verificadas na planilha, são os nomes da
+> própria camada do DER:
+>
+> | Chave | Conteúdo |
+> |---|---|
+> | `road_segment_id` | `ROADSEG_<código>` — é por ela que `TRAFFIC_DAILY_TEST` é ligado |
+> | `cod_distrital` / `source_segment_code` | código do trecho no DER (`001EDF0070`) |
+> | `rodovia` | `DF001` |
+> | `descricao_inicial` / `descricao_final` | início e fim do trecho |
+> | `extensao_km` | extensão declarada, em décimos de km |
+> | `tmd_der` | tráfego médio diário oficial do DER — **texto**, não número |
+> | `situacao_fisica` / `tipo_revestimento` | `PAV`/`DUP`, `CBUQ` |
+> | `administracao` | ex.: `Rodovias Radiais` |
+> | `fx_total` / `fx_direita` / `fx_esquerda` | faixas |
+> | `geometry_status` | `official` |
+> | `geometry_source_url` / `geometry_source_layer` / `geometry_source_feature_id` | camada e OBJECTID na fonte |
+> | `geometry_source_crs` / `display_geometry_crs` / `geometry_query_out_sr` | `EPSG:31983`, `EPSG:4326`, `4326` |
+> | `geometry_sha256` | rastreabilidade da geometria consultada |
+> | `traffic_dataset` / `traffic_link_key` | `TRAFFIC_DAILY_TEST` / `road_segment_id` |
+>
+> O resumo de tráfego (`traffic_*`), quando existir, continua sendo um **snapshot** da
+> sincronização; o valor vivo vem de `TRAFFIC_DAILY_TEST`.
+>
+> A largura do corredor em `POLYGONS.display_buffer_m` valia para o corredor da v2.2.1: **faixa de
+> domínio oficial por lado** (média de `fd_direita_larg`/`fd_esquerda_largu`, 65 m na DF-001), com
+> teto de 100 m; sem esse dado, o buffer informado no menu (padrão 20 m), com a origem em
+> `properties_json.display_buffer_source`. **No eixo de hoje ela é `0`** — o eixo não é bufferizado.
 
 ### ROAD_SEGMENT_ALIASES — ponte entre códigos
 

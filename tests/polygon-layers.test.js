@@ -31,6 +31,22 @@ test('contorno sem layer_group/entity_type cai em "Outros", nunca some', () => {
   assert.equal(polygonLayerGroup(poly({ layer_group: '   ' })), POLYGON_UNCLASSIFIED);
 });
 
+test('eixo rodoviário tem profundidade DECLARADA, não a do grupo desconhecido', () => {
+  // Sem `z_index`, `road_segments` caía na profundidade dos grupos que ninguém previu —
+  // por cima, que por acaso é onde um eixo precisa ficar. Depender de acaso é o que a
+  // issue #52 tirou desta função: uma linha de 4 px embaixo de uma RA fica invisível E
+  // sem clique.
+  const eixo = { id: 'ROADSEG_A', layer_group: 'road_segments' };
+  const ra = { id: 'RA_A', layer_group: 'administrative_regions' };
+  const importado = { id: 'KML_A', layer_group: 'poligonais_importadas' };
+  assert.ok(comparePolygonDrawOrder(ra, eixo) < 0, 'RA precisa ser desenhada antes do eixo');
+  assert.ok(comparePolygonDrawOrder(importado, eixo) < 0, 'poligonal importada antes do eixo');
+  assert.deepEqual(
+    sortPolygonsForDraw([eixo, ra, importado]).map((p) => p.id),
+    ['RA_A', 'KML_A', 'ROADSEG_A'],
+  );
+});
+
 test('grupo desconhecido é humanizado, não vaza o slug nem some', () => {
   // O vocabulário é aberto de propósito: o backend pode criar um grupo novo sem que
   // ninguém edite este repositório, e ele precisa aparecer legível na legenda.
@@ -38,6 +54,15 @@ test('grupo desconhecido é humanizado, não vaza o slug nem some', () => {
   assert.equal(formatEntityType('corpo_dagua'), 'Corpo dagua');
   assert.equal(formatLayerGroup('road_network'), 'Malha rodoviária');
   assert.equal(formatEntityType('road_segment'), 'Trecho rodoviário');
+});
+
+test('`road_segments` tem rótulo próprio — é o grupo que a planilha realmente grava', () => {
+  // A sincronização do DER grava `layer_group: road_segments`, e a lista só conhecia
+  // `road_network`. O efeito era a legenda anunciar a camada como "Road segments", em
+  // inglês e com a cara de slug vazado (issue #131). O grupo antigo continua valendo:
+  // tirá-lo faria um corredor já gravado cair em "Outros".
+  assert.equal(formatLayerGroup('road_segments'), 'Trechos rodoviários piloto');
+  assert.equal(formatLayerGroup('road_network'), 'Malha rodoviária');
 });
 
 // --- Estilo: o que o backend declara vale; o que não é utilizável vira fallback -----

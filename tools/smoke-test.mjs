@@ -20,6 +20,13 @@ import { chromium } from 'playwright';
 import { CARD_DESTAQUES, CARD_GRUPOS, dashboardMetricKeys } from '../src/ivv/cards.js';
 import { HISTORY_CHARTS } from '../src/ivv/history.js';
 import { PERIOD_MODE_OPTIONS } from '../src/ivv/period.js';
+// Os cinco trechos do piloto saem do MESMO helper que os testes unitários usam, e a
+// geometria dele vem da resposta gravada da camada oficial do DER (issue #131). Digitar
+// coordenadas aqui criaria uma terceira versão da mesma geometria oficial.
+import {
+  polygonRows as trechosOficiais, roadSegmentRows, aliasRows, trafficRows,
+} from '../tests/helpers/roadSegmentRows.mjs';
+import { PILOT_ROAD_SEGMENT_CODES } from '../src/traffic/road-geometry.js';
 
 const errors = [];
 const ok = [];
@@ -914,7 +921,20 @@ await polyPage.route('**/data/demo.json', async (route) => {
       stroke_width: 2,
       status: 'active',
     },
+    // Os cinco trechos rodoviários OFICIAIS do piloto (issue #131). Diferente de tudo
+    // acima, estes não são sintéticos: a geometria é a da camada `Rodovias_2025` do DER,
+    // gravada em tests/fixtures/der-rodovias-2025-df001.json. Eles entram para que o
+    // caminho de LINHA seja exercitado ao lado do de área, no mesmo carregamento — o
+    // `SMOKE_ROAD` acima é um corredor `Polygon` e CONTINUA sendo área, porque um trecho
+    // gravado assim precisa continuar desenhando assim.
+    ...trechosOficiais(),
   ];
+  // As três abas de tráfego, para o painel do trecho ter o que mostrar. Sem elas o
+  // bloco de fluxo abriria dizendo "sem dias medidos", que é um estado válido mas não é
+  // o que este teste precisa cobrir.
+  payload.road_segments = roadSegmentRows();
+  payload.road_segment_aliases = aliasRows();
+  payload.traffic_daily = trafficRows({ dias: 4, parcialNoUltimo: true });
   await route.fulfill({ response, json: payload });
 });
 await polyPage.goto('http://localhost:8080/', { waitUntil: 'networkidle' });
@@ -925,7 +945,10 @@ await polyPage.waitForTimeout(1200);
   : fail('caixa da camada de contornos não apareceu');
 
 const polyCount = await polyPage.textContent('#countPolygon');
-polyCount === '6' ? pass('a contagem mostra os contornos carregados') : fail('contagem errada: ' + polyCount);
+const esperado = String(6 + PILOT_ROAD_SEGMENT_CODES.length);
+polyCount === esperado
+  ? pass('a contagem mostra os contornos carregados')
+  : fail(`contagem errada: ${polyCount} (esperado ${esperado})`);
 
 // Um contorno com geometria ilegível some do mapa e os outros seguem (R2.6): dois
 // registros carregados, um só caminho desenhado.
@@ -933,6 +956,110 @@ polyCount === '6' ? pass('a contagem mostra os contornos carregados') : fail('co
 // A classe `.polygon-shape` isola os contornos.
 const paths = await polyPage.evaluate(() => document.querySelectorAll('#map .polygon-shape').length);
 paths === 5 ? pass('geometria ilegível não é desenhada, as boas continuam') : fail(`contornos desenhados: ${paths}`);
+
+// == Eixos rodoviários oficiais desenhados como LINHA (issue #131) ==
+console.log('\n== 12g-bis. Trechos rodoviários do DER desenhados como linha (issue #131) ==');
+
+const eixos = await polyPage.evaluate(() => document.querySelectorAll('#map .road-segment-shape').length);
+eixos === PILOT_ROAD_SEGMENT_CODES.length
+  ? pass(`os ${eixos} trechos do piloto foram desenhados`)
+  : fail(`trechos desenhados: ${eixos} (esperado ${PILOT_ROAD_SEGMENT_CODES.length})`);
+
+// A linha é LINHA: `fill="none"` no SVG. Um eixo com preenchimento seria uma área entre o
+// primeiro e o último ponto que a fonte nunca publicou.
+const comPreenchimento = await polyPage.evaluate(() => [...document.querySelectorAll('#map .road-segment-shape')]
+  .filter((n) => (n.getAttribute('fill') || 'none') !== 'none').length);
+comPreenchimento === 0
+  ? pass('nenhum eixo foi desenhado com preenchimento — linha continua sendo linha')
+  : fail(`${comPreenchimento} eixo(s) desenhados como área`);
+
+// Cores distintas por trecho, vindas da planilha e não de tema.
+const coresEixos = await polyPage.evaluate(() => [...new Set([...document.querySelectorAll('#map .road-segment-shape')]
+  .map((n) => n.getAttribute('stroke')))]);
+coresEixos.length === PILOT_ROAD_SEGMENT_CODES.length
+  ? pass('cada trecho tem a própria cor, como a planilha declarou')
+  : fail(`cores distintas: ${coresEixos.length} (${coresEixos.join(', ')})`);
+
+// O alvo de clique existe e é mais largo que o traço — sem isso, 4px são um alvo
+// impossível no toque.
+const alvos = await polyPage.evaluate(() => [...document.querySelectorAll('#map .road-segment-hit')]
+  .map((n) => Number(n.getAttribute('stroke-width'))));
+alvos.length === PILOT_ROAD_SEGMENT_CODES.length && alvos.every((w) => w >= 10)
+  ? pass('cada trecho tem alvo de clique largo, com o traço visível intacto')
+  : fail(`alvos de clique: ${JSON.stringify(alvos)}`);
+
+// Clique num trecho: painel com as propriedades oficiais e com o fluxo vinculado.
+//
+// O teste NÃO assume qual trecho recebe o clique. Os cinco eixos se encostam na DF-001, e
+// o centro da caixa envolvente de um deles cai sobre o traço do vizinho — uma versão
+// anterior deste bloco afirmava "001EDF0070" e recebia o 0090, falhando por um motivo
+// que não tinha nada a ver com o que ela queria verificar. O painel diz qual trecho
+// abriu, e as asserções são conferidas contra a linha oficial correspondente.
+await polyPage.locator('#map .road-segment-hit').first().click({ force: true });
+await polyPage.waitForTimeout(400);
+const trechoDetail = (await polyPage.textContent('#detail')) || '';
+const abertos = trechosOficiais().filter((r) => trechoDetail.includes(JSON.parse(r.properties_json).cod_distrital));
+const aberto = abertos.length === 1 ? abertos[0] : null;
+const props = aberto ? JSON.parse(aberto.properties_json) : null;
+
+aberto && /Código do trecho/.test(trechoDetail)
+  ? pass(`o painel do trecho abre com o código oficial (${props.cod_distrital})`)
+  : fail('painel do trecho sem um código do piloto: ' + trechoDetail.slice(0, 400));
+
+if (aberto) {
+  const tmd = new Intl.NumberFormat('pt-BR').format(Number(props.tmd_der));
+  /TMD oficial do DER\/DF/.test(trechoDetail) && trechoDetail.includes(tmd)
+    ? pass(`o painel mostra o TMD oficial do DER (${tmd})`)
+    : fail(`TMD ${tmd} ausente do painel do trecho`);
+
+  /Fluxo diário \(DER\/DF\)/.test(trechoDetail) && trechoDetail.includes(props.road_segment_id)
+    ? pass('o bloco de fluxo aparece, identificado pelo road_segment_id')
+    : fail('bloco de fluxo ausente do painel do trecho: ' + trechoDetail.slice(-500));
+
+  /Caminhão/.test(trechoDetail) && /Ônibus/.test(trechoDetail)
+    ? pass('as classes de veículo aparecem no painel')
+    : fail('classes de veículo ausentes do painel');
+
+  // Décimo de quilômetro é a precisão do cadastro do DER: 0,9 km arredondado para "1 km"
+  // inventaria 100 m num trecho de 900.
+  const km = new Intl.NumberFormat('pt-BR', { minimumFractionDigits: 1, maximumFractionDigits: 1 })
+    .format(props.extensao_km);
+  trechoDetail.includes(`${km} km`)
+    ? pass(`a extensão preserva o décimo de quilômetro do cadastro (${km} km)`)
+    : fail(`extensão "${km} km" arredondada ou ausente`);
+
+  // O OBJECTID é o que permite abrir a feição exata no FeatureServer do DER e conferir a
+  // geometria contra a que está na tela.
+  trechoDetail.includes(String(props.geometry_source_feature_id))
+    ? pass('o painel traz o OBJECTID da feição na camada oficial')
+    : fail('OBJECTID ausente do painel do trecho');
+}
+// Nenhum aviso sobre a camada: os cinco chegaram íntegros.
+const avisosTexto = (await polyPage.textContent('#dataWarnings').catch(() => '')) || '';
+!/Trecho rodoviário/.test(avisosTexto)
+  ? pass('camada rodoviária íntegra não gera aviso')
+  : fail('aviso inesperado sobre a camada rodoviária: ' + avisosTexto);
+
+// Clique numa RA continua funcionando com os trechos por cima.
+await polyPage.click('#map .polygon-shape[fill="#2f6f4f"]');
+await polyPage.waitForTimeout(400);
+const raAindaAbre = (await polyPage.textContent('#detail')) || '';
+/População/.test(raAindaAbre)
+  ? pass('clique numa RA continua abrindo o perfil, com os eixos desenhados por cima')
+  : fail('o eixo rodoviário roubou o clique da RA: ' + raAindaAbre.slice(0, 300));
+
+// Desligar a camada tira as linhas e NÃO toca nas áreas.
+await polyPage.locator('#polygonLayers input[data-polygon-group="road_segments"]').uncheck();
+await polyPage.waitForTimeout(300);
+const camadaDesligada = await polyPage.evaluate(() => ({
+  eixos: document.querySelectorAll('#map .road-segment-shape').length,
+  areas: document.querySelectorAll('#map .polygon-shape').length,
+}));
+camadaDesligada.eixos === 0 && camadaDesligada.areas === 5
+  ? pass('desligar "Trechos rodoviários piloto" some com as linhas e preserva as áreas')
+  : fail(`após desligar: ${JSON.stringify(camadaDesligada)}`);
+await polyPage.locator('#polygonLayers input[data-polygon-group="road_segments"]').check();
+await polyPage.waitForTimeout(300);
 
 // `#map img` casaria com os tiles do OpenStreetMap — falso positivo garantido.
 const polyXss = await polyPage.evaluate(
@@ -1007,6 +1134,9 @@ const legendaTexto = (await polyPage.textContent('#polygonLayers')) || '';
 /Regiões administrativas/.test(legendaTexto)
   ? pass('a legenda nomeia o grupo das Regiões Administrativas')
   : fail('grupo administrative_regions ausente da legenda: ' + legendaTexto);
+/Trechos rodoviários piloto/.test(legendaTexto)
+  ? pass('a legenda nomeia a camada de trechos rodoviários em português')
+  : fail('grupo road_segments ausente ou com slug vazado na legenda: ' + legendaTexto);
 /Malha rodoviária/.test(legendaTexto)
   ? pass('a legenda nomeia o grupo da malha rodoviária')
   : fail('grupo road_network ausente da legenda');

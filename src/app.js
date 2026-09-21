@@ -63,7 +63,12 @@ import {
   raProfileUnavailability, polygonEssentials, polygonPropertyTiers, polygonEssentialKeys,
   polygonEntityType, compactNumber,
 } from './format.js';
-import { trafficPanelRows } from './traffic/panel.js';
+import { trafficPanelRows, roadSegmentTrafficDetail } from './traffic/panel.js';
+import { segmentIdsWithTraffic } from './traffic/link.js';
+import {
+  drawsAsLine, isRoadSegmentPolygon, parseLineGeometry, roadSegmentBounds, roadSegmentIdOf,
+  validateRoadSegmentLayer,
+} from './traffic/road-geometry.js';
 import { ANCHOR_ICONS, ANCHOR_FALLBACK_ICON } from './icons.js';
 
 const CONFIG = window.APP_CONFIG || {};
@@ -222,6 +227,14 @@ const state = {
 let map = null;
 let markerLayer = null;
 let polygonLayer = null;
+/**
+ * Camada dos eixos rodoviários (issue #131), separada da de contornos.
+ *
+ * Separada porque são objetos geométricos diferentes — área com preenchimento clicável
+ * contra linha de 4 px — e porque o empilhamento entre as duas é uma DECISÃO (ver o pane
+ * em `initMap`), não a ordem em que a planilha devolveu as linhas.
+ */
+let roadLayer = null;
 
 /** Raio do marcador por camada: anúncio é o dado principal, âncora é contexto. */
 /**
@@ -264,9 +277,16 @@ function initMap() {
   // tem preenchimento clicável, então precisa ficar ABAIXO da âncora, senão a RA que
   // cobre o DF inteiro engoliria o clique em toda âncora.
   map.createPane('polygons').style.zIndex = 350;
+  // Eixo rodoviário entre o contorno e a âncora, e a posição é a única que funciona:
+  // ABAIXO da RA ele fica invisível (uma linha de 4 px sob uma área que cobre a RA
+  // inteira) e sem clique; ACIMA da âncora ele atravessaria o mapa roubando o clique de
+  // toda âncora que cruzar a DF-001. No meio, ele cobre a área que precisa cobrir e cede
+  // o clique ao ponto, que é o dado.
+  map.createPane('roadSegments').style.zIndex = 360;
   map.createPane('anchors').style.zIndex = 380;
 
   polygonLayer = L.layerGroup().addTo(map);
+  roadLayer = L.layerGroup().addTo(map);
   markerLayer = L.layerGroup().addTo(map);
 }
 
@@ -287,12 +307,20 @@ function initMap() {
  *
  * `geometry_geojson` só é parseado aqui — não no normalizador —, e o erro é isolado
  * por registro: um contorno malformado some do mapa e vira aviso, sem derrubar os
- * outros nem o carregamento (R2.6). `source_geometry_geojson` NUNCA é desenhado: para
- * rodovia ela é a LineString do eixo oficial, que esta camada não sabe desenhar.
+ * outros nem o carregamento (R2.6). `source_geometry_geojson` NUNCA é desenhado: é
+ * procedência, e ler os dois campos daria dois desenhos possíveis para o mesmo trecho
+ * sem ninguém saber qual está na tela.
+ *
+ * 4. **Linha e área saem por portas diferentes** (#131). A aba POLYGONS carrega os dois:
+ *    RA é `Polygon`/`MultiPolygon`, trecho rodoviário é o EIXO oficial do DER em
+ *    `LineString`. Até esta issue a função aceitava só área, e as cinco linhas do piloto
+ *    sumiam sem erro nenhum. Desenhar uma delas como `Polygon` seria pior que sumir:
+ *    um eixo de 24 pontos "fechado" é geografia falsa, com a aparência de um dado bom.
  */
 function renderPolygons() {
-  if (!polygonLayer) return;
+  if (!polygonLayer || !roadLayer) return;
   polygonLayer.clearLayers();
+  roadLayer.clearLayers();
   if (!state.filters.layers.has('polygon')) return;
 
   // Ordem primeiro, filtro depois: ordenar só o que sobrou daria um empilhamento que
@@ -307,7 +335,24 @@ function renderPolygons() {
     } catch (error) {
       continue; // geometria ilegível: este contorno não é desenhado, os outros seguem
     }
-    if (!geometry || (geometry.type !== 'Polygon' && geometry.type !== 'MultiPolygon')) continue;
+    if (!geometry) continue;
+
+    // Quem decide COMO desenhar é a GEOMETRIA, não o tipo da entidade.
+    //
+    // Uma versão anterior desta issue despachava por `entity_type === 'road_segment'`, e
+    // isso apagou do mapa todo corredor rodoviário gravado pela v2.2.1 — aqueles são
+    // `entity_type: road_segment` com geometria `Polygon` (o eixo já com buffer), e o
+    // renderizador de linha recusa área, corretamente. O resultado foi um trecho que
+    // funcionava sumir sem erro nenhum: exatamente o defeito que esta issue conserta,
+    // reintroduzido pela correção dele.
+    //
+    // Pelo tipo da geometria, os dois convivem: corredor antigo continua área, eixo novo
+    // é linha, e nenhum dos dois depende de como a outra coluna foi preenchida.
+    if (geometry.type === 'LineString' || geometry.type === 'MultiLineString') {
+      renderRoadSegment(polygon, geometry);
+      continue;
+    }
+    if (geometry.type !== 'Polygon' && geometry.type !== 'MultiPolygon') continue;
 
     const style = polygonStyle(polygon);
     let shape = null;
@@ -339,6 +384,71 @@ function renderPolygons() {
     shape.on('click', () => openPolygonDetail(polygon));
 
     shape.addTo(polygonLayer);
+  }
+}
+
+/**
+ * Desenha UM trecho rodoviário como linha (issue #131).
+ *
+ * Duas geometrias, uma visível e uma não, e as duas existem por motivos diferentes:
+ *
+ * 1. **O traço oficial**, com a espessura e a cor que a planilha declarou. É o desenho —
+ *    a geometria do DER, sem simplificação e sem buffer. `fill: false` explícito: uma
+ *    `LineString` com `fill` ligado ganha um preenchimento entre o primeiro e o último
+ *    ponto, que é uma área que a fonte nunca publicou.
+ * 2. **Um alvo de clique invisível**, o mesmo traço com 14 px. Quatro pixels são um alvo
+ *    impossível no toque, e engrossar o traço visível falsearia a largura da via. O alvo
+ *    é desenhado ANTES, para ficar embaixo, e leva `opacity: 0` — em SVG o que decide se
+ *    um traço recebe clique é `stroke` existir, não a opacidade dele.
+ *
+ * O alvo é largo, mas continua sendo uma LINHA: ele cobre ~7 px de cada lado do eixo, não
+ * a área da RA embaixo. Um clique a 20 px do traço continua chegando na Região
+ * Administrativa, como antes.
+ */
+function renderRoadSegment(polygon, parsed = null) {
+  // `renderPolygons` já parseou e já conferiu o tipo; `parseLineGeometry` cobre a chamada
+  // direta e recusa área, que é o que impede uma `Polygon` de entrar por esta porta.
+  const geometry = parsed || parseLineGeometry(polygon.geometry_geojson);
+  // Geometria ausente, ilegível ou de tipo de área: o trecho não é desenhado, e
+  // `validateRoadSegmentLayer` já disse o motivo no canal de avisos. Um traço inventado
+  // aqui seria o mesmo que apagar a evidência de que o dado está errado.
+  if (!geometry) return;
+
+  const style = polygonStyle(polygon);
+  const rotulo = polygon.name || polygon.id;
+
+  let alvo = null;
+  let traco = null;
+  try {
+    alvo = L.geoJSON(geometry, {
+      pane: 'roadSegments',
+      style: { className: 'road-segment-hit', color: style.color, weight: 14, opacity: 0, fill: false },
+    });
+    traco = L.geoJSON(geometry, {
+      pane: 'roadSegments',
+      // `className` serve só para achar a linha no DOM (teste e depuração): a cor
+      // continua vindo daqui, por `color`. Nenhuma regra de CSS pode pintar
+      // `.road-segment-shape` — regra de classe vence o atributo que o Leaflet escreve
+      // no SVG, que foi como todas as âncoras acabaram verdes na PR #40 (R8.31, R8.45).
+      style: {
+        className: 'road-segment-shape',
+        color: style.color,
+        weight: style.weight,
+        opacity: 0.95,
+        fill: false,
+        dashArray: style.dashArray,
+      },
+    });
+  } catch (error) {
+    return; // coordenada fora de faixa faz o Leaflet lançar; mesmo tratamento de renderPolygons
+  }
+
+  for (const camada of [alvo, traco]) {
+    const tooltip = document.createElement('span');
+    tooltip.textContent = rotulo;
+    camada.bindTooltip(tooltip, { sticky: true });
+    camada.on('click', () => openPolygonDetail(polygon));
+    camada.addTo(roadLayer);
   }
 }
 
@@ -385,6 +495,10 @@ function openPolygonDetail(polygon) {
   const proveniencia = [
     ['Sistema de origem', polygon.source_system],
     ['Camada de origem', polygon.source_layer_name],
+    // O OBJECTID da feição na camada oficial. É o que permite abrir a linha exata no
+    // FeatureServer do DER e conferir a geometria contra a que está na tela (R5.7) —
+    // sem ele, "fonte oficial" é uma URL de camada com milhares de feições.
+    ['OBJECTID na camada de origem', polygon.source_feature_id],
     ['Arquivo de origem', polygon.source_file],
     ['Importado em', dateOrNull(polygon.imported_at)],
     ['Sincronizado em', dateOrNull(polygon.last_synced_at)],
@@ -414,6 +528,9 @@ function openPolygonDetail(polygon) {
     frag.append(p);
   }
 
+  // Fluxo diário do trecho (issue #131), vinculado ESTRITAMENTE por `road_segment_id`.
+  if (isRoadSegmentPolygon(polygon)) appendRoadTrafficBlock(frag, polygon);
+
   const source = buildPolygonSourceLink(polygon);
   if (source) frag.append(source);
 
@@ -426,6 +543,160 @@ function openPolygonDetail(polygon) {
   dom.detailBody.replaceChildren(frag);
   dom.detail.hidden = false;
   dom.closeDetail.focus();
+}
+
+/**
+ * Bloco de fluxo diário no painel de um trecho rodoviário (issue #131).
+ *
+ * O vínculo é por `road_segment_id` e SÓ por ele — `roadSegmentIdOf` lê
+ * `properties_json.road_segment_id` e, na falta dele, `entity_id`. Nome de rodovia e
+ * texto de descrição não entram em lugar nenhum desta cadeia: "DF-001" é o nome dos cinco
+ * trechos do piloto, e casar por ele colaria o fluxo de um trecho no painel de outro, com
+ * todos os números plausíveis e nenhum deles sobre o que a pessoa clicou.
+ *
+ * Nenhum número é recalculado: os totais diários, as classes e as bandeiras de qualidade
+ * saem da planilha como estão. O que este bloco deriva é agregação declarada — soma,
+ * média com `daysUsed`/`partialDaysUsed` à vista, e cobertura a partir de
+ * `intervalos_15min_observados` (nunca de `cobertura_dia_pct`, R8.58).
+ *
+ * Tudo por `textContent` (R4.4).
+ */
+function appendRoadTrafficBlock(frag, polygon) {
+  const segmentId = roadSegmentIdOf(polygon);
+  const linked = segmentId ? state.traffic.bySegmentId.get(segmentId) : null;
+  const detalhe = roadSegmentTrafficDetail(linked);
+
+  const box = document.createElement('section');
+  box.className = 'detail-traffic';
+
+  const titulo = document.createElement('h3');
+  titulo.className = 'detail-traffic-title';
+  titulo.textContent = 'Fluxo diário (DER/DF)';
+  box.append(titulo);
+
+  // Sem trecho correspondente, ou com trecho sem nenhum dia medido, o bloco DIZ isso.
+  // Sumir seria indistinguível de um trecho cujo fluxo ninguém carregou, e a diferença
+  // entre "não medido" e "não carregado" é o que permite alguém ir conferir na planilha.
+  if (!detalhe || !detalhe.hasTraffic) {
+    const vazio = document.createElement('p');
+    vazio.className = 'detail-traffic-empty';
+    const aba = CONFIG.trafficDailySheet || 'TRAFFIC_DAILY_TEST';
+    vazio.textContent = segmentId
+      ? `Sem dias medidos em ${aba} para ${segmentId}.`
+      : 'Trecho sem road_segment_id declarado — o fluxo não pode ser vinculado.';
+    box.append(vazio);
+    frag.append(box);
+    return;
+  }
+
+  const janela = document.createElement('p');
+  janela.className = 'detail-traffic-window';
+  const inicio = detalhe.geral.resumo.windowStart;
+  const fim = detalhe.geral.resumo.windowEnd;
+  const periodo = inicio === fim
+    ? `${formatNumber(detalhe.geral.days)} dia medido em ${formatDate(inicio)}`
+    : `${formatNumber(detalhe.geral.days)} dias medidos de ${formatDate(inicio)} a ${formatDate(fim)}`;
+  janela.textContent = `${periodo} · trecho ${detalhe.segmentId}`;
+  box.append(janela);
+
+  // Um recorte por sentido. "Crescente" e "decrescente" são medições diferentes da mesma
+  // via (issue #62/#63) e nunca são somadas às cegas — por isso cada uma tem a própria
+  // caixa, com os próprios totais e a própria cobertura.
+  for (const corte of detalhe.porSentido) box.append(trafficCutNode(corte));
+
+  frag.append(box);
+}
+
+/** Veículos, arredondados e com separador de milhar. */
+function veiculos(n) {
+  return `${formatNumber(Math.round(n))} veíc.`;
+}
+
+/** Um sentido (ou o trecho inteiro) no bloco de fluxo: totais, classes e cobertura. */
+function trafficCutNode(corte) {
+  const bloco = document.createElement('div');
+  bloco.className = 'detail-traffic-cut';
+
+  const nome = document.createElement('h4');
+  nome.className = 'detail-traffic-cut-title';
+  nome.textContent = `${corte.label} — ${formatNumber(corte.days)} dia(s)`;
+  bloco.append(nome);
+
+  const linhas = [];
+
+  if (corte.total.total !== null) {
+    linhas.push({
+      label: 'Fluxo total do período',
+      value: veiculos(corte.total.total),
+      title: corte.total.daysExcluded > 0
+        ? `Soma de ${corte.total.daysUsed} dia(s). ${corte.total.daysExcluded} dia(s) sem total medido ficaram DE FORA — não foram contados como zero.`
+        : `Soma de ${corte.total.daysUsed} dia(s).`,
+    });
+  }
+  if (corte.resumo.latestFlow !== null) {
+    linhas.push({
+      label: `Último dia (${formatDate(corte.resumo.latestDate)})`,
+      value: `${veiculos(corte.resumo.latestFlow)}/dia`,
+    });
+  }
+  if (corte.resumo.avgDailyFlow !== null) {
+    linhas.push({
+      label: 'Média diária',
+      value: `${veiculos(corte.resumo.avgDailyFlow)}/dia`,
+      // A ressalva do dia parcial acompanha o número, sempre. Um dia de 90/96 intervalos
+      // tem total menor por ter sido medido menos tempo, não por ter tido menos tráfego,
+      // e a média não compensa isso de propósito (issue #64).
+      title: corte.resumo.partialDaysUsed > 0
+        ? `Média sobre ${corte.resumo.daysUsed} dia(s), sendo ${corte.resumo.partialDaysUsed} parcial(is) — dia parcial puxa a média para baixo e o cálculo não compensa isso (issue #64).`
+        : `Média sobre ${corte.resumo.daysUsed} dia(s) completo(s).`,
+    });
+  }
+
+  const cob = corte.cobertura;
+  const cobertura = [];
+  if (cob.completos > 0) cobertura.push(`${formatNumber(cob.completos)} completo(s)`);
+  if (cob.parciais > 0) cobertura.push(`${formatNumber(cob.parciais)} parcial(is)`);
+  if (cob.desconhecidos > 0) cobertura.push(`${formatNumber(cob.desconhecidos)} sem cobertura conhecida`);
+  if (cobertura.length > 0) {
+    linhas.push({
+      label: 'Cobertura dos dias',
+      value: cobertura.join(', '),
+      title: 'Derivada de intervalos_15min_observados / 96. A coluna cobertura_dia_pct da '
+        + 'planilha não é lida: ela tem erro de separador decimal em parte dos registros.',
+    });
+  }
+
+  if (corte.qualityFlags.length > 0) {
+    linhas.push({
+      label: 'Qualidade',
+      value: corte.qualityFlags.map((q) => `${q.flag} (${formatNumber(q.days)})`).join(', '),
+    });
+  }
+
+  const lista = document.createElement('dl');
+  lista.className = 'detail-list detail-traffic-list';
+  for (const linha of linhas) addRow(lista, linha.label, linha.value, { title: linha.title || '' });
+  bloco.append(lista);
+
+  // Classes de veículo. Classe sem nenhum dia medido NÃO vira zero — ela some, porque
+  // "zero caminhões" e "caminhão não medido" são afirmações diferentes (R5.7). Uma classe
+  // medida em menos dias que o recorte carrega isso no `title`, para o total não parecer
+  // comparável aos outros.
+  const medidas = corte.classes.filter((c) => c.total !== null);
+  if (medidas.length > 0) {
+    const classes = document.createElement('dl');
+    classes.className = 'detail-list detail-traffic-classes';
+    for (const classe of medidas) {
+      addRow(classes, classe.label, veiculos(classe.total), {
+        title: classe.days === corte.days
+          ? `Soma dos ${formatNumber(classe.days)} dia(s) do recorte.`
+          : `Soma de ${formatNumber(classe.days)} de ${formatNumber(corte.days)} dia(s) — os demais não trazem esta classe.`,
+      });
+    }
+    bloco.append(classes);
+  }
+
+  return bloco;
 }
 
 /** Data formatada, ou `null` quando não há data — o travessão não é informação. */
@@ -1403,12 +1674,25 @@ function polygonLegendRow({ attribute, value, label, count, sample, className })
   input.setAttribute(attribute, value);
   input.addEventListener('change', render);
 
+  // A amostra tem a FORMA do que o mapa desenha: quadrado vazado para área, traço para
+  // eixo rodoviário (issue #131). O quadrado pintava `fillColor` ignorando `fillOpacity`,
+  // e num trecho (`fill_opacity: 0`) isso desenhava um quadrado sólido — a legenda
+  // afirmaria uma área preenchida que o mapa não desenha, que é exatamente a divergência
+  // legenda × mapa que a issue #52 proibiu.
+  // Pela GEOMETRIA da amostra, não pelo tipo da entidade: um corredor rodoviário da
+  // v2.2.1 é `road_segment` desenhado como ÁREA, e um traço na legenda o descreveria
+  // errado — legenda que não bate com o mapa é pior que legenda nenhuma (issue #52).
+  const linha = drawsAsLine(sample);
   const dot = document.createElement('span');
-  dot.className = 'dot dot-polygon-sample';
+  dot.className = linha ? 'dot dot-polygon-sample dot-road-sample' : 'dot dot-polygon-sample';
   const style = polygonStyle(sample);
   // Estilo inline, como no mapa: a cor de um contorno é dado, não tema (R8.31, R8.45).
-  dot.style.borderColor = style.color;
-  dot.style.background = style.fillColor;
+  if (linha) {
+    dot.style.background = style.color;
+  } else {
+    dot.style.borderColor = style.color;
+    dot.style.background = style.fillColor;
+  }
   dot.style.opacity = '0.95';
 
   const text = document.createElement('span');
@@ -4380,6 +4664,23 @@ async function load() {
   state.baseWarnings = [...result.warnings, ...result.errors];
   state.polygons = result.polygons || [];
   state.traffic = result.traffic || { bySegmentId: new Map(), orphaned: [], unmatchedSegmentIds: [] };
+  // Confere a camada rodoviária contra o que o contrato promete (issue #131). Cada desvio
+  // vira uma frase no MESMO canal das outras abas opcionais — nunca uma exceção (R2.5),
+  // e nunca silêncio: "carregou zero trecho e ninguém percebeu" é o defeito que esta
+  // camada inteira existe para não repetir.
+  //
+  // A conferência só roda quando a aba POLYGONS trouxe ALGUMA coisa. Com a aba vazia ou
+  // fora do ar, quem avisa é `fetchPolygonsFromGviz`, e repetir "faltam cinco trechos"
+  // por cima disso apontaria para o lugar errado — é a camada inteira que não chegou, não
+  // a sincronização rodoviária.
+  const avisosRodoviarios = state.polygons.length === 0 ? [] : validateRoadSegmentLayer(
+    state.polygons,
+    // Ids com dia medido, não as chaves do mapa: um trecho sem série continua no
+    // `bySegmentId`, e passar as chaves aprovaria em silêncio o caso que a conferência
+    // existe para apontar.
+    { trafficSegmentIds: segmentIdsWithTraffic(state.traffic.bySegmentId) },
+  ).warnings;
+  state.baseWarnings = [...state.baseWarnings, ...avisosRodoviarios];
   renderPolygonLegend();
   renderTrafficPanel();
 
@@ -4406,9 +4707,17 @@ async function load() {
   render();
 
   // Enquadra o que tem coordenada, para a primeira tela não depender do zoom padrão.
-  const withCoord = state.records.filter((r) => r.coord);
-  if (withCoord.length > 0) {
-    map.fitBounds(withCoord.map((r) => [r.coord.lat, r.coord.lon]), { padding: [40, 40] });
+  //
+  // Os eixos rodoviários entram no mesmo cálculo (issue #131): um trecho desenhado fora do
+  // enquadramento inicial é, para quem abre a página, indistinguível de um trecho que não
+  // foi desenhado. Sem trecho nenhum, a lista de pares é a mesma de antes e o
+  // enquadramento não muda.
+  const pontos = [
+    ...state.records.filter((r) => r.coord).map((r) => [r.coord.lat, r.coord.lon]),
+    ...roadSegmentBounds(state.polygons),
+  ];
+  if (pontos.length > 0) {
+    map.fitBounds(pontos, { padding: [40, 40] });
   }
 }
 

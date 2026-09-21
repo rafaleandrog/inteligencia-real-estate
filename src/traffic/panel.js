@@ -11,7 +11,7 @@
 // fazer com isso (Recomendação 8 do backend: nunca desenhar traço inventado, mas a tabela
 // não é o mapa).
 
-import { averageFlow } from './coverage.js';
+import { averageFlow, classifyDayCoverage } from './coverage.js';
 
 function ordenadosPorData(records) {
   return [...(records || [])]
@@ -84,4 +84,148 @@ export function trafficPanelRows(bySegmentId) {
     .map(trafficSegmentRow)
     .filter(Boolean)
     .sort((a, b) => (a.name || a.id).localeCompare(b.name || b.id, 'pt-BR'));
+}
+
+// --- Bloco de fluxo no painel do trecho no mapa (issue #131) -------------------------
+//
+// O painel lateral acima é uma LISTA de trechos; isto aqui é o detalhe de UM trecho,
+// aberto ao clicar no eixo dele no mapa. Os dois consomem o mesmo `linkTrafficDataset`,
+// e é por isso que este modelo mora no mesmo arquivo: uma segunda fonte para "o fluxo
+// deste trecho" seria duas verdades sobre o mesmo dado (R8.7).
+
+/** Classes de veículo do contrato, na ordem em que a tela as mostra. */
+export const VEHICLE_CLASSES = Object.freeze([
+  { key: 'carro', label: 'Carro' },
+  { key: 'moto', label: 'Moto' },
+  { key: 'onibus', label: 'Ônibus' },
+  { key: 'caminhao', label: 'Caminhão' },
+  { key: 'medio', label: 'Médio' },
+  { key: 'indefinido', label: 'Indefinido' },
+]);
+
+/**
+ * Soma de cada classe de veículo sobre um conjunto de dias, declarando sobre quantos
+ * dias cada soma foi feita.
+ *
+ * Dia sem medição de uma classe NÃO entra como zero — é a mesma regra do fluxo total
+ * (R5.7, issue #64): zero caminhões é uma via por onde caminhão não passa, ausência de
+ * medição é outra afirmação. Por isso a contagem de dias é POR CLASSE: uma classe medida
+ * em 3 de 20 dias não pode ser somada como se tivesse 20.
+ *
+ * Classe sem nenhum dia medido devolve `total: null`, nunca `0`.
+ */
+export function classTotals(records) {
+  const out = [];
+  for (const { key, label } of VEHICLE_CLASSES) {
+    let total = null;
+    let days = 0;
+    for (const record of records || []) {
+      const value = record?.classes?.[key];
+      if (!Number.isFinite(value)) continue;
+      total = (total === null ? 0 : total) + value;
+      days += 1;
+    }
+    out.push({ key, label, total, days });
+  }
+  return out;
+}
+
+/**
+ * Cobertura de um conjunto de dias, derivada SEMPRE de `intervalos_15min_observados`.
+ *
+ * `cobertura_dia_pct` continua sem ser lido em lugar nenhum — ver a nota de topo de
+ * src/traffic/coverage.js e a R8.58: o campo tem bug de locale em 9 dos 100 registros do
+ * piloto, e é o pior tipo de coluna, porque acerta na maioria e só denuncia o bug num dia
+ * parcial.
+ */
+function resumoCobertura(records) {
+  let completos = 0;
+  let parciais = 0;
+  let desconhecidos = 0;
+  for (const record of records || []) {
+    const { status } = classifyDayCoverage(record?.intervalsObserved);
+    if (status === 'complete') completos += 1;
+    else if (status === 'partial') parciais += 1;
+    else desconhecidos += 1;
+  }
+  return { completos, parciais, desconhecidos };
+}
+
+/** Sinalizações de qualidade presentes no conjunto, com quantos dias cada uma cobre. */
+function bandeirasDeQualidade(records) {
+  const contagem = new Map();
+  for (const record of records || []) {
+    const flag = record?.qualityFlag;
+    if (!flag) continue;
+    contagem.set(flag, (contagem.get(flag) || 0) + 1);
+  }
+  return [...contagem.entries()]
+    .map(([flag, days]) => ({ flag, days }))
+    .sort((a, b) => a.flag.localeCompare(b.flag, 'pt-BR'));
+}
+
+/**
+ * Fluxo total do período — a soma dos totais diários medidos.
+ *
+ * Dia sem `flow` numérico não vira zero: ele é excluído e contado em `daysExcluded`, pela
+ * mesma razão das classes. `null` quando nenhum dia tem total.
+ */
+function fluxoTotal(records) {
+  let total = null;
+  let daysUsed = 0;
+  let daysExcluded = 0;
+  for (const record of records || []) {
+    if (!Number.isFinite(record?.flow)) { daysExcluded += 1; continue; }
+    total = (total === null ? 0 : total) + record.flow;
+    daysUsed += 1;
+  }
+  return { total, daysUsed, daysExcluded };
+}
+
+/** Um recorte de dias (um sentido, ou o trecho inteiro) pronto para a tela. */
+function recorte(label, records) {
+  const ordenados = ordenadosPorData(records);
+  return {
+    label,
+    days: ordenados.length,
+    resumo: resumoDias(ordenados),
+    total: fluxoTotal(ordenados),
+    classes: classTotals(ordenados),
+    cobertura: resumoCobertura(ordenados),
+    qualityFlags: bandeirasDeQualidade(ordenados),
+  };
+}
+
+/**
+ * Detalhe de fluxo de UM trecho, para o painel do mapa.
+ *
+ * `crescente` e `decrescente` são medições diferentes da mesma via (issue #62/#63): elas
+ * aparecem SEPARADAS, e o recorte "geral" existe só para responder "quantos dias este
+ * trecho tem alguma medição" — nunca para ser citado como o fluxo do trecho.
+ *
+ * Nenhuma seta direcional sai daqui, e é deliberado: a ordem dos vértices da geometria do
+ * DER é a ordem de digitalização da feição, e não há nada no dado que garanta que ela
+ * corresponda ao sentido "crescente" do tráfego. Desenhar a seta seria afirmar isso.
+ *
+ * @returns {null|{ segmentId, hasTraffic, geral, porSentido, orphanDays }}
+ */
+export function roadSegmentTrafficDetail(linked) {
+  if (!linked) return null;
+  const traffic = linked.traffic || { crescente: [], decrescente: [], semSentido: [] };
+  const todos = [...traffic.crescente, ...traffic.decrescente, ...traffic.semSentido];
+
+  const porSentido = [];
+  if (traffic.crescente.length > 0) porSentido.push(recorte('Crescente', traffic.crescente));
+  if (traffic.decrescente.length > 0) porSentido.push(recorte('Decrescente', traffic.decrescente));
+  // Dia sem sentido declarado não é descartado nem fundido num dos dois: ele vira um
+  // recorte próprio, com o nome do que é. Somá-lo a um sentido escolhido por conveniência
+  // seria atribuir uma direção que o registro não tem.
+  if (traffic.semSentido.length > 0) porSentido.push(recorte('Sem sentido declarado', traffic.semSentido));
+
+  return {
+    segmentId: linked.roadSegmentId || null,
+    hasTraffic: todos.length > 0,
+    geral: recorte('Todos os sentidos', todos),
+    porSentido,
+  };
 }

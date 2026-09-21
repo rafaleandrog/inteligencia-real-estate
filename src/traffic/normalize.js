@@ -132,6 +132,26 @@ export function normalizeTrafficDaily(row) {
     intervalsObserved: toInteger(row?.intervalos_15min_observados),
     flow: toNumber(row?.fluxo_total),
     qualityFlag: toText(row?.quality_flag) || null,
+    // Classes de veículo (issue #131). Uma classe ausente vira `null`, NUNCA zero: zero
+    // caminhões é uma via por onde caminhão não passa, e ausência de medição é outra
+    // afirmação — a mesma distinção que governa o fluxo total (R5.7). É por isso que o
+    // painel soma classe por classe em vez de completar o que falta com 0.
+    classes: {
+      carro: toNumber(row?.carro),
+      moto: toNumber(row?.moto),
+      onibus: toNumber(row?.onibus),
+      caminhao: toNumber(row?.caminhao),
+      medio: toNumber(row?.medio),
+      indefinido: toNumber(row?.indefinido),
+    },
+    // Conferência que o PRÓPRIO backend publica entre o total oficial e a soma das
+    // classes. Não é recalculada aqui: recalcular substituiria a conta da fonte pela
+    // nossa e apagaria justamente a divergência que este campo existe para mostrar.
+    classSum: toNumber(row?.soma_classes),
+    classDivergence: toNumber(row?.divergencia_total_classes),
+    totalPolicy: toText(row?.source_total_policy) || null,
+    peakFlow: toNumber(row?.pico_15min_fluxo),
+    peakInterval: toText(row?.pico_15min_intervalo) || null,
     raw: row,
   };
 }
