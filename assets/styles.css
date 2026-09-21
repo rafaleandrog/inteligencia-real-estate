@@ -1094,6 +1094,18 @@ select:focus, input[type="number"]:focus {
 
 .polygon-legend-label { min-width: 0; overflow-wrap: anywhere; }
 
+/* Amostra de EIXO rodoviário (issue #131): um traço, não um quadrado. A forma da amostra
+   é o que diz se o mapa desenha uma área ou uma linha, e um quadrado ali afirmaria um
+   preenchimento que o trecho não tem (`fill_opacity: 0` na planilha).
+
+   Como em `.dot-polygon-sample`, a COR não é definida aqui: ela vem inline, de
+   `polygonStyle()`, a mesma função que pinta a linha no mapa. */
+.dot-road-sample {
+  height: 4px;
+  border-radius: 1px;
+  border: 0;
+}
+
 /* O tipo é subordinado ao grupo, e a indentação é o que diz isso sem precisar de
    moldura. Em 390 px a coluna da legenda tem ~300 px úteis: 16 px de recuo é o
    suficiente para ler a hierarquia sem empurrar a contagem para fora. */
@@ -1163,6 +1175,43 @@ select:focus, input[type="number"]:focus {
 /* Trechos rodoviários com tráfego (issue #63) ---------------------------- */
 
 .traffic-panel[hidden] { display: none; }
+
+/* Bloco de fluxo diário dentro do painel de um trecho rodoviário (issue #131).
+
+   NENHUMA regra aqui toca `.road-segment-shape` nem `.road-segment-hit`: essas classes
+   existem só como gancho de DOM para teste e depuração, e a cor da linha é DADO da
+   planilha, aplicada inline pelo Leaflet. Regra de classe venceria o atributo inline, que
+   foi como todas as âncoras acabaram verdes na PR #40 (R8.31, R8.45). */
+.detail-traffic {
+  margin-top: 12px;
+  padding-top: 10px;
+  border-top: 1px solid var(--line);
+}
+.detail-traffic-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--ink);
+  margin: 0 0 2px;
+}
+.detail-traffic-window,
+.detail-traffic-empty {
+  font-size: 11px;
+  color: var(--muted);
+  margin: 0 0 8px;
+}
+.detail-traffic-cut + .detail-traffic-cut { margin-top: 10px; }
+.detail-traffic-cut-title {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--ink);
+  margin: 0 0 4px;
+}
+/* As classes de veículo são subordinadas aos totais do sentido, e a indentação é o que
+   diz isso sem precisar de moldura — mesma escolha de `.polygon-type-row`. */
+.detail-traffic-classes {
+  margin-left: 12px;
+  margin-top: 4px;
+}
 
 .traffic-list { list-style: none; margin: 0; padding: 0; }
 .traffic-item + .traffic-item {

@@ -127,11 +127,91 @@ test('as chaves de pipeline vão para o técnico e não poluem o complementar', 
   const { complementar, tecnico } = polygonPropertyTiers(rodovia, {
     skip: polygonEssentialKeys(rodovia),
   });
-  assert.deepEqual(complementar.map((r) => r.label), ['Administração', 'Última medição']);
-  assert.deepEqual(tecnico.map((r) => r.label).sort(), [
-    'Display buffer m each side', 'Native source crs', 'Road segment id',
-    'Source segment code', 'Traffic relation dataset',
+  // `road_segment_id` e `source_segment_code` deixaram de ser pipeline na issue #131: os
+  // dois passaram a ser a identidade que o painel do trecho precisa mostrar — o primeiro é
+  // a chave pela qual o fluxo de TRAFFIC_DAILY_TEST é ligado, e é ele que alguém confere
+  // na planilha quando discorda de um número.
+  assert.deepEqual(complementar.map((r) => r.label).sort(), [
+    'Administração', 'Código na fonte', 'ID do trecho', 'Última medição',
   ]);
+  assert.deepEqual(tecnico.map((r) => r.label).sort(), [
+    'Display buffer m each side', 'Native source crs', 'Traffic relation dataset',
+  ]);
+});
+
+// --- Vocabulário do DER/DF de hoje (issue #131) -------------------------------------
+
+test('trecho do DER: o essencial lê as chaves que a planilha realmente grava', () => {
+  // A lista anterior (`road_code`, `segment_type`, `jurisdiction`, `traffic_avg_daily_flow`)
+  // era do contrato previsto, não do gravado: a sincronização nunca escreveu nenhuma delas
+  // em POLYGONS. O efeito era um essencial VAZIO em todos os cinco trechos do piloto — e um
+  // painel que abre sem nada parece um trecho sem dado, não uma chave procurada errada.
+  const trecho = contorno({
+    entity_type: 'road_segment', category: 'trecho_rodoviario', name: 'DF-001 · trecho 0070',
+    properties_json: JSON.stringify({
+      cod_distrital: '001EDF0070', rodovia: 'DF001', extensao_km: 0.9,
+      tmd_der: '26402', situacao_fisica: 'PAV', fx_total: 2, fx_direita: 1, fx_esquerda: 1,
+    }),
+  });
+  assert.deepEqual(polygonEssentials(trecho, null), [
+    { label: 'Código do trecho', value: '001EDF0070' },
+    { label: 'Rodovia', value: 'DF001' },
+    { label: 'Extensão', value: '0,9 km' },
+    { label: 'TMD oficial do DER/DF', value: '26.402 veíc./dia' },
+    { label: 'Faixas', value: '2 (1 + 1)' },
+    { label: 'Situação física', value: 'PAV' },
+  ]);
+});
+
+test('extensão em décimos de km não é arredondada para o inteiro', () => {
+  // 0,9 km arredondado para "1 km" inventa 100 m num trecho de 900. Décimo de quilômetro é
+  // a precisão real do cadastro do DER, e a vírgula é o separador do pt-BR.
+  const trecho = contorno({ entity_type: 'road_segment',
+    properties_json: JSON.stringify({ cod_distrital: 'X', extensao_km: 5.6 }) });
+  assert.deepEqual(polygonEssentials(trecho, null)[1], { label: 'Extensão', value: '5,6 km' });
+});
+
+test('faixas só mostram a divisão por sentido quando ela SOMA o total', () => {
+  const coerente = contorno({ entity_type: 'road_segment',
+    properties_json: JSON.stringify({ rodovia: 'DF001', fx_total: 4, fx_direita: 2, fx_esquerda: 2 }) });
+  assert.equal(polygonEssentials(coerente, null).find((r) => r.label === 'Faixas').value, '4 (2 + 2)');
+
+  // Divisão que não fecha: o parêntese seria uma afirmação que o próprio registro
+  // contradiz. O total continua sendo o dado oficial e a linha não some por causa disso.
+  const incoerente = contorno({ entity_type: 'road_segment',
+    properties_json: JSON.stringify({ rodovia: 'DF001', fx_total: 4, fx_direita: 2, fx_esquerda: 1 }) });
+  assert.equal(polygonEssentials(incoerente, null).find((r) => r.label === 'Faixas').value, '4');
+
+  // Sem o total, somar os dois lados seria derivar um número que a fonte não publicou.
+  const semTotal = contorno({ entity_type: 'road_segment',
+    properties_json: JSON.stringify({ rodovia: 'DF001', fx_direita: 2, fx_esquerda: 2 }) });
+  assert.equal(polygonEssentials(semTotal, null).some((r) => r.label === 'Faixas'), false);
+});
+
+test('os dois vocabulários de rodovia nunca se somam no mesmo painel', () => {
+  // Somá-los daria até dez linhas e quebraria o teto de seis itens da issue #55. O
+  // registro escolhe UM, e o que o essencial usou é o que `polygonEssentialKeys` esconde
+  // embaixo — devolver as duas listas esconderia uma chave que o topo não mostrou.
+  const novo = contorno({ entity_type: 'road_segment', properties_json: JSON.stringify({
+    cod_distrital: '001EDF0070', rodovia: 'DF001',
+    road_code: 'DF-001', segment_type: 'pista dupla', jurisdiction: 'Distrital',
+  }) });
+  assert.deepEqual(polygonEssentials(novo, null).map((r) => r.label), ['Código do trecho', 'Rodovia']);
+  const { complementar } = polygonPropertyTiers(novo, { skip: polygonEssentialKeys(novo) });
+  // As chaves do vocabulário antigo continuam visíveis — embaixo, não apagadas.
+  assert.deepEqual(complementar.map((r) => r.label).sort(), ['Código', 'Jurisdição', 'Tipo de trecho']);
+});
+
+test('procedência da geometria fica legível E no técnico, nunca no complementar', () => {
+  // Sem rótulo declarado, `geometry_sha256` voltava cru como "Geometry sha256". Com rótulo
+  // simples, subiria para o bloco que o usuário lê primeiro. Rótulo e nível são decisões
+  // separadas, e é por isso que a lista declara os dois.
+  assert.deepEqual(classifyPolygonProperty('geometry_sha256'),
+    { tier: DETAIL_TIERS.TECNICO, label: 'Hash da geometria consultada' });
+  assert.deepEqual(classifyPolygonProperty('geometry_source_feature_id'),
+    { tier: DETAIL_TIERS.TECNICO, label: 'OBJECTID na camada oficial' });
+  assert.deepEqual(classifyPolygonProperty('geometry_source_url'),
+    { tier: DETAIL_TIERS.TECNICO, label: 'Fonte oficial da geometria' });
 });
 
 test('o que já apareceu no essencial não se repete embaixo', () => {

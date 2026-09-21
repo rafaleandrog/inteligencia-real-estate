@@ -7,6 +7,11 @@
 // exatamente para isso que ROAD_SEGMENT_ALIASES existe. Uma linha antiga de
 // TRAFFIC_DAILY_TEST pode ter `road_segment_id` vazio e só `source_segment_code`
 // preenchido — `resolveTrafficSegmentId` cobre esse caso.
+//
+// `isActivePolygon` vem de src/filters.js de propósito: é a MESMA função que decide se o
+// renderizador desenha o contorno. Uma cópia da regra aqui é o que produziu o achado P1
+// da PR #133 — ver a nota na própria função.
+import { isActivePolygon } from '../filters.js';
 
 /** Índice `source_segment_code → road_segment_id`, a partir de ROAD_SEGMENT_ALIASES. */
 export function buildAliasIndex(aliases) {
@@ -66,16 +71,55 @@ export function indexTrafficBySegment(trafficRecords, aliases) {
 }
 
 /**
- * Liga trecho (ROAD_SEGMENTS) → geometria (POLYGONS), via `current_polygon_id`.
- * Um trecho sem `current_polygon_id`, ou cujo `polygon_id` não existe em POLYGONS
- * (geometria ainda não sincronizada — `road_sync_synced_count = 0` no piloto), é
- * carregado normalmente com `polygon: null`: só não tem onde ser desenhado no mapa,
- * o que não é motivo para descartar o trecho (issue #62, critério de aceite).
+ * Liga trecho (ROAD_SEGMENTS) → geometria (POLYGONS).
+ *
+ * DOIS caminhos, nesta ordem, e os dois são vínculo por IDENTIFICADOR DECLARADO — nunca
+ * por nome de rodovia nem por texto de descrição, que é o que a issue #131 proíbe:
+ *
+ * 1. `ROAD_SEGMENTS.current_polygon_id` → `POLYGONS.polygon_id`. É o caminho canônico e
+ *    continua tendo precedência: é a coluna que o contrato criou para isso.
+ * 2. `POLYGONS.entity_type = 'road_segment'` + `POLYGONS.entity_id` → `road_segment_id`.
+ *    É a declaração, do lado da geometria, de a qual entidade ela pertence.
+ *
+ * O segundo existe porque a sincronização do DER grava a linha em POLYGONS com
+ * `entity_id` preenchido e **deixa `current_polygon_id` vazio** em ROAD_SEGMENTS. Sem
+ * este caminho, os cinco trechos do piloto ficam com `polygon: null` e o painel lateral
+ * diz "Geometria pendente" para trechos cuja geometria está na planilha, desenhada no
+ * mapa, a uma coluna de distância. A correção canônica é o backend preencher
+ * `current_polygon_id`; até lá, não fingir que a geometria não existe é o mínimo.
+ *
+ * A exigência de `entity_type === 'road_segment'` não é formalidade — é a mesma lição de
+ * `raProfileForPolygon`: um contorno qualquer também carrega `entity_id`, e casar só por
+ * ele colaria a geometria errada num trecho com todos os campos plausíveis.
+ *
+ * Um trecho que não resolve por nenhum dos dois é carregado normalmente com
+ * `polygon: null`: só não tem onde ser desenhado no mapa, o que não é motivo para
+ * descartá-lo (issue #62, critério de aceite).
  */
-export function linkSegmentToPolygon(segment, polygonsById) {
+export function linkSegmentToPolygon(segment, polygonsById, polygonsByEntityId) {
   if (!segment) return null;
-  const polygon = segment.currentPolygonId ? (polygonsById?.get(segment.currentPolygonId) || null) : null;
-  return { ...segment, polygon };
+  const canonico = segment.currentPolygonId ? (polygonsById?.get(segment.currentPolygonId) || null) : null;
+  const porEntidade = segment.roadSegmentId ? (polygonsByEntityId?.get(segment.roadSegmentId) || null) : null;
+  return { ...segment, polygon: canonico || porEntidade };
+}
+
+/**
+ * Ids dos trechos que têm PELO MENOS UM dia medido (issue #131).
+ *
+ * `bySegmentId` tem uma entrada para cada linha de ROAD_SEGMENTS, com ou sem tráfego —
+ * um trecho sem nenhum dia medido continua sendo um trecho válido, só sem série. Por
+ * isso `bySegmentId.has(id)` NÃO responde "este trecho tem fluxo", e usá-lo como se
+ * respondesse faria a conferência da camada aprovar em silêncio exatamente o caso que
+ * ela existe para apontar.
+ */
+export function segmentIdsWithTraffic(bySegmentId) {
+  const ids = [];
+  for (const [id, linked] of bySegmentId || []) {
+    const t = linked?.traffic;
+    if (!t) continue;
+    if (t.crescente.length + t.decrescente.length + t.semSentido.length > 0) ids.push(id);
+  }
+  return ids;
 }
 
 /**
@@ -90,12 +134,32 @@ export function linkSegmentToPolygon(segment, polygonsById) {
 export function linkTrafficDataset(segments, polygons, trafficRecords, aliases) {
   // POLYGONS normalizado por src/normalize.js expõe o identificador como `id`
   // (a coluna da planilha é `polygon_id`; `normalizePolygon` já a renomeia).
-  const polygonsById = new Map((polygons || []).map((p) => [p.id, p]));
+  // Os DOIS índices só aceitam contorno ATIVO, pela mesma regra do renderizador.
+  //
+  // `supersedePolygonsOfEntity_` no Apps Script não apaga a geometria antiga de um trecho:
+  // ela vira `status: inactive` e continua na aba, ao lado da nova. Ligar um trecho a uma
+  // dessas faz o painel prometer o que o mapa não entrega — `hasGeometry: true`, botão
+  // "ver no mapa", e um clique que enquadra e abre um desenho que `renderPolygons`
+  // deliberadamente não desenhou. Um trecho sem geometria ATIVA precisa dizer "pendente",
+  // que é a verdade, em vez de oferecer um atalho para lugar nenhum.
+  const polygonsById = new Map();
+  // Índice do caminho 2 de `linkSegmentToPolygon`. Só geometria de trecho entra: um
+  // `entity_id` de RA aqui poderia casar com um `road_segment_id` homônimo e colar o
+  // contorno de um território num trecho de rodovia.
+  const polygonsByEntityId = new Map();
+  for (const polygon of polygons || []) {
+    if (!isActivePolygon(polygon)) continue;
+    if (!polygonsById.has(polygon.id)) polygonsById.set(polygon.id, polygon);
+    if (polygon.entity_type !== 'road_segment') continue;
+    const entityId = polygon.entity_id;
+    if (!entityId || polygonsByEntityId.has(entityId)) continue;
+    polygonsByEntityId.set(entityId, polygon);
+  }
   const { bySegment, orphaned } = indexTrafficBySegment(trafficRecords, aliases);
 
   const bySegmentId = new Map();
   for (const segment of segments || []) {
-    const linked = linkSegmentToPolygon(segment, polygonsById);
+    const linked = linkSegmentToPolygon(segment, polygonsById, polygonsByEntityId);
     const traffic = bySegment.get(segment.roadSegmentId) || { crescente: [], decrescente: [], semSentido: [] };
     bySegmentId.set(segment.roadSegmentId, { ...linked, traffic });
   }
