@@ -23,6 +23,7 @@ import {
   normalizeRoadSegments, normalizeRoadSegmentAliases, normalizeTrafficDailyRecords,
 } from '../src/traffic/normalize.js';
 import { linkTrafficDataset, segmentIdsWithTraffic } from '../src/traffic/link.js';
+import { isActivePolygon, polygonPassesLayerFilters, createFilterState } from '../src/filters.js';
 import { roadSegmentTrafficDetail } from '../src/traffic/panel.js';
 import {
   polygonRows, roadSegmentRows, aliasRows, trafficRows,
@@ -401,4 +402,85 @@ test('trecho sem nenhum dia medido devolve hasTraffic false, não estoura', () =
   assert.equal(detalhe.hasTraffic, false);
   assert.deepEqual(detalhe.porSentido, []);
   assert.equal(roadSegmentTrafficDetail(null), null);
+});
+
+// --- Geometria aposentada nunca é ligada a um trecho (achado P1 do Codex na PR #133) ---
+//
+// `supersedePolygonsOfEntity_` no Apps Script NÃO apaga a geometria antiga de um trecho:
+// ela vira `status: inactive` e a linha continua na aba, ao lado da nova. Um mesmo
+// `entity_id` pode então ter duas linhas em POLYGONS.
+//
+// O renderizador já ignora contorno inativo (`polygonPassesLayerFilters` e
+// `groupPolygonsForLegend` em src/filters.js). Se o vínculo trecho → geometria NÃO
+// ignorar, os dois discordam, e a discordância é toda visível para o usuário: o painel
+// diz que há geometria, mostra o botão "ver no mapa", e o clique enquadra e abre um
+// desenho que o mapa deliberadamente não desenhou.
+
+const inativo = (over = {}) => ({
+  polygon_id: 'POLY_VELHO', entity_type: 'road_segment', entity_id: 'ROADSEG_001EDF0070',
+  status: 'inactive',
+  geometry_geojson: '{"type":"LineString","coordinates":[[-47.9,-15.9],[-47.8,-15.8]]}',
+  ...over,
+});
+
+test('geometria inativa NÃO vira o vínculo do trecho, nem quando é a única', () => {
+  const polygons = normalizePolygons([inativo()]);
+  const { bySegmentId } = linkTrafficDataset(
+    normalizeRoadSegments(roadSegmentRows()).records, polygons, [], [],
+  );
+  // Sem geometria desenhável, o trecho é honesto: "pendente". O painel some com o botão
+  // em vez de oferecer um atalho para lugar nenhum.
+  assert.equal(bySegmentId.get('ROADSEG_001EDF0070').polygon, null);
+});
+
+test('com uma inativa ANTES da ativa, o vínculo pega a ativa', () => {
+  // A ordem importa: o índice guarda a primeira ocorrência de cada `entity_id`, e a linha
+  // aposentada é a mais antiga — ou seja, é ela que chega primeiro na aba.
+  const polygons = normalizePolygons([inativo(), ...polygonRows()]);
+  const { bySegmentId } = linkTrafficDataset(
+    normalizeRoadSegments(roadSegmentRows()).records, polygons, [], [],
+  );
+  assert.equal(bySegmentId.get('ROADSEG_001EDF0070').polygon.id, 'ROADSEG_001EDF0070');
+});
+
+test('current_polygon_id apontando para geometria aposentada também não vale', () => {
+  // Mesmo defeito, no caminho canônico: `current_polygon_id` pode ter ficado apontando
+  // para a linha que foi aposentada depois. Corrigir só o fallback deixaria o bug de pé
+  // no caminho que tem precedência.
+  const polygons = normalizePolygons([inativo()]);
+  const segmentos = normalizeRoadSegments(
+    roadSegmentRows().map((r) => (r.road_segment_id === 'ROADSEG_001EDF0070'
+      ? { ...r, current_polygon_id: 'POLY_VELHO' } : r))
+  ).records;
+  const { bySegmentId } = linkTrafficDataset(segmentos, polygons, [], []);
+  assert.equal(bySegmentId.get('ROADSEG_001EDF0070').polygon, null);
+});
+
+test('contorno sem `status` continua valendo — a regra é a mesma do renderizador', () => {
+  // `polygonPassesLayerFilters` trata ausência de status como ativo: linha gravada antes
+  // da coluna existir não pode sumir por isso. O vínculo precisa concordar, senão os dois
+  // divergem na direção oposta.
+  const semStatus = polygonRows().map((r) => ({ ...r, status: '' }));
+  const { bySegmentId } = linkTrafficDataset(
+    normalizeRoadSegments(roadSegmentRows()).records, normalizePolygons(semStatus), [], [],
+  );
+  assert.equal(bySegmentId.get('ROADSEG_001EDF0070').polygon.id, 'ROADSEG_001EDF0070');
+});
+
+test('o vínculo e o renderizador usam a MESMA regra de contorno ativo', () => {
+  // A causa raiz do achado foi duas regras para a mesma pergunta. Este teste falha se
+  // alguém reintroduzir uma cópia divergente.
+  for (const caso of [
+    { status: 'active', esperado: true },
+    { status: '', esperado: true },
+    { status: 'inactive', esperado: false },
+    { status: 'superseded', esperado: false },
+  ]) {
+    const p = normalizePolygon({ polygon_id: 'P', entity_type: 'road_segment', status: caso.status });
+    assert.equal(isActivePolygon(p), caso.esperado, `status "${caso.status}"`);
+    assert.equal(
+      polygonPassesLayerFilters(p, createFilterState()), caso.esperado,
+      `renderizador discorda em "${caso.status}"`,
+    );
+  }
 });

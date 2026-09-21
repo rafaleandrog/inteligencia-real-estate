@@ -78,12 +78,30 @@ export function polygonTypeKey(group, type) {
  * Contorno inativo não entra: ele também não é desenhado, e contá-lo na legenda
  * prometeria algo que o mapa não mostra (mesma armadilha de R8.26).
  */
+/**
+ * O contorno está ativo, ou seja: o mapa o desenha?
+ *
+ * Ausência de `status` é ATIVO, não inválido — linha gravada antes de a coluna existir
+ * não pode sumir do mapa por causa de uma célula vazia.
+ *
+ * Existe como função exportada porque a mesma pergunta é feita em quatro lugares: a
+ * legenda, o filtro de camada, e os dois índices que ligam trecho rodoviário a geometria
+ * (`linkTrafficDataset`, em src/traffic/link.js). Ela já esteve escrita em duas cópias, e
+ * o índice do trecho nasceu sem nenhuma — o resultado foi o painel prometer geometria que
+ * o renderizador se recusa a desenhar, com botão "ver no mapa" que enquadrava um desenho
+ * invisível (achado P1 do Codex na PR #133). Duas regras para a mesma pergunta divergem;
+ * uma função, não.
+ */
+export function isActivePolygon(polygon) {
+  if (!polygon) return false;
+  return !polygon.status || polygon.status === 'active';
+}
+
 export function groupPolygonsForLegend(polygons) {
   const groups = new Map();
 
   for (const polygon of polygons || []) {
-    if (!polygon) continue;
-    if (polygon.status && polygon.status !== 'active') continue;
+    if (!isActivePolygon(polygon)) continue;
 
     const group = polygonLayerGroup(polygon);
     const type = polygonEntityType(polygon);
@@ -117,8 +135,7 @@ export function groupPolygonsForLegend(polygons) {
  * tudo passa — ver o comentário em `createFilterState()`.
  */
 export function polygonPassesLayerFilters(polygon, filters) {
-  if (!polygon) return false;
-  if (polygon.status && polygon.status !== 'active') return false;
+  if (!isActivePolygon(polygon)) return false;
   if (!filters.layers.has('polygon')) return false;
 
   const group = polygonLayerGroup(polygon);

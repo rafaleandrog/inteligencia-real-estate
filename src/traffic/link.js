@@ -7,6 +7,11 @@
 // exatamente para isso que ROAD_SEGMENT_ALIASES existe. Uma linha antiga de
 // TRAFFIC_DAILY_TEST pode ter `road_segment_id` vazio e só `source_segment_code`
 // preenchido — `resolveTrafficSegmentId` cobre esse caso.
+//
+// `isActivePolygon` vem de src/filters.js de propósito: é a MESMA função que decide se o
+// renderizador desenha o contorno. Uma cópia da regra aqui é o que produziu o achado P1
+// da PR #133 — ver a nota na própria função.
+import { isActivePolygon } from '../filters.js';
 
 /** Índice `source_segment_code → road_segment_id`, a partir de ROAD_SEGMENT_ALIASES. */
 export function buildAliasIndex(aliases) {
@@ -129,13 +134,23 @@ export function segmentIdsWithTraffic(bySegmentId) {
 export function linkTrafficDataset(segments, polygons, trafficRecords, aliases) {
   // POLYGONS normalizado por src/normalize.js expõe o identificador como `id`
   // (a coluna da planilha é `polygon_id`; `normalizePolygon` já a renomeia).
-  const polygonsById = new Map((polygons || []).map((p) => [p.id, p]));
+  // Os DOIS índices só aceitam contorno ATIVO, pela mesma regra do renderizador.
+  //
+  // `supersedePolygonsOfEntity_` no Apps Script não apaga a geometria antiga de um trecho:
+  // ela vira `status: inactive` e continua na aba, ao lado da nova. Ligar um trecho a uma
+  // dessas faz o painel prometer o que o mapa não entrega — `hasGeometry: true`, botão
+  // "ver no mapa", e um clique que enquadra e abre um desenho que `renderPolygons`
+  // deliberadamente não desenhou. Um trecho sem geometria ATIVA precisa dizer "pendente",
+  // que é a verdade, em vez de oferecer um atalho para lugar nenhum.
+  const polygonsById = new Map();
   // Índice do caminho 2 de `linkSegmentToPolygon`. Só geometria de trecho entra: um
   // `entity_id` de RA aqui poderia casar com um `road_segment_id` homônimo e colar o
   // contorno de um território num trecho de rodovia.
   const polygonsByEntityId = new Map();
   for (const polygon of polygons || []) {
-    if (!polygon || polygon.entity_type !== 'road_segment') continue;
+    if (!isActivePolygon(polygon)) continue;
+    if (!polygonsById.has(polygon.id)) polygonsById.set(polygon.id, polygon);
+    if (polygon.entity_type !== 'road_segment') continue;
     const entityId = polygon.entity_id;
     if (!entityId || polygonsByEntityId.has(entityId)) continue;
     polygonsByEntityId.set(entityId, polygon);
