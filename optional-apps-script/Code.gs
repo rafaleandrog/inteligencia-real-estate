@@ -2634,27 +2634,33 @@ function xmlEscape_(value) {
 // outro contorno, com `layer_group: 'road_network'`: não existe "camada de rodovia"
 // separada, existe um grupo de camada dentro de POLYGONS.
 
+/**
+ * O menu NÃO pede mais um buffer (issue #132).
+ *
+ * Ele pedia porque o desenho era um corredor derivado do eixo, e a pergunta decidia a
+ * largura dele. O desenho passou a ser o eixo oficial, sem buffer: a pergunta virou uma
+ * caixa que aceita um número e não muda nada no mapa — o pior tipo de controle, porque
+ * ensina que a resposta importa.
+ *
+ * `DEFAULT_ROAD_DISPLAY_BUFFER_M` e `bufferLineGeometry_` continuam existindo: corredor
+ * gravado pela v2.2.1 segue válido na aba, e é essa função que sabe reproduzi-lo.
+ */
 function syncRoadSegmentsFromTraffic_UI() {
   var ui = SpreadsheetApp.getUi();
-  var response = ui.prompt(
+  var response = ui.alert(
     'Sincronizar trechos rodoviários DER',
-    'Informe o buffer visual por lado, em metros, usado SÓ quando o DER não publica a faixa de domínio do trecho ' +
-    '(quando publica, é ela que vira o corredor). O padrão é ' + DEFAULT_ROAD_DISPLAY_BUFFER_M + ' m. A linha oficial é preservada separadamente.',
+    'Relê a camada oficial Rodovias_2025 do DER/DF e regrava o EIXO de cada trecho presente ' +
+    'em TRAFFIC_DAILY_TEST. A geometria desenhada é a linha oficial, sem buffer. ' +
+    'Cor, espessura e profundidade de trechos já cadastrados são preservadas. Continuar?',
     ui.ButtonSet.OK_CANCEL
   );
-  if (response.getSelectedButton() !== ui.Button.OK) return;
-  var text = toText_(response.getResponseText());
-  var bufferM = text ? toNumber_(text) : DEFAULT_ROAD_DISPLAY_BUFFER_M;
-  if (bufferM === null || bufferM <= 0 || bufferM > MAX_ROAD_DISPLAY_BUFFER_M) {
-    ui.alert('Buffer inválido. Use um valor maior que 0 e menor ou igual a ' + MAX_ROAD_DISPLAY_BUFFER_M + ' m.');
-    return;
-  }
+  if (response !== ui.Button.OK) return;
   try {
-    var result = syncRoadSegmentsFromTraffic_(bufferM);
+    var result = syncRoadSegmentsFromTraffic_();
     ui.alert(
       'Sincronização concluída',
       result.synced + ' trecho(s) sincronizado(s); ' + result.skipped + ' sem feição oficial; ' +
-        result.failed + ' falha(s). Corredor = faixa de domínio do DER por lado; buffer padrão ' + bufferM + ' m quando ausente.',
+        result.failed + ' falha(s); ' + result.retired + ' aposentado(s).',
       ui.ButtonSet.OK
     );
   } catch (error) {
@@ -2662,7 +2668,7 @@ function syncRoadSegmentsFromTraffic_UI() {
   }
 }
 
-function syncRoadSegmentsFromTraffic_(bufferM) {
+function syncRoadSegmentsFromTraffic_() {
   var codes = roadCodesFromTraffic_();
   if (!codes.length) throw new Error('TRAFFIC_DAILY_TEST não contém códigos de trecho.');
   if (codes.length > MAX_ROAD_SYNC_CODES) {
@@ -2675,7 +2681,7 @@ function syncRoadSegmentsFromTraffic_(bufferM) {
   var failed = 0;
   codes.forEach(function (code) {
     try {
-      var record = fetchDerRoadByCode_(code, bufferM);
+      var record = fetchDerRoadByCode_(code);
       if (record) fetched.push(record);
       else { skipped++; skippedCodes.push(code); }
     } catch (error) {
@@ -2692,7 +2698,7 @@ function syncRoadSegmentsFromTraffic_(bufferM) {
       road.trafficSummary = trafficSummary[road.source_segment_code] || null;
       upsertRoadSegment_(road);
       upsertRoadAlias_(road);
-      upsertRoadPolygon_(road, bufferM);
+      upsertRoadPolygon_(road);
       synced++;
     });
     // Código sem feição oficial NESTA camada: um corredor gravado por versão anterior (que
@@ -2703,9 +2709,9 @@ function syncRoadSegmentsFromTraffic_(bufferM) {
     relateTrafficRowsToRoadSegments_();
     setMeta_('road_sync_status', synced ? ((skipped || failed) ? 'synced_with_warnings' : 'synced') : 'no_official_matches');
     setMeta_('road_sync_last_synced_at', nowISO_());
-    // Buffer PADRÃO (fallback); o corredor de cada trecho registra o próprio em
-    // `display_buffer_m`, que vem da faixa de domínio do DER quando ela existe.
-    setMeta_('road_sync_buffer_m', String(bufferM));
+    // O eixo não é bufferizado; o campo fica em 0 para não deixar um valor antigo
+    // sugerindo uma largura que o desenho não tem.
+    setMeta_('road_sync_buffer_m', '0');
     setMeta_('road_sync_synced_count', String(synced));
     setMeta_('road_sync_skipped_count', String(skipped));
     setMeta_('road_sync_failed_count', String(failed));
@@ -2755,13 +2761,19 @@ function roadCodesFromTraffic_() {
  * um corredor da rota inteira apresentado como o trecho do posto é exatamente o que a R3.6
  * proíbe. Código que não existe na camada volta `null` e conta como `skipped`, com aviso.
  */
-function fetchDerRoadByCode_(code, bufferM) {
+function fetchDerRoadByCode_(code) {
   var literal = escapeDerSql_(code);
   var exact = queryDerRoadFeatures_("cod_distrital='" + literal + "' OR cod_distrital2='" + literal + "'");
   if (!exact.length) return null;
-  return buildDerRoadRecord_(code, exact, bufferM, {
-    quality_flag: 'official_centerline_synced',
-    confidence_flag: 'high_official_der_geometry',
+  // Bandeiras SEPARADAS por aba (issue #132). Elas respondem perguntas diferentes:
+  // em POLYGONS, sobre o DESENHO ("a geometria é oficial e válida?"); em ROAD_SEGMENTS,
+  // sobre o CADASTRO do trecho ("a identidade veio da fonte oficial?"). Usar o mesmo par
+  // nas duas fazia a linha do trecho afirmar coisas sobre um desenho que ela não guarda.
+  return buildDerRoadRecord_(code, exact, {
+    polygon_quality_flag: 'valid_official_geometry',
+    polygon_confidence_flag: 'high_official_source',
+    segment_quality_flag: 'ok_official_geometry',
+    segment_confidence_flag: 'official_der_geometry',
   });
 }
 
@@ -2832,7 +2844,7 @@ function queryDerRoadFeatures_(whereClause) {
   return payload.features || [];
 }
 
-function buildDerRoadRecord_(code, features, bufferM, flags) {
+function buildDerRoadRecord_(code, features, flags) {
   var paths = [];
   var objectIds = [];
   features.forEach(function (feature) {
@@ -2850,39 +2862,55 @@ function buildDerRoadRecord_(code, features, bufferM, flags) {
   if (!sourceValidation.ok) throw new Error('Eixo inválido para ' + code + ': ' + sourceValidation.message);
   sourceGeometry = sourceValidation.geometry;
 
-  var buffer = derBufferHalfWidthM_(features[0].attributes || {}, bufferM);
-  var displayGeometry = bufferLineGeometry_(sourceGeometry, buffer.meters);
-  var validation = validateGeoJsonGeometry_(displayGeometry);
-  if (!validation.ok) throw new Error('Buffer inválido para ' + code + ': ' + validation.message);
-
+  // A geometria DESENHADA é o EIXO OFICIAL, sem buffer (issue #132).
+  //
+  // Até a v2.2.1 o mapa só sabia desenhar área, então o corredor visual era derivado do
+  // eixo por um buffer e ERA ELE que ia para `geometry_geojson`. A camada do mapa passou a
+  // desenhar linha na issue #131, e o corredor deixou de ser necessário — pior, ele afirma
+  // uma largura que não é a da via: a faixa de domínio da DF-001 é de 65 m POR LADO, e
+  // desenhá-la no lugar do eixo engorda a rodovia em 130 m na tela.
+  //
+  // `bufferLineGeometry_` continua existindo e testada: corredor gravado antes desta
+  // mudança segue válido na aba, e a função é o que sabe reproduzi-lo.
   var attrs0 = features[0].attributes || {};
   var sourceJson = JSON.stringify(sourceGeometry);
-  var displayJson = JSON.stringify(validation.geometry);
+  var displayJson = sourceJson;
   var inicio = sanitizePlainText_(attrs0.descricao_inicial);
   var fim = sanitizePlainText_(attrs0.descricao_final);
   return {
     road_segment_id: canonicalRoadSegmentId_(code),
     source_segment_code: code,
-    road_name: inicio && fim ? inicio + ' → ' + fim : (inicio || fim),
-    road_code: formatRoadCode_(attrs0.rodovia) || routeCodeFromPostoCode_(code) || '',
-    segment_type: sanitizePlainText_(attrs0.classe_ctb),
-    jurisdiction: sanitizePlainText_(attrs0.circunscricao),
+    // `road_name` é a RODOVIA, não a descrição do trecho. A descrição (`inicio → fim`)
+    // vive em `properties_json.descricao_inicial`/`descricao_final`, onde o painel a lê
+    // como duas linhas separadas; repeti-la aqui fazia o nome do trecho virar uma frase
+    // de 60 caracteres que não cabe em lugar nenhum da interface.
+    road_name: formatRoadCode_(attrs0.rodovia) || routeCodeFromPostoCode_(code) || '',
+    // Código da rodovia como o DER o publica (`DF001`), sem hífen: é o valor que
+    // `properties_json.rodovia` carrega, e os dois precisam concordar.
+    road_code: toText_(attrs0.rodovia) || '',
+    segment_type: 'road_segment',
+    jurisdiction: 'DF',
     administration: sanitizePlainText_(attrs0.administracao),
     length_m: lineGeometryLengthM_(sourceGeometry),
     source_feature_id: objectIds.join(','),
     source_geometry: sourceGeometry,
     source_geometry_json: sourceJson,
-    display_geometry: validation.geometry,
+    display_geometry: sourceGeometry,
     display_geometry_json: displayJson,
-    display_buffer_m: buffer.meters,
-    display_buffer_source: buffer.source,
+    // Zero, e declarado: o eixo NÃO é bufferizado. O campo continua existindo porque o
+    // corredor da v2.2.1 continua válido na aba e registra ali a largura que usou.
+    display_buffer_m: 0,
+    display_buffer_source: 'none_axis_is_official',
     geometry_hash: sha256Hex_(sourceJson),
     attributes: attrs0,
-    der_attributes: derAttributesForSheet_(attrs0),
+    sheet_attributes: roadAttributesForSheet_(attrs0, code),
     feature_count: features.length,
+    segment_number: roadSegmentNumber_(code),
     synced_at: nowISO_(),
-    quality_flag: flags.quality_flag,
-    confidence_flag: flags.confidence_flag
+    polygon_quality_flag: flags.polygon_quality_flag,
+    polygon_confidence_flag: flags.polygon_confidence_flag,
+    segment_quality_flag: flags.segment_quality_flag,
+    segment_confidence_flag: flags.segment_confidence_flag
   };
 }
 
@@ -2890,6 +2918,125 @@ function buildDerRoadRecord_(code, features, bufferM, flags) {
 function derObjectId_(attrs) {
   var value = attrs.OBJECTID !== undefined && attrs.OBJECTID !== null ? attrs.OBJECTID : attrs.objectid;
   return isBlank_(value) ? '' : String(value);
+}
+
+/**
+ * Número curto do trecho dentro da rodovia: `001EDF0070` -> `0070`.
+ *
+ * É o que entra no nome exibido (`DF-001 · trecho 0070`). O código inteiro é longo demais
+ * para um rótulo de mapa e já aparece no painel, em `Código do trecho`.
+ */
+function roadSegmentNumber_(code) {
+  var text = toText_(code).toUpperCase();
+  var match = text.match(/(\d{4})$/);
+  return match ? match[1] : text;
+}
+
+/**
+ * Paleta de cores dos eixos rodoviários.
+ *
+ * Cor por trecho, e não uma cor só para a camada inteira: cinco linhas encostadas na mesma
+ * rodovia, todas cinza, são indistinguíveis no mapa e no clique. O índice vem de um HASH do
+ * código, não da ordem de processamento — ordem muda quando alguém insere um código na aba
+ * de tráfego, e a cor de um trecho mudaria sozinha, sem nada ter mudado nele.
+ *
+ * Só vale para linha NOVA: `upsertRoadPolygon_` preserva a cartografia de uma linha que já
+ * existe (ver lá).
+ */
+var ROAD_SEGMENT_PALETTE = [
+  '#4C78A8', '#F58518', '#54A24B', '#E45756', '#72B7B2',
+  '#B279A2', '#EECA3B', '#FF9DA6', '#9D755D', '#BAB0AC'
+];
+
+function roadSegmentColor_(code) {
+  var text = toText_(code);
+  var hash = 0;
+  for (var i = 0; i < text.length; i++) {
+    hash = ((hash << 5) - hash + text.charCodeAt(i)) | 0;
+  }
+  return ROAD_SEGMENT_PALETTE[Math.abs(hash) % ROAD_SEGMENT_PALETTE.length];
+}
+
+/**
+ * Centroide e comprimento de uma geometria de LINHA.
+ *
+ * `polygonMetricsApprox_` percorre ANÉIS e calcula área por fórmula do laço fechado: com um
+ * eixo ela devolveria área e perímetro sem significado, e um centroide vindo de um anel que
+ * não existe. Um eixo não tem área — os campos de área ficam VAZIOS, não zerados, porque
+ * zero afirmaria uma medição feita que deu zero.
+ */
+function lineMetricsApprox_(geometry) {
+  var parts = geometry.type === 'LineString' ? [geometry.coordinates] : geometry.coordinates;
+  var lonSum = 0;
+  var latSum = 0;
+  var points = 0;
+  parts.forEach(function (part) {
+    (part || []).forEach(function (position) {
+      if (!position || position.length < 2) return;
+      lonSum += Number(position[0]);
+      latSum += Number(position[1]);
+      points++;
+    });
+  });
+  return {
+    centroid_latitude: points ? latSum / points : '',
+    centroid_longitude: points ? lonSum / points : '',
+    area_m2: '',
+    area_ha: '',
+    perimeter_m: lineGeometryLengthM_(geometry)
+  };
+}
+
+/**
+ * Atributos do DER para `properties_json`, com os nomes que a CAMADA usa (issue #132).
+ *
+ * A versão anterior prefixava tudo com `der_` (`der_tmd`, `der_lanes_total`, …). Esses
+ * nomes nunca chegaram à planilha em produção, e o cliente que os lia mostrava um painel de
+ * trecho VAZIO — o defeito estava no contrato, não no dado (issue #131). Os nomes abaixo
+ * são os da própria camada `Rodovias_2025`, que é o que a aba traz hoje.
+ *
+ * `der_attributes` (o mapeador antigo) continua existindo para o corredor da v2.2.1.
+ */
+function roadAttributesForSheet_(attrs, code) {
+  var num = function (v) { var n = toNumber_(v); return n === null ? null : n; };
+  var txt = function (v) { return sanitizePlainText_(v); };
+  return {
+    road_segment_id: canonicalRoadSegmentId_(code),
+    source_segment_code: code,
+    cod_distrital: txt(attrs.cod_distrital) || code,
+    rodovia: toText_(attrs.rodovia),
+    descricao_inicial: txt(attrs.descricao_inicial),
+    descricao_final: txt(attrs.descricao_final),
+    extensao_km: num(attrs.extensao_km),
+    // TMD = tráfego médio diário do DER (contagem/estimativa do órgão), referência
+    // independente da medição de TRAFFIC_DAILY_TEST. Vai como TEXTO, que é como a camada
+    // o publica — converter para número aqui esconderia um valor não numérico na fonte.
+    tmd_der: toText_(attrs.TMD),
+    situacao_fisica: txt(attrs.situacao_fisica),
+    tipo_revestimento: txt(attrs.tipo_revestimento),
+    administracao: txt(attrs.administracao),
+    fx_total: num(attrs.fx_total),
+    fx_direita: num(attrs.fx_direita),
+    fx_esquerda: num(attrs.fx_esquerda)
+  };
+}
+
+/** Procedência da geometria consultada, para `properties_json`. */
+function roadGeometryProvenance_(road) {
+  return {
+    geometry_status: 'official',
+    geometry_type: road.source_geometry.type,
+    source_geometry_type: 'Polyline',
+    geometry_source_url: DER_ROAD_LAYER_URL,
+    geometry_source_layer: 'Rodovias_2025',
+    geometry_source_feature_id: road.source_feature_id,
+    geometry_source_crs: 'EPSG:31983',
+    display_geometry_crs: 'EPSG:4326',
+    geometry_query_out_sr: '4326',
+    geometry_sha256: road.geometry_hash,
+    traffic_dataset: 'TRAFFIC_DAILY_TEST',
+    traffic_link_key: 'road_segment_id'
+  };
 }
 
 /** Atributos do DER que vão para `properties_json` (trecho e polígono), com nome próprio e tipo. */
@@ -3130,10 +3277,13 @@ function upsertRoadSegment_(road) {
   var headers = headersOf_(sheet);
   var index = headerIndex_(headers);
   var found = findRowById_(sheet, headers, index, 'road_segment_id', road.road_segment_id);
-  var props = road.der_attributes || {};
-  props.source_segment_code = road.source_segment_code;
-  props.display_buffer_m_each_side = road.display_buffer_m;
-  props.display_buffer_source = road.display_buffer_source;
+  // Mesmo vocabulário de `POLYGONS.properties_json` (issue #132): os dois descrevem o
+  // mesmo trecho, e dois conjuntos de nomes para os mesmos atributos obrigam quem lê a
+  // saber de qual aba veio o dado antes de saber o que ele significa.
+  var props = roadAttributesForSheet_(road.attributes || {}, road.source_segment_code);
+  var provenance = roadGeometryProvenance_(road);
+  Object.keys(provenance).forEach(function (key) { props[key] = provenance[key]; });
+  props.traffic_schema_version = '2026_v1';
   props.feature_count = road.feature_count;
   props.traffic_summary = road.trafficSummary || null;
   var values = {
@@ -3147,17 +3297,21 @@ function upsertRoadSegment_(road) {
     administration: road.administration,
     length_m: road.length_m,
     source_system: 'DER_DF',
-    source_layer_name: 'Rodovias 2025 (DER/DF · ArcGIS Hub)',
+    // Nome da camada como o serviço a publica, e o CRS NATIVO dela. A geometria gravada
+    // está em EPSG:4326 (`outSR=4326` na consulta), e isso é dito em
+    // `properties_json.display_geometry_crs` — misturar os dois aqui fazia o painel
+    // afirmar que a fonte era 4326, que é a projeção do RESULTADO, não a do cadastro.
+    source_layer_name: 'Rodovias_2025',
     source_feature_id: road.source_feature_id,
-    source_crs: 'EPSG:4326',
+    source_crs: 'EPSG:31983',
     valid_from: '',
     valid_to: '',
     is_current: true,
     properties_json: JSON.stringify(props),
     // Vem de `fetchDerRoadByCode_` (casamento exato por código). Nunca hardcoded aqui —
     // quem decidiu a precisão foi quem buscou o dado, não quem grava a linha.
-    confidence_flag: road.confidence_flag,
-    quality_flag: road.quality_flag,
+    confidence_flag: road.segment_confidence_flag,
+    quality_flag: road.segment_quality_flag,
     last_synced_at: road.synced_at
   };
   if (found) applyUpdate_(sheet, headers, found.rowNumber, values);
@@ -3174,13 +3328,16 @@ function upsertRoadAlias_(road) {
     alias_id: aliasId,
     road_segment_id: road.road_segment_id,
     source_segment_code: road.source_segment_code,
-    source_system: 'DER_DF',
+    // O alias liga o código da fonte de TRÁFEGO ao trecho, então o sistema declarado é o
+    // do tráfego — não o da geometria. `exact_source_code` diz COMO a relação foi feita:
+    // igualdade exata de código, nunca aproximação por nome.
+    source_system: 'DER_TRAFFIC',
     valid_from: '',
     valid_to: '',
-    match_method: 'official_code',
+    match_method: 'exact_source_code',
     match_confidence: 'high',
     source_file: 'ArcGIS REST - Eixo do Trecho Rodoviário',
-    notes: 'Relação direta por codtrechorodov.',
+    notes: 'Alias validado por código exato; geometria oficial DER/DF registrada na aba POLYGONS e vinculada ao ROAD_SEGMENTS.',
     imported_at: road.synced_at
   };
   if (found) applyUpdate_(sheet, headers, found.rowNumber, values);
@@ -3235,91 +3392,87 @@ function retireRoadSegment_(code) {
   return touched;
 }
 
+/**
+ * `polygon_id` de um eixo rodoviário — o PRÓPRIO `road_segment_id` (issue #132).
+ *
+ * A versão anterior devolvia `POLY_ROAD_<código>_<hash12>`, e o hash DENTRO da chave era o
+ * problema: qualquer revisão da geometria na fonte gerava um `polygon_id` novo, deixando o
+ * anterior para trás. Pior, o `current_polygon_id` gravado em ROAD_SEGMENTS passava a
+ * apontar para um id que ninguém conseguia prever a partir do trecho — e foi assim que a
+ * coluna acabou apontando para linha que não existia mais.
+ *
+ * Um trecho tem UM eixo vigente. Usar o id do trecho como id do desenho torna o vínculo
+ * previsível dos dois lados (`polygon_id`, `entity_id` e `current_polygon_id` coincidem),
+ * e uma revisão de geometria vira UPDATE da mesma linha em vez de linha nova.
+ */
 function roadPolygonId_(road) {
-  return 'POLY_ROAD_' + road.source_segment_code.toUpperCase().replace(/[^A-Z0-9]+/g, '_') + '_' + road.geometry_hash.slice(0, 12);
+  return road.road_segment_id;
 }
 
-function upsertRoadPolygon_(road, bufferM) {
+/**
+ * Grava (ou atualiza) a linha do EIXO rodoviário em POLYGONS (issue #132).
+ *
+ * Duas regras governam esta função, e as duas existem por causa de estrago já visto:
+ *
+ * 1. **A geometria desenhada é o eixo oficial**, não um corredor derivado por buffer. Ver
+ *    a nota em `buildDerRoadRecord_`.
+ * 2. **A cartografia de uma linha que JÁ EXISTE é preservada.** A sincronização é dona da
+ *    geometria e da procedência; cor, espessura e profundidade são apresentação, e
+ *    reescrevê-las a cada execução desfaria, sem avisar, qualquer ajuste feito na planilha.
+ *    Linha nova recebe o padrão da camada; linha existente mantém o que já tem.
+ */
+function upsertRoadPolygon_(road) {
   var sheet = ss_().getSheetByName('POLYGONS');
   var headers = headersOf_(sheet);
   var index = headerIndex_(headers);
   var polygonId = roadPolygonId_(road);
   var found = findRowById_(sheet, headers, index, 'polygon_id', polygonId);
   var today = road.synced_at.slice(0, 10);
-  var metrics = polygonMetricsApprox_(road.display_geometry);
-  var summary = road.trafficSummary || {};
-  var halfWidth = road.display_buffer_m === undefined ? bufferM : road.display_buffer_m;
-  var properties = {
-    road_segment_id: road.road_segment_id,
-    source_segment_code: road.source_segment_code,
-    road_name: road.road_name,
-    road_code: road.road_code,
-    segment_type: road.segment_type,
-    jurisdiction: road.jurisdiction,
-    administration: road.administration,
-    length_m: road.length_m,
-    traffic_relation_dataset: 'TRAFFIC_DAILY_TEST',
-    traffic_daily_rows: summary.rows || 0,
-    traffic_date_min: summary.minDate || '',
-    traffic_date_max: summary.maxDate || '',
-    traffic_avg_daily_flow: summary.avgDailyFlow === undefined ? null : summary.avgDailyFlow,
-    traffic_latest_daily_flow: summary.latestFlow === undefined ? null : summary.latestFlow,
-    display_buffer_m_each_side: halfWidth,
-    display_buffer_source: road.display_buffer_source || 'default_buffer',
-    native_source_crs: 'SIRGAS 2000 / UTM 23S (EPSG:31983), exportado em EPSG:4326'
-  };
-  var der = road.der_attributes || {};
-  Object.keys(der).forEach(function (key) { properties[key] = der[key]; });
+  var metrics = lineMetricsApprox_(road.source_geometry);
 
-  var km = der.der_km_start !== null && der.der_km_start !== undefined && der.der_km_end !== null && der.der_km_end !== undefined
-    ? ' (km ' + String(der.der_km_start).replace('.', ',') + ' a ' + String(der.der_km_end).replace('.', ',') + ')' : '';
-  var descricao = 'Trecho rodoviário DER/DF ' + (road.road_code || road.source_segment_code) + km +
-    (road.road_name ? ': ' + road.road_name : '') + '. ' +
-    (road.display_buffer_source === 'der_faixa_de_dominio'
-      ? 'A área desenhada é a faixa de domínio oficial (' + halfWidth + ' m por lado a partir do eixo).'
-      : 'Corredor visual com buffer padrão de ' + halfWidth + ' m por lado a partir do eixo (DER não publica a faixa de domínio deste trecho).') +
-    (der.der_tmd !== null && der.der_tmd !== undefined ? ' TMD do DER: ' + der.der_tmd + ' veíc./dia.' : '');
+  var properties = roadAttributesForSheet_(road.attributes || {}, road.source_segment_code);
+  var provenance = roadGeometryProvenance_(road);
+  Object.keys(provenance).forEach(function (key) { properties[key] = provenance[key]; });
+
+  var inicio = properties.descricao_inicial;
+  var fim = properties.descricao_final;
+  var descricao = (road.road_name || road.source_segment_code) +
+    (inicio && fim ? ' — ' + inicio + ' → ' + fim : '') + '.' +
+    (properties.tmd_der ? ' TMD DER/DF: ' + properties.tmd_der + '.' : '') +
+    (properties.extensao_km !== null ? ' Extensão: ' + properties.extensao_km + ' km.' : '');
 
   var values = {
     polygon_id: polygonId,
-    name: (road.road_code || road.road_name || road.source_segment_code) + ' · ' + road.source_segment_code,
-    category: 'poligonal',
+    name: (road.road_name || road.source_segment_code) + ' · trecho ' + road.segment_number,
+    category: 'trecho_rodoviario',
     geometry_geojson: road.display_geometry_json,
-    color: '#53606B',
     description: descricao,
     properties_json: JSON.stringify(properties),
     source_url: DER_ROAD_LAYER_URL,
-    source_file: '',
+    source_file: 'Rodovias_2025',
     imported_at: road.synced_at,
     status: 'active',
-    layer_group: 'road_network',
-    subcategory: 'rodovia_der',
+    layer_group: 'road_segments',
+    subcategory: 'rodovia',
     ra_geo_id: '',
     centroid_latitude: metrics.centroid_latitude,
     centroid_longitude: metrics.centroid_longitude,
     area_m2: metrics.area_m2,
     area_ha: metrics.area_ha,
     perimeter_m: metrics.perimeter_m,
-    fill_color: '#53606B',
-    stroke_color: '#374151',
-    fill_opacity: 0.35,
-    stroke_width: 1.5,
-    z_index: '',
     source_page_verified_at: today,
-    // Mesma origem de `upsertRoadSegment_`: reflete se o casamento foi exato ou por rota,
-    // nunca hardcoded (R5.7 — precisão que o dado não tem não pode virar texto fixo).
-    confidence_flag: road.confidence_flag,
-    quality_flag: road.quality_flag,
+    confidence_flag: road.polygon_confidence_flag,
+    quality_flag: road.polygon_quality_flag,
     entity_type: 'road_segment',
     entity_id: road.road_segment_id,
-    geometry_type: road.display_geometry.type,
-    geometry_role: 'display_corridor',
-    source_geometry_type: road.source_geometry.type,
-    display_buffer_m: halfWidth,
+    geometry_type: road.source_geometry.type,
+    geometry_role: 'route_axis',
+    source_geometry_type: 'Polyline',
+    display_buffer_m: road.display_buffer_m,
     source_system: 'DER_DF',
-    source_layer_name: 'Rodovias 2025 (DER/DF · ArcGIS Hub)',
+    source_layer_name: 'Rodovias_2025',
     source_feature_id: road.source_feature_id,
-    source_crs: 'EPSG:4326',
+    source_crs: 'EPSG:31983',
     geometry_hash: road.geometry_hash,
     geometry_valid_from: today,
     geometry_valid_to: '',
@@ -3328,6 +3481,23 @@ function upsertRoadPolygon_(road, bufferM) {
   };
 
   if (!found) {
+    // Cartografia só na CRIAÇÃO — ver a regra 2 no cabeçalho.
+    var cor = roadSegmentColor_(road.source_segment_code);
+    values.color = cor;
+    values.fill_color = cor;
+    values.stroke_color = cor;
+    // Eixo não tem área interna: preenchimento zero, e a espessura é o que o torna
+    // visível e clicável. `z_index` acima do das RAs (1) para a linha não ficar sob o
+    // território que ela atravessa.
+    values.fill_opacity = 0;
+    values.stroke_width = 4;
+    values.z_index = 5;
+
+    // Só na criação, e é o caso da MIGRAÇÃO: um corredor gravado pela v2.2.1 tem
+    // `polygon_id` diferente (`POLY_ROAD_…`) e continuaria ativo ao lado do eixo novo,
+    // desenhando a mesma via duas vezes. Com `polygon_id = road_segment_id`, uma
+    // re-sincronização normal ENCONTRA a linha e cai no `applyUpdate_` abaixo — este
+    // ramo não roda de novo.
     supersedePolygonsOfEntity_(sheet, index, road.road_segment_id, today);
     applyCreate_(sheet, headers, 'polygon_id', polygonId, values);
   } else {
@@ -3335,7 +3505,6 @@ function upsertRoadPolygon_(road, bufferM) {
   }
 }
 
-/** Carimba `road_segment_id` em cada linha de TRAFFIC_DAILY_TEST a partir de `trecho`. */
 function relateTrafficRowsToRoadSegments_() {
   var sheet = ss_().getSheetByName('TRAFFIC_DAILY_TEST');
   if (!sheet || sheet.getLastRow() < 2) return 0;

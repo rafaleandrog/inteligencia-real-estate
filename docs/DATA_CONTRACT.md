@@ -715,6 +715,12 @@ passou a desenhar linha na issue #131, então a sincronização grava o **eixo o
 buffer: uma faixa de 65 m por lado é uma afirmação sobre a faixa de domínio, não sobre a via, e
 desenhá-la no lugar do eixo engorda a DF-001 em 130 m de largura na tela.
 
+Desde a issue #132, `optional-apps-script/Code.gs` produz a segunda geração, e o `polygon_id` de um
+eixo é **o próprio `road_segment_id`** — a regra de vínculo da planilha é
+`current_polygon_id = polygon_id = road_segment_id`. O hash que a versão anterior punha dentro da
+chave (`POLY_ROAD_<código>_<hash12>`) fazia cada revisão de geometria gerar um id novo, e foi assim
+que `current_polygon_id` acabou apontando para linha que não existia mais.
+
 Por isso **o cliente despacha o desenho pelo TIPO DA GEOMETRIA, nunca pelo `entity_type`**
 (`renderPolygons` em `src/app.js`): `LineString`/`MultiLineString` vão para `renderRoadSegment`,
 `Polygon`/`MultiPolygon` para a camada de área. Despachar por `entity_type` apaga do mapa todo
@@ -1200,10 +1206,11 @@ Chave: `road_segment_id`, canônico `ROADSEG_<código do trecho normalizado>`.
 > `road_code` vem de `rodovia` (`DF001`) e `road_name` de `descricao_inicial → descricao_final`.
 >
 > **`properties_json` NÃO usa prefixo `der_`.** Uma versão anterior deste documento declarava
-> `der_tmd`, `der_lanes_total`, `der_extension_km` e companhia; a sincronização nunca gravou
+> `der_tmd`, `der_lanes_total`, `der_extension_km` e companhia; o script implantado nunca gravou
 > nenhuma delas, e o cliente que as lia mostrava um painel de trecho **vazio** — o defeito estava
-> no contrato, não no dado (issue #131). As chaves reais, verificadas na planilha, são os nomes da
-> própria camada do DER:
+> no contrato, não no dado (issue #131). Desde a issue #132 a sincronização versionada em
+> `optional-apps-script/Code.gs` grava exatamente as chaves abaixo, que são os nomes da própria
+> camada do DER:
 >
 > | Chave | Conteúdo |
 > |---|---|

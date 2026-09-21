@@ -89,9 +89,35 @@ function DER_ONLY(code) {
   return JSON.stringify({ ...payload, features: payload.features.filter((f) => f.attributes.cod_distrital === code) });
 }
 
-test('o sync das rodovias casa por cod_distrital e desenha o corredor na faixa de domínio do DER', () => {
+// Formato que a aba POLYGONS tem HOJE em produção, conferido ao vivo em 2026-09-21.
+//
+// A sincronização versionada aqui precisa PRODUZIR isto. Enquanto ela produzia outra coisa
+// (corredor com buffer, `polygon_id` com hash, `layer_group: road_network`, chaves `der_*`),
+// rodar o menu da planilha teria substituído os cinco eixos oficiais por corredores cinza
+// sob ids novos — o risco que a issue #132 registrou.
+const FORMATO_EM_PRODUCAO = {
+  polygon_id: 'ROADSEG_001EDF0070',
+  entity_id: 'ROADSEG_001EDF0070',
+  category: 'trecho_rodoviario',
+  subcategory: 'rodovia',
+  layer_group: 'road_segments',
+  entity_type: 'road_segment',
+  geometry_type: 'LineString',
+  geometry_role: 'route_axis',
+  source_geometry_type: 'Polyline',
+  source_system: 'DER_DF',
+  source_layer_name: 'Rodovias_2025',
+  source_crs: 'EPSG:31983',
+  source_file: 'Rodovias_2025',
+  status: 'active',
+  display_buffer_m: 0,
+  confidence_flag: 'high_official_source',
+  quality_flag: 'valid_official_geometry',
+};
+
+test('o sync das rodovias casa por cod_distrital e grava o EIXO oficial, não um corredor', () => {
   const { context, sheets, calls, H } = sandboxRodovias();
-  const result = context.syncRoadSegmentsFromTraffic_(20);
+  const result = context.syncRoadSegmentsFromTraffic_();
 
   assert.deepEqual({ ...result }, { synced: 2, skipped: 1, failed: 0, retired: 0 });
   // Casamento EXATO: a consulta leva o código, nunca `nome LIKE '%DF-001%'`.
@@ -99,57 +125,98 @@ test('o sync das rodovias casa por cod_distrital e desenha o corredor na faixa d
   assert.ok(calls.every((url) => !/LIKE/.test(url)), 'sobrou casamento por rota');
 
   const polys = rowsOf(sheets.POLYGONS, H.POLYGONS);
-  assert.equal(polys.length, 2, 'um corredor por código encontrado; o código inexistente não vira polígono');
+  assert.equal(polys.length, 2, 'um eixo por código encontrado; o código inexistente não vira linha');
   const p70 = polys.find((p) => p.entity_id === 'ROADSEG_001EDF0070');
-  assert.ok(p70, 'corredor do 001EDF0070');
-  assert.equal(p70.layer_group, 'road_network');
-  assert.equal(p70.entity_type, 'road_segment');
-  assert.equal(p70.geometry_role, 'display_corridor');
-  assert.equal(p70.subcategory, 'rodovia_der');
-  // Faixa de domínio da DF-001 no DER: 65 m por lado — é isso que vira `display_buffer_m`.
-  assert.equal(p70.display_buffer_m, 65);
-  assert.equal(p70.source_layer_name, 'Rodovias 2025 (DER/DF · ArcGIS Hub)');
-  assert.equal(p70.confidence_flag, 'high_official_der_geometry');
-  assert.equal(p70.quality_flag, 'official_centerline_synced');
-  assert.equal(p70.geometry_type, 'Polygon');
-  assert.equal(p70.source_geometry_type, 'LineString');
-  assert.equal(context.validateGeoJsonGeometry_(p70.geometry_geojson).ok, true);
-  assert.equal(context.validateGeoJsonSourceGeometry_(p70.source_geometry_geojson).ok, true);
+  assert.ok(p70, 'eixo do 001EDF0070');
 
-  const props = JSON.parse(p70.properties_json);
-  assert.equal(props.display_buffer_source, 'der_faixa_de_dominio');
-  assert.equal(props.der_road, 'DF-001');
-  assert.equal(props.der_tmd, 26402);
-  assert.equal(props.der_km_start, 17);
-  assert.equal(props.der_km_end, 17.9);
-  assert.equal(props.der_fd_right_m, 65);
-  assert.equal(props.der_class_ctb, 'Via Arterial');
-  // Resumo de tráfego: média das linhas COM fluxo (13654+13849)/2, último dia 2026-04-02.
-  assert.equal(props.traffic_daily_rows, 2);
-  assert.equal(props.traffic_avg_daily_flow, 13751.5);
-  assert.equal(props.traffic_latest_daily_flow, 13849);
-  assert.equal(props.traffic_date_max, '2026-04-02');
-  assert.match(p70.description, /faixa de domínio oficial \(65 m por lado/);
-  assert.match(p70.description, /TMD do DER: 26402/);
+  // O formato inteiro, campo a campo, contra o que a planilha tem hoje.
+  for (const [campo, esperado] of Object.entries(FORMATO_EM_PRODUCAO)) {
+    assert.equal(p70[campo], esperado, `POLYGONS.${campo}`);
+  }
 
-  // Área do corredor ≈ comprimento × 2 × 65 m (buffer é por lado).
+  // A geometria desenhada É a linha de origem — não uma derivação dela.
+  assert.equal(p70.geometry_geojson, p70.source_geometry_geojson);
+  // E é LINHA: o validador de área a recusa, o de origem a aceita. Esta dupla é o que
+  // impede um buffer de voltar por descuido.
+  assert.equal(context.validateGeoJsonSourceGeometry_(p70.geometry_geojson).ok, true);
+  assert.equal(context.validateGeoJsonGeometry_(p70.geometry_geojson).ok, false);
+  assert.equal(JSON.parse(p70.geometry_geojson).type, 'LineString');
+
+  // Eixo não tem área: os campos de área ficam VAZIOS, não zerados — zero afirmaria uma
+  // medição feita que deu zero.
+  assert.equal(p70.area_m2, '');
+  assert.equal(p70.area_ha, '');
   const length = context.lineGeometryLengthM_(JSON.parse(p70.source_geometry_geojson));
-  assert.ok(Math.abs(p70.area_m2 - length * 130) / (length * 130) < 0.08, `área ${p70.area_m2} vs ${length * 130}`);
+  assert.ok(Math.abs(p70.perimeter_m - length) < 1, `comprimento ${p70.perimeter_m} vs ${length}`);
+
+  // Cartografia da camada, na criação.
+  assert.equal(p70.fill_opacity, 0, 'eixo não tem preenchimento');
+  assert.equal(p70.stroke_width, 4);
+  assert.equal(p70.z_index, 5);
+  assert.match(String(p70.color), /^#[0-9A-F]{6}$/i);
+  assert.equal(p70.stroke_color, p70.color);
+
+  // Cores DISTINTAS por trecho: cinco linhas cinza encostadas na mesma rodovia são
+  // indistinguíveis no mapa e no clique.
+  const cores = new Set(polys.map((p) => p.color));
+  assert.equal(cores.size, polys.length, 'dois eixos com a mesma cor');
+
+  // `properties_json` com os nomes da CAMADA, não com prefixo `der_`.
+  const props = JSON.parse(p70.properties_json);
+  assert.equal(props.rodovia, 'DF001');
+  assert.equal(props.cod_distrital, '001EDF0070');
+  assert.equal(props.road_segment_id, 'ROADSEG_001EDF0070');
+  // O TMD vai como TEXTO, que é como a camada o publica.
+  assert.equal(props.tmd_der, '26402');
+  assert.equal(props.extensao_km, 0.9);
+  assert.equal(props.situacao_fisica, 'PAV');
+  assert.equal(props.tipo_revestimento, 'CBUQ');
+  assert.equal(props.fx_total, 2);
+  assert.equal(props.fx_direita, 1);
+  assert.equal(props.fx_esquerda, 1);
+  assert.equal(props.descricao_inicial, 'ENTR. DF-005 (EPPR)');
+  assert.equal(props.geometry_status, 'official');
+  assert.equal(props.geometry_source_layer, 'Rodovias_2025');
+  assert.equal(props.geometry_source_crs, 'EPSG:31983');
+  assert.equal(props.display_geometry_crs, 'EPSG:4326');
+  assert.equal(props.geometry_query_out_sr, '4326');
+  assert.equal(props.traffic_dataset, 'TRAFFIC_DAILY_TEST');
+  assert.equal(props.traffic_link_key, 'road_segment_id');
+  assert.equal(props.geometry_sha256, p70.geometry_hash);
+  // Nenhuma chave `der_*`: elas nunca chegaram à planilha e o cliente que as lia mostrava
+  // um painel vazio (issue #131).
+  assert.deepEqual(Object.keys(props).filter((k) => k.startsWith('der_')), []);
+
+  assert.match(p70.description, /TMD DER\/DF: 26402/);
+  assert.match(p70.name, /trecho 0070$/);
 
   const segs = rowsOf(sheets.ROAD_SEGMENTS, H.ROAD_SEGMENTS);
   const s70 = segs.find((r) => r.road_segment_id === 'ROADSEG_001EDF0070');
-  assert.equal(s70.current_polygon_id, p70.polygon_id, 'o trecho aponta para o corredor vigente');
-  assert.equal(s70.road_code, 'DF-001');
-  assert.equal(s70.road_name, 'ENTR. DF-005 (EPPR) → ENTR. DF-025(A)/ BARRAGEM DO PARANOÁ');
-  assert.equal(s70.segment_type, 'Via Arterial');
+  // A regra de vínculo da planilha: current_polygon_id = polygon_id = road_segment_id.
+  assert.equal(s70.current_polygon_id, p70.polygon_id, 'o trecho aponta para o eixo vigente');
+  assert.equal(s70.current_polygon_id, s70.road_segment_id);
+  assert.equal(s70.road_code, 'DF001');
+  assert.equal(s70.road_name, 'DF-001');
+  assert.equal(s70.segment_type, 'road_segment');
+  assert.equal(s70.jurisdiction, 'DF');
+  assert.equal(s70.source_layer_name, 'Rodovias_2025');
+  assert.equal(s70.source_crs, 'EPSG:31983');
+  assert.equal(s70.confidence_flag, 'official_der_geometry');
+  assert.equal(s70.quality_flag, 'ok_official_geometry');
   assert.ok(s70.length_m > 800 && s70.length_m < 1000, `comprimento ${s70.length_m} fora do km 17,0–17,9`);
-  assert.equal(JSON.parse(s70.properties_json).der_tmd, 26402);
+  assert.equal(JSON.parse(s70.properties_json).tmd_der, '26402');
   // A camada Rodovias 2025 publica `OBJECTID` em maiúsculas: a coluna canônica de
-  // procedência tem de carregar o mesmo id que `properties_json.der_feature_id`.
+  // procedência tem de carregar o mesmo id que `properties_json.geometry_source_feature_id`.
   assert.notEqual(s70.source_feature_id, '', 'source_feature_id do trecho vazio');
-  assert.equal(String(s70.source_feature_id), String(JSON.parse(s70.properties_json).der_feature_id));
-  assert.equal(String(p70.source_feature_id), String(s70.source_feature_id), 'polígono e trecho com a mesma feição');
+  assert.equal(String(s70.source_feature_id), String(JSON.parse(s70.properties_json).geometry_source_feature_id));
+  assert.equal(String(p70.source_feature_id), String(s70.source_feature_id), 'eixo e trecho com a mesma feição');
   assert.equal(segs.some((r) => r.road_segment_id === 'ROADSEG_999EDF0001'), false, 'código sem feição não vira trecho');
+
+  // O alias declara o sistema do TRÁFEGO e o método exato, como a planilha traz.
+  const aliases = rowsOf(sheets.ROAD_SEGMENT_ALIASES, H.ROAD_SEGMENT_ALIASES);
+  const a70 = aliases.find((r) => r.road_segment_id === 'ROADSEG_001EDF0070');
+  assert.equal(a70.source_system, 'DER_TRAFFIC');
+  assert.equal(a70.match_method, 'exact_source_code');
 
   // Toda linha de tráfego recebe o id canônico, inclusive a do código sem geometria.
   const traffic = rowsOf(sheets.TRAFFIC_DAILY_TEST, H.TRAFFIC_DAILY_TEST);
@@ -160,6 +227,36 @@ test('o sync das rodovias casa por cod_distrital e desenha o corredor na faixa d
   assert.equal(meta.road_sync_status, 'synced_with_warnings');
   assert.equal(meta.road_sync_synced_count, '2');
   assert.equal(meta.road_sync_skipped_count, '1');
+  assert.equal(meta.road_sync_buffer_m, '0', 'o eixo não é bufferizado');
+});
+
+test('re-sincronizar NÃO troca o id, a geometria nem a cartografia do eixo já cadastrado', () => {
+  // É o critério de aceite da issue #132: rodar o menu numa planilha que já tem os eixos
+  // oficiais não pode mexer neles. Antes, cada execução gerava um `polygon_id` novo (o hash
+  // entrava na chave) e repintava a linha com o cinza fixo do corredor.
+  const primeiro = sandboxRodovias();
+  primeiro.context.syncRoadSegmentsFromTraffic_();
+  const antes = rowsOf(primeiro.sheets.POLYGONS, primeiro.H.POLYGONS)
+    .find((p) => p.entity_id === 'ROADSEG_001EDF0070');
+
+  // Alguém ajusta a cor na planilha, como é permitido fazer.
+  const linha = primeiro.sheets.POLYGONS._rows.find((r) => r[0] === 'ROADSEG_001EDF0070');
+  const iCor = primeiro.H.POLYGONS.indexOf('stroke_color');
+  const iLargura = primeiro.H.POLYGONS.indexOf('stroke_width');
+  linha[iCor] = '#123456';
+  linha[iLargura] = 7;
+
+  primeiro.context.syncRoadSegmentsFromTraffic_();
+  const depois = rowsOf(primeiro.sheets.POLYGONS, primeiro.H.POLYGONS)
+    .filter((p) => p.entity_id === 'ROADSEG_001EDF0070');
+
+  assert.equal(depois.length, 1, 'a re-sincronização criou uma segunda linha para o mesmo trecho');
+  assert.equal(depois[0].polygon_id, antes.polygon_id, 'o polygon_id mudou entre execuções');
+  assert.equal(depois[0].geometry_geojson, antes.geometry_geojson, 'a geometria foi reescrita');
+  assert.equal(depois[0].status, 'active');
+  // Cartografia é apresentação: a sincronização não é dona dela.
+  assert.equal(depois[0].stroke_color, '#123456', 'a sincronização repintou a linha');
+  assert.equal(depois[0].stroke_width, 7, 'a sincronização mudou a espessura');
 });
 
 test('código sem feição oficial aposenta o corredor e o trecho herdados de uma sincronização anterior', () => {
@@ -184,7 +281,7 @@ test('código sem feição oficial aposenta o corredor e o trecho herdados de um
 
   const sandbox = createAppsScriptSandbox({ sheets });
   sandbox.context.UrlFetchApp.fetch = fakeFetch([[/Rodovias_2025\/FeatureServer\/0\/query\?/, JSON.stringify({ features: [] })]], []);
-  const result = sandbox.context.syncRoadSegmentsFromTraffic_(20);
+  const result = sandbox.context.syncRoadSegmentsFromTraffic_();
   assert.deepEqual({ ...result }, { synced: 0, skipped: 1, failed: 0, retired: 1 });
 
   const [s] = rowsOf(sandbox.sheets.ROAD_SEGMENTS, H.ROAD_SEGMENTS);
@@ -204,7 +301,7 @@ test('código sem feição oficial aposenta o corredor e o trecho herdados de um
   assert.equal(meta.validation_status, 'dirty', 'aposentar também é mudança de dado: versão e cache avançam');
 
   // Rodar de novo sem nada vigente não aposenta duas vezes.
-  const again = sandbox.context.syncRoadSegmentsFromTraffic_(20);
+  const again = sandbox.context.syncRoadSegmentsFromTraffic_();
   assert.equal(again.retired, 0);
 });
 

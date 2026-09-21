@@ -137,16 +137,43 @@ a linha de `ROAD_SEGMENTS` perde `current_polygon_id` e vira `is_current = false
 polígono fica `inactive` com `geometry_valid_to`. Nada é apagado; a série de tráfego continua ligada
 ao `road_segment_id`. A contagem fica em `APP_META.road_sync_retired_count`.
 
-A largura do corredor é a **faixa de domínio oficial por lado** publicada pelo DER
-(`fd_direita_larg`/`fd_esquerda_largu`, 65 m na DF-001), com teto de 100 m. O menu pergunta o buffer
-apenas como reserva (padrão 20 m) para trechos em que o DER não publica a faixa; a origem fica em
-`properties_json.display_buffer_source`. Rode **as RAs antes das rodovias**: o corredor não depende
-delas, mas a ordem deixa a aba `POLYGONS` legível.
+**O menu não pergunta mais um buffer** (issue #132). Ele perguntava porque o desenho era um corredor
+derivado do eixo, e a resposta decidia a largura dele. O mapa passou a desenhar linha (issue #131), e
+o que vai para `geometry_geojson` é o **eixo oficial, sem buffer** — `display_buffer_m = 0`. Manter a
+pergunta seria manter um controle que aceita um número e não muda nada na tela.
 
-O DER publica o eixo, que é uma linha; o mapa desenha área. Então o corredor visual é derivado do
-eixo por buffer e vai para `geometry_geojson`, enquanto o eixo original fica em
-`source_geometry_geojson` como procedência. A rodovia entra em `POLYGONS` com
-`layer_group = 'road_network'` — **não existe camada de rodovia separada**.
+Rode **as RAs antes das rodovias**: o eixo não depende delas, mas a ordem deixa a aba `POLYGONS`
+legível.
+
+O que a sincronização grava em `POLYGONS`, por trecho:
+
+| Campo | Valor |
+|---|---|
+| `polygon_id` | o próprio `road_segment_id` (`ROADSEG_001EDF0070`) |
+| `geometry_geojson` | o eixo oficial, `LineString`, igual a `source_geometry_geojson` |
+| `category` / `subcategory` | `trecho_rodoviario` / `rodovia` |
+| `layer_group` | `road_segments` |
+| `geometry_role` | `route_axis` |
+| `display_buffer_m` | `0` |
+| `source_crs` | `EPSG:31983` (nativo; a geometria gravada está em `EPSG:4326`) |
+
+E em `ROAD_SEGMENTS`, `current_polygon_id` recebe esse mesmo `polygon_id` — que é igual ao
+`road_segment_id`. A regra de vínculo é **`current_polygon_id = polygon_id = road_segment_id`**.
+
+**A cartografia de um trecho que já existe é preservada.** A sincronização é dona da geometria e da
+procedência; cor, espessura e `z_index` são apresentação, e reescrevê-las a cada execução desfaria,
+sem avisar, qualquer ajuste feito na planilha. Trecho novo nasce com cor da paleta (uma por trecho,
+escolhida por hash do código, para não mudar quando a ordem dos códigos mudar), `fill_opacity = 0`,
+`stroke_width = 4` e `z_index = 5`.
+
+**Re-sincronizar é idempotente**: como o `polygon_id` é o id do trecho, a segunda execução encontra a
+linha e a atualiza, em vez de criar outra. Há teste fixando isso
+(`tests/appsscript-territorio-sync.test.js`).
+
+A rodovia entra em `POLYGONS` — **não existe camada de rodovia separada**. `layer_group = 'road_network'`
+com `geometry_role = 'display_corridor'` é o corredor com buffer da v2.2.1: continua válido na aba e
+continua sendo desenhado como área, porque quem decide a forma do desenho é o **tipo da geometria**,
+não o `entity_type`.
 
 A sincronização também mantém `ROAD_SEGMENTS` (cadastro do trecho), `ROAD_SEGMENT_ALIASES` (ponte
 entre o código da fonte de tráfego e o `road_segment_id`) e carimba `road_segment_id` em cada linha
