@@ -51,7 +51,7 @@ import {
   anchorLegendGroups, applyFilters, computeKpis, createFilterState, distinctAnchorGroups,
   distinctAnchorSegments, distinctLocalities, distinctPropertyTypes, distinctRegions,
   distinctRegularizationStatuses, distinctSalesStages, LAYERS,
-  groupPolygonsForLegend, isActivePolygon, polygonPassesLayerFilters, raProfileForPolygon,
+  groupPolygonsForLegend, polygonPassesLayerFilters, raProfileForPolygon,
 } from './filters.js';
 import {
   formatBRL, formatBRLCompact, formatM2, formatNumber, formatPriceM2, formatDate,
@@ -1742,12 +1742,12 @@ function renderPolygonLegend() {
 
     // Os códigos do piloto, um por linha, com a cor do respectivo eixo (issue #134).
     //
-    // `isActivePolygon` é a MESMA regra do renderizador e de `groupPolygonsForLegend`. Sem
-    // ela, uma linha aposentada do grupo reapareceria como item clicável de uma geometria
-    // que `renderPolygons` se recusa a desenhar — legenda prometendo o que o mapa não tem
-    // (achado P2 do Codex na PR #135, e a mesma classe do P1 da PR #133).
+    // `selectRoadSegmentPolygons` já descarta contorno inativo, pela mesma regra do
+    // renderizador: uma linha aposentada viraria item clicável de uma geometria que
+    // `renderPolygons` se recusa a desenhar (achado P2 do Codex na PR #135, e a mesma classe
+    // do P1 da PR #133).
     const eixos = selectRoadSegmentPolygons(
-      state.polygons.filter((p) => isActivePolygon(p) && polygonLayerGroup(p) === group.key)
+      state.polygons.filter((p) => polygonLayerGroup(p) === group.key)
     );
     for (const no of roadSegmentLegendRows(eixos)) list.append(no);
 

@@ -16,6 +16,8 @@
 // linhas de trecho estão hoje nas linhas 39-43 da aba; amanhã alguém insere uma linha
 // acima e elas estão em 40-44. Um seletor por índice quebraria em silêncio nesse dia.
 
+import { isActivePolygon } from '../filters.js';
+
 /**
  * Códigos DER/DF do piloto, para a validação declarar o que ESPERA encontrar.
  *
@@ -53,9 +55,19 @@ export function isRoadSegmentPolygon(polygon) {
     || text(polygon.category) === 'trecho_rodoviario';
 }
 
-/** As linhas de trecho de uma lista de contornos, preservando a ordem recebida. */
+/**
+ * As linhas de trecho ATIVAS de uma lista de contornos, preservando a ordem recebida.
+ *
+ * Contorno inativo fica de fora porque o renderizador não o desenha, e os três consumidores
+ * desta função falam sobre o que ESTÁ no mapa: a legenda por código, o enquadramento e a
+ * conferência da camada. Incluí-lo fazia uma geometria aposentada — que a sincronização
+ * deixa na aba com `status: inactive` — acusar "código duplicado" contra o eixo vigente que
+ * a substituiu, e arrastar o enquadramento para um traço que ninguém vê.
+ *
+ * Mesma regra e mesma função do renderizador (`isActivePolygon`, src/filters.js).
+ */
 export function selectRoadSegmentPolygons(polygons) {
-  return (polygons || []).filter(isRoadSegmentPolygon);
+  return (polygons || []).filter((p) => isActivePolygon(p) && isRoadSegmentPolygon(p));
 }
 
 /**

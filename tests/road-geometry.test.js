@@ -14,9 +14,9 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
   PILOT_ROAD_SEGMENT_CODES, OFFICIAL_SOURCE_SYSTEM, OFFICIAL_SOURCE_LAYER,
-  isRoadSegmentPolygon, selectRoadSegmentPolygons, parseLineGeometry, lineParts,
+  isRoadSegmentPolygon, parseLineGeometry, lineParts,
   roadSegmentBounds, roadSegmentIdOf, roadSegmentCodeOf, validateRoadSegmentLayer,
-  drawsAsLine, roadAxisGeometry, polygonFeatureType,
+  drawsAsLine, roadAxisGeometry, polygonFeatureType, selectRoadSegmentPolygons,
 } from '../src/traffic/road-geometry.js';
 import { normalizePolygons, normalizePolygon } from '../src/normalize.js';
 import {
@@ -617,4 +617,21 @@ test('o fallback exige route_axis POSITIVAMENTE, não apenas "não é corredor"'
     geometry_geojson: '{"type":"LineString","coordinates":[[-47.8,-15.8],[-47.7,-15.7]]}',
   });
   assert.equal(roadAxisGeometry(semPapelComGeometria).type, 'LineString');
+});
+
+test('contorno APOSENTADO não entra na seleção, no enquadramento nem na validação', () => {
+  // `supersedePolygonsOfEntity_` deixa a geometria antiga na aba com `status: inactive`, ao
+  // lado da nova. Contá-la fazia a conferência acusar "código duplicado" contra o eixo
+  // vigente que a substituiu, e arrastava o enquadramento para um traço que ninguém vê.
+  const aposentado = { ...polygonRows()[0], polygon_id: 'ROADSEG_VELHO', status: 'inactive' };
+  const polygons = normalizePolygons([...polygonRows(), aposentado]);
+
+  assert.equal(selectRoadSegmentPolygons(polygons).length, 5, 'o aposentado entrou na seleção');
+  const { segments, warnings } = validateRoadSegmentLayer(polygons);
+  assert.equal(segments.length, 5);
+  assert.deepEqual(warnings, [], warnings.join(' | '));
+
+  // Sem status declarado, continua valendo — a regra é a mesma do renderizador.
+  const semStatus = normalizePolygons(polygonRows().map((r) => ({ ...r, status: '' })));
+  assert.equal(selectRoadSegmentPolygons(semStatus).length, 5);
 });
