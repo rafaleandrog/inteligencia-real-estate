@@ -28,6 +28,10 @@ import {
 } from '../tests/helpers/roadSegmentRows.mjs';
 import { PILOT_ROAD_SEGMENT_CODES } from '../src/traffic/road-geometry.js';
 
+// Nota humana colada no fim da prosa que a sincronização gera, no trecho `001EDF0130`.
+// Ela existe para provar que a supressão da descrição não a leva junto (issue #138).
+const NOTA_DO_TRECHO = 'Faixa da direita interditada desde 03/2026 por erosão de talude.';
+
 const errors = [];
 const ok = [];
 const fail = (m) => { errors.push(m); console.log('  ✗ ' + m); };
@@ -876,6 +880,9 @@ await polyPage.route('**/data/demo.json', async (route) => {
       name: 'DF-999 · trecho sintético',
       layer_group: 'road_network',
       entity_type: 'road_segment',
+      // Nota que NÃO é a prosa gerada pela sincronização: ela precisa sobreviver à
+      // supressão da descrição do trecho do DER (achado P1 do Codex na PR #139).
+      description: 'Corredor legado com nota que só existe aqui.',
       geometry_geojson: JSON.stringify({
         type: 'Polygon',
         coordinates: [[[-47.95, -15.85], [-47.85, -15.85], [-47.85, -15.84], [-47.95, -15.84], [-47.95, -15.85]]],
@@ -927,7 +934,14 @@ await polyPage.route('**/data/demo.json', async (route) => {
     // caminho de LINHA seja exercitado ao lado do de área, no mesmo carregamento — o
     // `SMOKE_ROAD` acima é um corredor `Polygon` e CONTINUA sendo área, porque um trecho
     // gravado assim precisa continuar desenhando assim.
-    ...trechosOficiais(),
+    //
+    // O `001EDF0130` recebe uma NOTA colada no fim da prosa que a sincronização gera. Ela
+    // tem que sobreviver à supressão da descrição: uma versão anterior via o TMD e a
+    // extensão no texto e apagava o parágrafo inteiro, levando a nota junto (segundo
+    // achado P1 do Codex na PR #139).
+    ...trechosOficiais().map((linha) => (linha.polygon_id === 'ROADSEG_001EDF0130'
+      ? { ...linha, description: `${linha.description} ${NOTA_DO_TRECHO}` }
+      : linha)),
     // Trecho APOSENTADO: `supersedePolygonsOfEntity_` deixa a geometria antiga na aba com
     // `status: inactive`. Ele não pode ser desenhado nem virar item de legenda — sem esta
     // linha no payload, as asserções de "inativo não aparece" passariam de qualquer jeito, e
@@ -944,7 +958,7 @@ await polyPage.route('**/data/demo.json', async (route) => {
   // o que este teste precisa cobrir.
   payload.road_segments = roadSegmentRows();
   payload.road_segment_aliases = aliasRows();
-  payload.traffic_daily = trafficRows({ dias: 4, parcialNoUltimo: true });
+  payload.traffic_daily = trafficRows({ dias: 4, parcialNoUltimo: true, diaDeOutroMes: true });
   await route.fulfill({ response, json: payload });
 });
 await polyPage.goto('http://localhost:8080/', { waitUntil: 'networkidle' });
@@ -1103,6 +1117,27 @@ corredores.length > 0 && corredores.every((traco) => traco === false)
   ? pass('o corredor com buffer aparece com amostra de ÁREA, não de traço')
   : fail(`amostras do grupo road_network: ${JSON.stringify(corredores)}`);
 
+// O corredor legado MANTÉM a descrição: a supressão da #138 olha o conteúdo (a prosa que
+// repete TMD e extensão), não o tipo de feição — perguntar pelo tipo apagava a nota deste
+// registro em silêncio (achado P1 do Codex na PR #139).
+//
+// O alvo é a ÁREA do `SMOKE_ROAD` pela cor dele, não o primeiro item da legenda do grupo:
+// `road_network` tem três registros, e o primeiro da lista é o `SMOKE_ESTILO_INVALIDO`,
+// que não tem descrição nenhuma — uma versão anterior desta asserção abria o painel dele
+// e acusava o código de ter apagado um texto que nunca existiu.
+await polyPage.click('#map .polygon-shape[fill="#53606b"]');
+await polyPage.waitForTimeout(400);
+const painelCorredor = (await polyPage.textContent('#detail')) || '';
+const descricaoDoCorredor = await polyPage.evaluate(
+  () => document.querySelectorAll('#detail .detail-description').length,
+);
+descricaoDoCorredor === 1 && /nota que só existe aqui/.test(painelCorredor)
+  ? pass('o corredor legado mantém a nota que só existe na descrição dele')
+  : fail(`descrições no painel do corredor legado: ${descricaoDoCorredor} | titulo=`
+    + (await polyPage.textContent('#detailTitle')));
+await polyPage.click('#closeDetail');
+await polyPage.waitForTimeout(900);
+
 // Clicar num código da legenda seleciona o trecho e destaca a linha.
 await polyPage.locator('.road-segment-legend-item').first().click();
 await polyPage.waitForTimeout(400);
@@ -1118,6 +1153,61 @@ const painelLegenda = (await polyPage.textContent('#detail')) || '';
 /Maior pico de 15 min/.test(painelLegenda)
   ? pass('o painel mostra o maior pico de 15 min do período')
   : fail('pico de 15 min ausente do painel');
+
+// == Painel enxuto e fluxo por mês (issue #138) ==
+//
+// O fluxo por mês é o que responde "quanto passou neste mês", e a cobertura anda COLADA
+// no número: "Abril/2026 — 143.485 veíc." sozinho se lê como o mês inteiro, e hoje são
+// 20 dos 30 dias de abril na planilha real.
+/Abril\/2026/.test(painelLegenda)
+  ? pass('o painel mostra o fluxo por mês de calendário')
+  : fail('linha de mês ausente do painel: ' + painelLegenda.slice(-600));
+/de 30 dias medidos/.test(painelLegenda)
+  ? pass('o mês declara quantos dos seus dias foram medidos, ao lado do número')
+  : fail('cobertura do mês ausente da linha de mês');
+// Dois meses na série sintética: um código que ignorasse o mês somaria tudo numa linha só.
+/Março\/2026/.test(painelLegenda) && /de 31 dias medidos/.test(painelLegenda)
+  ? pass('março aparece como linha própria, com os 31 dias do mês dele')
+  : fail('a série cruzando dois meses não virou duas linhas');
+
+// No trecho `001EDF0130`, que tem uma NOTA colada no fim da prosa gerada, o painel mostra
+// A NOTA — e só ela. É a regressão exata que o Codex apontou: a versão anterior via o TMD
+// e a extensão no texto e apagava o parágrafo inteiro.
+await polyPage.locator('.road-segment-legend-item', { hasText: '001EDF0130' }).first().click();
+await polyPage.waitForTimeout(400);
+const painelComNota = await polyPage.evaluate(() => {
+  const nos = [...document.querySelectorAll('#detail .detail-description')];
+  return { quantas: nos.length, texto: nos.map((n) => n.textContent).join(' | ') };
+});
+painelComNota.quantas === 1 && painelComNota.texto === NOTA_DO_TRECHO
+  ? pass('a nota colada na prosa gerada sobrevive, e a prosa repetida não')
+  : fail(`descrição do 001EDF0130: ${JSON.stringify(painelComNota)}`);
+
+await polyPage.locator('.road-segment-legend-item').first().click();
+await polyPage.waitForTimeout(400);
+
+// A descrição do trecho some: ela repetia em prosa a rodovia, o TMD e a extensão que as
+// linhas essenciais mostram duas linhas acima.
+//
+// A asserção é pelo ELEMENTO, não pelo texto: "ENTR. DF-025(B)" também é o valor de
+// `Início do trecho` no bloco complementar, e procurá-lo no texto acusaria uma descrição
+// que não está lá enquanto deixaria passar uma que estivesse com outro começo.
+const descricaoDoTrecho = await polyPage.evaluate(
+  () => document.querySelectorAll('#detail .detail-description').length,
+);
+descricaoDoTrecho === 0
+  ? pass('o painel do trecho não repete a descrição em prosa')
+  : fail('a descrição do trecho voltou ao painel');
+
+// O hash aparece UMA vez: `geometry_sha256` do properties_json e a coluna `geometry_hash`
+// carregavam o mesmo valor em duas linhas.
+const hashNoPainel = await polyPage.evaluate(() => {
+  const texto = document.querySelector('#detail').textContent || '';
+  return (texto.match(/Hash da geometria/g) || []).length;
+});
+hashNoPainel <= 1
+  ? pass(`o hash da geometria aparece ${hashNoPainel} vez no painel`)
+  : fail(`o hash aparece ${hashNoPainel} vezes no painel`);
 
 // Fechar o painel desfaz o destaque: eixo marcado sem painel é uma marca sem explicação.
 //
@@ -1187,6 +1277,15 @@ const polyDetail = await polyPage.textContent('#detail');
 /smoke\.kml/.test(polyDetail || '')
   ? pass('o painel nomeia o arquivo de origem')
   : fail('arquivo de origem ausente no painel');
+
+// Controle positivo da supressão acima (issue #138): a descrição some no TRECHO, onde
+// repete o essencial, e continua aqui, onde é a única prosa que o registro tem.
+const descricaoDoKml = await polyPage.evaluate(
+  () => document.querySelectorAll('#detail .detail-description').length,
+);
+descricaoDoKml === 1
+  ? pass('a descrição do contorno importado continua no painel')
+  : fail(`descrições no painel do contorno KML: ${descricaoDoKml}`);
 
 // == Perfil da Região Administrativa no painel (issue #53) ==
 console.log('\n== 12i. Clique numa RA abre o perfil de RA_PROFILES (issue #53) ==');

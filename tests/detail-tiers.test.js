@@ -9,7 +9,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
   polygonEssentials, polygonPropertyTiers, polygonEssentialKeys,
-  classifyPolygonProperty, DETAIL_TIERS,
+  classifyPolygonProperty, polygonDuplicateKeys, polygonDescriptionText, DETAIL_TIERS,
 } from '../src/format.js';
 import { normalizePolygon, normalizeRaProfile } from '../src/normalize.js';
 
@@ -244,4 +244,178 @@ test('contorno sem properties_json não estoura', () => {
   assert.deepEqual(polygonPropertyTiers(null), { complementar: [], tecnico: [] });
   assert.deepEqual(polygonEssentials(null, null), []);
   assert.deepEqual(polygonEssentialKeys(contorno()), []);
+});
+
+// --- Chaves de properties_json que repetem uma coluna — issue #138 -------------------
+//
+// No painel de um trecho do DER o hash saía duas vezes (`geometry_sha256` e a coluna
+// `geometry_hash`) e o OBJECTID duas vezes (`geometry_source_feature_id` e
+// `source_feature_id`). O mesmo fato em duas linhas faz quem lê conferir se são a mesma
+// coisa — o custo exato que a hierarquia da #55 existe para evitar.
+
+test('chave de properties_json idêntica à coluna é apontada como duplicata', () => {
+  const p = contorno({
+    geometry_hash: 'abc123',
+    source_feature_id: '188',
+    source_crs: 'EPSG:31983',
+    properties_json: JSON.stringify({
+      geometry_sha256: 'abc123',
+      geometry_source_feature_id: '188',
+      geometry_source_crs: 'EPSG:31983',
+    }),
+  });
+  assert.deepEqual(polygonDuplicateKeys(p).sort(), [
+    'geometry_sha256', 'geometry_source_crs', 'geometry_source_feature_id',
+  ]);
+});
+
+test('valor DIFERENTE da coluna continua aparecendo — a divergência é a informação', () => {
+  // Hash recalculado, ou camada que mudou de CRS: sumir com um dos dois apagaria a
+  // evidência justamente no caso em que ela importa (R5.7).
+  const p = contorno({
+    geometry_hash: 'novo',
+    source_crs: 'EPSG:4326',
+    properties_json: JSON.stringify({
+      geometry_sha256: 'antigo',
+      geometry_source_crs: 'EPSG:31983',
+    }),
+  });
+  assert.deepEqual(polygonDuplicateKeys(p), []);
+});
+
+test('coluna vazia não transforma a propriedade em duplicata', () => {
+  const p = contorno({ properties_json: JSON.stringify({ geometry_sha256: 'abc123' }) });
+  assert.deepEqual(polygonDuplicateKeys(p), []);
+});
+
+test('display_geometry_crs nunca é duplicata de source_crs', () => {
+  // Uma diz em que CRS a geometria DESENHADA está (sempre 4326), a outra em que CRS a
+  // camada de origem mantém o cadastro. Coincidirem não as torna o mesmo fato.
+  const p = contorno({
+    source_crs: 'EPSG:4326',
+    properties_json: JSON.stringify({ display_geometry_crs: 'EPSG:4326' }),
+  });
+  assert.deepEqual(polygonDuplicateKeys(p), []);
+});
+
+test('as duplicatas somem do painel quando passadas em skip, e o resto fica', () => {
+  const p = contorno({
+    geometry_hash: 'abc123',
+    properties_json: JSON.stringify({
+      geometry_sha256: 'abc123',
+      geometry_status: 'official',
+    }),
+  });
+  const { tecnico } = polygonPropertyTiers(p, { skip: polygonDuplicateKeys(p) });
+  const rotulos = tecnico.map((r) => r.label);
+  assert.ok(!rotulos.includes('Hash da geometria consultada'));
+  assert.ok(rotulos.includes('Situação da geometria'));
+});
+
+test('contorno ausente não quebra a varredura de duplicatas', () => {
+  assert.deepEqual(polygonDuplicateKeys(null), []);
+  assert.deepEqual(polygonDuplicateKeys(contorno()), []);
+});
+
+// --- O que sobra da descrição depois de tirar a prosa gerada (#138, PR #139) ----------
+//
+// Duas versões erraram para o lado de APAGAR, e o Codex pegou as duas. A primeira
+// perguntava `polygonFeatureType === 'road'` e sumia com a nota do corredor da v2.2.1. A
+// segunda exigia que o texto citasse o TMD e a extensão, e sumia com a nota colada no fim
+// da prosa gerada. A pergunta certa não é "este texto parece gerado?" e sim "o que neste
+// texto NÃO foi gerado?".
+
+const TRECHO_DER = {
+  cod_distrital: '001EDF0110',
+  rodovia: 'DF001',
+  descricao_inicial: 'ENTR. DF-025(B)',
+  descricao_final: 'ENTR. DF-027 (EPJK)',
+  extensao_km: 5.6,
+  tmd_der: '18120',
+  fx_total: '4',
+  situacao_fisica: 'PAVIMENTADA',
+};
+
+// A frase exata que a planilha traz hoje no `ROADSEG_001EDF0110`.
+const PROSA_GERADA = 'DF-001 — ENTR. DF-025(B) → ENTR. DF-027 (EPJK). TMD DER/DF: 18120. Extensão: 5.6 km.';
+
+const trechoDer = (over = {}) => contorno({
+  name: 'DF-001 · trecho 0110',
+  properties_json: JSON.stringify(TRECHO_DER),
+  ...over,
+});
+
+test('a prosa gerada some inteira — ela repete o essencial', () => {
+  assert.equal(polygonDescriptionText(trechoDer({ description: PROSA_GERADA })), null);
+});
+
+test('nota colada no fim da prosa gerada SOBREVIVE, e só ela aparece', () => {
+  // Segundo achado P1 do Codex: a versão anterior via o TMD e a extensão no texto e
+  // suprimia o parágrafo inteiro, levando a nota junto.
+  const nota = 'Faixa da direita interditada desde 03/2026 por erosão de talude.';
+  assert.equal(
+    polygonDescriptionText(trechoDer({ description: `${PROSA_GERADA} ${nota}` })),
+    nota
+  );
+});
+
+test('nota ANTES da prosa gerada aparece com a repetição junto, nunca apagada', () => {
+  // Mostrar duas vezes um número é barato perto de apagar uma frase que ninguém mais
+  // escreveu — o texto inteiro volta.
+  const texto = `Obra prevista para 2027. ${PROSA_GERADA}`;
+  assert.equal(polygonDescriptionText(trechoDer({ description: texto })), texto);
+});
+
+test('o nome da rodovia vem da coluna name, não de properties.rodovia', () => {
+  // A planilha guarda `rodovia: "DF001"`, sem hífen, e a descrição começa com `DF-001`.
+  // Reconstruir a partir de `rodovia` nunca bateria, e o texto nunca sumiria.
+  assert.equal(TRECHO_DER.rodovia, 'DF001');
+  assert.ok(PROSA_GERADA.startsWith('DF-001'));
+  assert.equal(polygonDescriptionText(trechoDer({ description: PROSA_GERADA })), null);
+  // Sem a coluna `name`, não há como reconstruir — e o texto aparece inteiro.
+  assert.equal(
+    polygonDescriptionText(contorno({ description: PROSA_GERADA, properties_json: JSON.stringify(TRECHO_DER) })),
+    PROSA_GERADA
+  );
+});
+
+test('texto diferente do gerado aparece inteiro, mesmo num trecho do DER', () => {
+  const nota = 'Faixa da direita interditada desde 03/2026.';
+  assert.equal(polygonDescriptionText(trechoDer({ description: nota })), nota);
+});
+
+test('corredor da v2.2.1 mantém a descrição — ele nem usa o vocabulário do DER', () => {
+  const p = contorno({
+    entity_type: 'road_segment',
+    name: 'DF-999 · corredor',
+    description: 'Corredor de 120 m por lado; trecho com obra prevista para 2027.',
+    properties_json: JSON.stringify({
+      road_code: 'DF-001', segment_type: 'rodovia', jurisdiction: 'DER-DF',
+    }),
+  });
+  assert.equal(polygonDescriptionText(p), 'Corredor de 120 m por lado; trecho com obra prevista para 2027.');
+});
+
+test('contorno de KML mantém a descrição', () => {
+  const p = contorno({
+    description: 'Geometria de teste — não representa território real.',
+    properties_json: JSON.stringify({ area_id: '4321' }),
+  });
+  assert.equal(polygonDescriptionText(p), 'Geometria de teste — não representa território real.');
+});
+
+test('descrição ausente, e contorno ausente, devolvem null sem quebrar', () => {
+  assert.equal(polygonDescriptionText(trechoDer()), null);
+  assert.equal(polygonDescriptionText(null), null);
+});
+
+test('trecho do DER sem TMD ou sem extensão não tem prosa gerada para reconhecer', () => {
+  // Sem um dos dois a reconstrução é impossível, e o texto aparece inteiro — mesmo que
+  // por acaso se pareça com a frase do backend.
+  const semTmd = { ...TRECHO_DER };
+  delete semTmd.tmd_der;
+  assert.equal(
+    polygonDescriptionText(trechoDer({ description: PROSA_GERADA, properties_json: JSON.stringify(semTmd) })),
+    PROSA_GERADA
+  );
 });

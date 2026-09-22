@@ -1214,6 +1214,47 @@ export function polygonPropertyTiers(polygon, { skip = [] } = {}) {
 }
 
 /**
+ * Pares `chave de properties_json` <-> `coluna do registro` que carregam o MESMO fato.
+ *
+ * `display_geometry_crs` de propósito fora da lista: ela diz em que CRS a geometria
+ * DESENHADA está (sempre 4326), e `source_crs` diz em que CRS a camada de origem mantém o
+ * cadastro (31983 no DER). São afirmações diferentes que às vezes coincidem, e tratá-las
+ * como duplicata esconderia a segunda no dia em que a primeira mudasse.
+ */
+const POLYGON_MIRRORED_PROPERTIES = Object.freeze([
+  ['geometry_sha256', 'geometry_hash'],
+  ['geometry_source_feature_id', 'source_feature_id'],
+  ['geometry_source_crs', 'source_crs'],
+]);
+
+/**
+ * Chaves de `properties_json` que repetem, com valor IDÊNTICO, uma coluna que o painel já
+ * mostra em "Origem e qualidade" (issue #138).
+ *
+ * Hoje o hash aparece duas vezes, o OBJECTID duas vezes e o CRS três — o mesmo fato
+ * ocupando três linhas faz quem lê conferir se são a mesma coisa, que é o custo exato que
+ * a issue #55 já paga em outro lugar.
+ *
+ * Só quando IDÊNTICOS. Valor diferente é informação: significa que a coluna e o retrato
+ * gravado em `properties_json` divergiram — a camada mudou de CRS, o hash foi recalculado
+ * — e sumir com um dos dois apagaria a evidência da divergência justamente no caso em que
+ * ela importa (R5.7).
+ */
+export function polygonDuplicateKeys(polygon) {
+  if (!polygon) return [];
+  const props = polygon.properties || {};
+  const keys = [];
+  for (const [propKey, columnKey] of POLYGON_MIRRORED_PROPERTIES) {
+    const daPropriedade = scalarText(props[propKey]);
+    if (daPropriedade === null) continue;
+    const daColuna = scalarText(polygon[columnKey]);
+    if (daColuna === null) continue;
+    if (daPropriedade === daColuna) keys.push(propKey);
+  }
+  return keys;
+}
+
+/**
  * Chaves do vocabulário que a sincronização do DER grava hoje (issue #131). Basta UMA
  * delas para o registro ser lido por esse vocabulário.
  */
@@ -1270,6 +1311,81 @@ function roadSegmentEssentials(props) {
   add('Faixas', lanesText(props));
   add('Situação física', scalarText(props.situacao_fisica));
   return rows;
+}
+
+/**
+ * A frase EXATA que a sincronização do DER grava em `description`, ou `null` quando o
+ * registro não é um trecho sincronizado (issue #138).
+ *
+ * Espelha `upsertRoadPolygon_` (Code.gs:3453-3458):
+ *
+ *     <nome da rodovia> — <início> → <fim>. TMD DER/DF: <tmd>. Extensão: <km> km.
+ *
+ * O nome da rodovia NÃO sai de `properties.rodovia`: a planilha guarda ali `DF001`, sem
+ * hífen, enquanto a descrição começa com `DF-001`. O backend usa `road.road_name`, e o
+ * único lugar onde esse valor sobrevive na aba POLYGONS é a coluna `name`, gravada como
+ * `<road_name> · trecho <número>`. Conferido contra as cinco linhas reais da planilha: a
+ * reconstrução bate caractere a caractere nas cinco.
+ *
+ * Reconstruir um formato que mora em outro repositório é acoplamento, e é deliberado: a
+ * alternativa era casar por pedaços ("contém o TMD e a extensão"), que aprova qualquer
+ * texto que por acaso cite os dois números — inclusive a prosa gerada com uma nota humana
+ * colada no fim, que foi exatamente o segundo achado P1 do Codex na PR #139. Se o backend
+ * mudar a frase, a reconstrução deixa de bater e a descrição volta a aparecer inteira:
+ * a falha é para o lado de mostrar demais, nunca para o de apagar.
+ */
+function generatedRoadDescription(polygon) {
+  const props = (polygon && polygon.properties) || {};
+  if (!usesDerVocabulary(props)) return null;
+
+  const titulo = scalarText(polygon && polygon.name);
+  if (titulo === null) return null;
+  const rodovia = titulo.split(' · ')[0];
+
+  const inicial = scalarText(props.descricao_inicial);
+  const fim = scalarText(props.descricao_final);
+  const tmd = scalarText(props.tmd_der);
+  const extensao = scalarText(props.extensao_km);
+  if (inicial === null || fim === null || tmd === null || extensao === null) return null;
+
+  return `${rodovia} — ${inicial} → ${fim}. TMD DER/DF: ${tmd}. Extensão: ${extensao} km.`;
+}
+
+/**
+ * O que o painel deve mostrar como descrição em prosa: o texto, ou `null` quando não
+ * sobra nada além do que as linhas estruturadas já dizem (issue #138).
+ *
+ * Três respostas, e nenhuma delas perde texto:
+ *
+ *   descrição igual à prosa gerada   -> `null`, some (é a rodovia, o TMD e a extensão que
+ *                                       o bloco essencial mostra duas linhas acima, agora
+ *                                       em prosa e sem separador de milhar)
+ *   prosa gerada + nota              -> só a NOTA, que é o que só existe ali
+ *   qualquer outra coisa             -> o texto inteiro
+ *
+ * As duas primeiras versões disto erravam para o lado de apagar, e o Codex pegou as duas
+ * na PR #139: a primeira perguntava `polygonFeatureType === 'road'` e sumia com a nota do
+ * corredor da v2.2.1; a segunda exigia que o texto citasse o TMD e a extensão, e sumia com
+ * a nota colada no fim da prosa gerada. A pergunta certa não é "este texto parece gerado?"
+ * e sim "o que neste texto NÃO foi gerado?".
+ */
+export function polygonDescriptionText(polygon) {
+  const descricao = scalarText(polygon && polygon.description);
+  if (descricao === null) return null;
+
+  const gerada = generatedRoadDescription(polygon);
+  if (gerada === null) return descricao;
+  if (descricao === gerada) return null;
+
+  // Nota ACRESCENTADA à prosa gerada: sobra o que veio depois. Nota que venha ANTES cai no
+  // `return` de baixo e aparece inteira, com a repetição junto — mostrar duas vezes um
+  // número é barato perto de apagar uma frase que ninguém mais escreveu.
+  if (descricao.startsWith(gerada)) {
+    const resto = descricao.slice(gerada.length).trim();
+    return resto === '' ? null : resto;
+  }
+
+  return descricao;
 }
 
 /** Chaves de `properties_json` que o essencial já consumiu, por tipo de entidade. */
