@@ -1239,8 +1239,10 @@ select:focus, input[type="number"]:focus {
   color: var(--ink);
   margin: 0 0 4px;
 }
-/* As classes de veículo são subordinadas aos totais do sentido, e a indentação é o que
-   diz isso sem precisar de moldura — mesma escolha de `.polygon-type-row`. */
+/* Fluxo por mês e classes de veículo são subordinados aos totais do sentido, e a
+   indentação é o que diz isso sem precisar de moldura — mesma escolha de
+   `.polygon-type-row`. */
+.detail-traffic-months,
 .detail-traffic-classes {
   margin-left: 12px;
   margin-top: 4px;

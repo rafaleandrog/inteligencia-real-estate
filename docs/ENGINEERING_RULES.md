@@ -954,3 +954,20 @@ Cada uma nasce de um erro que aconteceu de verdade.
   anterior". Mecanismo: mapa mês→valor da comparação e `shiftMonth(categoria, delta)` por ponto
   (`−12` no ano anterior, `−N` no período anterior); mês sem par é `null`. Teste com lacuna nos
   dois lados. O retrato por região segue a mesma lógica: só o mês mais recente publicado na faixa.
+- **R8.93** *(2026-09-22, fluxo por mês no painel do trecho, issue #138)* **Agregado por período
+  carrega a cobertura AO LADO do número, e nunca projeta o período que não foi medido.**
+  "Abril/2026 — 143.485 veíc." se lê como o mês inteiro; são 20 dos 30 dias que a planilha tem.
+  Multiplicar a média por 30 inventaria dez dias que ninguém contou — e no `001EDF0110`, com 7
+  dias parciais, a média já é enviesada para baixo, então o erro entraria multiplicado. Mecanismo:
+  `monthlyTotals` soma os dias medidos, tira `daysInMonth` do próprio mês (fevereiro se corrige
+  sozinho, inclusive em ano bissexto) e conta DIAS DO CALENDÁRIO, não registros — com os dois
+  sentidos medidos, contar registros diria "40 de 30 dias". A cobertura vai no texto do valor, não
+  só no `title`: `title` é o lugar da ressalva, não o lugar do que muda a leitura do número.
+- **R8.94** *(2026-09-22, painel enxuto do trecho, issue #138)* **Chave de `properties_json` só é
+  escondida quando repete a coluna com valor IDÊNTICO.** O painel do trecho trazia o hash duas
+  vezes e o OBJECTID duas vezes, e o mesmo fato em duas linhas faz quem lê conferir se são a
+  mesma coisa. Mas esconder por NOME apagaria a evidência justamente no caso que importa: valores
+  diferentes significam que a coluna e o retrato gravado divergiram (hash recalculado, camada que
+  mudou de CRS). Mecanismo: `polygonDuplicateKeys` compara par a par e só devolve a chave quando
+  os dois textos batem; `display_geometry_crs` fica de fora da lista porque afirma outra coisa
+  (o CRS do que foi DESENHADO), e coincidir não a torna a mesma informação.

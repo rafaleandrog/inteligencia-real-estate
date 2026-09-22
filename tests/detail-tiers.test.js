@@ -9,7 +9,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
   polygonEssentials, polygonPropertyTiers, polygonEssentialKeys,
-  classifyPolygonProperty, DETAIL_TIERS,
+  classifyPolygonProperty, polygonDuplicateKeys, DETAIL_TIERS,
 } from '../src/format.js';
 import { normalizePolygon, normalizeRaProfile } from '../src/normalize.js';
 
@@ -244,4 +244,75 @@ test('contorno sem properties_json não estoura', () => {
   assert.deepEqual(polygonPropertyTiers(null), { complementar: [], tecnico: [] });
   assert.deepEqual(polygonEssentials(null, null), []);
   assert.deepEqual(polygonEssentialKeys(contorno()), []);
+});
+
+// --- Chaves de properties_json que repetem uma coluna — issue #138 -------------------
+//
+// No painel de um trecho do DER o hash saía duas vezes (`geometry_sha256` e a coluna
+// `geometry_hash`) e o OBJECTID duas vezes (`geometry_source_feature_id` e
+// `source_feature_id`). O mesmo fato em duas linhas faz quem lê conferir se são a mesma
+// coisa — o custo exato que a hierarquia da #55 existe para evitar.
+
+test('chave de properties_json idêntica à coluna é apontada como duplicata', () => {
+  const p = contorno({
+    geometry_hash: 'abc123',
+    source_feature_id: '188',
+    source_crs: 'EPSG:31983',
+    properties_json: JSON.stringify({
+      geometry_sha256: 'abc123',
+      geometry_source_feature_id: '188',
+      geometry_source_crs: 'EPSG:31983',
+    }),
+  });
+  assert.deepEqual(polygonDuplicateKeys(p).sort(), [
+    'geometry_sha256', 'geometry_source_crs', 'geometry_source_feature_id',
+  ]);
+});
+
+test('valor DIFERENTE da coluna continua aparecendo — a divergência é a informação', () => {
+  // Hash recalculado, ou camada que mudou de CRS: sumir com um dos dois apagaria a
+  // evidência justamente no caso em que ela importa (R5.7).
+  const p = contorno({
+    geometry_hash: 'novo',
+    source_crs: 'EPSG:4326',
+    properties_json: JSON.stringify({
+      geometry_sha256: 'antigo',
+      geometry_source_crs: 'EPSG:31983',
+    }),
+  });
+  assert.deepEqual(polygonDuplicateKeys(p), []);
+});
+
+test('coluna vazia não transforma a propriedade em duplicata', () => {
+  const p = contorno({ properties_json: JSON.stringify({ geometry_sha256: 'abc123' }) });
+  assert.deepEqual(polygonDuplicateKeys(p), []);
+});
+
+test('display_geometry_crs nunca é duplicata de source_crs', () => {
+  // Uma diz em que CRS a geometria DESENHADA está (sempre 4326), a outra em que CRS a
+  // camada de origem mantém o cadastro. Coincidirem não as torna o mesmo fato.
+  const p = contorno({
+    source_crs: 'EPSG:4326',
+    properties_json: JSON.stringify({ display_geometry_crs: 'EPSG:4326' }),
+  });
+  assert.deepEqual(polygonDuplicateKeys(p), []);
+});
+
+test('as duplicatas somem do painel quando passadas em skip, e o resto fica', () => {
+  const p = contorno({
+    geometry_hash: 'abc123',
+    properties_json: JSON.stringify({
+      geometry_sha256: 'abc123',
+      geometry_status: 'official',
+    }),
+  });
+  const { tecnico } = polygonPropertyTiers(p, { skip: polygonDuplicateKeys(p) });
+  const rotulos = tecnico.map((r) => r.label);
+  assert.ok(!rotulos.includes('Hash da geometria consultada'));
+  assert.ok(rotulos.includes('Situação da geometria'));
+});
+
+test('contorno ausente não quebra a varredura de duplicatas', () => {
+  assert.deepEqual(polygonDuplicateKeys(null), []);
+  assert.deepEqual(polygonDuplicateKeys(contorno()), []);
 });

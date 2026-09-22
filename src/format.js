@@ -1214,6 +1214,47 @@ export function polygonPropertyTiers(polygon, { skip = [] } = {}) {
 }
 
 /**
+ * Pares `chave de properties_json` <-> `coluna do registro` que carregam o MESMO fato.
+ *
+ * `display_geometry_crs` de propósito fora da lista: ela diz em que CRS a geometria
+ * DESENHADA está (sempre 4326), e `source_crs` diz em que CRS a camada de origem mantém o
+ * cadastro (31983 no DER). São afirmações diferentes que às vezes coincidem, e tratá-las
+ * como duplicata esconderia a segunda no dia em que a primeira mudasse.
+ */
+const POLYGON_MIRRORED_PROPERTIES = Object.freeze([
+  ['geometry_sha256', 'geometry_hash'],
+  ['geometry_source_feature_id', 'source_feature_id'],
+  ['geometry_source_crs', 'source_crs'],
+]);
+
+/**
+ * Chaves de `properties_json` que repetem, com valor IDÊNTICO, uma coluna que o painel já
+ * mostra em "Origem e qualidade" (issue #138).
+ *
+ * Hoje o hash aparece duas vezes, o OBJECTID duas vezes e o CRS três — o mesmo fato
+ * ocupando três linhas faz quem lê conferir se são a mesma coisa, que é o custo exato que
+ * a issue #55 já paga em outro lugar.
+ *
+ * Só quando IDÊNTICOS. Valor diferente é informação: significa que a coluna e o retrato
+ * gravado em `properties_json` divergiram — a camada mudou de CRS, o hash foi recalculado
+ * — e sumir com um dos dois apagaria a evidência da divergência justamente no caso em que
+ * ela importa (R5.7).
+ */
+export function polygonDuplicateKeys(polygon) {
+  if (!polygon) return [];
+  const props = polygon.properties || {};
+  const keys = [];
+  for (const [propKey, columnKey] of POLYGON_MIRRORED_PROPERTIES) {
+    const daPropriedade = scalarText(props[propKey]);
+    if (daPropriedade === null) continue;
+    const daColuna = scalarText(polygon[columnKey]);
+    if (daColuna === null) continue;
+    if (daPropriedade === daColuna) keys.push(propKey);
+  }
+  return keys;
+}
+
+/**
  * Chaves do vocabulário que a sincronização do DER grava hoje (issue #131). Basta UMA
  * delas para o registro ser lido por esse vocabulário.
  */

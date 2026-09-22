@@ -61,13 +61,13 @@ import {
   formatAnchorSegment, formatSalesStage, formatRegularizationStatus, formatPercent,
   percentFromPoints, raAgeBands, polygonStyle, sortPolygonsForDraw, raProfileEssentials,
   raProfileUnavailability, polygonEssentials, polygonPropertyTiers, polygonEssentialKeys,
-  polygonEntityType, polygonLayerGroup, compactNumber,
+  polygonEntityType, polygonLayerGroup, compactNumber, polygonDuplicateKeys,
 } from './format.js';
 import { trafficPanelRows, roadSegmentTrafficDetail } from './traffic/panel.js';
 import { segmentIdsWithTraffic } from './traffic/link.js';
 import {
-  drawsAsLine, isRoadSegmentPolygon, roadAxisGeometry, roadSegmentBounds, roadSegmentIdOf,
-  roadSegmentCodeOf, selectRoadSegmentPolygons, validateRoadSegmentLayer,
+  drawsAsLine, isRoadSegmentPolygon, polygonFeatureType, roadAxisGeometry, roadSegmentBounds,
+  roadSegmentIdOf, roadSegmentCodeOf, selectRoadSegmentPolygons, validateRoadSegmentLayer,
 } from './traffic/road-geometry.js';
 import { ANCHOR_ICONS, ANCHOR_FALLBACK_ICON } from './icons.js';
 
@@ -511,7 +511,10 @@ function openPolygonDetail(polygon) {
 
   const essencial = polygonEssentials(polygon, raProfile);
   const { complementar, tecnico } = polygonPropertyTiers(polygon, {
-    skip: polygonEssentialKeys(polygon),
+    // Além das chaves já consumidas pelo essencial, as que repetem uma COLUNA com o mesmo
+    // valor: hoje o hash sai duas vezes e o OBJECTID duas vezes, e o painel de procedência
+    // abaixo já mostra os dois a partir da coluna (issue #138).
+    skip: [...polygonEssentialKeys(polygon), ...polygonDuplicateKeys(polygon)],
   });
 
   if (raProfile) {
@@ -566,7 +569,14 @@ function openPolygonDetail(polygon) {
   // é um parágrafo de prosa, e um parágrafo numa coluna de valores fica ilegível. Some
   // quando existe perfil canônico, porque `buildRaDescription_` no backend repete em
   // prosa exatamente o que as linhas estruturadas já dizem (R8.52).
-  if (polygon.description && !raProfile) {
+  //
+  // Pelo mesmo motivo some no trecho rodoviário (issue #138): a descrição gravada pela
+  // sincronização é `DF-001 — ENTR. DF-025(B) → ENTR. DF-027 (EPJK). TMD DER/DF: 18120.
+  // Extensão: 5.6 km.` — a rodovia, o TMD e a extensão que as linhas essenciais mostram
+  // duas linhas acima, agora em prosa e sem separador de milhar. Repetir o mesmo fato com
+  // formatação diferente faz quem lê conferir se são o mesmo número.
+  const repeteOEssencial = Boolean(raProfile) || polygonFeatureType(polygon) === 'road';
+  if (polygon.description && !repeteOEssencial) {
     const p = document.createElement('p');
     p.className = 'detail-description';
     p.textContent = polygon.description;
@@ -666,6 +676,51 @@ function veiculos(n) {
   return `${formatNumber(Math.round(n))} veíc.`;
 }
 
+/**
+ * Fluxo por mês de calendário do recorte, ou `null` quando não há mês algum (issue #138).
+ *
+ * A cobertura fica AO LADO do número, nunca só no `title`: "Abril/2026 — 143.485 veíc."
+ * sozinho se lê como o mês inteiro, e hoje são 20 dos 30 dias de abril. Nada é projetado
+ * para o mês cheio — a soma é dos dias medidos, e o rótulo diz quantos são.
+ *
+ * Quando a planilha ganhar o mês fechado, o mesmo código passa a dizer "30 de 30".
+ */
+function monthlyFlowNode(corte) {
+  const meses = corte.porMes || [];
+  if (meses.length === 0) return null;
+
+  const lista = document.createElement('dl');
+  lista.className = 'detail-list detail-traffic-months';
+
+  for (const mes of meses) {
+    const cobertura = `${formatNumber(mes.days)} de ${formatNumber(mes.daysInMonth)} dias medidos`;
+    // Mês em que nenhum dia tem total: a linha DIZ isso, em vez de sumir. Sumir seria
+    // indistinguível de um mês que ninguém carregou (R5.7).
+    const value = mes.total === null
+      ? `sem total medido · ${cobertura}`
+      : `${veiculos(mes.total)} · ${cobertura}`;
+
+    const detalhe = [];
+    if (mes.complete > 0) detalhe.push(`${formatNumber(mes.complete)} completo(s)`);
+    if (mes.partial > 0) detalhe.push(`${formatNumber(mes.partial)} parcial(is)`);
+    if (mes.unknown > 0) detalhe.push(`${formatNumber(mes.unknown)} sem cobertura conhecida`);
+    const sobra = mes.daysInMonth - (mes.days + mes.daysExcluded);
+
+    const title = [
+      `Soma dos dias medidos de ${mes.label}, sem projeção para o mês cheio.`,
+      detalhe.length > 0 ? `Dias com medição: ${detalhe.join(', ')}.` : '',
+      mes.daysExcluded > 0
+        ? `${formatNumber(mes.daysExcluded)} dia(s) com medição mas sem total ficaram DE FORA da soma.`
+        : '',
+      sobra > 0 ? `${formatNumber(sobra)} dia(s) do mês não têm nenhuma medição na planilha.` : '',
+    ].filter(Boolean).join(' ');
+
+    addRow(lista, mes.label, value, { title });
+  }
+
+  return lista;
+}
+
 /** Um sentido (ou o trecho inteiro) no bloco de fluxo: totais, classes e cobertura. */
 function trafficCutNode(corte) {
   const bloco = document.createElement('div');
@@ -741,10 +796,29 @@ function trafficCutNode(corte) {
     });
   }
 
+  // Divergência entre o total oficial e a soma das classes, quando a própria fonte
+  // publica uma. A linha só existe quando há divergência — e existir é o ponto: o
+  // backend faz essa conferência e esconder o resultado dela deixaria o leitor somando
+  // as classes na mão para descobrir que não fecham.
+  if (corte.divergencia) {
+    linhas.push({
+      label: 'Divergência de classes',
+      value: `${veiculos(corte.divergencia.total)} em ${formatNumber(corte.divergencia.days)} dia(s)`,
+      title: 'divergencia_total_classes da planilha: diferença entre fluxo_total e a soma '
+        + 'das classes, como o backend a publicou. Não é recalculada aqui.',
+    });
+  }
+
   const lista = document.createElement('dl');
   lista.className = 'detail-list detail-traffic-list';
   for (const linha of linhas) addRow(lista, linha.label, linha.value, { title: linha.title || '' });
   bloco.append(lista);
+
+  // Por mês, logo abaixo do total do período e indentado sob ele: a soma mensal é uma
+  // decomposição desse total, e a indentação é o que diz isso. Acima dele a mesma lista
+  // ficaria recuada sem ter sob o que se recuar.
+  const meses = monthlyFlowNode(corte);
+  if (meses) bloco.append(meses);
 
   // Classes de veículo. Classe sem nenhum dia medido NÃO vira zero — ela some, porque
   // "zero caminhões" e "caminhão não medido" são afirmações diferentes (R5.7). Uma classe

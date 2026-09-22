@@ -200,6 +200,129 @@ function picoDoPeriodo(records) {
   return melhor;
 }
 
+/** `2026-04-03` -> `2026-04`. Qualquer outra coisa devolve `null`. */
+function mesDe(date) {
+  if (typeof date !== 'string') return null;
+  const mes = date.slice(0, 7);
+  return /^\d{4}-(0[1-9]|1[0-2])$/.test(mes) ? mes : null;
+}
+
+/**
+ * Quantos dias tem o mês, lido do próprio mês — nunca de constante.
+ *
+ * É o que faz o rótulo se corrigir sozinho: fevereiro diz 28 (ou 29 em ano bissexto) sem
+ * ninguém tocar no código, e o dia 0 do mês seguinte em UTC é a definição que não depende
+ * do fuso de quem abre a página.
+ */
+function diasNoMes(mes) {
+  const ano = Number(mes.slice(0, 4));
+  const indice = Number(mes.slice(5, 7));
+  return new Date(Date.UTC(ano, indice, 0)).getUTCDate();
+}
+
+const NOME_DO_MES = new Intl.DateTimeFormat('pt-BR', { month: 'long', timeZone: 'UTC' });
+
+/** `2026-04` -> `Abril/2026`. */
+function rotuloDoMes(mes) {
+  const nome = NOME_DO_MES.format(new Date(`${mes}-01T00:00:00Z`));
+  return `${nome.charAt(0).toUpperCase()}${nome.slice(1)}/${mes.slice(0, 4)}`;
+}
+
+/**
+ * Fluxo por mês de calendário: uma linha por mês presente, com quantos dias do mês
+ * foram medidos (issue #138).
+ *
+ * `total` é SOMA DOS DIAS MEDIDOS, nunca projeção. Um mês com 20 dos 30 dias medidos
+ * mostra o que passou nesses 20 dias e declara que são 20 de 30 — multiplicar a média
+ * por 30 inventaria dez dias que ninguém contou, e num trecho com dias parciais o viés
+ * da média entraria multiplicado.
+ *
+ * A contagem de dias é de DIAS DO CALENDÁRIO, não de registros: num trecho com os dois
+ * sentidos medidos o mesmo dia aparece em dois registros, e contar registros diria "40 de
+ * 30 dias" em abril. O total, esse sim, soma os dois sentidos — é o fluxo do trecho.
+ *
+ * Dia sem `fluxo_total` numérico não vira zero: ele fica fora da soma e fora da contagem
+ * de dias medidos, pela mesma regra de `fluxoTotal` e das classes (R5.7).
+ */
+export function monthlyTotals(records) {
+  const meses = new Map();
+
+  for (const record of records || []) {
+    const mes = mesDe(record?.date);
+    if (mes === null) continue;
+    if (!meses.has(mes)) meses.set(mes, new Map());
+    const dias = meses.get(mes);
+    if (!dias.has(record.date)) dias.set(record.date, { total: null, completos: 0, parciais: 0, desconhecidos: 0 });
+    const dia = dias.get(record.date);
+
+    const { status } = classifyDayCoverage(record?.intervalsObserved);
+    if (status === 'complete') dia.completos += 1;
+    else if (status === 'partial') dia.parciais += 1;
+    else dia.desconhecidos += 1;
+
+    if (!Number.isFinite(record?.flow)) continue;
+    dia.total = (dia.total === null ? 0 : dia.total) + record.flow;
+  }
+
+  const linhas = [];
+  for (const [mes, dias] of meses) {
+    let total = null;
+    let medidos = 0;
+    let excluidos = 0;
+    let completos = 0;
+    let parciais = 0;
+    let desconhecidos = 0;
+
+    for (const dia of dias.values()) {
+      // Um dia do calendário com os dois sentidos medidos só conta como completo quando
+      // NENHUM dos registros dele é parcial: bastar um sentido completo diria "dia
+      // completo" sobre uma via medida pela metade.
+      if (dia.parciais > 0) parciais += 1;
+      else if (dia.completos > 0) completos += 1;
+      else desconhecidos += 1;
+
+      if (dia.total === null) { excluidos += 1; continue; }
+      total = (total === null ? 0 : total) + dia.total;
+      medidos += 1;
+    }
+
+    linhas.push({
+      month: mes,
+      label: rotuloDoMes(mes),
+      total,
+      days: medidos,
+      daysInMonth: diasNoMes(mes),
+      daysExcluded: excluidos,
+      complete: completos,
+      partial: parciais,
+      unknown: desconhecidos,
+    });
+  }
+
+  // Ordem cronológica, para a lista não trocar de posição entre carregamentos.
+  return linhas.sort((a, b) => (a.month < b.month ? -1 : a.month > b.month ? 1 : 0));
+}
+
+/**
+ * Os dias em que a conferência do backend entre `fluxo_total` e a soma das classes NÃO
+ * fecha, e a soma dessas diferenças. `null` quando fecha em todos — o caso normal.
+ *
+ * O número não é recalculado aqui: `divergencia_total_classes` é a conta da FONTE, e
+ * refazê-la substituiria a conferência dela pela nossa, apagando exatamente a divergência
+ * que o campo existe para denunciar.
+ */
+export function divergenceSummary(records) {
+  let days = 0;
+  let total = 0;
+  for (const record of records || []) {
+    const diferenca = record?.classDivergence;
+    if (!Number.isFinite(diferenca) || diferenca === 0) continue;
+    days += 1;
+    total += diferenca;
+  }
+  return days === 0 ? null : { days, total };
+}
+
 /** Um recorte de dias (um sentido, ou o trecho inteiro) pronto para a tela. */
 function recorte(label, records) {
   const ordenados = ordenadosPorData(records);
@@ -212,6 +335,8 @@ function recorte(label, records) {
     cobertura: resumoCobertura(ordenados),
     qualityFlags: bandeirasDeQualidade(ordenados),
     pico: picoDoPeriodo(ordenados),
+    porMes: monthlyTotals(ordenados),
+    divergencia: divergenceSummary(ordenados),
   };
 }
 

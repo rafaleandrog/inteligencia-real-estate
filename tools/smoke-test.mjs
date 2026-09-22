@@ -944,7 +944,7 @@ await polyPage.route('**/data/demo.json', async (route) => {
   // o que este teste precisa cobrir.
   payload.road_segments = roadSegmentRows();
   payload.road_segment_aliases = aliasRows();
-  payload.traffic_daily = trafficRows({ dias: 4, parcialNoUltimo: true });
+  payload.traffic_daily = trafficRows({ dias: 4, parcialNoUltimo: true, diaDeOutroMes: true });
   await route.fulfill({ response, json: payload });
 });
 await polyPage.goto('http://localhost:8080/', { waitUntil: 'networkidle' });
@@ -1119,6 +1119,45 @@ const painelLegenda = (await polyPage.textContent('#detail')) || '';
   ? pass('o painel mostra o maior pico de 15 min do período')
   : fail('pico de 15 min ausente do painel');
 
+// == Painel enxuto e fluxo por mês (issue #138) ==
+//
+// O fluxo por mês é o que responde "quanto passou neste mês", e a cobertura anda COLADA
+// no número: "Abril/2026 — 143.485 veíc." sozinho se lê como o mês inteiro, e hoje são
+// 20 dos 30 dias de abril na planilha real.
+/Abril\/2026/.test(painelLegenda)
+  ? pass('o painel mostra o fluxo por mês de calendário')
+  : fail('linha de mês ausente do painel: ' + painelLegenda.slice(-600));
+/de 30 dias medidos/.test(painelLegenda)
+  ? pass('o mês declara quantos dos seus dias foram medidos, ao lado do número')
+  : fail('cobertura do mês ausente da linha de mês');
+// Dois meses na série sintética: um código que ignorasse o mês somaria tudo numa linha só.
+/Março\/2026/.test(painelLegenda) && /de 31 dias medidos/.test(painelLegenda)
+  ? pass('março aparece como linha própria, com os 31 dias do mês dele')
+  : fail('a série cruzando dois meses não virou duas linhas');
+
+// A descrição do trecho some: ela repetia em prosa a rodovia, o TMD e a extensão que as
+// linhas essenciais mostram duas linhas acima.
+//
+// A asserção é pelo ELEMENTO, não pelo texto: "ENTR. DF-025(B)" também é o valor de
+// `Início do trecho` no bloco complementar, e procurá-lo no texto acusaria uma descrição
+// que não está lá enquanto deixaria passar uma que estivesse com outro começo.
+const descricaoDoTrecho = await polyPage.evaluate(
+  () => document.querySelectorAll('#detail .detail-description').length,
+);
+descricaoDoTrecho === 0
+  ? pass('o painel do trecho não repete a descrição em prosa')
+  : fail('a descrição do trecho voltou ao painel');
+
+// O hash aparece UMA vez: `geometry_sha256` do properties_json e a coluna `geometry_hash`
+// carregavam o mesmo valor em duas linhas.
+const hashNoPainel = await polyPage.evaluate(() => {
+  const texto = document.querySelector('#detail').textContent || '';
+  return (texto.match(/Hash da geometria/g) || []).length;
+});
+hashNoPainel <= 1
+  ? pass(`o hash da geometria aparece ${hashNoPainel} vez no painel`)
+  : fail(`o hash aparece ${hashNoPainel} vezes no painel`);
+
 // Fechar o painel desfaz o destaque: eixo marcado sem painel é uma marca sem explicação.
 //
 // Fechar o painel ALARGA `.map-wrap`, e o Leaflet remede o container — as feições mudam de
@@ -1187,6 +1226,15 @@ const polyDetail = await polyPage.textContent('#detail');
 /smoke\.kml/.test(polyDetail || '')
   ? pass('o painel nomeia o arquivo de origem')
   : fail('arquivo de origem ausente no painel');
+
+// Controle positivo da supressão acima (issue #138): a descrição some no TRECHO, onde
+// repete o essencial, e continua aqui, onde é a única prosa que o registro tem.
+const descricaoDoKml = await polyPage.evaluate(
+  () => document.querySelectorAll('#detail .detail-description').length,
+);
+descricaoDoKml === 1
+  ? pass('a descrição do contorno importado continua no painel')
+  : fail(`descrições no painel do contorno KML: ${descricaoDoKml}`);
 
 // == Perfil da Região Administrativa no painel (issue #53) ==
 console.log('\n== 12i. Clique numa RA abre o perfil de RA_PROFILES (issue #53) ==');

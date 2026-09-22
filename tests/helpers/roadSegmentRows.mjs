@@ -155,50 +155,68 @@ export function aliasRows() {
  *
  * `dias` permite pedir um dia parcial (menos de 96 intervalos) para exercitar a distinção
  * entre dia completo e dia parcial sem depender de sorte.
+ *
+ * `diaDeOutroMes` acrescenta um dia em 31/03/2026 (issue #138): a agregação por mês só
+ * prova que separa meses quando há mais de um, e uma série inteira dentro de abril
+ * passaria igual num código que ignorasse o mês e somasse tudo numa linha só.
  */
-export function trafficRows({ segmentos = null, dias = 3, parcialNoUltimo = false } = {}) {
+export function trafficRows({
+  segmentos = null, dias = 3, parcialNoUltimo = false, diaDeOutroMes = false,
+} = {}) {
   const ids = segmentos || DER.features.map((f) => `ROADSEG_${f.attributes.cod_distrital}`);
   const rows = [];
   ids.forEach((id, s) => {
     const sentido = s === 1 ? 'decrescente' : 'crescente';
+    if (diaDeOutroMes) rows.push(diaSintetico({ id, sentido, d: 0, dia: '2026-03-31', s }));
     for (let d = 0; d < dias; d += 1) {
-      const carro = 10000 + (s * 100) + d;
-      const moto = 1000 + d;
-      const onibus = 400 + d;
-      const caminhao = 300 + d;
-      const medio = 200 + d;
-      const indefinido = 0;
-      const total = carro + moto + onibus + caminhao + medio + indefinido;
-      const parcial = parcialNoUltimo && d === dias - 1;
-      rows.push({
-        traffic_daily_id: `TRAF_${id}_${sentido}_${d}`,
-        trecho: id.replace('ROADSEG_', ''),
-        sentido,
-        dia: `2026-04-0${d + 1}`,
-        fluxo_total: total,
-        carro,
-        moto,
-        onibus,
-        caminhao,
-        medio,
-        indefinido,
-        // Pico do dia: um quarto de hora, nunca a soma do dia. Varia por dia para o maior
-        // deles ser identificável.
-        pico_15min_fluxo: 300 + (d * 40),
-        pico_15min_intervalo: '06:00 - 06:15',
-        intervalos_15min_observados: parcial ? 90 : 96,
-        // Gravado com o MESMO erro de separador decimal que o backend produz num dia
-        // parcial (R8.58): 9375 no lugar de 0,9375. Está aqui de propósito, para que
-        // qualquer leitura acidental desta coluna apareça como número absurdo no teste.
-        cobertura_dia_pct: parcial ? 9375 : 1,
-        soma_classes: total,
-        divergencia_total_classes: 0,
-        quality_flag: parcial ? 'partial_day' : 'ok',
-        road_segment_id: id,
-        source_total_policy: 'official_total_equals_sum_classes',
-        traffic_schema_version: '2026_v1',
-      });
+      rows.push(diaSintetico({ id, sentido, d, dia: diaDeAbril(d), s, parcialNoUltimo, dias }));
     }
   });
   return rows;
 }
+
+/** `2026-04-01`, `2026-04-10` — com dois dígitos, para o dia 10 não virar `2026-04-010`. */
+function diaDeAbril(d) {
+  return `2026-04-${String(d + 1).padStart(2, '0')}`;
+}
+
+/** Um registro diário sintético, com a forma real de TRAFFIC_DAILY_TEST. */
+function diaSintetico({ id, sentido, d, dia, s, parcialNoUltimo = false, dias = 0 }) {
+  const carro = 10000 + (s * 100) + d;
+  const moto = 1000 + d;
+  const onibus = 400 + d;
+  const caminhao = 300 + d;
+  const medio = 200 + d;
+  const indefinido = 0;
+  const total = carro + moto + onibus + caminhao + medio + indefinido;
+  const parcial = parcialNoUltimo && d === dias - 1;
+  return {
+    traffic_daily_id: `TRAF_${id}_${sentido}_${dia}`,
+    trecho: id.replace('ROADSEG_', ''),
+    sentido,
+    dia,
+    fluxo_total: total,
+    carro,
+    moto,
+    onibus,
+    caminhao,
+    medio,
+    indefinido,
+    // Pico do dia: um quarto de hora, nunca a soma do dia. Varia por dia para o maior
+    // deles ser identificável.
+    pico_15min_fluxo: 300 + (d * 40),
+    pico_15min_intervalo: '06:00 - 06:15',
+    intervalos_15min_observados: parcial ? 90 : 96,
+    // Gravado com o MESMO erro de separador decimal que o backend produz num dia
+    // parcial (R8.58): 9375 no lugar de 0,9375. Está aqui de propósito, para que
+    // qualquer leitura acidental desta coluna apareça como número absurdo no teste.
+    cobertura_dia_pct: parcial ? 9375 : 1,
+    soma_classes: total,
+    divergencia_total_classes: 0,
+    quality_flag: parcial ? 'partial_day' : 'ok',
+    road_segment_id: id,
+    source_total_policy: 'official_total_equals_sum_classes',
+    traffic_schema_version: '2026_v1',
+  };
+}
+
