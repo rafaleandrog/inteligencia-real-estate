@@ -1314,42 +1314,78 @@ function roadSegmentEssentials(props) {
 }
 
 /**
- * A descrição em prosa repete o que as linhas essenciais já mostram? (issue #138)
+ * A frase EXATA que a sincronização do DER grava em `description`, ou `null` quando o
+ * registro não é um trecho sincronizado (issue #138).
  *
- * A sincronização do DER grava `<rodovia> — <início> → <fim>. TMD DER/DF: <tmd>.
- * Extensão: <km> km.` (`upsertRoadPolygon_` no Code.gs). Isso é a rodovia, o TMD e a
- * extensão que `roadSegmentEssentials` mostra duas linhas acima, agora em prosa e sem
- * separador de milhar — e o mesmo fato com duas formatações faz quem lê conferir se são o
- * mesmo número.
+ * Espelha `upsertRoadPolygon_` (Code.gs:3453-3458):
  *
- * A pergunta é sobre o CONTEÚDO, não sobre o tipo de feição. A primeira versão desta
- * supressão perguntava `polygonFeatureType(polygon) === 'road'`, e isso apagava também a
- * descrição do corredor com buffer da v2.2.1 — que é `road` e cujo texto NÃO é a prosa
- * gerada (achado P1 do Codex na PR #139). Um corredor legado com uma nota real perdia a
- * nota em silêncio.
+ *     <nome da rodovia> — <início> → <fim>. TMD DER/DF: <tmd>. Extensão: <km> km.
  *
- * Duas condições, e as duas olham o registro:
- *   1. ele usa o vocabulário do DER — o corredor da v2.2.1 não usa, e mantém a descrição;
- *   2. o texto CARREGA os valores de `tmd_der` e `extensao_km`, que são os dois números
- *      que o essencial mostra.
+ * O nome da rodovia NÃO sai de `properties.rodovia`: a planilha guarda ali `DF001`, sem
+ * hífen, enquanto a descrição começa com `DF-001`. O backend usa `road.road_name`, e o
+ * único lugar onde esse valor sobrevive na aba POLYGONS é a coluna `name`, gravada como
+ * `<road_name> · trecho <número>`. Conferido contra as cinco linhas reais da planilha: a
+ * reconstrução bate caractere a caractere nas cinco.
  *
- * A direção da falha é deliberada: se o backend mudar a frase e o casamento por valor
- * falhar, a descrição VOLTA a aparecer. Perder uma linha repetida é barato; perder uma
- * nota que só existe ali não é.
+ * Reconstruir um formato que mora em outro repositório é acoplamento, e é deliberado: a
+ * alternativa era casar por pedaços ("contém o TMD e a extensão"), que aprova qualquer
+ * texto que por acaso cite os dois números — inclusive a prosa gerada com uma nota humana
+ * colada no fim, que foi exatamente o segundo achado P1 do Codex na PR #139. Se o backend
+ * mudar a frase, a reconstrução deixa de bater e a descrição volta a aparecer inteira:
+ * a falha é para o lado de mostrar demais, nunca para o de apagar.
  */
-export function descriptionRepeatsEssentials(polygon) {
-  if (!polygon) return false;
-  const descricao = scalarText(polygon.description);
-  if (descricao === null) return false;
+function generatedRoadDescription(polygon) {
+  const props = (polygon && polygon.properties) || {};
+  if (!usesDerVocabulary(props)) return null;
 
-  const props = polygon.properties || {};
-  if (!usesDerVocabulary(props)) return false;
+  const titulo = scalarText(polygon && polygon.name);
+  if (titulo === null) return null;
+  const rodovia = titulo.split(' · ')[0];
 
+  const inicial = scalarText(props.descricao_inicial);
+  const fim = scalarText(props.descricao_final);
   const tmd = scalarText(props.tmd_der);
   const extensao = scalarText(props.extensao_km);
-  if (tmd === null || extensao === null) return false;
+  if (inicial === null || fim === null || tmd === null || extensao === null) return null;
 
-  return descricao.includes(tmd) && descricao.includes(extensao);
+  return `${rodovia} — ${inicial} → ${fim}. TMD DER/DF: ${tmd}. Extensão: ${extensao} km.`;
+}
+
+/**
+ * O que o painel deve mostrar como descrição em prosa: o texto, ou `null` quando não
+ * sobra nada além do que as linhas estruturadas já dizem (issue #138).
+ *
+ * Três respostas, e nenhuma delas perde texto:
+ *
+ *   descrição igual à prosa gerada   -> `null`, some (é a rodovia, o TMD e a extensão que
+ *                                       o bloco essencial mostra duas linhas acima, agora
+ *                                       em prosa e sem separador de milhar)
+ *   prosa gerada + nota              -> só a NOTA, que é o que só existe ali
+ *   qualquer outra coisa             -> o texto inteiro
+ *
+ * As duas primeiras versões disto erravam para o lado de apagar, e o Codex pegou as duas
+ * na PR #139: a primeira perguntava `polygonFeatureType === 'road'` e sumia com a nota do
+ * corredor da v2.2.1; a segunda exigia que o texto citasse o TMD e a extensão, e sumia com
+ * a nota colada no fim da prosa gerada. A pergunta certa não é "este texto parece gerado?"
+ * e sim "o que neste texto NÃO foi gerado?".
+ */
+export function polygonDescriptionText(polygon) {
+  const descricao = scalarText(polygon && polygon.description);
+  if (descricao === null) return null;
+
+  const gerada = generatedRoadDescription(polygon);
+  if (gerada === null) return descricao;
+  if (descricao === gerada) return null;
+
+  // Nota ACRESCENTADA à prosa gerada: sobra o que veio depois. Nota que venha ANTES cai no
+  // `return` de baixo e aparece inteira, com a repetição junto — mostrar duas vezes um
+  // número é barato perto de apagar uma frase que ninguém mais escreveu.
+  if (descricao.startsWith(gerada)) {
+    const resto = descricao.slice(gerada.length).trim();
+    return resto === '' ? null : resto;
+  }
+
+  return descricao;
 }
 
 /** Chaves de `properties_json` que o essencial já consumiu, por tipo de entidade. */

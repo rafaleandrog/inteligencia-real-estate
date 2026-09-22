@@ -28,6 +28,10 @@ import {
 } from '../tests/helpers/roadSegmentRows.mjs';
 import { PILOT_ROAD_SEGMENT_CODES } from '../src/traffic/road-geometry.js';
 
+// Nota humana colada no fim da prosa que a sincronização gera, no trecho `001EDF0130`.
+// Ela existe para provar que a supressão da descrição não a leva junto (issue #138).
+const NOTA_DO_TRECHO = 'Faixa da direita interditada desde 03/2026 por erosão de talude.';
+
 const errors = [];
 const ok = [];
 const fail = (m) => { errors.push(m); console.log('  ✗ ' + m); };
@@ -930,7 +934,14 @@ await polyPage.route('**/data/demo.json', async (route) => {
     // caminho de LINHA seja exercitado ao lado do de área, no mesmo carregamento — o
     // `SMOKE_ROAD` acima é um corredor `Polygon` e CONTINUA sendo área, porque um trecho
     // gravado assim precisa continuar desenhando assim.
-    ...trechosOficiais(),
+    //
+    // O `001EDF0130` recebe uma NOTA colada no fim da prosa que a sincronização gera. Ela
+    // tem que sobreviver à supressão da descrição: uma versão anterior via o TMD e a
+    // extensão no texto e apagava o parágrafo inteiro, levando a nota junto (segundo
+    // achado P1 do Codex na PR #139).
+    ...trechosOficiais().map((linha) => (linha.polygon_id === 'ROADSEG_001EDF0130'
+      ? { ...linha, description: `${linha.description} ${NOTA_DO_TRECHO}` }
+      : linha)),
     // Trecho APOSENTADO: `supersedePolygonsOfEntity_` deixa a geometria antiga na aba com
     // `status: inactive`. Ele não pode ser desenhado nem virar item de legenda — sem esta
     // linha no payload, as asserções de "inativo não aparece" passariam de qualquer jeito, e
@@ -1158,6 +1169,22 @@ const painelLegenda = (await polyPage.textContent('#detail')) || '';
 /Março\/2026/.test(painelLegenda) && /de 31 dias medidos/.test(painelLegenda)
   ? pass('março aparece como linha própria, com os 31 dias do mês dele')
   : fail('a série cruzando dois meses não virou duas linhas');
+
+// No trecho `001EDF0130`, que tem uma NOTA colada no fim da prosa gerada, o painel mostra
+// A NOTA — e só ela. É a regressão exata que o Codex apontou: a versão anterior via o TMD
+// e a extensão no texto e apagava o parágrafo inteiro.
+await polyPage.locator('.road-segment-legend-item', { hasText: '001EDF0130' }).first().click();
+await polyPage.waitForTimeout(400);
+const painelComNota = await polyPage.evaluate(() => {
+  const nos = [...document.querySelectorAll('#detail .detail-description')];
+  return { quantas: nos.length, texto: nos.map((n) => n.textContent).join(' | ') };
+});
+painelComNota.quantas === 1 && painelComNota.texto === NOTA_DO_TRECHO
+  ? pass('a nota colada na prosa gerada sobrevive, e a prosa repetida não')
+  : fail(`descrição do 001EDF0130: ${JSON.stringify(painelComNota)}`);
+
+await polyPage.locator('.road-segment-legend-item').first().click();
+await polyPage.waitForTimeout(400);
 
 // A descrição do trecho some: ela repetia em prosa a rodovia, o TMD e a extensão que as
 // linhas essenciais mostram duas linhas acima.

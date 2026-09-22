@@ -62,7 +62,7 @@ import {
   percentFromPoints, raAgeBands, polygonStyle, sortPolygonsForDraw, raProfileEssentials,
   raProfileUnavailability, polygonEssentials, polygonPropertyTiers, polygonEssentialKeys,
   polygonEntityType, polygonLayerGroup, compactNumber, polygonDuplicateKeys,
-  descriptionRepeatsEssentials,
+  polygonDescriptionText,
 } from './format.js';
 import { trafficPanelRows, roadSegmentTrafficDetail } from './traffic/panel.js';
 import { segmentIdsWithTraffic } from './traffic/link.js';
@@ -571,21 +571,16 @@ function openPolygonDetail(polygon) {
   // quando existe perfil canônico, porque `buildRaDescription_` no backend repete em
   // prosa exatamente o que as linhas estruturadas já dizem (R8.52).
   //
-  // Pelo mesmo motivo some no trecho rodoviário (issue #138): a descrição gravada pela
-  // sincronização é `DF-001 — ENTR. DF-025(B) → ENTR. DF-027 (EPJK). TMD DER/DF: 18120.
-  // Extensão: 5.6 km.` — a rodovia, o TMD e a extensão que as linhas essenciais mostram
-  // duas linhas acima, agora em prosa e sem separador de milhar. Repetir o mesmo fato com
-  // formatação diferente faz quem lê conferir se são o mesmo número.
-  //
-  // `descriptionRepeatsEssentials` pergunta pelo CONTEÚDO, não pelo tipo de feição: o
-  // corredor com buffer da v2.2.1 também é `road`, e a descrição dele não é a prosa
-  // gerada — perguntar pelo tipo apagava a nota dele em silêncio (achado P1 do Codex na
-  // PR #139).
-  const repeteOEssencial = Boolean(raProfile) || descriptionRepeatsEssentials(polygon);
-  if (polygon.description && !repeteOEssencial) {
+  // No trecho rodoviário a decisão não é do painel: `polygonDescriptionText` devolve o
+  // que sobra depois de tirar a prosa que a sincronização gerou — o texto inteiro quando
+  // nada foi gerado, só a nota quando havia uma colada no fim, e `null` quando não sobra
+  // nada. O painel nunca pergunta "que tipo de registro é este?" para decidir apagar
+  // texto: foi assim que duas versões seguidas sumiram com notas alheias (PR #139).
+  const descricao = raProfile ? null : polygonDescriptionText(polygon);
+  if (descricao) {
     const p = document.createElement('p');
     p.className = 'detail-description';
-    p.textContent = polygon.description;
+    p.textContent = descricao;
     frag.append(p);
   }
 

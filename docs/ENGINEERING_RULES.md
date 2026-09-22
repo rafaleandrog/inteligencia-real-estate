@@ -971,15 +971,19 @@ Cada uma nasce de um erro que aconteceu de verdade.
   mudou de CRS). Mecanismo: `polygonDuplicateKeys` compara par a par e só devolve a chave quando
   os dois textos batem; `display_geometry_crs` fica de fora da lista porque afirma outra coisa
   (o CRS do que foi DESENHADO), e coincidir não a torna a mesma informação.
-- **R8.95** *(2026-09-22, revisão do Codex na PR #139)* **Supressão de conteúdo duplicado
-  pergunta pelo CONTEÚDO, nunca pelo tipo do registro.** A descrição do trecho do DER repete o
-  TMD e a extensão que o essencial já mostra — mas a primeira versão da supressão perguntava
-  `polygonFeatureType(polygon) === 'road'`, e `road` é também o corredor com buffer da v2.2.1,
-  cujo texto não é a prosa gerada. Um corredor legado com uma nota real perdia a nota em
-  silêncio. Mecanismo: `descriptionRepeatsEssentials` exige que o registro use o vocabulário do
-  DER E que o texto carregue os VALORES de `tmd_der` e `extensao_km`. A direção da falha é
-  deliberada — se o backend mudar a frase, a descrição volta a aparecer: perder uma linha
-  repetida é barato, perder uma nota que só existe ali não é.
+- **R8.95** *(2026-09-22, duas rodadas de revisão do Codex na PR #139)* **Para apagar texto
+  duplicado, pergunte o que NÃO foi gerado — nunca se o texto "parece" gerado.** Duas versões
+  erraram para o lado de apagar, e as duas foram pegas: a primeira suprimia a descrição quando
+  `polygonFeatureType === 'road'`, e sumia com a nota do corredor da v2.2.1, que é `road` mas
+  cujo texto ninguém gerou; a segunda exigia que o texto citasse o TMD e a extensão, e sumia com
+  a nota colada no fim da prosa gerada, porque os dois números continuavam lá. Mecanismo:
+  `generatedRoadDescription` reconstrói a frase EXATA do backend a partir do registro — e o nome
+  da rodovia sai da coluna `name` (`DF-001 · trecho 0110`), não de `properties.rodovia`, que
+  guarda `DF001` sem hífen; `polygonDescriptionText` devolve `null` na igualdade, só o resto
+  quando a nota vem depois, e o texto inteiro em qualquer outro caso. Reconstruir um formato que
+  mora em outro repositório é acoplamento deliberado: quando o backend mudar a frase, a
+  reconstrução para de bater e a descrição volta INTEIRA. A falha é sempre para o lado de mostrar
+  demais.
 - **R8.96** *(2026-09-22, revisão do Codex na PR #139)* **Quem afirma "N de M dias" valida a data
   INTEIRA, inclusive se o dia existe no mês.** `toDateISO` reconhece o formato, não o calendário:
   ela devolve `2026-04-31` e `2026-02-30` intactos. Validar só `YYYY-MM` punha um 31 de abril no
