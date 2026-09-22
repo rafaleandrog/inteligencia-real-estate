@@ -290,9 +290,12 @@ export function monthlyTotals(records) {
 
     for (const dia of dias.values()) {
       // Um dia do calendário com os dois sentidos medidos só conta como completo quando
-      // NENHUM dos registros dele é parcial: bastar um sentido completo diria "dia
-      // completo" sobre uma via medida pela metade.
+      // NENHUM registro dele é parcial E nenhum tem cobertura desconhecida: bastar um
+      // sentido completo diria "dia completo" sobre uma via medida pela metade. O mesmo
+      // vale para o sentido sem `intervalos_15min_observados` — não saber é diferente de
+      // estar completo (R5.7).
       if (dia.parciais > 0) parciais += 1;
+      else if (dia.desconhecidos > 0) desconhecidos += 1;
       else if (dia.completos > 0) completos += 1;
       else desconhecidos += 1;
 
@@ -340,22 +343,34 @@ export function invalidDateDays(records) {
 
 /**
  * Os dias em que a conferência do backend entre `fluxo_total` e a soma das classes NÃO
- * fecha, e a soma dessas diferenças. `null` quando fecha em todos — o caso normal.
+ * fecha, e o tamanho total dessa discrepância. `null` quando fecha em todos — o caso normal.
+ *
+ * DATAS distintas, não registros, pela mesma razão de `monthlyTotals` e `invalidDateDays`:
+ * no recorte do trecho inteiro os dois sentidos do mesmo dia são dois registros, e contar
+ * registros diria "40 dia(s)" num recorte de 20.
+ *
+ * A soma é de valores ABSOLUTOS. `divergencia_total_classes` tem sinal, e somar com sinal
+ * mede desvio líquido: um dia com +800 e outro com −800 se anulariam e a tela diria
+ * "0 veíc. em 2 dia(s)" — afirmando que há divergência e mostrando zero ao lado, com a
+ * magnitude real de 1.600 veíc. sumindo. O que esta linha existe para denunciar é o
+ * TAMANHO da discrepância, não o saldo dela.
  *
  * O número não é recalculado aqui: `divergencia_total_classes` é a conta da FONTE, e
  * refazê-la substituiria a conferência dela pela nossa, apagando exatamente a divergência
  * que o campo existe para denunciar.
  */
 export function divergenceSummary(records) {
-  let days = 0;
+  const datas = new Set();
   let total = 0;
+  let houve = false;
   for (const record of records || []) {
     const diferenca = record?.classDivergence;
     if (!Number.isFinite(diferenca) || diferenca === 0) continue;
-    days += 1;
-    total += diferenca;
+    houve = true;
+    total += Math.abs(diferenca);
+    if (typeof record.date === 'string') datas.add(record.date);
   }
-  return days === 0 ? null : { days, total };
+  return houve ? { days: datas.size, total } : null;
 }
 
 /** Um recorte de dias (um sentido, ou o trecho inteiro) pronto para a tela. */

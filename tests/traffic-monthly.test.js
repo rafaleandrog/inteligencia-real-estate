@@ -11,6 +11,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { monthlyTotals, divergenceSummary, invalidDateDays } from '../src/traffic/panel.js';
+import { normalizeTrafficDailyRecords } from '../src/traffic/normalize.js';
 
 /** Um dia normalizado, com só o que a agregação por mês lê. */
 function dia(date, over = {}) {
@@ -135,7 +136,8 @@ test('divergenceSummary conta os dias que não fecham e soma a diferença public
     dia('2026-04-03', { classDivergence: -5 }),
     dia('2026-04-04', { classDivergence: null }),
   ]);
-  assert.deepEqual(out, { days: 2, total: 7 });
+  // 12 e 5 em módulo: a soma mede o TAMANHO da discrepância, não o saldo dela.
+  assert.deepEqual(out, { days: 2, total: 17 });
 });
 
 // --- Data que não existe no calendário — achado P2 do Codex na PR #139 ----------------
@@ -182,4 +184,64 @@ test('invalidDateDays conta os registros recusados, para a diferença não ser s
 
 test('a mesma data inválida nos dois sentidos conta UM dia, não dois', () => {
   assert.equal(invalidDateDays([dia('2026-04-31'), dia('2026-04-31')]), 1);
+});
+
+// --- Achados da revisão do Kimi na PR #139 -------------------------------------------
+
+test('divergência conta DATAS distintas — os dois sentidos do mesmo dia são um dia', () => {
+  // Mesmo argumento de monthlyTotals e invalidDateDays: contar registros diria
+  // "2 dia(s)" sobre um único 01/04 com os dois sentidos divergindo.
+  const out = divergenceSummary([
+    dia('2026-04-01', { classDivergence: 10 }),
+    dia('2026-04-01', { classDivergence: 10 }),
+    dia('2026-04-02', { classDivergence: 5 }),
+  ]);
+  assert.equal(out.days, 2);
+  assert.equal(out.total, 25, 'o total continua somando os dois sentidos — é discrepância dos dois');
+});
+
+test('divergências de sinais opostos NÃO se anulam — a soma é em módulo', () => {
+  // Com soma algébrica a tela diria "0 veíc. em 2 dia(s)": afirma divergência e mostra
+  // zero ao lado, com 1.600 veíc. de discrepância real sumindo.
+  const out = divergenceSummary([
+    dia('2026-04-03', { classDivergence: 800 }),
+    dia('2026-04-04', { classDivergence: -800 }),
+  ]);
+  assert.equal(out.days, 2);
+  assert.equal(out.total, 1600);
+});
+
+test('dia completo num sentido e SEM cobertura conhecida no outro não é dado como completo', () => {
+  // Não saber é diferente de estar completo (R5.7) — a mesma regra que já valia para o
+  // dia parcial.
+  const [abril] = monthlyTotals([
+    dia('2026-04-01', { intervalsObserved: 96 }),
+    dia('2026-04-01', { intervalsObserved: null }),
+    dia('2026-04-02', { intervalsObserved: 96 }),
+  ]);
+  assert.equal(abril.complete, 1);
+  assert.equal(abril.unknown, 1);
+  assert.equal(abril.partial, 0);
+});
+
+test('dia parcial ainda vence o desconhecido na classificação', () => {
+  const [abril] = monthlyTotals([
+    dia('2026-04-01', { intervalsObserved: 40 }),
+    dia('2026-04-01', { intervalsObserved: null }),
+  ]);
+  assert.equal(abril.partial, 1);
+  assert.equal(abril.unknown, 0);
+});
+
+test('linha de tráfego com dia vazio nem chega ao painel — é descartada na normalização', () => {
+  // Achado do Kimi que NÃO se confirma: `normalizeTrafficDaily` devolve null quando
+  // `toDateISO(dia)` é null, então a linha não entra no total do período nem no mês.
+  // Não há divergência silenciosa para declarar.
+  const { records, dropped } = normalizeTrafficDailyRecords([
+    { dia: '', fluxo_total: 4100, road_segment_id: 'RS-1' },
+    { dia: '2026-04-01', fluxo_total: 100, road_segment_id: 'RS-1' },
+  ]);
+  assert.equal(records.length, 1);
+  assert.equal(dropped, 1);
+  assert.equal(monthlyTotals(records)[0].total, 100);
 });

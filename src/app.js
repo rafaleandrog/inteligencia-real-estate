@@ -819,8 +819,10 @@ function trafficCutNode(corte) {
     linhas.push({
       label: 'Divergência de classes',
       value: `${veiculos(corte.divergencia.total)} em ${formatNumber(corte.divergencia.days)} dia(s)`,
-      title: 'divergencia_total_classes da planilha: diferença entre fluxo_total e a soma '
-        + 'das classes, como o backend a publicou. Não é recalculada aqui.',
+      title: 'Soma, EM MÓDULO, da divergencia_total_classes que a planilha publica — a '
+        + 'diferença entre fluxo_total e a soma das classes, como o backend a calculou. '
+        + 'Em módulo porque um dia com +800 e outro com -800 se anulariam, e a tela diria '
+        + 'zero ao lado de uma divergência real. Não é recalculada aqui.',
     });
   }
 
