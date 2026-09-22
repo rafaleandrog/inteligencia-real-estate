@@ -876,6 +876,9 @@ await polyPage.route('**/data/demo.json', async (route) => {
       name: 'DF-999 · trecho sintético',
       layer_group: 'road_network',
       entity_type: 'road_segment',
+      // Nota que NÃO é a prosa gerada pela sincronização: ela precisa sobreviver à
+      // supressão da descrição do trecho do DER (achado P1 do Codex na PR #139).
+      description: 'Corredor legado com nota que só existe aqui.',
       geometry_geojson: JSON.stringify({
         type: 'Polygon',
         coordinates: [[[-47.95, -15.85], [-47.85, -15.85], [-47.85, -15.84], [-47.95, -15.84], [-47.95, -15.85]]],
@@ -1102,6 +1105,27 @@ const corredores = await polyPage.evaluate(() => {
 corredores.length > 0 && corredores.every((traco) => traco === false)
   ? pass('o corredor com buffer aparece com amostra de ÁREA, não de traço')
   : fail(`amostras do grupo road_network: ${JSON.stringify(corredores)}`);
+
+// O corredor legado MANTÉM a descrição: a supressão da #138 olha o conteúdo (a prosa que
+// repete TMD e extensão), não o tipo de feição — perguntar pelo tipo apagava a nota deste
+// registro em silêncio (achado P1 do Codex na PR #139).
+//
+// O alvo é a ÁREA do `SMOKE_ROAD` pela cor dele, não o primeiro item da legenda do grupo:
+// `road_network` tem três registros, e o primeiro da lista é o `SMOKE_ESTILO_INVALIDO`,
+// que não tem descrição nenhuma — uma versão anterior desta asserção abria o painel dele
+// e acusava o código de ter apagado um texto que nunca existiu.
+await polyPage.click('#map .polygon-shape[fill="#53606b"]');
+await polyPage.waitForTimeout(400);
+const painelCorredor = (await polyPage.textContent('#detail')) || '';
+const descricaoDoCorredor = await polyPage.evaluate(
+  () => document.querySelectorAll('#detail .detail-description').length,
+);
+descricaoDoCorredor === 1 && /nota que só existe aqui/.test(painelCorredor)
+  ? pass('o corredor legado mantém a nota que só existe na descrição dele')
+  : fail(`descrições no painel do corredor legado: ${descricaoDoCorredor} | titulo=`
+    + (await polyPage.textContent('#detailTitle')));
+await polyPage.click('#closeDetail');
+await polyPage.waitForTimeout(900);
 
 // Clicar num código da legenda seleciona o trecho e destaca a linha.
 await polyPage.locator('.road-segment-legend-item').first().click();

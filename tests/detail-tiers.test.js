@@ -9,7 +9,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
   polygonEssentials, polygonPropertyTiers, polygonEssentialKeys,
-  classifyPolygonProperty, polygonDuplicateKeys, DETAIL_TIERS,
+  classifyPolygonProperty, polygonDuplicateKeys, descriptionRepeatsEssentials, DETAIL_TIERS,
 } from '../src/format.js';
 import { normalizePolygon, normalizeRaProfile } from '../src/normalize.js';
 
@@ -315,4 +315,67 @@ test('as duplicatas somem do painel quando passadas em skip, e o resto fica', ()
 test('contorno ausente não quebra a varredura de duplicatas', () => {
   assert.deepEqual(polygonDuplicateKeys(null), []);
   assert.deepEqual(polygonDuplicateKeys(contorno()), []);
+});
+
+// --- Supressão da descrição olha o CONTEÚDO, não o tipo — achado P1 do Codex (#139) ---
+//
+// A primeira versão perguntava `polygonFeatureType(polygon) === 'road'`, e isso apagava
+// também a descrição do corredor com buffer da v2.2.1 — que é `road` e cujo texto não é a
+// prosa gerada pela sincronização. Um corredor legado com uma nota real perdia a nota.
+
+const TRECHO_DER = {
+  cod_distrital: '001EDF0110',
+  rodovia: 'DF-001',
+  extensao_km: '5.6',
+  tmd_der: '18120',
+  fx_total: '4',
+  situacao_fisica: 'PAVIMENTADA',
+};
+
+test('a prosa gerada pela sincronização é reconhecida como repetição do essencial', () => {
+  const p = contorno({
+    description: 'DF-001 — ENTR. DF-025(B) → ENTR. DF-027 (EPJK). TMD DER/DF: 18120. Extensão: 5.6 km.',
+    properties_json: JSON.stringify(TRECHO_DER),
+  });
+  assert.equal(descriptionRepeatsEssentials(p), true);
+});
+
+test('corredor da v2.2.1 mantém a descrição — ele é road, mas o texto não é a prosa gerada', () => {
+  const p = contorno({
+    entity_type: 'road_segment',
+    description: 'Corredor de 120 m por lado; trecho com obra prevista para 2027.',
+    properties_json: JSON.stringify({
+      road_code: 'DF-001', segment_type: 'rodovia', jurisdiction: 'DER-DF',
+    }),
+  });
+  assert.equal(descriptionRepeatsEssentials(p), false);
+});
+
+test('trecho do DER com nota própria mantém a descrição', () => {
+  // O vocabulário é o do DER, mas o texto não carrega o TMD nem a extensão — então não é
+  // repetição, é informação que só existe ali.
+  const p = contorno({
+    description: 'Faixa da direita interditada desde 03/2026 por erosão de talude.',
+    properties_json: JSON.stringify(TRECHO_DER),
+  });
+  assert.equal(descriptionRepeatsEssentials(p), false);
+});
+
+test('registro sem descrição, sem TMD ou sem extensão nunca é tratado como repetição', () => {
+  assert.equal(descriptionRepeatsEssentials(contorno({ properties_json: JSON.stringify(TRECHO_DER) })), false);
+  const semTmd = { ...TRECHO_DER };
+  delete semTmd.tmd_der;
+  assert.equal(descriptionRepeatsEssentials(contorno({
+    description: 'DF-001 — A → B. Extensão: 5.6 km.',
+    properties_json: JSON.stringify(semTmd),
+  })), false);
+  assert.equal(descriptionRepeatsEssentials(null), false);
+});
+
+test('contorno de KML mantém a descrição — ele nem chega a usar o vocabulário do DER', () => {
+  const p = contorno({
+    description: 'Geometria de teste — não representa território real.',
+    properties_json: JSON.stringify({ area_id: '4321' }),
+  });
+  assert.equal(descriptionRepeatsEssentials(p), false);
 });

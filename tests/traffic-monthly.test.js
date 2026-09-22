@@ -10,7 +10,7 @@
 
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { monthlyTotals, divergenceSummary } from '../src/traffic/panel.js';
+import { monthlyTotals, divergenceSummary, invalidDateDays } from '../src/traffic/panel.js';
 
 /** Um dia normalizado, com só o que a agregação por mês lê. */
 function dia(date, over = {}) {
@@ -136,4 +136,50 @@ test('divergenceSummary conta os dias que não fecham e soma a diferença public
     dia('2026-04-04', { classDivergence: null }),
   ]);
   assert.deepEqual(out, { days: 2, total: 7 });
+});
+
+// --- Data que não existe no calendário — achado P2 do Codex na PR #139 ----------------
+//
+// `toDateISO` reconhece o FORMATO, não o calendário: ela devolve `2026-04-31` e
+// `2026-02-30` intactos. Sem validar o dia, um 31 de abril entrava no balde de abril e
+// contava como dia distinto — e o painel chegava a dizer "31 de 30 dias medidos".
+
+test('dia que não existe no mês não cria mês nem conta como dia medido', () => {
+  const linhas = monthlyTotals([
+    dia('2026-04-31', { flow: 999 }),
+    dia('2026-02-30', { flow: 999 }),
+    dia('2026-04-99', { flow: 999 }),
+    dia('2026-04-20', { flow: 100 }),
+  ]);
+  assert.equal(linhas.length, 1, 'só abril, e só pelo dia 20');
+  assert.equal(linhas[0].days, 1);
+  assert.equal(linhas[0].total, 100, 'o 31 de abril não pode entrar na soma do mês');
+});
+
+test('o último dia real de cada mês continua valendo', () => {
+  // A guarda tem que rejeitar o dia impossível sem comer o dia legítimo da borda.
+  const linhas = monthlyTotals([
+    dia('2026-01-31'), dia('2026-04-30'), dia('2026-02-28'), dia('2028-02-29'),
+  ]);
+  assert.deepEqual(linhas.map((m) => [m.month, m.days]), [
+    ['2026-01', 1], ['2026-02', 1], ['2026-04', 1], ['2028-02', 1],
+  ]);
+});
+
+test('29 de fevereiro em ano comum é recusado; em bissexto é aceito', () => {
+  assert.deepEqual(monthlyTotals([dia('2026-02-29')]), []);
+  assert.equal(monthlyTotals([dia('2028-02-29')]).length, 1);
+});
+
+test('invalidDateDays conta os registros recusados, para a diferença não ser silenciosa', () => {
+  // O registro segue no total do período; some-lo do mês sem dizer nada faria as duas
+  // contas divergirem sem explicação na tela.
+  assert.equal(invalidDateDays([dia('2026-04-31'), dia('2026-02-30'), dia('2026-04-20')]), 2);
+  assert.equal(invalidDateDays([dia('2026-04-20')]), 0);
+  assert.equal(invalidDateDays([]), 0);
+  assert.equal(invalidDateDays(null), 0);
+});
+
+test('a mesma data inválida nos dois sentidos conta UM dia, não dois', () => {
+  assert.equal(invalidDateDays([dia('2026-04-31'), dia('2026-04-31')]), 1);
 });

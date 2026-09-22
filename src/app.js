@@ -62,12 +62,13 @@ import {
   percentFromPoints, raAgeBands, polygonStyle, sortPolygonsForDraw, raProfileEssentials,
   raProfileUnavailability, polygonEssentials, polygonPropertyTiers, polygonEssentialKeys,
   polygonEntityType, polygonLayerGroup, compactNumber, polygonDuplicateKeys,
+  descriptionRepeatsEssentials,
 } from './format.js';
 import { trafficPanelRows, roadSegmentTrafficDetail } from './traffic/panel.js';
 import { segmentIdsWithTraffic } from './traffic/link.js';
 import {
-  drawsAsLine, isRoadSegmentPolygon, polygonFeatureType, roadAxisGeometry, roadSegmentBounds,
-  roadSegmentIdOf, roadSegmentCodeOf, selectRoadSegmentPolygons, validateRoadSegmentLayer,
+  drawsAsLine, isRoadSegmentPolygon, roadAxisGeometry, roadSegmentBounds, roadSegmentIdOf,
+  roadSegmentCodeOf, selectRoadSegmentPolygons, validateRoadSegmentLayer,
 } from './traffic/road-geometry.js';
 import { ANCHOR_ICONS, ANCHOR_FALLBACK_ICON } from './icons.js';
 
@@ -575,7 +576,12 @@ function openPolygonDetail(polygon) {
   // Extensão: 5.6 km.` — a rodovia, o TMD e a extensão que as linhas essenciais mostram
   // duas linhas acima, agora em prosa e sem separador de milhar. Repetir o mesmo fato com
   // formatação diferente faz quem lê conferir se são o mesmo número.
-  const repeteOEssencial = Boolean(raProfile) || polygonFeatureType(polygon) === 'road';
+  //
+  // `descriptionRepeatsEssentials` pergunta pelo CONTEÚDO, não pelo tipo de feição: o
+  // corredor com buffer da v2.2.1 também é `road`, e a descrição dele não é a prosa
+  // gerada — perguntar pelo tipo apagava a nota dele em silêncio (achado P1 do Codex na
+  // PR #139).
+  const repeteOEssencial = Boolean(raProfile) || descriptionRepeatsEssentials(polygon);
   if (polygon.description && !repeteOEssencial) {
     const p = document.createElement('p');
     p.className = 'detail-description';
@@ -793,6 +799,20 @@ function trafficCutNode(corte) {
     linhas.push({
       label: 'Qualidade',
       value: corte.qualityFlags.map((q) => `${q.flag} (${formatNumber(q.days)})`).join(', '),
+    });
+  }
+
+  // Registro com data que não existe no calendário (31 de abril, 30 de fevereiro). Ele
+  // continua no total do período, mas fica de fora da contagem por mês — e a linha existe
+  // para essa diferença não ser silenciosa: sem ela, as duas contas divergiriam e nada na
+  // tela diria por quê.
+  if (corte.diasSemDataValida > 0) {
+    linhas.push({
+      label: 'Dias com data inválida',
+      value: `${formatNumber(corte.diasSemDataValida)} — fora da contagem por mês`,
+      title: 'A coluna `dia` da planilha traz uma data que não existe no calendário. O '
+        + 'registro segue no total do período, mas não é atribuído a nenhum mês: dizer '
+        + '"31 de 30 dias medidos" seria pior que declarar o problema.',
     });
   }
 

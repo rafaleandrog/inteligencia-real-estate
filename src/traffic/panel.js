@@ -200,11 +200,26 @@ function picoDoPeriodo(records) {
   return melhor;
 }
 
-/** `2026-04-03` -> `2026-04`. Qualquer outra coisa devolve `null`. */
+/**
+ * `2026-04-03` -> `2026-04`. Qualquer outra coisa devolve `null`.
+ *
+ * Valida a data INTEIRA, inclusive se o dia existe naquele mês. `toDateISO`
+ * (src/normalize.js) devolve `2026-04-31` e `2026-02-30` intactos — ela reconhece o
+ * FORMATO, não o calendário —, e uma versão anterior desta função olhava só os sete
+ * primeiros caracteres. O efeito era um 31 de abril entrar no balde de abril e contar
+ * como um dia distinto: com lixo suficiente o painel dizia "31 de 30 dias medidos", que é
+ * exatamente a afirmação que esta issue existe para não fazer (achado P2 do Codex na
+ * PR #139).
+ *
+ * `toDateISO` fica como está de propósito: anúncios, empreendimentos, IVV e FipeZap
+ * dependem dela, e endurecê-la aqui mudaria o comportamento de quatro datasets numa
+ * mudança sobre o painel do trecho.
+ */
 function mesDe(date) {
   if (typeof date !== 'string') return null;
+  if (!/^\d{4}-(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01])$/.test(date)) return null;
   const mes = date.slice(0, 7);
-  return /^\d{4}-(0[1-9]|1[0-2])$/.test(mes) ? mes : null;
+  return Number(date.slice(8, 10)) <= diasNoMes(mes) ? mes : null;
 }
 
 /**
@@ -304,6 +319,26 @@ export function monthlyTotals(records) {
 }
 
 /**
+ * Quantos registros do recorte trazem uma data que não existe no calendário (issue #138).
+ *
+ * Eles continuam no total do período — é o comportamento que já existia, e esta contagem
+ * não o muda. O que ela evita é a diferença SILENCIOSA: sem ela, o total do período
+ * incluiria um registro que nenhuma linha de mês contabiliza, e as duas contas
+ * divergiriam sem nada na tela explicando por quê.
+ */
+export function invalidDateDays(records) {
+  // Datas DISTINTAS, pela mesma razão de `monthlyTotals`: com os dois sentidos medidos o
+  // mesmo dia aparece em dois registros, e "2 dias com data inválida" sobre um único
+  // 31 de abril seria mais um número inventado ao lado do que já está errado.
+  const datas = new Set();
+  for (const record of records || []) {
+    if (typeof record?.date !== 'string') continue;
+    if (mesDe(record.date) === null) datas.add(record.date);
+  }
+  return datas.size;
+}
+
+/**
  * Os dias em que a conferência do backend entre `fluxo_total` e a soma das classes NÃO
  * fecha, e a soma dessas diferenças. `null` quando fecha em todos — o caso normal.
  *
@@ -336,6 +371,7 @@ function recorte(label, records) {
     qualityFlags: bandeirasDeQualidade(ordenados),
     pico: picoDoPeriodo(ordenados),
     porMes: monthlyTotals(ordenados),
+    diasSemDataValida: invalidDateDays(ordenados),
     divergencia: divergenceSummary(ordenados),
   };
 }

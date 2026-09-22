@@ -971,3 +971,20 @@ Cada uma nasce de um erro que aconteceu de verdade.
   mudou de CRS). Mecanismo: `polygonDuplicateKeys` compara par a par e só devolve a chave quando
   os dois textos batem; `display_geometry_crs` fica de fora da lista porque afirma outra coisa
   (o CRS do que foi DESENHADO), e coincidir não a torna a mesma informação.
+- **R8.95** *(2026-09-22, revisão do Codex na PR #139)* **Supressão de conteúdo duplicado
+  pergunta pelo CONTEÚDO, nunca pelo tipo do registro.** A descrição do trecho do DER repete o
+  TMD e a extensão que o essencial já mostra — mas a primeira versão da supressão perguntava
+  `polygonFeatureType(polygon) === 'road'`, e `road` é também o corredor com buffer da v2.2.1,
+  cujo texto não é a prosa gerada. Um corredor legado com uma nota real perdia a nota em
+  silêncio. Mecanismo: `descriptionRepeatsEssentials` exige que o registro use o vocabulário do
+  DER E que o texto carregue os VALORES de `tmd_der` e `extensao_km`. A direção da falha é
+  deliberada — se o backend mudar a frase, a descrição volta a aparecer: perder uma linha
+  repetida é barato, perder uma nota que só existe ali não é.
+- **R8.96** *(2026-09-22, revisão do Codex na PR #139)* **Quem afirma "N de M dias" valida a data
+  INTEIRA, inclusive se o dia existe no mês.** `toDateISO` reconhece o formato, não o calendário:
+  ela devolve `2026-04-31` e `2026-02-30` intactos. Validar só `YYYY-MM` punha um 31 de abril no
+  balde de abril como dia distinto, e o painel chegava a dizer "31 de 30 dias medidos" — a
+  afirmação exata que a agregação existe para não fazer. Mecanismo: `mesDe` confere o dia contra
+  `diasNoMes`, e `invalidDateDays` CONTA os recusados numa linha própria, porque o registro segue
+  no total do período e uma diferença silenciosa entre as duas contas é pior que a data inválida.
+  `toDateISO` não foi endurecida: quatro datasets dependem dela, e isso é issue própria.

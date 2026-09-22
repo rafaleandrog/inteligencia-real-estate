@@ -1313,6 +1313,45 @@ function roadSegmentEssentials(props) {
   return rows;
 }
 
+/**
+ * A descrição em prosa repete o que as linhas essenciais já mostram? (issue #138)
+ *
+ * A sincronização do DER grava `<rodovia> — <início> → <fim>. TMD DER/DF: <tmd>.
+ * Extensão: <km> km.` (`upsertRoadPolygon_` no Code.gs). Isso é a rodovia, o TMD e a
+ * extensão que `roadSegmentEssentials` mostra duas linhas acima, agora em prosa e sem
+ * separador de milhar — e o mesmo fato com duas formatações faz quem lê conferir se são o
+ * mesmo número.
+ *
+ * A pergunta é sobre o CONTEÚDO, não sobre o tipo de feição. A primeira versão desta
+ * supressão perguntava `polygonFeatureType(polygon) === 'road'`, e isso apagava também a
+ * descrição do corredor com buffer da v2.2.1 — que é `road` e cujo texto NÃO é a prosa
+ * gerada (achado P1 do Codex na PR #139). Um corredor legado com uma nota real perdia a
+ * nota em silêncio.
+ *
+ * Duas condições, e as duas olham o registro:
+ *   1. ele usa o vocabulário do DER — o corredor da v2.2.1 não usa, e mantém a descrição;
+ *   2. o texto CARREGA os valores de `tmd_der` e `extensao_km`, que são os dois números
+ *      que o essencial mostra.
+ *
+ * A direção da falha é deliberada: se o backend mudar a frase e o casamento por valor
+ * falhar, a descrição VOLTA a aparecer. Perder uma linha repetida é barato; perder uma
+ * nota que só existe ali não é.
+ */
+export function descriptionRepeatsEssentials(polygon) {
+  if (!polygon) return false;
+  const descricao = scalarText(polygon.description);
+  if (descricao === null) return false;
+
+  const props = polygon.properties || {};
+  if (!usesDerVocabulary(props)) return false;
+
+  const tmd = scalarText(props.tmd_der);
+  const extensao = scalarText(props.extensao_km);
+  if (tmd === null || extensao === null) return false;
+
+  return descricao.includes(tmd) && descricao.includes(extensao);
+}
+
 /** Chaves de `properties_json` que o essencial já consumiu, por tipo de entidade. */
 export function polygonEssentialKeys(polygon) {
   if (polygonEntityType(polygon) !== 'road_segment') return [];

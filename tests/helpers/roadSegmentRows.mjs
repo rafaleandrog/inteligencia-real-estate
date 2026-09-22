@@ -41,7 +41,13 @@ export function polygonRows() {
       category: 'trecho_rodoviario',
       geometry_geojson: JSON.stringify(geometry),
       color: CORES[i % CORES.length],
-      description: `DF-001 — ${a.descricao_inicial} → ${a.descricao_final}.`,
+      // A prosa EXATA que `upsertRoadPolygon_` grava (Code.gs): rodovia, extremos, TMD e
+      // extensão. A versão anterior desta fixture parava nos extremos — e a supressão da
+      // descrição no painel casa pelos VALORES de `tmd_der` e `extensao_km`, então uma
+      // fixture sem eles testaria um texto que a produção não grava.
+      description: `DF-001 — ${a.descricao_inicial} → ${a.descricao_final}.`
+        + ` TMD DER/DF: ${a.TMD}.`
+        + ` Extensão: ${a.extensao_km} km.`,
       properties_json: JSON.stringify({
         road_segment_id: id,
         source_segment_code: a.cod_distrital,
