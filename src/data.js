@@ -438,6 +438,35 @@ async function fetchPolygonsFromGviz(config) {
 }
 
 /**
+ * Avisos das linhas que a normalização das três abas de tráfego descartou (issue #140).
+ *
+ * `normalizeTrafficDailyRecords` já devolvia `dropped`, e os três caminhos de carga
+ * (gviz, Apps Script e demo) jogavam o número fora lendo só `.records`. O efeito é o pior
+ * tipo de silêncio: uma linha com `dia` que não existe no calendário some do total, some
+ * da contagem por mês, e nada na tela diz que ela existiu — que é exatamente o que a R5.7
+ * proíbe. O aviso nomeia a aba, quantas linhas e por quê, para dar onde procurar.
+ *
+ * O MOTIVO é fixo por aba, e isso só é honesto porque cada normalizador tem exatamente uma
+ * causa de descarte (conferido em src/traffic/normalize.js): `normalizeRoadSegment` devolve
+ * null só sem `road_segment_id`; `normalizeRoadSegmentAlias`, só sem `road_segment_id` ou
+ * sem `source_segment_code`; `normalizeTrafficDaily`, só quando `toDateISO(dia)` é null.
+ * Quem acrescentar uma segunda causa a qualquer um deles tem de trocar o texto aqui — senão
+ * o aviso passa a atribuir a causa errada, que é pior que não avisar.
+ */
+function trafficDropWarnings(config, dropped) {
+  const avisos = [];
+  const diga = (sheet, n, motivo) => {
+    if (n > 0 && sheet) avisos.push(`${n} linha(s) de ${sheet} ignorada(s): ${motivo}.`);
+  };
+  diga(config.roadSegmentsSheet, dropped.segments, 'sem road_segment_id');
+  diga(config.roadSegmentAliasesSheet, dropped.aliases,
+    'sem road_segment_id ou sem source_segment_code');
+  diga(config.trafficDailySheet, dropped.traffic,
+    'a coluna dia não traz uma data que existe no calendário');
+  return avisos;
+}
+
+/**
  * Lê as três abas opcionais de tráfego do backend v2.2.0 (issue #62, bloco C):
  * `ROAD_SEGMENTS`, `ROAD_SEGMENT_ALIASES` e `TRAFFIC_DAILY_TEST`.
  *
@@ -482,10 +511,17 @@ async function fetchTrafficSheetsFromGviz(config) {
     }
   });
 
+  const segmentos = normalizeRoadSegments(rowsByJob.segments);
+  const apelidos = normalizeRoadSegmentAliases(rowsByJob.aliases);
+  const diario = normalizeTrafficDailyRecords(rowsByJob.traffic);
+  warnings.push(...trafficDropWarnings(config, {
+    segments: segmentos.dropped, aliases: apelidos.dropped, traffic: diario.dropped,
+  }));
+
   return {
-    segments: normalizeRoadSegments(rowsByJob.segments).records,
-    aliases: normalizeRoadSegmentAliases(rowsByJob.aliases).records,
-    trafficRecords: normalizeTrafficDailyRecords(rowsByJob.traffic).records,
+    segments: segmentos.records,
+    aliases: apelidos.records,
+    trafficRecords: diario.records,
     warnings,
   };
 }
@@ -573,10 +609,25 @@ async function loadFromDemo(config) {
   const demoFipezapLocalityMap = normalizeFipezapLocalityMap(payload.fipezap_locality_map || []);
   const demoPdadData = normalizePdadData(payload.pdad_a_data || []);
 
+  // As três abas de tráfego do demo passam pelo mesmo tratamento do caminho real: linha
+  // descartada é CONTADA e vira aviso, nunca some calada (issue #140). O demo é onde a
+  // regressão apareceria primeiro, porque é o único caminho que roda sem rede.
+  const demoSegmentos = normalizeRoadSegments(payload.road_segments || []);
+  const demoApelidos = normalizeRoadSegmentAliases(payload.road_segment_aliases || []);
+  const demoDiario = normalizeTrafficDailyRecords(payload.traffic_daily || []);
+
   return {
     raw,
     errors: [],
     warnings: [
+      ...trafficDropWarnings(
+        {
+          roadSegmentsSheet: 'road_segments',
+          roadSegmentAliasesSheet: 'road_segment_aliases',
+          trafficDailySheet: 'traffic_daily',
+        },
+        { segments: demoSegmentos.dropped, aliases: demoApelidos.dropped, traffic: demoDiario.dropped }
+      ),
       ...metaConflictWarnings(payload.meta),
       ...ivvWarningTexts(demoIvv.warnings),
       ...demoRegiao.warnings.map((texto) => `Mercado (IVV_REGION): ${texto}`),
@@ -593,10 +644,10 @@ async function loadFromDemo(config) {
     // Mesmo tratamento: o demo.json de hoje não traz nenhuma das três chaves de
     // tráfego, e o caminho que precisa funcionar é o de painel vazio, não erro.
     traffic: linkTrafficDataset(
-      normalizeRoadSegments(payload.road_segments || []).records,
+      demoSegmentos.records,
       normalizePolygons(payload.polygons || []),
-      normalizeTrafficDailyRecords(payload.traffic_daily || []).records,
-      normalizeRoadSegmentAliases(payload.road_segment_aliases || []).records
+      demoDiario.records,
+      demoApelidos.records
     ),
     // A semente traz a linha de IVV_MONTHLY com os nomes do schema v1.0.0 e o IVV em
     // ponto percentual, então o caminho de demo exercita de verdade a tradução de alias
@@ -736,10 +787,17 @@ async function fetchTrafficSheetsFromAppsScript(config) {
     }
   }));
 
+  const segmentos = normalizeRoadSegments(rowsByJob.segments);
+  const apelidos = normalizeRoadSegmentAliases(rowsByJob.aliases);
+  const diario = normalizeTrafficDailyRecords(rowsByJob.traffic);
+  warnings.push(...trafficDropWarnings(config, {
+    segments: segmentos.dropped, aliases: apelidos.dropped, traffic: diario.dropped,
+  }));
+
   return {
-    segments: normalizeRoadSegments(rowsByJob.segments).records,
-    aliases: normalizeRoadSegmentAliases(rowsByJob.aliases).records,
-    trafficRecords: normalizeTrafficDailyRecords(rowsByJob.traffic).records,
+    segments: segmentos.records,
+    aliases: apelidos.records,
+    trafficRecords: diario.records,
     warnings,
   };
 }

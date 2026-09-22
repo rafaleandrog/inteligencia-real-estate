@@ -992,3 +992,20 @@ Cada uma nasce de um erro que aconteceu de verdade.
   `diasNoMes`, e `invalidDateDays` CONTA os recusados numa linha própria, porque o registro segue
   no total do período e uma diferença silenciosa entre as duas contas é pior que a data inválida.
   `toDateISO` não foi endurecida: quatro datasets dependem dela, e isso é issue própria.
+- **R8.97** *(2026-09-22, data validada contra o calendário, issue #140)* **Conversor de data
+  valida o CALENDÁRIO, não só o formato — e em todos os ramos.** `toDateISO` casava
+  `YYYY-MM-DD` e devolvia `2026-04-31` intacto; o ramo do GViz era pior, porque
+  `Date.UTC(2026,3,31)` NORMALIZA o excesso e rolava em silêncio para 1º de maio, trocando o
+  mês do registro sem sintoma. Mecanismo: `isRealCalendarDate` é a regra única (exportada, e
+  `mesDe` em src/traffic/panel.js a reusa em vez de manter a sua — R8.7), o ramo ISO e o
+  `DD/MM/YYYY` passam por ela, e o ramo do GViz confere o ida-e-volta (`getUTCMonth`/
+  `getUTCDate`) porque sem isso a recusa viraria uma troca de data. Medido antes de mexer:
+  18.022 células de data nas 15 abas reais, ZERO recusadas — endurecer não mudou nada do que
+  está publicado, só fechou a porta.
+- **R8.98** *(2026-09-22, issue #140)* **`dropped` que ninguém lê é dado que some calado.**
+  As três abas de tráfego já contavam as linhas descartadas, e os três caminhos de carga
+  (gviz, Apps Script e demo) liam só `.records`. Uma linha com data impossível sumia do total
+  do período, sumia da contagem por mês, e nada na tela dizia que ela existiu — a ausência
+  apresentada como se fosse o dado completo (R5.7). Mecanismo: `trafficDropWarnings` nomeia a
+  aba, quantas linhas e por quê, nos três caminhos. Um contador de descarte sem consumidor é
+  um bug esperando a próxima planilha suja.

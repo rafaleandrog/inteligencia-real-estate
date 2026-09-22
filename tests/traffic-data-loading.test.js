@@ -147,3 +147,82 @@ test('loadDataset (demo): traffic vem vazio mas presente quando o demo.json não
     globalThis.fetch = original;
   }
 });
+
+// --- Linha descartada vira AVISO, nunca silêncio — issue #140 -------------------------
+//
+// `normalizeTrafficDailyRecords` sempre devolveu `dropped`, e os três caminhos de carga
+// liam só `.records`. Uma linha com `dia` que não existe no calendário sumia do total,
+// sumia da contagem por mês, e nada dizia que ela existiu — o silêncio que a R5.7 proíbe.
+
+test('loadDataset (gviz): linha de tráfego com data impossível vira aviso nomeando a aba', async () => {
+  const tablesBySheet = {
+    LISTINGS: table(['listing_id'], [{ listing_id: 'L1' }]),
+    DEVELOPMENTS: table(['development_id'], [{ development_id: 'D1' }]),
+    ANCHORS: table(['place_id'], [{ place_id: 'A1' }]),
+    ROAD_SEGMENTS: table(
+      ['road_segment_id', 'road_name'],
+      [
+        { road_segment_id: 'RS-1', road_name: 'DF-001' },
+        { road_segment_id: '', road_name: 'sem id — descartada' },
+      ]
+    ),
+    ROAD_SEGMENT_ALIASES: table(['road_segment_id', 'source_segment_code'], []),
+    TRAFFIC_DAILY_TEST: table(
+      ['road_segment_id', 'dia', 'sentido', 'intervalos_15min_observados', 'fluxo_total'],
+      [
+        { road_segment_id: 'RS-1', dia: '2026-04-20', sentido: 'crescente', intervalos_15min_observados: 96, fluxo_total: 100 },
+        { road_segment_id: 'RS-1', dia: '2026-04-31', sentido: 'crescente', intervalos_15min_observados: 96, fluxo_total: 4100 },
+        { road_segment_id: 'RS-1', dia: '2026-02-30', sentido: 'crescente', intervalos_15min_observados: 96, fluxo_total: 900 },
+      ]
+    ),
+  };
+
+  const documentRef = documentRefFor(tablesBySheet);
+  const originalDocument = globalThis.document;
+  globalThis.document = documentRef;
+
+  try {
+    const result = await loadDataset(BASE_CONFIG);
+    assert.equal(result.ok, true, 'dado ruim isolado não derruba a carga (R2.6)');
+
+    const avisoDia = result.warnings.find((t) => t.includes('TRAFFIC_DAILY_TEST'));
+    assert.ok(avisoDia, `esperava aviso sobre TRAFFIC_DAILY_TEST: ${JSON.stringify(result.warnings)}`);
+    assert.match(avisoDia, /2 linha\(s\)/);
+    assert.match(avisoDia, /calendário/);
+
+    const avisoTrecho = result.warnings.find((t) => t.includes('ROAD_SEGMENTS') && t.includes('road_segment_id'));
+    assert.ok(avisoTrecho, 'a linha de trecho sem id também precisa ser nomeada');
+
+    // O dia bom continua valendo, e só ele.
+    const trecho = result.traffic.bySegmentId.get('RS-1');
+    assert.equal(trecho.traffic.crescente.length, 1);
+    assert.equal(trecho.traffic.crescente[0].date, '2026-04-20');
+  } finally {
+    globalThis.document = originalDocument;
+  }
+});
+
+test('loadDataset (gviz): sem linha descartada, nenhum aviso é inventado', async () => {
+  const tablesBySheet = {
+    LISTINGS: table(['listing_id'], [{ listing_id: 'L1' }]),
+    DEVELOPMENTS: table(['development_id'], [{ development_id: 'D1' }]),
+    ANCHORS: table(['place_id'], [{ place_id: 'A1' }]),
+    ROAD_SEGMENTS: table(['road_segment_id'], [{ road_segment_id: 'RS-1' }]),
+    ROAD_SEGMENT_ALIASES: table(['road_segment_id', 'source_segment_code'], []),
+    TRAFFIC_DAILY_TEST: table(
+      ['road_segment_id', 'dia', 'sentido', 'intervalos_15min_observados', 'fluxo_total'],
+      [{ road_segment_id: 'RS-1', dia: '2026-04-20', sentido: 'crescente', intervalos_15min_observados: 96, fluxo_total: 100 }]
+    ),
+  };
+
+  const documentRef = documentRefFor(tablesBySheet);
+  const originalDocument = globalThis.document;
+  globalThis.document = documentRef;
+
+  try {
+    const result = await loadDataset(BASE_CONFIG);
+    assert.equal(result.warnings.filter((t) => t.includes('ignorada(s)')).length, 0);
+  } finally {
+    globalThis.document = originalDocument;
+  }
+});

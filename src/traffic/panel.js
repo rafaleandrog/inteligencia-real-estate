@@ -12,6 +12,7 @@
 // não é o mapa).
 
 import { averageFlow, classifyDayCoverage } from './coverage.js';
+import { isRealCalendarDate } from '../normalize.js';
 
 function ordenadosPorData(records) {
   return [...(records || [])]
@@ -216,10 +217,7 @@ function picoDoPeriodo(records) {
  * mudança sobre o painel do trecho.
  */
 function mesDe(date) {
-  if (typeof date !== 'string') return null;
-  if (!/^\d{4}-(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01])$/.test(date)) return null;
-  const mes = date.slice(0, 7);
-  return Number(date.slice(8, 10)) <= diasNoMes(mes) ? mes : null;
+  return isRealCalendarDate(date) ? date.slice(0, 7) : null;
 }
 
 /**
