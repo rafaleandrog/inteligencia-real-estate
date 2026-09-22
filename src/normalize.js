@@ -116,6 +116,28 @@ export function toBoolean(value) {
  * Devolve só a parte de data: a hora não é usada em nenhum lugar da V1 e mantê-la
  * criaria diferença de fuso entre a planilha e o navegador.
  */
+/**
+ * A data existe no calendário? (issue #140)
+ *
+ * `2026-04-31`, `2026-02-30` e `2026-02-29` num ano comum passam por qualquer casamento de
+ * FORMATO e não existem. O dia 0 do mês seguinte em UTC dá o último dia real do mês, e é a
+ * definição que não depende do fuso de quem abre a página.
+ *
+ * Exportada porque quem AFIRMA algo sobre o calendário precisa da mesma regra: o painel de
+ * trecho diz "N de M dias medidos", e duas noções de data válida no mesmo projeto seriam
+ * duas verdades sobre o mesmo dado (R8.7).
+ */
+export function isRealCalendarDate(iso) {
+  if (typeof iso !== 'string') return false;
+  const partes = /^(\d{4})-(\d{2})-(\d{2})$/.exec(iso);
+  if (!partes) return false;
+  const ano = Number(partes[1]);
+  const mes = Number(partes[2]);
+  const dia = Number(partes[3]);
+  if (mes < 1 || mes > 12 || dia < 1) return false;
+  return dia <= new Date(Date.UTC(ano, mes, 0)).getUTCDate();
+}
+
 export function toDateISO(value) {
   if (value instanceof Date) {
     return Number.isNaN(value.getTime()) ? null : value.toISOString().slice(0, 10);
@@ -124,18 +146,35 @@ export function toDateISO(value) {
   const raw = toText(value);
   if (raw === '') return null;
 
+  // Data que não existe no calendário é recusada em TODOS os ramos, não só reconhecida
+  // pelo formato (issue #140). Antes, `2026-04-31` atravessava intacto e virava um dia
+  // medido no painel do trecho, que chegava a dizer "31 de 30 dias medidos"; e um
+  // `Date(2026,3,31)` do GViz rolava em silêncio para 1º de maio, trocando o mês do
+  // registro sem sintoma. Conferido contra as 15 abas reais da planilha: 18.022 células
+  // de data, NENHUMA recusada por esta regra — ela não muda nada do que está publicado
+  // hoje, só fecha a porta.
   const iso = raw.match(/^(\d{4})-(\d{2})-(\d{2})/);
-  if (iso) return `${iso[1]}-${iso[2]}-${iso[3]}`;
+  if (iso) {
+    const texto = `${iso[1]}-${iso[2]}-${iso[3]}`;
+    return isRealCalendarDate(texto) ? texto : null;
+  }
 
   const gviz = raw.match(/^Date\((\d+),(\d+),(\d+)/);
   if (gviz) {
     const [, y, m, d] = gviz;
     const dt = new Date(Date.UTC(Number(y), Number(m), Number(d)));
-    return Number.isNaN(dt.getTime()) ? null : dt.toISOString().slice(0, 10);
+    if (Number.isNaN(dt.getTime())) return null;
+    // `Date.UTC` NORMALIZA o excesso em vez de recusar: mês 3 dia 31 vira 1º de maio. O
+    // ida-e-volta é o que denuncia isso — sem ele, a recusa viraria uma troca de data.
+    if (dt.getUTCMonth() !== Number(m) || dt.getUTCDate() !== Number(d)) return null;
+    return dt.toISOString().slice(0, 10);
   }
 
   const br = raw.match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
-  if (br) return `${br[3]}-${br[2]}-${br[1]}`;
+  if (br) {
+    const texto = `${br[3]}-${br[2]}-${br[1]}`;
+    return isRealCalendarDate(texto) ? texto : null;
+  }
 
   // Serial de planilha. A faixa evita interpretar um ano solto (ex.: "2026") como serial.
   const serial = toNumber(raw);

@@ -6,7 +6,7 @@ import {
   buildingOrientation, isApproximateLocation, canUseForDistance, normalizeListing, normalizeDevelopment,
   normalizeAnchor, normalizeRaProfile, normalizeRaProfiles,
   normalizeAppMeta, appMetaRows, appMetaConflicts,
-  normalizeAll,
+  normalizeAll, isRealCalendarDate,
 } from '../src/normalize.js';
 
 test('toNumber: formatos que realmente chegam da planilha', () => {
@@ -600,4 +600,49 @@ test('normalizeRaProfiles indexa por ra_geo_id e descarta linha sem chave (issue
 test('normalizeRaProfiles tolera entrada ausente', () => {
   assert.deepEqual(normalizeRaProfiles(undefined), {});
   assert.deepEqual(normalizeRaProfiles(null), {});
+});
+
+// --- Data que não existe no calendário — issue #140 -----------------------------------
+//
+// `toDateISO` reconhecia o FORMATO, não o calendário: `2026-04-31` atravessava intacto e
+// virava um dia medido no painel do trecho, que chegava a dizer "31 de 30 dias medidos".
+// O ramo do GViz era pior: `Date(2026,3,31)` rolava em silêncio para 1º de maio, trocando
+// o mês do registro sem sintoma nenhum.
+
+test('toDateISO recusa data que não existe, em todos os ramos', () => {
+  assert.equal(toDateISO('2026-04-31'), null);
+  assert.equal(toDateISO('2026-04-99'), null);
+  assert.equal(toDateISO('2026-02-30'), null);
+  assert.equal(toDateISO('2026-13-01'), null);
+  assert.equal(toDateISO('31/04/2026'), null, 'ramo DD/MM/YYYY');
+  assert.equal(toDateISO('Date(2026,3,31)'), null, 'ramo do GViz não pode rolar para maio');
+});
+
+test('toDateISO preserva o último dia REAL de cada mês', () => {
+  // A guarda tinha que recusar o impossível sem comer o dia legítimo da borda.
+  assert.equal(toDateISO('2026-01-31'), '2026-01-31');
+  assert.equal(toDateISO('2026-04-30'), '2026-04-30');
+  assert.equal(toDateISO('2026-02-28'), '2026-02-28');
+  assert.equal(toDateISO('30/04/2026'), '2026-04-30');
+  assert.equal(toDateISO('Date(2026,3,30)'), '2026-04-30');
+});
+
+test('29 de fevereiro: recusado em ano comum, aceito em bissexto', () => {
+  assert.equal(toDateISO('2026-02-29'), null);
+  assert.equal(toDateISO('2028-02-29'), '2028-02-29');
+  assert.equal(toDateISO('Date(2028,1,29)'), '2028-02-29');
+});
+
+test('serial de planilha continua valendo — todo serial é um dia real', () => {
+  assert.equal(toDateISO(46252), '2026-08-18');
+});
+
+test('isRealCalendarDate é a regra única, e responde só sobre YYYY-MM-DD', () => {
+  assert.equal(isRealCalendarDate('2026-04-30'), true);
+  assert.equal(isRealCalendarDate('2026-04-31'), false);
+  assert.equal(isRealCalendarDate('2028-02-29'), true);
+  assert.equal(isRealCalendarDate('2026-02-29'), false);
+  assert.equal(isRealCalendarDate('2026-04'), false);
+  assert.equal(isRealCalendarDate(null), false);
+  assert.equal(isRealCalendarDate(20260430), false);
 });
