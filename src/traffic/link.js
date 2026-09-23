@@ -130,8 +130,10 @@ export function segmentIdsWithTraffic(bySegmentId) {
  * @param {object[]} polygons        POLYGONS normalizados (de src/normalize.js)
  * @param {object[]} trafficRecords  TRAFFIC_DAILY_TEST normalizados
  * @param {object[]} aliases         ROAD_SEGMENT_ALIASES normalizados
+ * @param {object[]} [directions]    ROAD_DIRECTION_MAP normalizado (issue #142) — só
+ *                                   rotula o fluxo de trecho sem geometria oficial
  */
-export function linkTrafficDataset(segments, polygons, trafficRecords, aliases) {
+export function linkTrafficDataset(segments, polygons, trafficRecords, aliases, directions = []) {
   // POLYGONS normalizado por src/normalize.js expõe o identificador como `id`
   // (a coluna da planilha é `polygon_id`; `normalizePolygon` já a renomeia).
   // Os DOIS índices só aceitam contorno ATIVO, pela mesma regra do renderizador.
@@ -169,5 +171,28 @@ export function linkTrafficDataset(segments, polygons, trafficRecords, aliases) 
   // quem chama decidir como avisar (R2.5/R2.6 — dado ruim é sinalizado, não fatal).
   const unmatchedSegmentIds = [...bySegment.keys()].filter((id) => !bySegmentId.has(id));
 
-  return { bySegmentId, orphaned, unmatchedSegmentIds };
+  // O fluxo desses trechos também fica guardado, não só o id (issue #142): os cinco códigos
+  // `unmatched_official_layer` de ROAD_DIRECTION_MAP têm fluxo medido e nenhuma geometria
+  // oficial, e o painel precisa dizer "fluxo disponível; geometria oficial não localizada"
+  // com os números — nunca desenhar uma linha para eles, nunca sumir com eles.
+  const directionByCode = new Map();
+  for (const d of directions || []) {
+    if (d?.sourceSegmentCode && !directionByCode.has(d.sourceSegmentCode)) directionByCode.set(d.sourceSegmentCode, d);
+  }
+  const unmatchedTraffic = new Map();
+  for (const id of unmatchedSegmentIds) {
+    const buckets = bySegment.get(id);
+    const first = buckets.crescente[0] || buckets.decrescente[0] || buckets.semSentido[0] || null;
+    const sourceSegmentCode = first?.sourceSegmentCode || null;
+    const direction = sourceSegmentCode ? directionByCode.get(sourceSegmentCode) : null;
+    unmatchedTraffic.set(id, {
+      roadSegmentId: id,
+      sourceSegmentCode,
+      roadCode: direction?.roadCode || null,
+      mappingStatus: direction?.mappingStatus || null,
+      traffic: buckets,
+    });
+  }
+
+  return { bySegmentId, orphaned, unmatchedSegmentIds, unmatchedTraffic };
 }

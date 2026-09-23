@@ -303,6 +303,8 @@ abaixo. `FIPEZAP_LOCALITY_MAP`/`FIPEZAP_SOURCES`/`FIPEZAP_NOTES` existem na plan
 | `ROAD_SEGMENTS` | `road_segment_id` | 0 | Trecho rodoviário oficial do DER/DF — criada pelo `setupProject()` v2.2.1 |
 | `ROAD_SEGMENT_ALIASES` | `alias_id` | 0 | Ponte entre o código de trecho da fonte de tráfego e o `road_segment_id` |
 | `TRAFFIC_DAILY_TEST` | `traffic_daily_id` | 0 | Contagem diária de tráfego por trecho |
+| `ROAD_DIRECTION_MAP` | `source_segment_code` + `source_direction` | 181 na planilha | Sentido oficial DER/DF de cada via (crescente = Km_I → Km_F) — **lida pela tela** desde a issue #142 |
+| `TRAFFIC_CORRIDOR_DAILY` | `corridor_daily_id` | 62 na planilha | Dia de cada ponto de medição do corredor Sobradinho–Plano Piloto — **lida pela tela** desde a issue #142 |
 | `FIPEZAP_MONTHLY` | `fipezap_id` | 0 na semente, 3369 na planilha | Preço de venda/locação FipeZap, DF inteiro e por localidade, desde 2011 — **lida pela tela** |
 | `FIPEZAP_LOCALITY_MONTHLY` | `locality_monthly_id` | 0 na semente, 1714 na planilha | Venda × locação pareadas por localidade/RA, desde 2019 — **lida pela tela** |
 | `FIPEZAP_LOCALITY_MAP` | `locality_map_id` | 0 na semente, 30 na planilha | De-para localidade → RA e metodologia de classificação — **lida pela tela** desde a issue #122 |
@@ -1321,6 +1323,71 @@ sincronização rodoviária a partir dele.
 
 > Os nomes de coluna destas três abas estão em português porque vieram assim da fonte de tráfego.
 > Renomeá-los seria mudança de contrato sem ganho — o resto do schema segue em inglês.
+
+### ROAD_DIRECTION_MAP — sentido oficial das vias (issue #142, backend 2026-09-23.1)
+
+Somente leitura: não entra em nenhuma `WRITE_ALLOWLIST`. Chave de junção com o fluxo:
+`source_segment_code` + `source_direction`, **nunca** o nome da rodovia, que se repete em vários
+trechos. Regra oficial: `crescente` = Km_I → Km_F; `decrescente` = Km_F → Km_I.
+
+| Campo | Tipo | Obrig. | Observação |
+|---|---|---|---|
+| `direction_map_id` | texto | não | id da linha |
+| `road_segment_id` | texto | não | trecho permanente (`ROADSEG_<código>`) |
+| `source_segment_code` | texto | **sim** | código do DER; zeros e hífens preservados (`TUNEL-REI-`) |
+| `source_direction` | texto | não | `crescente`/`decrescente`; vazio nos códigos sem geometria oficial |
+| `road_code` / `normalized_road_code` | texto | não | rodovia (`DF003`) |
+| `origin_official` / `destination_official` | texto | não | descrição do Km inicial/final do sentido |
+| `km_start` / `km_end` | número | não | quilometragem |
+| `project_direction` / `corridor_id` / `corridor_role` | texto | não | sentido do projeto — só quando o corredor o declara (vazio hoje em todas) |
+| `mapping_status` | texto | não | `mapped_official` (176) ou `unmatched_official_layer` (5) |
+| `direction_rule` | texto | não | `DER_km_I_to_km_F` |
+| `confidence`, `geometry_source_org`, `geometry_source_layer`, `geometry_feature_id`, `notes` | — | não | procedência; não lidas pela tela |
+
+Os cinco `unmatched_official_layer` — `009EDF0050`, `020BDF0010`, `020BDF0018`, `020BDF0020`,
+`TUNEL-REI-` — têm fluxo em `TRAFFIC_DAILY_TEST` e nenhuma geometria oficial. A tela lista o fluxo
+deles com "Fluxo disponível; geometria oficial não localizada" e **não desenha linha nenhuma**.
+
+Linha sem `source_segment_code` é descartada; chave repetida fica com a primeira ocorrência. As duas
+viram aviso (`trafficDropWarnings` em `src/data.js`).
+
+### TRAFFIC_CORRIDOR_DAILY — corredor Sobradinho–Plano Piloto (issue #142)
+
+Somente leitura. Um dia de UM ponto de medição do corredor `SOBRADINHO_PLANO`. Julho/2026: 31 dias ×
+2 pontos (`003EDF0010`, próximo ao Plano Piloto; `150EDF0010`, próximo a Sobradinho).
+
+| Campo | Tipo | Obrig. | Observação |
+|---|---|---|---|
+| `corridor_daily_id` | texto | não | chave; repetido é recusado |
+| `corridor_id` | texto | não | `SOBRADINHO_PLANO` |
+| `dia` | data | **sim** | GViz serializa como `Date(a,m,d)`; texto `dd/mm/aaaa` só no CSV |
+| `mes_ref` | texto | não | `AAAA-MM`; na falta, derivado de `dia` |
+| `measurement_segment_id` | texto | não | `road_segment_id` do ponto |
+| `source_segment_code` | texto | **sim** | código do ponto |
+| `road_name` | texto | não | rodovia (`DF003`) |
+| `measurement_point_role` | texto | não | `ponto_referencia_proximo_ao_Plano_Piloto` / `..._a_Sobradinho` |
+| `sentido_para_plano` / `sentido_para_sobradinho` | texto | não | sentido oficial de cada lado (`decrescente` / `crescente`) |
+| `fluxo_para_plano` / `fluxo_para_sobradinho` / `fluxo_bidirecional` | número | não | bidirecional = soma dos dois lados DESTE ponto neste dia |
+| `carro_para_plano` / `carro_para_sobradinho` / `carro_bidirecional` | número | não | carro por lado |
+| `motos_bidirecional` / `onibus_bidirecional` / `caminhoes_bidirecional` | número | não | só bidirecional — por lado, a tela mostra "não publicado", nunca zero |
+| `intervalos_minimos_15min` | inteiro | não | menor contagem de intervalos entre os dois sentidos; a cobertura é `/ 96` |
+| `cobertura_min_pct` | número | não | **não lida**: chega como fração pelo GViz e como texto `"100,0%"` no CSV (R8.58) |
+| `quality_flag` | texto | não | `ok` / `partial_or_quality_issue` |
+| `source_rows_count`, `source_files`, `aggregation_rule` | — | não | procedência; não lidas |
+
+Regras que a tela garante:
+
+- A tradução `decrescente` = para o Plano Piloto / `crescente` = para Sobradinho vale **só** para os
+  códigos que esta aba lista. Nenhuma outra via herda sentido do projeto.
+- Os dois pontos **nunca** são somados (seria contar a mesma viagem duas vezes); `corridorPointSummary`
+  recusa uma lista que misture pontos. Os números são passagens, não veículos únicos.
+- O mesmo dia do mesmo ponto sob dois `corridor_daily_id` é duplicata e é recusado.
+
+> **Divergência com a instrução de implementação.** A instrução cita
+> 45.188 / 79.840 / 125.028 como 003EDF0010 em **31/07/2026**. Na planilha, nas duas abas, esses são
+> os valores de **01/07/2026**; o 31/07 é 49.465 / 87.652 / 137.117. Os testes
+> (`tests/traffic-direction.test.js`) fixam o que a planilha publica. O 150EDF0010 em 31/07 confere
+> com a instrução (31.772 / 57.291 / 89.063).
 
 ---
 

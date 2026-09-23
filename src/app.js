@@ -67,6 +67,15 @@ import {
 import { trafficPanelRows, roadSegmentTrafficDetail } from './traffic/panel.js';
 import { segmentIdsWithTraffic } from './traffic/link.js';
 import {
+  buildDirectionContext, corridorLabel, measurementPointLabel, PROJECT_DIRECTIONS,
+} from './traffic/direction.js';
+import {
+  EMPTY_TRAFFIC_FILTERS, activeTrafficFilterCount, filterLinkedTraffic, filterCorridorDaily,
+  trafficFilterOptions, roadFlowDisplay, segmentFlowTotal, vehicleClassLabel, monthLabel,
+  DIRECTION_COLORS,
+} from './traffic/filters.js';
+import { segmentPeriodSummary, corridorPointSummary, officialTmd } from './traffic/summary.js';
+import {
   drawsAsLine, isRoadSegmentPolygon, roadAxisGeometry, roadSegmentBounds, roadSegmentIdOf,
   roadSegmentCodeOf, selectRoadSegmentPolygons, validateRoadSegmentLayer,
 } from './traffic/road-geometry.js';
@@ -99,6 +108,12 @@ const dom = {
   polygonLayers: el('polygonLayers'), polygonLayerLabel: el('polygonLayerLabel'),
   polygonMasterLayer: el('polygonMasterLayer'), countPolygon: el('countPolygon'),
   trafficSection: el('trafficSection'), trafficList: el('trafficList'),
+  trafficFilters: el('trafficFilters'), trafficFiltersSummary: el('trafficFiltersSummary'),
+  trafficLegend: el('trafficLegend'), trafficNote: el('trafficNote'),
+  tfMonth: el('tfMonth'), tfDay: el('tfDay'), tfFrom: el('tfFrom'), tfTo: el('tfTo'),
+  tfRoad: el('tfRoad'), tfSegment: el('tfSegment'), tfCorridor: el('tfCorridor'),
+  tfOfficialDirection: el('tfOfficialDirection'), tfProjectDirection: el('tfProjectDirection'),
+  tfVehicle: el('tfVehicle'), tfQuality: el('tfQuality'), tfClear: el('tfClear'),
   viewSwitch: el('viewSwitch'), marketTab: el('marketTab'),
   railToggle: el('railToggle'), panelToggle: el('panelToggle'),
   mapView: el('mapView'), marketView: el('marketView'),
@@ -202,6 +217,18 @@ const state = {
   // Trechos rodoviários com tráfego ligado (issue #62/#63). `bySegmentId` vazio é o
   // estado normal enquanto ROAD_SEGMENTS não vier — o painel simplesmente não aparece.
   traffic: { bySegmentId: new Map(), orphaned: [], unmatchedSegmentIds: [] },
+  /**
+   * Issue #142. `trafficAll` é o tráfego ligado SEM filtro, como veio de `loadDataset`;
+   * `traffic` acima passa a ser a visão FILTRADA dele (`filterLinkedTraffic`), que é o que
+   * o mapa, a lista e o painel do trecho leem. `directionCtx` resolve sentido oficial →
+   * origem/destino e, só no corredor, → sentido do projeto.
+   */
+  trafficAll: { bySegmentId: new Map(), orphaned: [], unmatchedSegmentIds: [] },
+  trafficFilters: { ...EMPTY_TRAFFIC_FILTERS },
+  directionCtx: buildDirectionContext([], []),
+  trafficMaxTotal: null,
+  /** `polygon_id` do contorno aberto no painel de detalhe, ou `null`. */
+  detailPolygonId: null,
   /**
    * `polygon_id` do trecho rodoviário em destaque (issue #134), ou `null`.
    *
@@ -430,6 +457,10 @@ function renderRoadSegment(polygon, parsed = null) {
   if (!geometry) return;
 
   const style = polygonStyle(polygon);
+  // Cor e espessura sob o filtro de fluxo (issue #142): cinza tracejado sem dado no
+  // recorte, cor do sentido com filtro de sentido, espessura pelo fluxo do recorte. A
+  // GEOMETRIA não muda — é o mesmo eixo oficial, sem buffer e sem deslocamento.
+  const exibicao = roadDisplayFor(polygon);
   const selecionado = state.selectedRoadId === polygon.id;
 
   let alvo = null;
@@ -450,11 +481,11 @@ function renderRoadSegment(polygon, parsed = null) {
         // da planilha e identifica QUAL trecho é; trocá-la no clique faria a legenda deixar
         // de bater com o mapa no exato momento em que alguém está conferindo os dois.
         className: selecionado ? 'road-segment-shape road-segment-selected' : 'road-segment-shape',
-        color: style.color,
-        weight: selecionado ? style.weight + 4 : style.weight,
+        color: exibicao.color,
+        weight: selecionado ? exibicao.weight + 4 : exibicao.weight,
         opacity: selecionado ? 1 : 0.95,
         fill: false,
-        dashArray: style.dashArray,
+        dashArray: exibicao.dashArray || style.dashArray,
       },
     });
   } catch (error) {
@@ -481,10 +512,35 @@ function renderRoadSegment(polygon, parsed = null) {
 function roadSegmentTooltipText(polygon) {
   const nome = polygon.name || polygon.id;
   const segmentId = roadSegmentIdOf(polygon);
-  const detalhe = segmentId ? roadSegmentTrafficDetail(state.traffic.bySegmentId.get(segmentId)) : null;
-  const media = detalhe && detalhe.hasTraffic ? detalhe.geral.resumo.avgDailyFlow : null;
-  if (media === null || media === undefined) return nome;
-  return `${nome} — média ${formatNumber(Math.round(media))} veíc./dia`;
+  const linked = segmentId ? state.traffic.bySegmentId.get(segmentId) : null;
+  const resumo = segmentPeriodSummary(linked, state.directionCtx);
+  if (!resumo || resumo.average === null) {
+    return activeTrafficFilterCount(state.trafficFilters) > 0 ? `${nome} — sem dado no filtro escolhido` : nome;
+  }
+  // Com filtro de classe o número é daquela classe, e o balão diz qual.
+  const classe = state.trafficFilters.vehicleClass
+    ? ` (${vehicleClassLabel(state.trafficFilters.vehicleClass).toLowerCase()})` : '';
+  return `${nome} — média ${formatNumber(Math.round(resumo.average))} veíc./dia${classe}`;
+}
+
+/**
+ * Estilo de exibição do eixo sob o filtro corrente (issue #142). Única fonte para o mapa E
+ * para a amostra da legenda: legenda com cor diferente da do mapa afirma uma
+ * correspondência que não existe (issue #52).
+ */
+function roadDisplayFor(polygon) {
+  const style = polygonStyle(polygon);
+  const segmentId = roadSegmentIdOf(polygon);
+  const linked = segmentId ? state.traffic.bySegmentId.get(segmentId) : null;
+  // Trecho que o tráfego nem conhece (nenhuma linha em ROAD_SEGMENTS): estilo da planilha,
+  // como antes. Cinza é para "conhecido, mas sem dado no recorte".
+  if (!linked) return { color: style.color, weight: style.weight, dashArray: style.dashArray, hasData: null };
+  return roadFlowDisplay({
+    total: segmentFlowTotal(linked),
+    maxTotal: state.trafficMaxTotal,
+    baseColor: style.color,
+    filters: state.trafficFilters,
+  });
 }
 
 /** Destaca o trecho no mapa e abre o painel dele. */
@@ -506,7 +562,7 @@ function selectRoadSegment(polygon) {
  * ele NÃO é despejado embaixo: as duas listas mostrariam os mesmos fatos com valores
  * que podem já ter divergido, e quem lê não tem como saber qual está certo.
  */
-function openPolygonDetail(polygon) {
+function openPolygonDetail(polygon, { focus = true } = {}) {
   const frag = document.createDocumentFragment();
   const raProfile = raProfileForPolygon(polygon, state.raProfiles);
 
@@ -607,7 +663,11 @@ function openPolygonDetail(polygon) {
   dom.detailTitle.textContent = polygon.name || polygon.id;
   dom.detailBody.replaceChildren(frag);
   dom.detail.hidden = false;
-  dom.closeDetail.focus();
+  // Qual contorno está no painel — é o que `applyTrafficFilters` reabre quando o filtro de
+  // fluxo muda, para o painel nunca mostrar número de outro recorte (issue #142).
+  state.detailPolygonId = polygon.id;
+  // Reaberto por troca de filtro, o foco fica no seletor que a pessoa acabou de mudar.
+  if (focus) dom.closeDetail.focus();
 }
 
 /**
@@ -639,6 +699,28 @@ function appendRoadTrafficBlock(frag, polygon) {
   titulo.textContent = 'Fluxo diário (DER/DF)';
   box.append(titulo);
 
+  // O recorte vale para todos os números abaixo — e é dito antes deles (issue #142).
+  const recorteTexto = trafficFilterCaption();
+  if (recorteTexto) {
+    const recorte = document.createElement('p');
+    recorte.className = 'detail-traffic-window';
+    recorte.textContent = `Filtro: ${recorteTexto}`;
+    box.append(recorte);
+  }
+
+  // TMD oficial ANTES de qualquer medição, e com o nome do que é: referência publicada pelo
+  // DER para a rodovia, não uma média do período. Ele não muda com filtro nenhum.
+  const tmd = officialTmd(polygon, linked);
+  if (tmd !== null) {
+    const ref = document.createElement('dl');
+    ref.className = 'detail-list detail-traffic-list';
+    addRow(ref, 'TMD oficial DER/DF', `${veiculos(tmd)}/dia`, {
+      title: 'Tráfego médio diário publicado pelo DER/DF para a rodovia (properties_json.tmd_der). '
+        + 'É referência oficial, não a média calculada a partir do período selecionado.',
+    });
+    box.append(ref);
+  }
+
   // Sem trecho correspondente, ou com trecho sem nenhum dia medido, o bloco DIZ isso.
   // Sumir seria indistinguível de um trecho cujo fluxo ninguém carregou, e a diferença
   // entre "não medido" e "não carregado" é o que permite alguém ir conferir na planilha.
@@ -646,10 +728,15 @@ function appendRoadTrafficBlock(frag, polygon) {
     const vazio = document.createElement('p');
     vazio.className = 'detail-traffic-empty';
     const aba = CONFIG.trafficDailySheet || 'TRAFFIC_DAILY_TEST';
-    vazio.textContent = segmentId
-      ? `Sem dias medidos em ${aba} para ${segmentId}.`
-      : 'Trecho sem road_segment_id declarado — o fluxo não pode ser vinculado.';
+    const filtrado = activeTrafficFilterCount(state.trafficFilters) > 0;
+    vazio.textContent = !segmentId
+      ? 'Trecho sem road_segment_id declarado — o fluxo não pode ser vinculado.'
+      : filtrado
+        ? `Sem dado no filtro escolhido para ${segmentId}.`
+        : `Sem dias medidos em ${aba} para ${segmentId}.`;
     box.append(vazio);
+    const corredorVazio = corridorBlockNode(linked);
+    if (corredorVazio) box.append(corredorVazio);
     frag.append(box);
     return;
   }
@@ -658,16 +745,30 @@ function appendRoadTrafficBlock(frag, polygon) {
   janela.className = 'detail-traffic-window';
   const inicio = detalhe.geral.resumo.windowStart;
   const fim = detalhe.geral.resumo.windowEnd;
+  // DIAS DO CALENDÁRIO, não registros: com os dois sentidos, um dia são dois registros, e
+  // `geral.days` diria "2 dia medido em 31/07" com o filtro de um dia só (issue #142).
+  const resumo = segmentPeriodSummary(linked, state.directionCtx);
+  const dias = resumo ? resumo.days : detalhe.geral.days;
   const periodo = inicio === fim
-    ? `${formatNumber(detalhe.geral.days)} dia medido em ${formatDate(inicio)}`
-    : `${formatNumber(detalhe.geral.days)} dias medidos de ${formatDate(inicio)} a ${formatDate(fim)}`;
+    ? `${formatNumber(dias)} dia medido em ${formatDate(inicio)}`
+    : `${formatNumber(dias)} dias medidos de ${formatDate(inicio)} a ${formatDate(fim)}`;
   janela.textContent = `${periodo} · trecho ${detalhe.segmentId}`;
   box.append(janela);
 
+  if (resumo) box.append(periodSummaryNode(resumo));
+
+  const corredor = corridorBlockNode(linked);
+  if (corredor) box.append(corredor);
+
   // Um recorte por sentido. "Crescente" e "decrescente" são medições diferentes da mesma
   // via (issue #62/#63) e nunca são somadas às cegas — por isso cada uma tem a própria
-  // caixa, com os próprios totais e a própria cobertura.
-  for (const corte of detalhe.porSentido) box.append(trafficCutNode(corte));
+  // caixa, com os próprios totais e a própria cobertura. O rótulo ganha origem → destino
+  // oficiais e, só no corredor, o sentido do projeto (issue #142).
+  const rotulos = { Crescente: 'crescente', Decrescente: 'decrescente' };
+  for (const corte of detalhe.porSentido) {
+    const sentido = rotulos[corte.label];
+    box.append(trafficCutNode(sentido ? { ...corte, label: directionLabel(linked.sourceSegmentCode, sentido) } : corte));
+  }
 
   frag.append(box);
 }
@@ -675,6 +776,205 @@ function appendRoadTrafficBlock(frag, polygon) {
 /** Veículos, arredondados e com separador de milhar. */
 function veiculos(n) {
   return `${formatNumber(Math.round(n))} veíc.`;
+}
+
+/**
+ * `Crescente — ORIGEM → DESTINO · para Sobradinho` (issue #142).
+ *
+ * Origem e destino vêm de ROAD_DIRECTION_MAP (crescente = Km_I → Km_F). O sentido do
+ * projeto só aparece quando o corredor o declara para este código — em nenhuma outra via.
+ */
+function directionLabel(code, direction) {
+  const nome = direction === 'crescente' ? 'Crescente' : 'Decrescente';
+  const oficial = state.directionCtx.officialOf(code, direction);
+  const trajeto = oficial?.originOfficial && oficial?.destinationOfficial
+    ? ` — ${oficial.originOfficial} → ${oficial.destinationOfficial}` : '';
+  const { projectDirection } = state.directionCtx.projectOf(code, direction);
+  const projeto = projectDirection ? ` · ${PROJECT_DIRECTIONS[projectDirection].toLowerCase()}` : '';
+  return `${nome}${trajeto}${projeto}`;
+}
+
+/** Texto curto do filtro de fluxo ativo, ou string vazia sem filtro. */
+function trafficFilterCaption() {
+  const f = state.trafficFilters;
+  const partes = [];
+  if (f.month) partes.push(monthLabel(f.month));
+  if (f.day) partes.push(formatDate(f.day));
+  if (f.dateFrom || f.dateTo) {
+    partes.push(`${f.dateFrom ? formatDate(f.dateFrom) : 'início'} a ${f.dateTo ? formatDate(f.dateTo) : 'fim'}`);
+  }
+  if (f.road) partes.push(f.road);
+  if (f.segment) partes.push(`trecho ${f.segment}`);
+  if (f.corridor) partes.push(`corredor ${corridorLabel(f.corridor)}`);
+  if (f.officialDirection) partes.push(`sentido ${f.officialDirection}`);
+  if (f.projectDirection) partes.push(PROJECT_DIRECTIONS[f.projectDirection].toLowerCase());
+  if (f.vehicleClass) partes.push(vehicleClassLabel(f.vehicleClass).toLowerCase());
+  if (f.quality) partes.push(`qualidade ${f.quality}`);
+  return partes.join(' · ');
+}
+
+/**
+ * Resumo do período filtrado de UM trecho (issue #142): as métricas da instrução, cada uma
+ * com o nome do que é. Linha sem número não aparece com zero — ela some ou diz por quê.
+ */
+function periodSummaryNode(resumo) {
+  const bloco = document.createElement('div');
+  bloco.className = 'detail-traffic-cut';
+  const nome = document.createElement('h4');
+  nome.className = 'detail-traffic-cut-title';
+  const classe = state.trafficFilters.vehicleClass;
+  nome.textContent = classe ? `Resumo do período — ${vehicleClassLabel(classe)}` : 'Resumo do período';
+  bloco.append(nome);
+
+  const lista = document.createElement('dl');
+  lista.className = 'detail-list detail-traffic-list';
+
+  if (resumo.total !== null) {
+    addRow(lista, 'Fluxo total do período', veiculos(resumo.total), {
+      title: 'Soma dos dias medidos no recorte, nos sentidos que passam no filtro. São passagens '
+        + 'pelo ponto de medição, não veículos únicos.',
+    });
+  }
+  if (resumo.average !== null) {
+    addRow(lista, 'Média diária do período', `${veiculos(resumo.average)}/dia`, {
+      title: resumo.daysSingleDirection > 0
+        ? `Média sobre ${resumo.daysWithFlow} dia(s); em ${resumo.daysSingleDirection} deles só um sentido `
+          + 'estava no recorte, o que puxa a média para baixo.'
+        : `Média sobre ${resumo.daysWithFlow} dia(s).`,
+    });
+  }
+  // Sentido do projeto só no corredor; fora dele, o sentido oficial com origem → destino.
+  if (resumo.paraPlano || resumo.paraSobradinho) {
+    for (const [lado, rotulo] of [['paraPlano', 'Fluxo para o Plano Piloto'], ['paraSobradinho', 'Fluxo para Sobradinho']]) {
+      const s = resumo[lado];
+      if (!s) continue;
+      addRow(lista, rotulo, s.total === null ? 'fora do filtro' : veiculos(s.total), {
+        title: `Sentido oficial ${s.direction} deste ponto de medição, no corredor ${corridorLabel(resumo.corridor?.corridorId)}.`,
+      });
+    }
+  }
+  if (resumo.bidirectional !== null) {
+    addRow(lista, 'Fluxo bidirecional', veiculos(resumo.bidirectional), {
+      title: `Soma dos dois sentidos deste trecho, só nos ${resumo.bidirectionalDays} dia(s) em que os dois `
+        + 'foram medidos. Nunca soma pontos de medição diferentes.',
+    });
+  }
+  // As seis classes do contrato: um trecho medido só em `medio`/`indefinido`, ou o filtro
+  // "Médio", precisam da própria linha como as outras.
+  const rotuloClasse = {
+    carro: 'Fluxo de carros', moto: 'Fluxo de motos', onibus: 'Fluxo de ônibus',
+    caminhao: 'Fluxo de caminhões', medio: 'Fluxo de veículos médios', indefinido: 'Fluxo não classificado',
+  };
+  for (const c of resumo.classes) {
+    if (c.total === null) continue;
+    addRow(lista, rotuloClasse[c.key], veiculos(c.total), { title: `Soma de ${formatNumber(c.days)} registro(s) diário(s).` });
+  }
+  const cob = resumo.coverage;
+  const cobertura = [];
+  if (cob.completos > 0) cobertura.push(`${formatNumber(cob.completos)} completo(s)`);
+  if (cob.parciais > 0) cobertura.push(`${formatNumber(cob.parciais)} parcial(is)`);
+  if (cob.desconhecidos > 0) cobertura.push(`${formatNumber(cob.desconhecidos)} sem cobertura conhecida`);
+  if (cobertura.length > 0) {
+    addRow(lista, 'Cobertura dos intervalos', cobertura.join(', '), {
+      title: 'Por registro diário (um por sentido), derivada de intervalos_15min_observados / 96.',
+    });
+  }
+  addRow(lista, 'Quantidade de dias', formatNumber(resumo.days));
+  if (resumo.qualityFlags.length > 0) {
+    addRow(lista, 'Qualidade dos dados', resumo.qualityFlags.map((q) => `${q.flag} (${formatNumber(q.days)})`).join(', '));
+  }
+
+  bloco.append(lista);
+  if (cob.parciais > 0) {
+    const aviso = document.createElement('p');
+    aviso.className = 'detail-traffic-partial';
+    aviso.textContent = `${formatNumber(cob.parciais)} registro(s) parcial(is) no recorte: medidos por menos de 24 h, `
+      + 'com total menor por isso — não por menos tráfego.';
+    bloco.append(aviso);
+  }
+  return bloco;
+}
+
+/**
+ * Bloco do corredor Sobradinho–Plano Piloto para um ponto de medição (issue #142), lido de
+ * TRAFFIC_CORRIDOR_DAILY. `null` para trecho fora do corredor.
+ *
+ * Um ponto por vez, nunca a soma dos dois: 003EDF0010 + 150EDF0010 contaria a mesma viagem
+ * duas vezes. No ponto de Sobradinho a leitura de ida e volta é explícita — e a frase diz
+ * que são passagens, não veículos que foram e voltaram.
+ */
+function corridorBlockNode(linked) {
+  const code = linked?.sourceSegmentCode;
+  const ponto = code ? state.directionCtx.corridorByCode.get(code) : null;
+  if (!ponto) return null;
+
+  // O ponto é SEMPRE o deste trecho; um filtro de trecho que aponte para outro esvazia o
+  // bloco, como esvazia o resumo acima — nunca é sobrescrito por este código.
+  const outroTrecho = state.trafficFilters.segment && state.trafficFilters.segment !== code;
+  const linhas = outroTrecho ? [] : filterCorridorDaily(
+    state.trafficAll.corridorDaily,
+    { ...state.trafficFilters, segment: code },
+    (r) => state.trafficAll.bySegmentId.get(r.measurementSegmentId)?.roadCode || null,
+  );
+  const resumo = corridorPointSummary(linhas, state.trafficFilters);
+
+  const bloco = document.createElement('div');
+  bloco.className = 'detail-traffic-cut detail-traffic-corridor';
+  const nome = document.createElement('h4');
+  nome.className = 'detail-traffic-cut-title';
+  nome.textContent = `Corredor ${corridorLabel(ponto.corridorId)} — ${measurementPointLabel(ponto.measurementPointRole) || code}`;
+  bloco.append(nome);
+
+  if (!resumo) {
+    const vazio = document.createElement('p');
+    vazio.className = 'detail-traffic-empty';
+    vazio.textContent = `Sem dia do corredor no filtro escolhido (${CONFIG.trafficCorridorDailySheet || 'TRAFFIC_CORRIDOR_DAILY'}).`;
+    bloco.append(vazio);
+    return bloco;
+  }
+
+  const ida = ponto.measurementPointRole === 'ponto_referencia_proximo_a_Sobradinho';
+  const lista = document.createElement('dl');
+  lista.className = 'detail-list detail-traffic-list';
+  // Dois motivos para não haver número, e a frase diz qual: o lado ficou fora do filtro de
+  // sentido (o dado existe), ou a aba não publica esta classe por lado.
+  const valor = (lado) => {
+    if (resumo.excluded?.[lado]) return 'fora do filtro';
+    return resumo[lado] === null ? 'não publicado para esta classe' : veiculos(resumo[lado]);
+  };
+  addRow(lista, ida ? 'Para o Plano Piloto (ida)' : 'Para o Plano Piloto', valor('paraPlano'),
+    { title: `Sentido oficial ${resumo.sentidoParaPlano} neste ponto.` });
+  addRow(lista, ida ? 'Para Sobradinho (retorno)' : 'Para Sobradinho', valor('paraSobradinho'),
+    { title: `Sentido oficial ${resumo.sentidoParaSobradinho} neste ponto.` });
+  addRow(lista, 'Bidirecional', valor('bidirecional'), {
+    title: 'fluxo_bidirecional publicado: os dois sentidos DESTE ponto, no mesmo dia.',
+  });
+  addRow(lista, 'Dias', `${formatNumber(resumo.days)} (${formatDate(resumo.windowStart)} a ${formatDate(resumo.windowEnd)})`);
+  const cob = resumo.coverage;
+  addRow(lista, 'Cobertura', [
+    cob.completos > 0 ? `${formatNumber(cob.completos)} completo(s)` : '',
+    cob.parciais > 0 ? `${formatNumber(cob.parciais)} parcial(is)` : '',
+    cob.desconhecidos > 0 ? `${formatNumber(cob.desconhecidos)} sem cobertura conhecida` : '',
+  ].filter(Boolean).join(', '), { title: 'Derivada de intervalos_minimos_15min / 96 (o menor dos dois sentidos no dia).' });
+  if (resumo.qualityFlags.length > 0) {
+    addRow(lista, 'Qualidade', resumo.qualityFlags.map((q) => `${q.flag} (${formatNumber(q.days)})`).join(', '));
+  }
+  if (resumo.sumMismatchDays > 0) {
+    addRow(lista, 'Soma que não fecha', `${formatNumber(resumo.sumMismatchDays)} dia(s)`, {
+      title: 'Dias em que fluxo_bidirecional ≠ fluxo_para_plano + fluxo_para_sobradinho na planilha.',
+    });
+  }
+  bloco.append(lista);
+
+  const nota = document.createElement('p');
+  nota.className = 'detail-traffic-note';
+  nota.textContent = ida
+    ? 'Ponto de estudo da saída de Sobradinho e do retorno no mesmo dia. Contagens de passagens, '
+      + 'não de veículos únicos que foram e voltaram. Não somar com o ponto próximo ao Plano Piloto.'
+    : 'Ponto de comparação próximo ao destino. Contagens de passagens. Não somar com o ponto '
+      + 'próximo a Sobradinho — seria contar a mesma viagem duas vezes.';
+  bloco.append(nota);
+  return bloco;
 }
 
 /**
@@ -1403,6 +1703,7 @@ function selectRecord(key) {
   dom.detailTitle.textContent = record.title || record.id;
   dom.detailBody.replaceChildren(buildDetailBody(record));
   dom.detail.hidden = false;
+  state.detailPolygonId = null;
 
   if (record.coord && map) map.panTo([record.coord.lat, record.coord.lon]);
   dom.closeDetail.focus();
@@ -1446,6 +1747,7 @@ function closeDetail() {
   const tinhaDestaque = state.selectedRoadId !== null;
   state.selectedRoadId = null;
   dom.detail.hidden = true;
+  state.detailPolygonId = null;
   if (tinhaDestaque) renderPolygons();
 }
 
@@ -1882,7 +2184,10 @@ function roadSegmentLegendRows(eixos) {
       const dot = document.createElement('span');
       dot.className = linha ? 'dot dot-polygon-sample dot-road-sample' : 'dot dot-polygon-sample';
       if (linha) {
-        dot.style.background = estilo.color;
+        // Mesma cor do traço no mapa sob o filtro de fluxo — e atualizada por
+        // `refreshRoadLegendSwatches` quando o filtro muda (issue #142).
+        roadLegendSwatches.set(eixo.id, dot);
+        dot.style.background = roadDisplayFor(eixo).color;
       } else {
         dot.style.borderColor = estilo.color;
         dot.style.background = estilo.fillColor;
@@ -1966,16 +2271,196 @@ function polygonLegendRow({ attribute, value, label, count, sample, className })
  * traço inventado no MAPA, mas isto aqui é uma tabela, não um traço.
  */
 function renderTrafficPanel() {
-  const rows = trafficPanelRows(state.traffic.bySegmentId);
-  dom.trafficSection.hidden = rows.length === 0;
-  if (rows.length === 0) {
-    dom.trafficList.replaceChildren();
-    return;
-  }
+  const todos = trafficPanelRows(state.traffic.bySegmentId);
+  // A seção existe enquanto houver trecho carregado, com ou sem dado no recorte: é nela que
+  // moram os filtros, e escondê-la num filtro vazio tiraria da tela o jeito de desfazê-lo.
+  dom.trafficSection.hidden = todos.length === 0 && (state.traffic.unmatchedTraffic?.size || 0) === 0;
+
+  // Com filtro ativo, a lista mostra só quem tem dado no recorte — os outros continuam no
+  // mapa, em cinza. Sem filtro, todos, como antes (issue #63).
+  const filtrado = activeTrafficFilterCount(state.trafficFilters) > 0;
+  const rows = filtrado ? todos.filter((r) => r.geral.daysUsed + r.geral.daysExcluded > 0) : todos;
 
   const frag = document.createDocumentFragment();
   for (const row of rows) frag.append(trafficItemNode(row));
+  // Fluxo de código sem geometria oficial (os cinco `unmatched_official_layer`): aparece com
+  // os números e com o motivo, nunca como traço no mapa.
+  let semGeometria = 0;
+  for (const entry of state.traffic.unmatchedTraffic?.values() || []) {
+    const node = unmatchedTrafficNode(entry);
+    if (!node) continue;
+    frag.append(node);
+    semGeometria += 1;
+  }
   dom.trafficList.replaceChildren(frag);
+  // A contagem é a da lista logo abaixo, inclusive os sem geometria — senão a nota diria
+  // "0 trecho(s)" em cima de um card com dado.
+  const extra = semGeometria > 0 ? ` (${formatNumber(semGeometria)} sem geometria oficial)` : '';
+  dom.trafficNote.textContent = filtrado
+    ? `${formatNumber(rows.length + semGeometria)} trecho(s) com dado no filtro escolhido${extra}; os demais aparecem em cinza no mapa.`
+    : '';
+}
+
+/** Um código com fluxo e sem geometria oficial, ou `null` quando não tem dado no recorte. */
+function unmatchedTrafficNode(entry) {
+  const t = entry.traffic;
+  if (t.crescente.length + t.decrescente.length + t.semSentido.length === 0) return null;
+  const row = trafficPanelRows(new Map([[entry.roadSegmentId, {
+    roadSegmentId: entry.roadSegmentId,
+    name: entry.sourceSegmentCode,
+    roadCode: entry.roadCode,
+    sourceSegmentCode: entry.sourceSegmentCode,
+    polygon: null,
+    traffic: t,
+  }]]))[0];
+  return trafficItemNode(row, { unmatched: entry.mappingStatus === 'unmatched_official_layer' ? 'official' : 'unknown' });
+}
+
+/**
+ * Amostras de trecho da legenda de contornos, por `polygon_id` — referência direta para a
+ * troca de filtro recolorir sem reconstruir a legenda (que resetaria as caixas de camada).
+ */
+const roadLegendSwatches = new Map();
+
+/** Todos os controles de filtro de fluxo, na ordem da tela. */
+function trafficFilterInputs() {
+  return [
+    dom.tfMonth, dom.tfDay, dom.tfFrom, dom.tfTo, dom.tfRoad, dom.tfSegment, dom.tfCorridor,
+    dom.tfOfficialDirection, dom.tfProjectDirection, dom.tfVehicle, dom.tfQuality,
+  ].filter(Boolean);
+}
+
+/** Tela → `state.trafficFilters`. */
+function readTrafficFilters() {
+  const anterior = state.trafficFilters;
+  const f = {
+    month: dom.tfMonth.value,
+    day: dom.tfDay.value,
+    dateFrom: dom.tfFrom.value,
+    dateTo: dom.tfTo.value,
+    road: dom.tfRoad.value,
+    segment: dom.tfSegment.value,
+    corridor: dom.tfCorridor.value,
+    officialDirection: dom.tfOfficialDirection.value,
+    projectDirection: dom.tfProjectDirection.value,
+    vehicleClass: dom.tfVehicle.value,
+    quality: dom.tfQuality.value,
+  };
+  // Trocar o mês invalida o dia escolhido em outro mês; trocar a rodovia, o trecho de outra.
+  if (f.month !== anterior.month && f.day && !f.day.startsWith(f.month)) f.day = '';
+  // O mesmo vale para o intervalo: "01/07 a 07/07" combinado com agosto é recorte vazio
+  // garantido, e os campos de data ficariam limitados a agosto mostrando julho.
+  if (f.month !== anterior.month && f.month) {
+    if (f.dateFrom && !f.dateFrom.startsWith(f.month)) f.dateFrom = '';
+    if (f.dateTo && !f.dateTo.startsWith(f.month)) f.dateTo = '';
+  }
+  if (f.road !== anterior.road) f.segment = '';
+  state.trafficFilters = f;
+}
+
+/** Preenche um seletor de fluxo mantendo a primeira opção ("Todos") e o valor escolhido. */
+function fillTrafficSelect(select, options, current) {
+  const keep = select.firstElementChild;
+  select.replaceChildren(keep);
+  for (const opt of options) {
+    const o = document.createElement('option');
+    o.value = typeof opt === 'string' ? opt : opt.value;
+    o.textContent = typeof opt === 'string' ? opt : opt.label;
+    select.append(o);
+  }
+  const valores = options.map((o) => (typeof o === 'string' ? o : o.value));
+  select.value = valores.includes(current) ? current : '';
+  return select.value;
+}
+
+/**
+ * Aplica o filtro de fluxo e redesenha o que depende dele (issue #142): opções dos
+ * seletores, eixos no mapa, amostras da legenda, lista de trechos e o painel aberto.
+ */
+function applyTrafficFilters({ rerender = true } = {}) {
+  const f = state.trafficFilters;
+  const opts = trafficFilterOptions(state.trafficAll, state.directionCtx, state.trafficAll.corridorDaily, f);
+  // Valor que deixou de existir entre as opções (ex.: dia de outro mês) é limpo, e o filtro
+  // passa a refletir o que está na tela — nunca um filtro invisível reduzindo o mapa.
+  f.month = fillTrafficSelect(dom.tfMonth, opts.months, f.month);
+  f.day = fillTrafficSelect(dom.tfDay, opts.days.map((d) => ({ value: d, label: formatDate(d) })), f.day);
+  f.road = fillTrafficSelect(dom.tfRoad, opts.roads, f.road);
+  f.segment = fillTrafficSelect(dom.tfSegment, opts.segments, f.segment);
+  f.corridor = fillTrafficSelect(dom.tfCorridor, opts.corridors, f.corridor);
+  f.officialDirection = fillTrafficSelect(dom.tfOfficialDirection, opts.officialDirections, f.officialDirection);
+  f.projectDirection = fillTrafficSelect(dom.tfProjectDirection, opts.projectDirections, f.projectDirection);
+  f.vehicleClass = fillTrafficSelect(dom.tfVehicle, opts.vehicleClasses, f.vehicleClass);
+  f.quality = fillTrafficSelect(dom.tfQuality, opts.quality, f.quality);
+  const datas = opts.days.length > 0 ? opts.days : [];
+  for (const input of [dom.tfFrom, dom.tfTo]) {
+    input.min = datas[0] || '';
+    input.max = datas.at(-1) || '';
+  }
+  dom.tfFrom.value = f.dateFrom;
+  dom.tfTo.value = f.dateTo;
+
+  state.traffic = filterLinkedTraffic(state.trafficAll, f, state.directionCtx);
+  let max = null;
+  for (const linked of state.traffic.bySegmentId.values()) {
+    const total = segmentFlowTotal(linked);
+    if (total !== null && (max === null || total > max)) max = total;
+  }
+  state.trafficMaxTotal = max;
+
+  const ativos = activeTrafficFilterCount(f);
+  dom.trafficFiltersSummary.textContent = ativos > 0 ? `Filtros de fluxo (${ativos})` : 'Filtros de fluxo';
+  if (ativos > 0) dom.trafficFilters.open = true;
+  renderTrafficLegend();
+
+  if (!rerender) return;
+  renderPolygons();
+  refreshRoadLegendSwatches();
+  renderTrafficPanel();
+  // Painel de trecho aberto acompanha o filtro — senão mostraria números de outro recorte.
+  if (state.detailPolygonId && !dom.detail.hidden) {
+    const polygon = state.polygons.find((p) => p.id === state.detailPolygonId);
+    if (polygon && isRoadSegmentPolygon(polygon)) openPolygonDetail(polygon, { focus: false });
+  }
+}
+
+/** Legenda de cores do eixo sob o filtro corrente — as mesmas constantes do mapa. */
+function renderTrafficLegend() {
+  const f = state.trafficFilters;
+  const itens = [];
+  if (f.projectDirection) itens.push([DIRECTION_COLORS[f.projectDirection], PROJECT_DIRECTIONS[f.projectDirection]]);
+  else if (f.officialDirection) itens.push([DIRECTION_COLORS[f.officialDirection], `Sentido ${f.officialDirection}`]);
+  else itens.push([null, 'Cor do trecho (planilha); escolha um sentido para colorir por sentido']);
+  itens.push([DIRECTION_COLORS.sem_dado, activeTrafficFilterCount(f) > 0
+    ? 'Sem dado no filtro escolhido'
+    : 'Sem medição no período carregado']);
+
+  const frag = document.createDocumentFragment();
+  for (const [cor, texto] of itens) {
+    const li = document.createElement('li');
+    if (cor) {
+      const amostra = document.createElement('span');
+      amostra.className = 'dot dot-road-sample';
+      amostra.style.background = cor;
+      li.append(amostra);
+    }
+    const t = document.createElement('span');
+    t.textContent = texto;
+    li.append(t);
+    frag.append(li);
+  }
+  const espessura = document.createElement('li');
+  espessura.textContent = `Espessura proporcional ao fluxo do período (${vehicleClassLabel(f.vehicleClass).toLowerCase()}).`;
+  frag.append(espessura);
+  dom.trafficLegend.replaceChildren(frag);
+}
+
+/** Atualiza a cor das amostras de trecho na legenda de contornos, sem reconstruí-la. */
+function refreshRoadLegendSwatches() {
+  for (const [id, dot] of roadLegendSwatches) {
+    if (!dot.isConnected) { roadLegendSwatches.delete(id); continue; }
+    const polygon = state.polygons.find((p) => p.id === id);
+    if (polygon) dot.style.background = roadDisplayFor(polygon).color;
+  }
 }
 
 /** Um sentido do trecho: rótulo, fluxo médio (com a ressalva de dias parciais) e o mais recente. */
@@ -2012,7 +2497,7 @@ function trafficDirectionRow(label, resumo) {
  * (issue #63); sem geometria, a linha explica que a sincronização do DER ainda não
  * rodou com sucesso para ele — nunca finge um link que não leva a lugar nenhum.
  */
-function trafficItemNode(row) {
+function trafficItemNode(row, { unmatched = false } = {}) {
   const li = document.createElement('li');
   li.className = 'traffic-item';
 
@@ -2036,7 +2521,17 @@ function trafficItemNode(row) {
   }
   li.append(head);
 
-  if (!row.hasGeometry) {
+  if (unmatched) {
+    // Os cinco códigos `unmatched_official_layer` (issue #142): o fluxo existe, a geometria
+    // oficial não. Nenhuma linha é desenhada para eles. A frase só é afirmada quando a
+    // própria ROAD_DIRECTION_MAP diz isso; um órfão qualquer ganha texto neutro.
+    const pendente = document.createElement('p');
+    pendente.className = 'traffic-item-pending';
+    pendente.textContent = unmatched === 'official'
+      ? 'Fluxo disponível; geometria oficial não localizada.'
+      : 'Trecho não cadastrado em ROAD_SEGMENTS — fluxo não vinculado a nenhuma geometria.';
+    li.append(pendente);
+  } else if (!row.hasGeometry) {
     const pendente = document.createElement('p');
     pendente.className = 'traffic-item-pending';
     pendente.textContent = 'Geometria pendente — a sincronização de trechos rodoviários '
@@ -2046,8 +2541,14 @@ function trafficItemNode(row) {
 
   const stats = document.createElement('ul');
   stats.className = 'traffic-stats';
-  if (row.porSentido.crescente) stats.append(trafficDirectionRow('Crescente', row.porSentido.crescente));
-  if (row.porSentido.decrescente) stats.append(trafficDirectionRow('Decrescente', row.porSentido.decrescente));
+  // Rótulo curto: sentido oficial e, só no corredor, o sentido do projeto.
+  const rotulo = (sentido) => {
+    const { projectDirection } = state.directionCtx.projectOf(row.sourceSegmentCode, sentido);
+    const nome = sentido === 'crescente' ? 'Crescente' : 'Decrescente';
+    return projectDirection ? `${nome} · ${PROJECT_DIRECTIONS[projectDirection].toLowerCase()}` : nome;
+  };
+  if (row.porSentido.crescente) stats.append(trafficDirectionRow(rotulo('crescente'), row.porSentido.crescente));
+  if (row.porSentido.decrescente) stats.append(trafficDirectionRow(rotulo('decrescente'), row.porSentido.decrescente));
   if (stats.children.length === 0) {
     const vazio = document.createElement('li');
     vazio.className = 'traffic-direction-empty';
@@ -4909,7 +5410,10 @@ async function load() {
   state.marketSelection = null;
   state.baseWarnings = [...result.warnings, ...result.errors];
   state.polygons = result.polygons || [];
-  state.traffic = result.traffic || { bySegmentId: new Map(), orphaned: [], unmatchedSegmentIds: [] };
+  state.trafficAll = result.traffic || { bySegmentId: new Map(), orphaned: [], unmatchedSegmentIds: [] };
+  state.directionCtx = buildDirectionContext(state.trafficAll.directions, state.trafficAll.corridorDaily);
+  state.trafficFilters = { ...EMPTY_TRAFFIC_FILTERS };
+  applyTrafficFilters({ rerender: false });
   // Confere a camada rodoviária contra o que o contrato promete (issue #131). Cada desvio
   // vira uma frase no MESMO canal das outras abas opcionais — nunca uma exceção (R2.5),
   // e nunca silêncio: "carregou zero trecho e ninguém percebeu" é o defeito que esta
@@ -4924,7 +5428,7 @@ async function load() {
     // Ids com dia medido, não as chaves do mapa: um trecho sem série continua no
     // `bySegmentId`, e passar as chaves aprovaria em silêncio o caso que a conferência
     // existe para apontar.
-    { trafficSegmentIds: segmentIdsWithTraffic(state.traffic.bySegmentId) },
+    { trafficSegmentIds: segmentIdsWithTraffic(state.trafficAll.bySegmentId) },
   ).warnings;
   state.baseWarnings = [...state.baseWarnings, ...avisosRodoviarios];
   renderPolygonLegend();
@@ -4986,6 +5490,16 @@ function bindEvents() {
   dom.layers.addEventListener('change', render);
   renderLayerSamples();
   dom.clearFilters.addEventListener('click', clearFilters);
+  for (const node of trafficFilterInputs()) {
+    node.addEventListener('change', () => {
+      readTrafficFilters();
+      applyTrafficFilters();
+    });
+  }
+  dom.tfClear.addEventListener('click', () => {
+    state.trafficFilters = { ...EMPTY_TRAFFIC_FILTERS };
+    applyTrafficFilters();
+  });
   dom.closeDetail.addEventListener('click', closeDetail);
   dom.railToggle.addEventListener('click', toggleRail);
   dom.panelToggle.addEventListener('click', togglePanel);
