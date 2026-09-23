@@ -236,6 +236,9 @@ export function corridorPointSummary(records, filters = {}) {
     paraPlano: paraPlano.total,
     paraSobradinho: paraSobradinho.total,
     bidirecional: bidirecional.total,
+    // Lado fora do recorte por filtro de SENTIDO — diferente de "não publicado para esta
+    // classe". A tela precisa dizer qual dos dois é (revisão do Kimi, PR #143).
+    excluded: { paraPlano: !mostrarPlano, paraSobradinho: !mostrarSobradinho, bidirecional: soUmLado },
     bidirecionalDays: bidirecional.days,
     classes: VEHICLE_CLASSES
       .filter(({ key }) => ['carro', 'moto', 'onibus', 'caminhao'].includes(key))

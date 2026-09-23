@@ -44,7 +44,7 @@ function officialDirection(value) {
 export function canonicalProjectDirection(value) {
   const token = toText(value)
     .toLowerCase()
-    .normalize('NFD').replace(/[̀-ͯ]/g, '')
+    .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
     .replace(/\s+/g, '_');
   if (['para_plano', 'plano', 'plano_piloto', 'para_o_plano_piloto', 'para_o_plano'].includes(token)) {
     return 'para_plano';

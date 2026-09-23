@@ -290,3 +290,34 @@ test('TMD oficial vem de properties_json.tmd_der e não depende do período', ()
   assert.equal(officialTmd({ properties: {} }, { raw: { properties_json: '{"tmd_der":"1234"}' } }), 1234);
   assert.equal(officialTmd({ properties: {} }, { raw: { properties_json: 'quebrado' } }), null);
 });
+
+// --- Revisão do Kimi na PR #143 ---------------------------------------------------------
+
+test('canonicalProjectDirection remove diacríticos (regex com escape, não caractere literal)', () => {
+  assert.equal(canonicalProjectDirection('para Sobradínho'), 'para_sobradinho');
+  assert.equal(canonicalProjectDirection('Pára o Plano Pilóto'), 'para_plano');
+});
+
+test('corredor: lado fora do filtro de sentido é "excluído", não "não publicado"', () => {
+  const { corridor } = carregar();
+  const linhas = filterCorridorDaily(corridor.records, filtro({ day: '2026-07-31', segment: '150EDF0010' }));
+  const cresc = corridorPointSummary(linhas, { officialDirection: 'crescente' });
+  assert.equal(cresc.paraSobradinho, 57291);
+  assert.equal(cresc.paraPlano, null);
+  assert.deepEqual(cresc.excluded, { paraPlano: true, paraSobradinho: false, bidirecional: true });
+  const moto = corridorPointSummary(linhas, { vehicleClass: 'moto' });
+  assert.deepEqual(moto.excluded, { paraPlano: false, paraSobradinho: false, bidirecional: false },
+    'classe sem lado publicado não é exclusão por filtro');
+});
+
+test('TMD oficial pelo caminho real: POLYGONS normalizado expõe properties.tmd_der', async () => {
+  const { normalizePolygons } = await import('../src/normalize.js');
+  const [poligono] = normalizePolygons([{
+    polygon_id: 'ROADSEG_150EDF0010', status: 'active', entity_type: 'road_segment',
+    geometry_geojson: '{"type":"LineString","coordinates":[[-47.8,-15.7],[-47.7,-15.6]]}',
+    properties_json: '{"tmd_der":"18980","road_segment_id":"ROADSEG_150EDF0010"}',
+  }]);
+  assert.equal(officialTmd(poligono), 18980);
+  const [trecho] = normalizeRoadSegments(fixture.road_segments.filter((r) => r.source_segment_code === '150EDF0010')).records;
+  assert.equal(officialTmd({}, trecho), 18980, 'fallback por ROAD_SEGMENTS.properties_json');
+});

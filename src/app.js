@@ -859,9 +859,13 @@ function periodSummaryNode(resumo) {
         + 'foram medidos. Nunca soma pontos de medição diferentes.',
     });
   }
-  const principais = resumo.classes.filter((c) => ['carro', 'moto', 'onibus', 'caminhao'].includes(c.key));
-  const rotuloClasse = { carro: 'Fluxo de carros', moto: 'Fluxo de motos', onibus: 'Fluxo de ônibus', caminhao: 'Fluxo de caminhões' };
-  for (const c of principais) {
+  // As seis classes do contrato: um trecho medido só em `medio`/`indefinido`, ou o filtro
+  // "Médio", precisam da própria linha como as outras.
+  const rotuloClasse = {
+    carro: 'Fluxo de carros', moto: 'Fluxo de motos', onibus: 'Fluxo de ônibus',
+    caminhao: 'Fluxo de caminhões', medio: 'Fluxo de veículos médios', indefinido: 'Fluxo não classificado',
+  };
+  for (const c of resumo.classes) {
     if (c.total === null) continue;
     addRow(lista, rotuloClasse[c.key], veiculos(c.total), { title: `Soma de ${formatNumber(c.days)} registro(s) diário(s).` });
   }
@@ -932,14 +936,17 @@ function corridorBlockNode(linked) {
   const ida = ponto.measurementPointRole === 'ponto_referencia_proximo_a_Sobradinho';
   const lista = document.createElement('dl');
   lista.className = 'detail-list detail-traffic-list';
-  const semValor = 'não publicado para esta classe/sentido';
-  addRow(lista, ida ? 'Para o Plano Piloto (ida)' : 'Para o Plano Piloto',
-    resumo.paraPlano === null ? semValor : veiculos(resumo.paraPlano),
+  // Dois motivos para não haver número, e a frase diz qual: o lado ficou fora do filtro de
+  // sentido (o dado existe), ou a aba não publica esta classe por lado.
+  const valor = (lado) => {
+    if (resumo.excluded?.[lado]) return 'fora do filtro';
+    return resumo[lado] === null ? 'não publicado para esta classe' : veiculos(resumo[lado]);
+  };
+  addRow(lista, ida ? 'Para o Plano Piloto (ida)' : 'Para o Plano Piloto', valor('paraPlano'),
     { title: `Sentido oficial ${resumo.sentidoParaPlano} neste ponto.` });
-  addRow(lista, ida ? 'Para Sobradinho (retorno)' : 'Para Sobradinho',
-    resumo.paraSobradinho === null ? semValor : veiculos(resumo.paraSobradinho),
+  addRow(lista, ida ? 'Para Sobradinho (retorno)' : 'Para Sobradinho', valor('paraSobradinho'),
     { title: `Sentido oficial ${resumo.sentidoParaSobradinho} neste ponto.` });
-  addRow(lista, 'Bidirecional', resumo.bidirecional === null ? semValor : veiculos(resumo.bidirecional), {
+  addRow(lista, 'Bidirecional', valor('bidirecional'), {
     title: 'fluxo_bidirecional publicado: os dois sentidos DESTE ponto, no mesmo dia.',
   });
   addRow(lista, 'Dias', `${formatNumber(resumo.days)} (${formatDate(resumo.windowStart)} a ${formatDate(resumo.windowEnd)})`);
@@ -2278,13 +2285,19 @@ function renderTrafficPanel() {
   for (const row of rows) frag.append(trafficItemNode(row));
   // Fluxo de código sem geometria oficial (os cinco `unmatched_official_layer`): aparece com
   // os números e com o motivo, nunca como traço no mapa.
+  let semGeometria = 0;
   for (const entry of state.traffic.unmatchedTraffic?.values() || []) {
     const node = unmatchedTrafficNode(entry);
-    if (node) frag.append(node);
+    if (!node) continue;
+    frag.append(node);
+    semGeometria += 1;
   }
   dom.trafficList.replaceChildren(frag);
+  // A contagem é a da lista logo abaixo, inclusive os sem geometria — senão a nota diria
+  // "0 trecho(s)" em cima de um card com dado.
+  const extra = semGeometria > 0 ? ` (${formatNumber(semGeometria)} sem geometria oficial)` : '';
   dom.trafficNote.textContent = filtrado
-    ? `${formatNumber(rows.length)} trecho(s) com dado no filtro escolhido; os demais aparecem em cinza no mapa.`
+    ? `${formatNumber(rows.length + semGeometria)} trecho(s) com dado no filtro escolhido${extra}; os demais aparecem em cinza no mapa.`
     : '';
 }
 
@@ -2300,8 +2313,7 @@ function unmatchedTrafficNode(entry) {
     polygon: null,
     traffic: t,
   }]]))[0];
-  const li = trafficItemNode(row, { unmatched: true });
-  return li;
+  return trafficItemNode(row, { unmatched: entry.mappingStatus === 'unmatched_official_layer' ? 'official' : 'unknown' });
 }
 
 /**
@@ -2336,6 +2348,12 @@ function readTrafficFilters() {
   };
   // Trocar o mês invalida o dia escolhido em outro mês; trocar a rodovia, o trecho de outra.
   if (f.month !== anterior.month && f.day && !f.day.startsWith(f.month)) f.day = '';
+  // O mesmo vale para o intervalo: "01/07 a 07/07" combinado com agosto é recorte vazio
+  // garantido, e os campos de data ficariam limitados a agosto mostrando julho.
+  if (f.month !== anterior.month && f.month) {
+    if (f.dateFrom && !f.dateFrom.startsWith(f.month)) f.dateFrom = '';
+    if (f.dateTo && !f.dateTo.startsWith(f.month)) f.dateTo = '';
+  }
   if (f.road !== anterior.road) f.segment = '';
   state.trafficFilters = f;
 }
@@ -2412,7 +2430,9 @@ function renderTrafficLegend() {
   if (f.projectDirection) itens.push([DIRECTION_COLORS[f.projectDirection], PROJECT_DIRECTIONS[f.projectDirection]]);
   else if (f.officialDirection) itens.push([DIRECTION_COLORS[f.officialDirection], `Sentido ${f.officialDirection}`]);
   else itens.push([null, 'Cor do trecho (planilha); escolha um sentido para colorir por sentido']);
-  itens.push([DIRECTION_COLORS.sem_dado, 'Sem dado no filtro escolhido']);
+  itens.push([DIRECTION_COLORS.sem_dado, activeTrafficFilterCount(f) > 0
+    ? 'Sem dado no filtro escolhido'
+    : 'Sem medição no período carregado']);
 
   const frag = document.createDocumentFragment();
   for (const [cor, texto] of itens) {
@@ -2503,10 +2523,13 @@ function trafficItemNode(row, { unmatched = false } = {}) {
 
   if (unmatched) {
     // Os cinco códigos `unmatched_official_layer` (issue #142): o fluxo existe, a geometria
-    // oficial não. Nenhuma linha é desenhada para eles.
+    // oficial não. Nenhuma linha é desenhada para eles. A frase só é afirmada quando a
+    // própria ROAD_DIRECTION_MAP diz isso; um órfão qualquer ganha texto neutro.
     const pendente = document.createElement('p');
     pendente.className = 'traffic-item-pending';
-    pendente.textContent = 'Fluxo disponível; geometria oficial não localizada.';
+    pendente.textContent = unmatched === 'official'
+      ? 'Fluxo disponível; geometria oficial não localizada.'
+      : 'Trecho não cadastrado em ROAD_SEGMENTS — fluxo não vinculado a nenhuma geometria.';
     li.append(pendente);
   } else if (!row.hasGeometry) {
     const pendente = document.createElement('p');
