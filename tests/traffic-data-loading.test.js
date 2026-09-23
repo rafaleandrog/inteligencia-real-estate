@@ -226,3 +226,50 @@ test('loadDataset (gviz): sem linha descartada, nenhum aviso é inventado', asyn
     globalThis.document = originalDocument;
   }
 });
+
+test('loadDataset (gviz): ROAD_DIRECTION_MAP e TRAFFIC_CORRIDOR_DAILY chegam em traffic; ausência é aviso (issue #142)', async () => {
+  const config = {
+    ...BASE_CONFIG,
+    roadDirectionMapSheet: 'ROAD_DIRECTION_MAP',
+    trafficCorridorDailySheet: 'TRAFFIC_CORRIDOR_DAILY',
+  };
+  const base = {
+    LISTINGS: table(['listing_id'], [{ listing_id: 'L1' }]),
+    DEVELOPMENTS: table(['development_id'], [{ development_id: 'D1' }]),
+    ANCHORS: table(['place_id'], [{ place_id: 'A1' }]),
+    ROAD_DIRECTION_MAP: table(
+      ['source_segment_code', 'source_direction', 'origin_official', 'destination_official', 'mapping_status'],
+      [
+        { source_segment_code: '150EDF0010', source_direction: 'crescente', origin_official: 'A', destination_official: 'B', mapping_status: 'mapped_official' },
+        { source_segment_code: '150EDF0010', source_direction: 'crescente', origin_official: 'X', destination_official: 'Y', mapping_status: 'mapped_official' },
+      ]
+    ),
+    TRAFFIC_CORRIDOR_DAILY: table(
+      ['corridor_daily_id', 'corridor_id', 'dia', 'source_segment_code', 'sentido_para_plano', 'sentido_para_sobradinho', 'fluxo_para_plano'],
+      [{ corridor_daily_id: 'C1', corridor_id: 'SOBRADINHO_PLANO', dia: 'Date(2026,6,31)', source_segment_code: '150EDF0010', sentido_para_plano: 'decrescente', sentido_para_sobradinho: 'crescente', fluxo_para_plano: 31772 }]
+    ),
+  };
+
+  const originalDocument = globalThis.document;
+  try {
+    globalThis.document = documentRefFor(base);
+    const ok = await loadDataset(config);
+    assert.equal(ok.ok, true);
+    assert.equal(ok.traffic.directions.length, 1, 'chave repetida fica com a primeira');
+    assert.equal(ok.traffic.directions[0].originOfficial, 'A');
+    assert.ok(ok.warnings.some((w) => /ROAD_DIRECTION_MAP/.test(w) && /repetido/.test(w)), 'a duplicata vira aviso');
+    assert.equal(ok.traffic.corridorDaily.length, 1);
+    assert.equal(ok.traffic.corridorDaily[0].date, '2026-07-31');
+    assert.equal(ok.traffic.corridorDaily[0].paraPlano, 31772);
+
+    globalThis.document = documentRefFor(base, { failFor: ['ROAD_DIRECTION_MAP', 'TRAFFIC_CORRIDOR_DAILY'] });
+    const sem = await loadDataset(config);
+    assert.equal(sem.ok, true, 'aba nova ausente não derruba o dataset');
+    assert.equal(sem.errors.length, 0);
+    assert.deepEqual(sem.traffic.directions, []);
+    assert.deepEqual(sem.traffic.corridorDaily, []);
+    assert.ok(sem.warnings.some((w) => /TRAFFIC_CORRIDOR_DAILY/.test(w)));
+  } finally {
+    globalThis.document = originalDocument;
+  }
+});

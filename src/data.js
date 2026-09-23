@@ -15,6 +15,7 @@ import {
   normalizeRoadSegments, normalizeRoadSegmentAliases, normalizeTrafficDailyRecords,
 } from './traffic/normalize.js';
 import { linkTrafficDataset } from './traffic/link.js';
+import { normalizeRoadDirections, normalizeCorridorDailyRecords } from './traffic/direction.js';
 import { normalizeIvvMonthly } from './ivv/normalize-ivv.js';
 import { normalizeIvvRegion } from './ivv/region.js';
 import { normalizeFipezapMonthly, normalizeFipezapLocality, normalizeFipezapLocalityMap } from './fipezap/normalize-fipezap.js';
@@ -24,7 +25,27 @@ import { normalizePdadData } from './pdad/normalize-pdad.js';
 export const REQUIRED_ENTITIES = ['listings', 'developments', 'anchors'];
 
 /** Formato de `traffic` quando as três abas de tráfego não carregaram — nunca `undefined`. */
-const EMPTY_TRAFFIC = { bySegmentId: new Map(), orphaned: [], unmatchedSegmentIds: [] };
+const EMPTY_TRAFFIC = {
+  bySegmentId: new Map(), orphaned: [], unmatchedSegmentIds: [], unmatchedTraffic: new Map(),
+  directions: [], corridorDaily: [],
+};
+
+/**
+ * Liga as abas de tráfego à geometria e anexa as duas leituras de sentido (issue #142).
+ *
+ * `directions` (ROAD_DIRECTION_MAP) e `corridorDaily` (TRAFFIC_CORRIDOR_DAILY) viajam junto
+ * de `bySegmentId` porque a tela só as usa sobre ele: o filtro de sentido do projeto e o
+ * bloco do corredor no painel do trecho. Um objeto só evita que alguém filtre um e esqueça
+ * o outro.
+ */
+function linkTraffic(pieces, polygons) {
+  const directions = pieces.directions || [];
+  return {
+    ...linkTrafficDataset(pieces.segments, polygons, pieces.trafficRecords, pieces.aliases, directions),
+    directions,
+    corridorDaily: pieces.corridorDaily || [],
+  };
+}
 
 /** Formato de `ivvMonthly` quando a aba não carregou — lista vazia, nunca `undefined`. */
 const EMPTY_IVV_MONTHLY = [];
@@ -207,8 +228,8 @@ async function loadFromGviz(config) {
   const { meta, warnings } = await metaPromise;
   const { raProfiles, warnings: raProfileWarnings } = await raProfilesPromise;
   const { polygons, warnings: polygonWarnings } = await polygonsPromise;
-  const { segments, aliases, trafficRecords, warnings: trafficWarnings } = await trafficPromise;
-  const traffic = linkTrafficDataset(segments, polygons, trafficRecords, aliases);
+  const { warnings: trafficWarnings, ...trafficPieces } = await trafficPromise;
+  const traffic = linkTraffic(trafficPieces, polygons);
   const { ivvMonthly, warnings: ivvWarnings } = await ivvPromise;
   const { ivvRegion, warnings: regiaoWarnings } = await regiaoPromise;
   const { fipezapMonthly, warnings: fipezapMonthlyWarnings } = await fipezapMonthlyPromise;
@@ -463,6 +484,15 @@ function trafficDropWarnings(config, dropped) {
     'sem road_segment_id ou sem source_segment_code');
   diga(config.trafficDailySheet, dropped.traffic,
     'a coluna dia não traz uma data que existe no calendário');
+  // Issue #142. Mesma regra: cada normalizador tem UMA causa de descarte, e a duplicata é
+  // contada à parte porque é outra afirmação sobre o dado.
+  diga(config.roadDirectionMapSheet, dropped.directions, 'sem source_segment_code');
+  diga(config.roadDirectionMapSheet, dropped.directionDuplicates,
+    'source_segment_code + source_direction repetido (mantida a primeira ocorrência)');
+  diga(config.trafficCorridorDailySheet, dropped.corridor,
+    'sem source_segment_code ou com dia que não existe no calendário');
+  diga(config.trafficCorridorDailySheet, dropped.corridorDuplicates,
+    'corridor_daily_id ou ponto + dia repetido (mantida a primeira ocorrência)');
   return avisos;
 }
 
@@ -488,6 +518,8 @@ async function fetchTrafficSheetsFromGviz(config) {
     ['segments', config.roadSegmentsSheet],
     ['aliases', config.roadSegmentAliasesSheet],
     ['traffic', config.trafficDailySheet],
+    ['directions', config.roadDirectionMapSheet],
+    ['corridor', config.trafficCorridorDailySheet],
   ];
 
   const settled = await Promise.allSettled(
@@ -514,14 +546,20 @@ async function fetchTrafficSheetsFromGviz(config) {
   const segmentos = normalizeRoadSegments(rowsByJob.segments);
   const apelidos = normalizeRoadSegmentAliases(rowsByJob.aliases);
   const diario = normalizeTrafficDailyRecords(rowsByJob.traffic);
+  const sentidos = normalizeRoadDirections(rowsByJob.directions);
+  const corredor = normalizeCorridorDailyRecords(rowsByJob.corridor);
   warnings.push(...trafficDropWarnings(config, {
     segments: segmentos.dropped, aliases: apelidos.dropped, traffic: diario.dropped,
+    directions: sentidos.dropped, directionDuplicates: sentidos.duplicates,
+    corridor: corredor.dropped, corridorDuplicates: corredor.duplicates,
   }));
 
   return {
     segments: segmentos.records,
     aliases: apelidos.records,
     trafficRecords: diario.records,
+    directions: sentidos.records,
+    corridorDaily: corredor.records,
     warnings,
   };
 }
@@ -615,6 +653,8 @@ async function loadFromDemo(config) {
   const demoSegmentos = normalizeRoadSegments(payload.road_segments || []);
   const demoApelidos = normalizeRoadSegmentAliases(payload.road_segment_aliases || []);
   const demoDiario = normalizeTrafficDailyRecords(payload.traffic_daily || []);
+  const demoSentidos = normalizeRoadDirections(payload.road_direction_map || []);
+  const demoCorredor = normalizeCorridorDailyRecords(payload.traffic_corridor_daily || []);
 
   return {
     raw,
@@ -625,8 +665,14 @@ async function loadFromDemo(config) {
           roadSegmentsSheet: 'road_segments',
           roadSegmentAliasesSheet: 'road_segment_aliases',
           trafficDailySheet: 'traffic_daily',
+          roadDirectionMapSheet: 'road_direction_map',
+          trafficCorridorDailySheet: 'traffic_corridor_daily',
         },
-        { segments: demoSegmentos.dropped, aliases: demoApelidos.dropped, traffic: demoDiario.dropped }
+        {
+          segments: demoSegmentos.dropped, aliases: demoApelidos.dropped, traffic: demoDiario.dropped,
+          directions: demoSentidos.dropped, directionDuplicates: demoSentidos.duplicates,
+          corridor: demoCorredor.dropped, corridorDuplicates: demoCorredor.duplicates,
+        }
       ),
       ...metaConflictWarnings(payload.meta),
       ...ivvWarningTexts(demoIvv.warnings),
@@ -643,11 +689,15 @@ async function loadFromDemo(config) {
     polygons: normalizePolygons(payload.polygons || []),
     // Mesmo tratamento: o demo.json de hoje não traz nenhuma das três chaves de
     // tráfego, e o caminho que precisa funcionar é o de painel vazio, não erro.
-    traffic: linkTrafficDataset(
-      demoSegmentos.records,
-      normalizePolygons(payload.polygons || []),
-      demoDiario.records,
-      demoApelidos.records
+    traffic: linkTraffic(
+      {
+        segments: demoSegmentos.records,
+        trafficRecords: demoDiario.records,
+        aliases: demoApelidos.records,
+        directions: demoSentidos.records,
+        corridorDaily: demoCorredor.records,
+      },
+      normalizePolygons(payload.polygons || [])
     ),
     // A semente traz a linha de IVV_MONTHLY com os nomes do schema v1.0.0 e o IVV em
     // ponto percentual, então o caminho de demo exercita de verdade a tradução de alias
@@ -734,11 +784,9 @@ async function loadFromAppsScript(config) {
   warnings.push(...raProfileWarnings);
   const { polygons, warnings: polygonWarnings } = await polygonsPromise;
   warnings.push(...polygonWarnings);
-  const {
-    segments, aliases, trafficRecords, warnings: trafficWarnings,
-  } = await trafficPromise;
+  const { warnings: trafficWarnings, ...trafficPieces } = await trafficPromise;
   warnings.push(...trafficWarnings);
-  const traffic = linkTrafficDataset(segments, polygons, trafficRecords, aliases);
+  const traffic = linkTraffic(trafficPieces, polygons);
   const { ivvMonthly, warnings: ivvWarnings } = await ivvPromise;
   warnings.push(...ivvWarnings);
   const { ivvRegion, warnings: regiaoWarnings } = await regiaoPromise;
@@ -767,6 +815,8 @@ async function fetchTrafficSheetsFromAppsScript(config) {
     ['segments', config.roadSegmentsSheet],
     ['aliases', config.roadSegmentAliasesSheet],
     ['traffic', config.trafficDailySheet],
+    ['directions', config.roadDirectionMapSheet],
+    ['corridor', config.trafficCorridorDailySheet],
   ];
 
   const warnings = [];
@@ -790,14 +840,20 @@ async function fetchTrafficSheetsFromAppsScript(config) {
   const segmentos = normalizeRoadSegments(rowsByJob.segments);
   const apelidos = normalizeRoadSegmentAliases(rowsByJob.aliases);
   const diario = normalizeTrafficDailyRecords(rowsByJob.traffic);
+  const sentidos = normalizeRoadDirections(rowsByJob.directions);
+  const corredor = normalizeCorridorDailyRecords(rowsByJob.corridor);
   warnings.push(...trafficDropWarnings(config, {
     segments: segmentos.dropped, aliases: apelidos.dropped, traffic: diario.dropped,
+    directions: sentidos.dropped, directionDuplicates: sentidos.duplicates,
+    corridor: corredor.dropped, corridorDuplicates: corredor.duplicates,
   }));
 
   return {
     segments: segmentos.records,
     aliases: apelidos.records,
     trafficRecords: diario.records,
+    directions: sentidos.records,
+    corridorDaily: corredor.records,
     warnings,
   };
 }

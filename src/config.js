@@ -101,6 +101,20 @@ window.APP_CONFIG = {
   trafficDailySheet: 'TRAFFIC_DAILY_TEST',
 
   /**
+   * Sentidos oficiais e visão do corredor (issue #142, backend 2026-09-23.1). Opcionais
+   * pelo mesmo motivo das três acima: falha ou ausência vira aviso (R2.5) — o mapa segue
+   * mostrando o fluxo por sentido oficial cru, só sem origem → destino e sem o corredor.
+   *
+   *   ROAD_DIRECTION_MAP      o que `crescente`/`decrescente` significam em cada via
+   *                           (crescente = Km_I → Km_F). Chave: código + sentido.
+   *   TRAFFIC_CORRIDOR_DAILY  um dia de cada ponto de medição do corredor
+   *                           Sobradinho–Plano Piloto. A tradução "decrescente = para o
+   *                           Plano Piloto" vale SÓ para os pontos que esta aba declara.
+   */
+  roadDirectionMapSheet: 'ROAD_DIRECTION_MAP',
+  trafficCorridorDailySheet: 'TRAFFIC_CORRIDOR_DAILY',
+
+  /**
    * Série mensal do mercado residencial do DF — o IVV (issue #56, bloco B). Opcional
    * pelo mesmo motivo e com o mesmo tratamento das anteriores: falha ou ausência vira
    * aviso, nunca erro (R2.5), e o mapa continua abrindo sem a seção de mercado.
