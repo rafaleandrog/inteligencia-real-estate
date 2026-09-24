@@ -550,7 +550,7 @@ function roadDisplayFor(polygon) {
  */
 function compactRoadSegmentCode(code) {
   const value = String(code || '').trim();
-  const match = value.match(/(\\d{4})$/);
+  const match = value.match(/([0-9]{4})$/);
   return match ? match[1] : value;
 }
 
