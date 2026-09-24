@@ -1240,7 +1240,6 @@ select:focus, input[type="number"]:focus {
   margin: 0 0 4px;
 }
 /* Cada sentido agora mostra só a média, a cobertura e os dias sem total válido. */
-.detail-traffic-cut + .detail-traffic-cut { margin-top: 10px; }
 .detail-traffic-missing { opacity: .82; }
 .detail-traffic-missing .detail-traffic-cut-title { color: var(--muted); }
 
