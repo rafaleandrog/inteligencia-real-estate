@@ -543,6 +543,42 @@ function roadDisplayFor(polygon) {
   });
 }
 
+/**
+ * Identificação curta do trecho oficial, sem fazer a lista lateral repetir nomes de rodovia.
+ * O sufixo de quatro dígitos é o trecho DER/DF e distingue, por exemplo, DF-480 0010 de
+ * DF-480 0030. O código completo continua disponível no atributo title.
+ */
+function compactRoadSegmentCode(code) {
+  const value = String(code || '').trim();
+  const match = value.match(/([0-9]{4})$/);
+  return match ? match[1] : value;
+}
+
+function roadSegmentLabel({ name, code, fallback }) {
+  const base = name || fallback || code || 'Trecho rodoviário';
+  const shortCode = compactRoadSegmentCode(code);
+  if (!shortCode || base.includes(shortCode)) return base;
+  return `${base} · trecho ${shortCode}`;
+}
+
+function trafficSegmentLabel(row) {
+  return roadSegmentLabel({
+    name: row?.name || row?.roadCode,
+    code: row?.sourceSegmentCode,
+    fallback: row?.id,
+  });
+}
+
+function roadDetailTitle(polygon) {
+  if (!isRoadSegmentPolygon(polygon)) return polygon?.name || polygon?.id || '';
+  const code = roadSegmentCodeOf(polygon);
+  return roadSegmentLabel({
+    name: polygon?.name,
+    code,
+    fallback: polygon?.id,
+  });
+}
+
 /** Destaca o trecho no mapa e abre o painel dele. */
 function selectRoadSegment(polygon) {
   state.selectedRoadId = polygon.id;
@@ -660,7 +696,7 @@ function openPolygonDetail(polygon, { focus = true } = {}) {
   // filtros de registro, então guardá-lo ali faria o painel fechar sozinho no
   // primeiro render.
   state.selectedId = null;
-  dom.detailTitle.textContent = polygon.name || polygon.id;
+  dom.detailTitle.textContent = roadDetailTitle(polygon);
   dom.detailBody.replaceChildren(frag);
   dom.detail.hidden = false;
   // Qual contorno está no painel — é o que `applyTrafficFilters` reabre quando o filtro de
@@ -696,10 +732,9 @@ function appendRoadTrafficBlock(frag, polygon) {
 
   const titulo = document.createElement('h3');
   titulo.className = 'detail-traffic-title';
-  titulo.textContent = 'Fluxo diário (DER/DF)';
+  titulo.textContent = 'Média diária por sentido';
   box.append(titulo);
 
-  // O recorte vale para todos os números abaixo — e é dito antes deles (issue #142).
   const recorteTexto = trafficFilterCaption();
   if (recorteTexto) {
     const recorte = document.createElement('p');
@@ -708,22 +743,8 @@ function appendRoadTrafficBlock(frag, polygon) {
     box.append(recorte);
   }
 
-  // TMD oficial ANTES de qualquer medição, e com o nome do que é: referência publicada pelo
-  // DER para a rodovia, não uma média do período. Ele não muda com filtro nenhum.
-  const tmd = officialTmd(polygon, linked);
-  if (tmd !== null) {
-    const ref = document.createElement('dl');
-    ref.className = 'detail-list detail-traffic-list';
-    addRow(ref, 'TMD oficial DER/DF', `${veiculos(tmd)}/dia`, {
-      title: 'Tráfego médio diário publicado pelo DER/DF para a rodovia (properties_json.tmd_der). '
-        + 'É referência oficial, não a média calculada a partir do período selecionado.',
-    });
-    box.append(ref);
-  }
-
-  // Sem trecho correspondente, ou com trecho sem nenhum dia medido, o bloco DIZ isso.
-  // Sumir seria indistinguível de um trecho cujo fluxo ninguém carregou, e a diferença
-  // entre "não medido" e "não carregado" é o que permite alguém ir conferir na planilha.
+  // Ausência de medição não é zero. O painel mantém essa distinção mesmo quando apenas um
+  // dos dois sentidos tem registros no recorte.
   if (!detalhe || !detalhe.hasTraffic) {
     const vazio = document.createElement('p');
     vazio.className = 'detail-traffic-empty';
@@ -741,34 +762,33 @@ function appendRoadTrafficBlock(frag, polygon) {
     return;
   }
 
-  const janela = document.createElement('p');
-  janela.className = 'detail-traffic-window';
   const inicio = detalhe.geral.resumo.windowStart;
   const fim = detalhe.geral.resumo.windowEnd;
-  // DIAS DO CALENDÁRIO, não registros: com os dois sentidos, um dia são dois registros, e
-  // `geral.days` diria "2 dia medido em 31/07" com o filtro de um dia só (issue #142).
   const resumo = segmentPeriodSummary(linked, state.directionCtx);
   const dias = resumo ? resumo.days : detalhe.geral.days;
   const periodo = inicio === fim
     ? `${formatNumber(dias)} dia medido em ${formatDate(inicio)}`
     : `${formatNumber(dias)} dias medidos de ${formatDate(inicio)} a ${formatDate(fim)}`;
-  janela.textContent = `${periodo} · trecho ${detalhe.segmentId}`;
+  const janela = document.createElement('p');
+  janela.className = 'detail-traffic-window';
+  janela.textContent = periodo;
   box.append(janela);
-
-  if (resumo) box.append(periodSummaryNode(resumo));
 
   const corredor = corridorBlockNode(linked);
   if (corredor) box.append(corredor);
 
-  // Um recorte por sentido. "Crescente" e "decrescente" são medições diferentes da mesma
-  // via (issue #62/#63) e nunca são somadas às cegas — por isso cada uma tem a própria
-  // caixa, com os próprios totais e a própria cobertura. O rótulo ganha origem → destino
-  // oficiais e, só no corredor, o sentido do projeto (issue #142).
-  const rotulos = { Crescente: 'crescente', Decrescente: 'decrescente' };
-  for (const corte of detalhe.porSentido) {
-    const sentido = rotulos[corte.label];
-    box.append(trafficCutNode(sentido ? { ...corte, label: directionLabel(linked.sourceSegmentCode, sentido) } : corte));
+  const cortes = new Map(detalhe.porSentido.map((corte) => [corte.label, corte]));
+  for (const [sentido, nome] of [['crescente', 'Crescente'], ['decrescente', 'Decrescente']]) {
+    const corte = cortes.get(nome);
+    const label = directionLabel(linked.sourceSegmentCode, sentido);
+    box.append(corte
+      ? trafficCutNode({ ...corte, label })
+      : trafficMissingNode(label));
   }
+
+  // Registros sem sentido declarado continuam visíveis, mas não são atribuídos a nenhum lado.
+  const semSentido = cortes.get('Sem sentido declarado');
+  if (semSentido) box.append(trafficCutNode(semSentido));
 
   frag.append(box);
 }
@@ -814,102 +834,17 @@ function trafficFilterCaption() {
 }
 
 /**
- * Resumo do período filtrado de UM trecho (issue #142): as métricas da instrução, cada uma
- * com o nome do que é. Linha sem número não aparece com zero — ela some ou diz por quê.
- */
-function periodSummaryNode(resumo) {
-  const bloco = document.createElement('div');
-  bloco.className = 'detail-traffic-cut';
-  const nome = document.createElement('h4');
-  nome.className = 'detail-traffic-cut-title';
-  const classe = state.trafficFilters.vehicleClass;
-  nome.textContent = classe ? `Resumo do período — ${vehicleClassLabel(classe)}` : 'Resumo do período';
-  bloco.append(nome);
-
-  const lista = document.createElement('dl');
-  lista.className = 'detail-list detail-traffic-list';
-
-  if (resumo.total !== null) {
-    addRow(lista, 'Fluxo total do período', veiculos(resumo.total), {
-      title: 'Soma dos dias medidos no recorte, nos sentidos que passam no filtro. São passagens '
-        + 'pelo ponto de medição, não veículos únicos.',
-    });
-  }
-  if (resumo.average !== null) {
-    addRow(lista, 'Média diária do período', `${veiculos(resumo.average)}/dia`, {
-      title: resumo.daysSingleDirection > 0
-        ? `Média sobre ${resumo.daysWithFlow} dia(s); em ${resumo.daysSingleDirection} deles só um sentido `
-          + 'estava no recorte, o que puxa a média para baixo.'
-        : `Média sobre ${resumo.daysWithFlow} dia(s).`,
-    });
-  }
-  // Sentido do projeto só no corredor; fora dele, o sentido oficial com origem → destino.
-  if (resumo.paraPlano || resumo.paraSobradinho) {
-    for (const [lado, rotulo] of [['paraPlano', 'Fluxo para o Plano Piloto'], ['paraSobradinho', 'Fluxo para Sobradinho']]) {
-      const s = resumo[lado];
-      if (!s) continue;
-      addRow(lista, rotulo, s.total === null ? 'fora do filtro' : veiculos(s.total), {
-        title: `Sentido oficial ${s.direction} deste ponto de medição, no corredor ${corridorLabel(resumo.corridor?.corridorId)}.`,
-      });
-    }
-  }
-  if (resumo.bidirectional !== null) {
-    addRow(lista, 'Fluxo bidirecional', veiculos(resumo.bidirectional), {
-      title: `Soma dos dois sentidos deste trecho, só nos ${resumo.bidirectionalDays} dia(s) em que os dois `
-        + 'foram medidos. Nunca soma pontos de medição diferentes.',
-    });
-  }
-  // As seis classes do contrato: um trecho medido só em `medio`/`indefinido`, ou o filtro
-  // "Médio", precisam da própria linha como as outras.
-  const rotuloClasse = {
-    carro: 'Fluxo de carros', moto: 'Fluxo de motos', onibus: 'Fluxo de ônibus',
-    caminhao: 'Fluxo de caminhões', medio: 'Fluxo de veículos médios', indefinido: 'Fluxo não classificado',
-  };
-  for (const c of resumo.classes) {
-    if (c.total === null) continue;
-    addRow(lista, rotuloClasse[c.key], veiculos(c.total), { title: `Soma de ${formatNumber(c.days)} registro(s) diário(s).` });
-  }
-  const cob = resumo.coverage;
-  const cobertura = [];
-  if (cob.completos > 0) cobertura.push(`${formatNumber(cob.completos)} completo(s)`);
-  if (cob.parciais > 0) cobertura.push(`${formatNumber(cob.parciais)} parcial(is)`);
-  if (cob.desconhecidos > 0) cobertura.push(`${formatNumber(cob.desconhecidos)} sem cobertura conhecida`);
-  if (cobertura.length > 0) {
-    addRow(lista, 'Cobertura dos intervalos', cobertura.join(', '), {
-      title: 'Por registro diário (um por sentido), derivada de intervalos_15min_observados / 96.',
-    });
-  }
-  addRow(lista, 'Quantidade de dias', formatNumber(resumo.days));
-  if (resumo.qualityFlags.length > 0) {
-    addRow(lista, 'Qualidade dos dados', resumo.qualityFlags.map((q) => `${q.flag} (${formatNumber(q.days)})`).join(', '));
-  }
-
-  bloco.append(lista);
-  if (cob.parciais > 0) {
-    const aviso = document.createElement('p');
-    aviso.className = 'detail-traffic-partial';
-    aviso.textContent = `${formatNumber(cob.parciais)} registro(s) parcial(is) no recorte: medidos por menos de 24 h, `
-      + 'com total menor por isso — não por menos tráfego.';
-    bloco.append(aviso);
-  }
-  return bloco;
-}
-
-/**
- * Bloco do corredor Sobradinho–Plano Piloto para um ponto de medição (issue #142), lido de
- * TRAFFIC_CORRIDOR_DAILY. `null` para trecho fora do corredor.
+ * Bloco compacto do corredor Sobradinho–Plano Piloto para um ponto de medição.
  *
- * Um ponto por vez, nunca a soma dos dois: 003EDF0010 + 150EDF0010 contaria a mesma viagem
- * duas vezes. No ponto de Sobradinho a leitura de ida e volta é explícita — e a frase diz
- * que são passagens, não veículos que foram e voltaram.
+ * O bloco conserva apenas as médias diárias por lado e a janela observada. Os totais,
+ * classes, picos e qualidade continuam nos dados da planilha, mas não repetem a leitura
+ * principal do trecho.
  */
 function corridorBlockNode(linked) {
   const code = linked?.sourceSegmentCode;
   const ponto = code ? state.directionCtx.corridorByCode.get(code) : null;
   if (!ponto) return null;
 
-  // O ponto é SEMPRE o deste trecho; um filtro de trecho que aponte para outro esvazia o
-  // bloco, como esvazia o resumo acima — nunca é sobrescrito por este código.
   const outroTrecho = state.trafficFilters.segment && state.trafficFilters.segment !== code;
   const linhas = outroTrecho ? [] : filterCorridorDaily(
     state.trafficAll.corridorDaily,
@@ -933,132 +868,76 @@ function corridorBlockNode(linked) {
     return bloco;
   }
 
-  const ida = ponto.measurementPointRole === 'ponto_referencia_proximo_a_Sobradinho';
+  const media = (lado, dias) => {
+    if (resumo.excluded?.[lado]) return 'fora do filtro';
+    const total = resumo[lado];
+    return total === null || !dias ? 'não publicado para este recorte' : `${veiculos(total / dias)}/dia`;
+  };
+
   const lista = document.createElement('dl');
   lista.className = 'detail-list detail-traffic-list';
-  // Dois motivos para não haver número, e a frase diz qual: o lado ficou fora do filtro de
-  // sentido (o dado existe), ou a aba não publica esta classe por lado.
-  const valor = (lado) => {
-    if (resumo.excluded?.[lado]) return 'fora do filtro';
-    return resumo[lado] === null ? 'não publicado para esta classe' : veiculos(resumo[lado]);
-  };
-  addRow(lista, ida ? 'Para o Plano Piloto (ida)' : 'Para o Plano Piloto', valor('paraPlano'),
-    { title: `Sentido oficial ${resumo.sentidoParaPlano} neste ponto.` });
-  addRow(lista, ida ? 'Para Sobradinho (retorno)' : 'Para Sobradinho', valor('paraSobradinho'),
-    { title: `Sentido oficial ${resumo.sentidoParaSobradinho} neste ponto.` });
-  addRow(lista, 'Bidirecional', valor('bidirecional'), {
-    title: 'fluxo_bidirecional publicado: os dois sentidos DESTE ponto, no mesmo dia.',
+  addRow(lista, 'Média para o Plano Piloto', media('paraPlano', resumo.paraPlanoDays), {
+    title: `Média das passagens diárias no sentido oficial ${resumo.sentidoParaPlano || 'não informado'}.`,
   });
-  addRow(lista, 'Dias', `${formatNumber(resumo.days)} (${formatDate(resumo.windowStart)} a ${formatDate(resumo.windowEnd)})`);
-  const cob = resumo.coverage;
-  addRow(lista, 'Cobertura', [
-    cob.completos > 0 ? `${formatNumber(cob.completos)} completo(s)` : '',
-    cob.parciais > 0 ? `${formatNumber(cob.parciais)} parcial(is)` : '',
-    cob.desconhecidos > 0 ? `${formatNumber(cob.desconhecidos)} sem cobertura conhecida` : '',
-  ].filter(Boolean).join(', '), { title: 'Derivada de intervalos_minimos_15min / 96 (o menor dos dois sentidos no dia).' });
-  if (resumo.qualityFlags.length > 0) {
-    addRow(lista, 'Qualidade', resumo.qualityFlags.map((q) => `${q.flag} (${formatNumber(q.days)})`).join(', '));
-  }
-  if (resumo.sumMismatchDays > 0) {
-    addRow(lista, 'Soma que não fecha', `${formatNumber(resumo.sumMismatchDays)} dia(s)`, {
-      title: 'Dias em que fluxo_bidirecional ≠ fluxo_para_plano + fluxo_para_sobradinho na planilha.',
-    });
-  }
+  addRow(lista, 'Média para Sobradinho', media('paraSobradinho', resumo.paraSobradinhoDays), {
+    title: `Média das passagens diárias no sentido oficial ${resumo.sentidoParaSobradinho || 'não informado'}.`,
+  });
+  addRow(lista, 'Dias medidos', `${formatNumber(resumo.days)} (${formatDate(resumo.windowStart)} a ${formatDate(resumo.windowEnd)})`);
   bloco.append(lista);
 
   const nota = document.createElement('p');
   nota.className = 'detail-traffic-note';
-  nota.textContent = ida
-    ? 'Ponto de estudo da saída de Sobradinho e do retorno no mesmo dia. Contagens de passagens, '
-      + 'não de veículos únicos que foram e voltaram. Não somar com o ponto próximo ao Plano Piloto.'
-    : 'Ponto de comparação próximo ao destino. Contagens de passagens. Não somar com o ponto '
-      + 'próximo a Sobradinho — seria contar a mesma viagem duas vezes.';
+  nota.textContent = ponto.measurementPointRole === 'ponto_referencia_proximo_a_Sobradinho'
+    ? 'Contagens de passagens no ponto de saída e retorno; não são veículos únicos.'
+    : 'Contagens de passagens no ponto de comparação; não somar com o ponto próximo a Sobradinho.';
   bloco.append(nota);
   return bloco;
 }
 
-/**
- * Fluxo por mês de calendário do recorte, ou `null` quando não há mês algum (issue #138).
- *
- * A cobertura fica AO LADO do número, nunca só no `title`: "Abril/2026 — 143.485 veíc."
- * sozinho se lê como o mês inteiro, e hoje são 20 dos 30 dias de abril. Nada é projetado
- * para o mês cheio — a soma é dos dias medidos, e o rótulo diz quantos são.
- *
- * Quando a planilha ganhar o mês fechado, o mesmo código passa a dizer "30 de 30".
- */
-function monthlyFlowNode(corte) {
-  const meses = corte.porMes || [];
-  if (meses.length === 0) return null;
+function trafficMissingNode(label) {
+  const bloco = document.createElement('div');
+  bloco.className = 'detail-traffic-cut detail-traffic-missing';
+  const nome = document.createElement('h4');
+  nome.className = 'detail-traffic-cut-title';
+  nome.textContent = label;
+  bloco.append(nome);
 
-  const lista = document.createElement('dl');
-  lista.className = 'detail-list detail-traffic-months';
-
-  for (const mes of meses) {
-    const cobertura = `${formatNumber(mes.days)} de ${formatNumber(mes.daysInMonth)} dias medidos`;
-    // Mês em que nenhum dia tem total: a linha DIZ isso, em vez de sumir. Sumir seria
-    // indistinguível de um mês que ninguém carregou (R5.7).
-    const value = mes.total === null
-      ? `sem total medido · ${cobertura}`
-      : `${veiculos(mes.total)} · ${cobertura}`;
-
-    const detalhe = [];
-    if (mes.complete > 0) detalhe.push(`${formatNumber(mes.complete)} completo(s)`);
-    if (mes.partial > 0) detalhe.push(`${formatNumber(mes.partial)} parcial(is)`);
-    if (mes.unknown > 0) detalhe.push(`${formatNumber(mes.unknown)} sem cobertura conhecida`);
-    const sobra = mes.daysInMonth - (mes.days + mes.daysExcluded);
-
-    const title = [
-      `Soma dos dias medidos de ${mes.label}, sem projeção para o mês cheio.`,
-      detalhe.length > 0 ? `Dias com medição: ${detalhe.join(', ')}.` : '',
-      mes.daysExcluded > 0
-        ? `${formatNumber(mes.daysExcluded)} dia(s) com medição mas sem total ficaram DE FORA da soma.`
-        : '',
-      sobra > 0 ? `${formatNumber(sobra)} dia(s) do mês não têm nenhuma medição na planilha.` : '',
-    ].filter(Boolean).join(' ');
-
-    addRow(lista, mes.label, value, { title });
-  }
-
-  return lista;
+  const vazio = document.createElement('p');
+  vazio.className = 'detail-traffic-empty';
+  vazio.textContent = state.trafficFilters.officialDirection || state.trafficFilters.projectDirection
+    ? 'Sem dados neste sentido dentro do filtro escolhido.'
+    : 'Sem dados no período.';
+  bloco.append(vazio);
+  return bloco;
 }
 
-/** Um sentido (ou o trecho inteiro) no bloco de fluxo: totais, classes e cobertura. */
+/** Rótulo da média, explicitando o mês quando o recorte contém um único mês. */
+function trafficMeanLabel(corte) {
+  const meses = corte.porMes || [];
+  if (meses.length === 1) return `Média diária — ${meses[0].label}`;
+  return 'Média diária do período';
+}
+
+/** Um sentido do trecho: média, dias válidos e cobertura. */
 function trafficCutNode(corte) {
   const bloco = document.createElement('div');
   bloco.className = 'detail-traffic-cut';
 
   const nome = document.createElement('h4');
   nome.className = 'detail-traffic-cut-title';
-  nome.textContent = `${corte.label} — ${formatNumber(corte.days)} dia(s)`;
+  nome.textContent = corte.label;
   bloco.append(nome);
 
-  const linhas = [];
+  const lista = document.createElement('dl');
+  lista.className = 'detail-list detail-traffic-list';
 
-  if (corte.total.total !== null) {
-    linhas.push({
-      label: 'Fluxo total do período',
-      value: veiculos(corte.total.total),
-      title: corte.total.daysExcluded > 0
-        ? `Soma de ${corte.total.daysUsed} dia(s). ${corte.total.daysExcluded} dia(s) sem total medido ficaram DE FORA — não foram contados como zero.`
-        : `Soma de ${corte.total.daysUsed} dia(s).`,
-    });
-  }
-  if (corte.resumo.latestFlow !== null) {
-    linhas.push({
-      label: `Último dia (${formatDate(corte.resumo.latestDate)})`,
-      value: `${veiculos(corte.resumo.latestFlow)}/dia`,
-    });
-  }
-  if (corte.resumo.avgDailyFlow !== null) {
-    linhas.push({
-      label: 'Média diária',
-      value: `${veiculos(corte.resumo.avgDailyFlow)}/dia`,
-      // A ressalva do dia parcial acompanha o número, sempre. Um dia de 90/96 intervalos
-      // tem total menor por ter sido medido menos tempo, não por ter tido menos tráfego,
-      // e a média não compensa isso de propósito (issue #64).
+  if (corte.resumo.avgDailyFlow === null) {
+    addRow(lista, trafficMeanLabel(corte), 'sem dados válidos no período');
+  } else {
+    addRow(lista, trafficMeanLabel(corte), `${veiculos(corte.resumo.avgDailyFlow)}/dia`, {
       title: corte.resumo.partialDaysUsed > 0
-        ? `Média sobre ${corte.resumo.daysUsed} dia(s), sendo ${corte.resumo.partialDaysUsed} parcial(is) — dia parcial puxa a média para baixo e o cálculo não compensa isso (issue #64).`
-        : `Média sobre ${corte.resumo.daysUsed} dia(s) completo(s).`,
+        ? `Média sobre ${formatNumber(corte.resumo.daysUsed)} dia(s), sendo ${formatNumber(corte.resumo.partialDaysUsed)} parcial(is).`
+        : `Média sobre ${formatNumber(corte.resumo.daysUsed)} dia(s) válidos.`,
     });
   }
 
@@ -1068,93 +947,15 @@ function trafficCutNode(corte) {
   if (cob.parciais > 0) cobertura.push(`${formatNumber(cob.parciais)} parcial(is)`);
   if (cob.desconhecidos > 0) cobertura.push(`${formatNumber(cob.desconhecidos)} sem cobertura conhecida`);
   if (cobertura.length > 0) {
-    linhas.push({
-      label: 'Cobertura dos dias',
-      value: cobertura.join(', '),
-      title: 'Derivada de intervalos_15min_observados / 96. A coluna cobertura_dia_pct da '
-        + 'planilha não é lida: ela tem erro de separador decimal em parte dos registros.',
+    addRow(lista, 'Cobertura', cobertura.join(', '), {
+      title: 'Derivada de intervalos_15min_observados / 96.',
     });
   }
-
-  if (corte.pico) {
-    // O MAIOR pico de 15 min do período, com o dia — nunca uma soma nem uma média de
-    // máximos, que produziria um número que nenhum quarto de hora registrou.
-    const quando = corte.pico.interval
-      ? `${formatDate(corte.pico.date)}, ${corte.pico.interval}`
-      : formatDate(corte.pico.date);
-    linhas.push({
-      label: 'Maior pico de 15 min',
-      value: `${veiculos(corte.pico.flow)} (${quando})`,
-      title: 'Maior quarto de hora observado no período. Não é soma nem média: cada dia tem '
-        + 'o seu pico, e este é o maior deles.',
-    });
+  if (corte.resumo.daysExcluded > 0) {
+    addRow(lista, 'Dias sem total válido', formatNumber(corte.resumo.daysExcluded));
   }
 
-  if (corte.qualityFlags.length > 0) {
-    linhas.push({
-      label: 'Qualidade',
-      value: corte.qualityFlags.map((q) => `${q.flag} (${formatNumber(q.days)})`).join(', '),
-    });
-  }
-
-  // Registro com data que não existe no calendário (31 de abril, 30 de fevereiro). Ele
-  // continua no total do período, mas fica de fora da contagem por mês — e a linha existe
-  // para essa diferença não ser silenciosa: sem ela, as duas contas divergiriam e nada na
-  // tela diria por quê.
-  if (corte.diasSemDataValida > 0) {
-    linhas.push({
-      label: 'Dias com data inválida',
-      value: `${formatNumber(corte.diasSemDataValida)} — fora da contagem por mês`,
-      title: 'A coluna `dia` da planilha traz uma data que não existe no calendário. O '
-        + 'registro segue no total do período, mas não é atribuído a nenhum mês: dizer '
-        + '"31 de 30 dias medidos" seria pior que declarar o problema.',
-    });
-  }
-
-  // Divergência entre o total oficial e a soma das classes, quando a própria fonte
-  // publica uma. A linha só existe quando há divergência — e existir é o ponto: o
-  // backend faz essa conferência e esconder o resultado dela deixaria o leitor somando
-  // as classes na mão para descobrir que não fecham.
-  if (corte.divergencia) {
-    linhas.push({
-      label: 'Divergência de classes',
-      value: `${veiculos(corte.divergencia.total)} em ${formatNumber(corte.divergencia.days)} dia(s)`,
-      title: 'Soma, EM MÓDULO, da divergencia_total_classes que a planilha publica — a '
-        + 'diferença entre fluxo_total e a soma das classes, como o backend a calculou. '
-        + 'Em módulo porque um dia com +800 e outro com -800 se anulariam, e a tela diria '
-        + 'zero ao lado de uma divergência real. Não é recalculada aqui.',
-    });
-  }
-
-  const lista = document.createElement('dl');
-  lista.className = 'detail-list detail-traffic-list';
-  for (const linha of linhas) addRow(lista, linha.label, linha.value, { title: linha.title || '' });
   bloco.append(lista);
-
-  // Por mês, logo abaixo do total do período e indentado sob ele: a soma mensal é uma
-  // decomposição desse total, e a indentação é o que diz isso. Acima dele a mesma lista
-  // ficaria recuada sem ter sob o que se recuar.
-  const meses = monthlyFlowNode(corte);
-  if (meses) bloco.append(meses);
-
-  // Classes de veículo. Classe sem nenhum dia medido NÃO vira zero — ela some, porque
-  // "zero caminhões" e "caminhão não medido" são afirmações diferentes (R5.7). Uma classe
-  // medida em menos dias que o recorte carrega isso no `title`, para o total não parecer
-  // comparável aos outros.
-  const medidas = corte.classes.filter((c) => c.total !== null);
-  if (medidas.length > 0) {
-    const classes = document.createElement('dl');
-    classes.className = 'detail-list detail-traffic-classes';
-    for (const classe of medidas) {
-      addRow(classes, classe.label, veiculos(classe.total), {
-        title: classe.days === corte.days
-          ? `Soma dos ${formatNumber(classe.days)} dia(s) do recorte.`
-          : `Soma de ${formatNumber(classe.days)} de ${formatNumber(corte.days)} dia(s) — os demais não trazem esta classe.`,
-      });
-    }
-    bloco.append(classes);
-  }
-
   return bloco;
 }
 
@@ -2510,7 +2311,8 @@ function trafficItemNode(row, { unmatched = false } = {}) {
 
   const nome = document.createElement('span');
   nome.className = 'traffic-item-name';
-  nome.textContent = row.name || row.roadCode || row.id;
+  nome.textContent = trafficSegmentLabel(row);
+  nome.title = row.sourceSegmentCode || '';
   head.append(nome);
 
   if (row.jurisdiction) {

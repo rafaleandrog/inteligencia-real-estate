@@ -234,7 +234,9 @@ export function corridorPointSummary(records, filters = {}) {
     windowStart: [...datas].sort()[0] || null,
     windowEnd: [...datas].sort().at(-1) || null,
     paraPlano: paraPlano.total,
+    paraPlanoDays: paraPlano.days,
     paraSobradinho: paraSobradinho.total,
+    paraSobradinhoDays: paraSobradinho.days,
     bidirecional: bidirecional.total,
     // Lado fora do recorte por filtro de SENTIDO — diferente de "não publicado para esta
     // classe". A tela precisa dizer qual dos dois é (revisão do Kimi, PR #143).
