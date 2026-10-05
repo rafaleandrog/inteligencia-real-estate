@@ -19,7 +19,7 @@
     "ra_geo_id": { "type": ["string", "null"], "pattern": "^RA_[0-9]{2}$" },
     "class_households_delta_per_km2": { "type": ["integer", "null"], "minimum": 0, "maximum": 5 },
     "class_households_delta": { "type": ["integer", "null"], "minimum": 0, "maximum": 5 },
-    "children": { "type": "integer", "minimum": 1 },
+    "children": { "type": "integer", "minimum": 0, "description": "0 = célula de 1 km não subdividida (rural)" },
     "children_missing": { "type": "integer", "minimum": 0 },
     "quality_flags": { "type": "array", "items": { "enum": ["cell_missing_2010", "cell_missing_2022", "value_suppressed_2010", "value_suppressed_2022", "ra_unassigned", "partial_children"] } }
   }

@@ -30,6 +30,11 @@ class RunContext:
     pipeline_commit: str = "desconhecido"
     summary: RunSummary = field(default_factory=RunSummary)
     log: logging.Logger = field(default_factory=lambda: logging.getLogger("imob_pipeline"))
+    cache_dir: Path = field(default_factory=lambda: Path(".cache"))
+    # Geometria H3 injetável: produção usa a biblioteca h3; fixture usa um mapa JSON (seam).
+    hex_geometry: object | None = None
+    # Motor de betweenness: "auto" (igraph se houver, senão puro), "igraph" ou "pure".
+    centrality_engine: str = "auto"
 
     def now(self) -> str:
         return self.clock()

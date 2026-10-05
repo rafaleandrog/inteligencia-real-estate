@@ -71,3 +71,41 @@ class CrosswalkDatasetTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class AllDatasetsFixtureTests(unittest.TestCase):
+    def test_run_all_in_fixture_mode_validates(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            out = Path(tmp) / "public"
+            out.mkdir()
+            seed_public_dir(out)
+            cache = Path(tmp) / "cache"
+            code = main(["run", "all", "--out", str(out), "--config", str(FIXTURE_CONFIG), "--cache", str(cache),
+                         "--fixture-dir", str(FIXTURES), "--engine", "pure"])
+            self.assertEqual(code, 0)
+            manifest = json.loads((out / "manifest.json").read_text("utf-8"))
+            ids = [d["id"] for d in manifest["datasets"]]
+            self.assertEqual(ids, ["households_grid", "jobs_hex", "ra_aggregates", "ra_crosswalk", "road_centrality"])
+            self.assertTrue((out / "households_grid" / "overview_1km.json").exists())
+            self.assertTrue((out / "households_grid" / "detail_200m" / "SEM_RA.json").exists())
+            self.assertTrue((out / "jobs_hex" / "detail_r9" / "RA_19.json").exists())
+            self.assertTrue((out / "road_centrality" / "detail.json").exists())
+            agg = json.loads((out / "ra_aggregates.json").read_text("utf-8"))
+            rows = {r["ra_geo_id"]: r for r in agg["rows"]}
+            self.assertEqual(rows["RA_19"]["households_2022"], 55 + 36 + 25)
+            self.assertEqual(rows["RA_11"]["households_2022"], 120 + 270)
+            self.assertEqual(rows["RA_11"]["jobs_total"], 5400)
+            self.assertEqual(rows["RA_19"]["jobs_total"], 1260)
+            self.assertIsNotNone(rows["RA_19"]["edges_total"])
+            self.assertEqual(rows["RA_19"]["quality_flags"], ["partial_children"])
+            hh = next(d for d in manifest["datasets"] if d["id"] == "households_grid")
+            self.assertEqual(hh["counts"]["dropped_empty_both_years"], 1)
+            self.assertEqual(hh["class_breaks"]["households_delta_per_km2"]["breaks"], [100, 350, 750, 1000, 2000])
+            self.assertEqual(main(["validate", str(out), "--config", str(FIXTURE_CONFIG)]), 0)
+            # segunda execução: nada muda, versões preservadas
+            code = main(["run", "all", "--out", str(out), "--config", str(FIXTURE_CONFIG), "--cache", str(cache),
+                         "--fixture-dir", str(FIXTURES), "--engine", "pure"])
+            self.assertEqual(code, 0)
+            again = json.loads((out / "manifest.json").read_text("utf-8"))
+            self.assertEqual([d["content_hash"] for d in again["datasets"]], [d["content_hash"] for d in manifest["datasets"]])
+            self.assertEqual(main(["discover", "grade", "--config", str(FIXTURE_CONFIG), "--cache", str(cache), "--fixture-dir", str(FIXTURES)]), 0)

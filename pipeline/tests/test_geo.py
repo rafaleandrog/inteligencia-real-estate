@@ -59,3 +59,21 @@ class GeoTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class GeoHullAndSimplifyTests(unittest.TestCase):
+    def test_convex_hull_of_block_is_the_block(self):
+        from imob_pipeline.geo import convex_hull
+        pts = [(0, 0), (1, 0), (1, 1), (0, 1), (0.5, 0.5), (0.2, 0.9)]
+        hull = convex_hull(pts)
+        self.assertEqual(hull[0], hull[-1])
+        self.assertEqual(len(hull), 5)
+        self.assertEqual(sorted(tuple(p) for p in hull[:-1]), [(0.0, 0.0), (0.0, 1.0), (1.0, 0.0), (1.0, 1.0)])
+        self.assertEqual(convex_hull([(0, 0)]), [[0.0, 0.0]])
+
+    def test_simplify_line(self):
+        from imob_pipeline.geo import simplify_line
+        line = [[0, 0], [0.5, 0.0001], [1, 0]]
+        self.assertEqual(simplify_line(line, 0.001), [[0.0, 0.0], [1.0, 0.0]])
+        self.assertEqual(len(simplify_line(line, 0.00001)), 3)
+        self.assertEqual(simplify_line([[0, 0], [1, 1]], 1), [[0.0, 0.0], [1.0, 1.0]])

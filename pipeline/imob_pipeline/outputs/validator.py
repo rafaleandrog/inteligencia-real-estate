@@ -132,9 +132,10 @@ def _check_geojson(dataset: dict[str, Any], entry: dict[str, Any], payload: Any,
             continue
         for metric, spec in breaks.items():
             cuts = spec.get("breaks") if isinstance(spec, dict) else spec
+            zero_absent = bool(spec.get("zero_is_absent")) if isinstance(spec, dict) else False
             class_key = f"class_{metric}"
             if class_key in props and metric in props:
-                expected = assign_class(props[metric], cuts)
+                expected = None if (zero_absent and props[metric] == 0) else assign_class(props[metric], cuts)
                 if props[class_key] != expected:
                     out.append(Finding("erro", "classes", f"{path}: {fid} publica {class_key}={props[class_key]} mas os cortes dão {expected}"))
     return out

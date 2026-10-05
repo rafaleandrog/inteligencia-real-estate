@@ -225,3 +225,53 @@ def linestring_midpoint(coords: Sequence[Position]) -> tuple[float, float]:
             )
         walked += seg
     return (float(coords[-1][0]), float(coords[-1][1]))
+
+
+def convex_hull(points: Iterable[Position]) -> list[list[float]]:
+    """Casco convexo (cadeia monótona), anel fechado em sentido anti-horário."""
+    pts = sorted({(float(p[0]), float(p[1])) for p in points})
+    if len(pts) <= 2:
+        ring = [list(p) for p in pts]
+        return close_ring(ring) if len(ring) > 1 else ring
+
+    def cross(o, a, b):
+        return (a[0] - o[0]) * (b[1] - o[1]) - (a[1] - o[1]) * (b[0] - o[0])
+
+    lower: list = []
+    for p in pts:
+        while len(lower) >= 2 and cross(lower[-2], lower[-1], p) <= 0:
+            lower.pop()
+        lower.append(p)
+    upper: list = []
+    for p in reversed(pts):
+        while len(upper) >= 2 and cross(upper[-2], upper[-1], p) <= 0:
+            upper.pop()
+        upper.append(p)
+    hull = lower[:-1] + upper[:-1]
+    return close_ring([list(p) for p in hull])
+
+
+def _perpendicular_distance(point: Position, start: Position, end: Position) -> float:
+    (x, y), (x1, y1), (x2, y2) = point, start, end
+    dx, dy = x2 - x1, y2 - y1
+    if dx == 0 and dy == 0:
+        return math.hypot(x - x1, y - y1)
+    t = max(0.0, min(1.0, ((x - x1) * dx + (y - y1) * dy) / (dx * dx + dy * dy)))
+    return math.hypot(x - (x1 + t * dx), y - (y1 + t * dy))
+
+
+def simplify_line(coords: Sequence[Position], tolerance: float) -> list[list[float]]:
+    """Douglas–Peucker; tolerância nas unidades das coordenadas (graus)."""
+    if len(coords) <= 2 or tolerance <= 0:
+        return [list(map(float, p)) for p in coords]
+    index = 0
+    max_dist = 0.0
+    for i in range(1, len(coords) - 1):
+        d = _perpendicular_distance(coords[i], coords[0], coords[-1])
+        if d > max_dist:
+            index, max_dist = i, d
+    if max_dist > tolerance:
+        left = simplify_line(coords[: index + 1], tolerance)
+        right = simplify_line(coords[index:], tolerance)
+        return left[:-1] + right
+    return [list(map(float, coords[0])), list(map(float, coords[-1]))]

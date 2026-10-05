@@ -11,7 +11,7 @@ from pathlib import Path
 from typing import Callable
 
 from .config import ConfigError, load_config
-from .datasets import ra_crosswalk
+from .datasets import households_grid, jobs_hex, ra_aggregates, ra_crosswalk, road_centrality
 from .datasets.context import RunContext, git_commit
 from .fetch import FixtureFetcher, HttpFetcher
 from .outputs.manifest import read_manifest
@@ -24,8 +24,14 @@ DEFAULT_CACHE = REPO_ROOT / "pipeline" / ".cache"
 
 DATASETS: dict[str, Callable[[RunContext], dict]] = {
     ra_crosswalk.DATASET_ID: ra_crosswalk.run,
+    households_grid.DATASET_ID: households_grid.run,
+    jobs_hex.DATASET_ID: jobs_hex.run,
+    road_centrality.DATASET_ID: road_centrality.run,
+    ra_aggregates.DATASET_ID: ra_aggregates.run,
 }
-DATASET_ORDER = [ra_crosswalk.DATASET_ID]
+# Ordem de `all`: a ponte primeiro (os outros atribuem RA), agregados por último (leem o publicado).
+DATASET_ORDER = [ra_crosswalk.DATASET_ID, households_grid.DATASET_ID, jobs_hex.DATASET_ID,
+                road_centrality.DATASET_ID, ra_aggregates.DATASET_ID]
 
 
 def register_dataset(dataset_id: str, runner: Callable[[RunContext], dict], *, after: str | None = None) -> None:
@@ -77,7 +83,13 @@ def cmd_run(args: argparse.Namespace) -> int:
     )
     out_dir = Path(args.out)
     out_dir.mkdir(parents=True, exist_ok=True)
-    ctx = RunContext(config=config, fetcher=fetcher, out_dir=out_dir, pipeline_commit=git_commit(REPO_ROOT), log=log)
+    ctx = RunContext(config=config, fetcher=fetcher, out_dir=out_dir, pipeline_commit=git_commit(REPO_ROOT), log=log,
+                     cache_dir=cache_dir, centrality_engine=args.engine)
+    if args.fixture_dir:
+        hex_file = Path(args.fixture_dir) / "hex_geometries.json"
+        if hex_file.exists():
+            from .sources.aop import FixtureHexGeometry
+            ctx.hex_geometry = FixtureHexGeometry.from_file(hex_file)
     for dataset_id in _resolve_datasets(args.datasets):
         log.info("dataset %s: início", dataset_id)
         DATASETS[dataset_id](ctx)
@@ -98,6 +110,24 @@ def cmd_run(args: argparse.Namespace) -> int:
         handler.close()
         log.removeHandler(handler)
     return 1 if has_errors(findings) else 0
+
+
+def cmd_discover(args: argparse.Namespace) -> int:
+    """`discover grade`: lista grade_id*.zip nas pastas de 2010 e 2022 do geoftp (para pinar quadrant_ids)."""
+    from .sources.ibge_grade import discover as discover_grade
+    try:
+        config = load_config(args.config)
+    except ConfigError as error:
+        print(f"config inválida: {error}", file=sys.stderr)
+        return 2
+    fetcher = FixtureFetcher.from_dir(args.fixture_dir) if args.fixture_dir else HttpFetcher(Path(args.cache) / "raw", refresh=True)
+    for label, base in (("2010", config.households.base_url_2010), ("2022", config.households.base_url_2022)):
+        names = discover_grade(fetcher, base)
+        print(f"Grade {label} ({base}): {len(names)} arquivo(s)")
+        for name in names:
+            print(f"  {name}")
+    print("Pine os quadrantes que cruzam o bbox em households_grid.quadrant_ids (pipeline/config/df.toml).")
+    return 0
 
 
 def cmd_validate(args: argparse.Namespace) -> int:
@@ -157,7 +187,15 @@ def build_parser() -> argparse.ArgumentParser:
     run.add_argument("--fixture-dir", default=None, help="usa FixtureFetcher com <dir>/fixture_urls.json — nunca toca a rede")
     run.add_argument("--refresh", action="store_true", help="ignora o cache de downloads")
     run.add_argument("--log-level", default="INFO")
+    run.add_argument("--engine", default="auto", choices=["auto", "igraph", "pure"], help="motor de betweenness")
     run.set_defaults(func=cmd_run)
+
+    discover = sub.add_parser("discover", help="lista o que a fonte publica, para pinar no config")
+    discover.add_argument("what", choices=["grade"])
+    discover.add_argument("--config", default=str(DEFAULT_CONFIG))
+    discover.add_argument("--cache", default=str(DEFAULT_CACHE))
+    discover.add_argument("--fixture-dir", default=None)
+    discover.set_defaults(func=cmd_discover)
 
     validate = sub.add_parser("validate", help="confere data/public contra o manifest e os schemas")
     validate.add_argument("dir")
