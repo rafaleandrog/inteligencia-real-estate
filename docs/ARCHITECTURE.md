@@ -3,18 +3,23 @@
 ## MVP recomendado
 
 ```text
-Editor de dados
-   |
-   v
-Google Sheets  <-- fonte de verdade
-   |
-   | Google Visualization Query
-   v
-GitHub Pages (HTML/CSS/JS)
+Editor de dados                      Fontes públicas (IBGE · Ipea · OSM · GeoPortal)
+   |                                     |
+   v                                     | pipeline/ (Python, GitHub Actions) → PR de dados
+Google Sheets  <-- dado CURADO           v
+   |                                 data/public/  <-- dado DERIVADO + manifest (R2.7)
+   | Google Visualization Query          |
+   v                                     | fetch na mesma origem
+GitHub Pages (HTML/CSS/JS)  <------------+
    |
    v
 Navegador + Leaflet
 ```
+
+Dois caminhos de dado, de naturezas diferentes: a planilha guarda o que alguém pesquisou e
+assina (anúncios, empreendimentos, IVV, FipeZap, PDAD); `data/public/` guarda o que uma fonte
+oficial publicou e um pipeline reprodutível transformou (células do Censo, hexágonos de
+empregos, rede viária). O primeiro muda sem commit; o segundo só muda por PR automática.
 
 ## Separação de responsabilidades
 
@@ -39,6 +44,9 @@ Uma linguagem por arquivo, uma responsabilidade por módulo.
 | `src/fipezap/*` | FipeZap: normalização (período, duplicidade, vocabulário), histórico e localidades com o mapa localidade → RA — **funções puras** |
 | `src/url-state.js` | View e filtros na URL (`parseHash`/`buildHash`), vocabulário fechado de chaves — **funções puras** |
 | `src/app.js` | Interação, mapa e DOM |
+| `src/territorio/*` | Arquivos públicos: manifest, ponte de RAs, agregados, classes, legenda — **funções puras** |
+| `pipeline/` | Geração de `data/public/` (Python; roda no Actions ou na máquina do dono, nunca no navegador) |
+| `data/public/` | Dado derivado de fonte pública + `manifest.json` (R2.7); editado só pelo pipeline |
 | Google Sheet | Registros e governança |
 
 A divisão não é estética: as camadas de funções puras são as que a suíte cobre sem navegador
@@ -123,6 +131,32 @@ o que a página faz quando a cota estourar. Enquanto isso não for endereçado, 
 
 **Não commitar snapshots de dados para produção.** O navegador consulta a planilha quando a aplicação abre. O GitHub guarda código; a Google Sheet guarda dados.
 
+A exceção é nomeada e cercada (R2.7–R2.9): `data/public/` guarda **dado derivado de fonte
+pública oficial** — não um snapshot da planilha —, gerado por `pipeline/`, acompanhado de
+manifest com procedência e hash, validado em toda PR e publicado só por PR automática.
+
+## Arquivos públicos: por que estático na mesma origem
+
+- **Sem CORS, sem JSONP, sem chave**: `fetch('./data/public/manifest.json')` no próprio Pages
+  (R1.4). O GViz continua existindo para a planilha; os dois caminhos não se misturam.
+- **Cache por conteúdo**: cada arquivo é buscado com `?v=<sha256>` do manifest e conferido
+  (`bytes` e `sha256`) antes de desenhar — a mesma ideia do `tools/versionar-assets.mjs`,
+  aplicada a dado.
+- **Funciona em modo demo e offline**: arquivo local é arquivo local; ausência vira aviso e
+  controle desabilitado com motivo, nunca erro (R2.5, R8.64).
+- **Carga preguiçosa**: o manifest é pequeno e vem com a carga inicial; cada camada só é buscada
+  no primeiro liga, e o detalhe em shards por RA só quando a viewport os cruza no zoom certo.
+
+## Por que canvas para as camadas territoriais
+
+Dezenas de milhares de células como `<path>` SVG travam o pan/zoom; `L.canvas()` desenha o mesmo
+em um bitmap. O custo é que canvas não tem DOM por feição: cor não pode vir de regra de classe
+CSS. A solução mantém a regra do projeto ("nenhum módulo conhece cor"): os módulos de
+`src/territorio/` só devolvem **índice de classe**; `app.js` lê o token (`--seq-N`) por
+`getComputedStyle` no momento do desenho e usa **a mesma função** para a marca e para a amostra
+da legenda (R8.42). A prova de que o canvas mostra a cor certa é por amostragem de pixel no
+smoke test, não por seletor.
+
 ## Limite de segurança
 
 A planilha usada pela V1 precisa ser própria para dados públicos. Não coloque nela informações privadas, chaves ou dados pessoais sensíveis.
@@ -138,4 +172,6 @@ A planilha usada pela V1 precisa ser própria para dados públicos. Não coloque
 - autenticação por usuário;
 - writes concorrentes;
 - histórico temporal volumoso;
-- ingestão automática frequente.
+- ingestão automática frequente;
+- camadas públicas que já não cabem em overview + shards por RA (o próximo degrau é tile
+  vetorial, não planilha).

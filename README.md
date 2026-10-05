@@ -13,11 +13,16 @@ A referência funcional do modelo anterior está preservada em
 ## Arquitetura em uma frase
 
 ```
-Google Sheets → navegador no GitHub Pages
+Google Sheets (dado curado) ─┐
+                             ├→ navegador no GitHub Pages
+data/public/ (dado público) ─┘   ↑ pipeline/ (Python, GitHub Actions) → PR automática
 ```
 
 Não há etapa de exportar dados da planilha para o GitHub e não há backend intermediário
-obrigatório na V1. Isso elimina a principal fonte de dessincronização do MVP.
+obrigatório na V1. Isso elimina a principal fonte de dessincronização do MVP. O que o site lê
+além da planilha é **dado derivado de fonte pública oficial** (IBGE, Ipea, OpenStreetMap,
+GeoPortal), gerado por `pipeline/` com manifest de procedência e publicado em `data/public/`
+por PR automática (R2.7–R2.9).
 
 ## Está trabalhando neste repositório?
 
@@ -33,6 +38,8 @@ obrigatório na V1. Isso elimina a principal fonte de dessincronização do MVP.
 | [`docs/DATA_CONTRACT.md`](docs/DATA_CONTRACT.md) | Schema — fonte de verdade dos dados |
 | [`docs/SHEET_SETUP.md`](docs/SHEET_SETUP.md) | Configurar a Google Sheet |
 | [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md) | Publicar no GitHub Pages |
+| [`pipeline/README.md`](pipeline/README.md) | Pipeline de dados públicos → `data/public/` |
+| [`warehouse/README.md`](warehouse/README.md) | Modelo 2 — base histórica multi‑cidade (planejado) |
 
 ## Comece por aqui
 
@@ -111,6 +118,10 @@ para habilitar.
 Três views em produção — Mapa, Mercado Residencial DF e Diagnóstico Territorial PDAD-A (com
 Ranking, Comparar e Base de dados) — alimentadas pela Google Sheet via GViz. Fases Explorar,
 Entender e Comparar entregues; ver [`docs/PRODUCT_PLAN.md`](docs/PRODUCT_PLAN.md).
+
+Em curso (Fase 3b, issue #146): camadas territoriais de fonte pública — crescimento de
+domicílios 2010→2022 (IBGE), empregos formais (Ipea/RAIS) e centralidade viária (OSM) — geradas
+por `pipeline/` e lidas de `data/public/` pelo manifest; ponte declarada entre as grafias de RA.
 
 O Apps Script v2.4.0 (`optional-apps-script/Code.gs`) é a camada de governança da planilha:
 validação, saneamento (dinheiro como número, período FipeZap como texto), filas de cobertura e

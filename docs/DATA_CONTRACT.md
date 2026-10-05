@@ -454,6 +454,12 @@ Chave composta: `ra_geo_id` + `pdad_year` + `indicator_code` + `segment_value` +
 > `LISTINGS`/`DEVELOPMENTS`/`ANCHORS` continuam em `RA2026_RA-I`. O cruzamento entre
 > `PDAD_A_DATA` e `RA_PROFILES` passa a ser possível por chave igual, mas ainda **não é feito**
 > no cliente (ver "Renda per capita" abaixo).
+>
+> **Desde 2026-10 (issue #146) o de-para existe, declarado:** `data/public/ra_crosswalk.json`
+> (seção "Arquivos públicos — data/public/", R2.9), derivado dos atributos oficiais do GeoPortal.
+> É por ele — e só por ele — que o cliente pode traduzir `RA2026_RA-<romano>` ↔ `RA_nn`. O
+> cruzamento em si entra na issue #153; enquanto não entrar, o que está escrito acima continua
+> valendo.
 
 **Cobertura por ano, confirmada no dataset real, não assumida**: `2024` publica as 35 RAs;
 `2021` publica **só o Plano Piloto** (`RA_01`) — é o lote histórico anterior à pesquisa virar
@@ -1391,6 +1397,170 @@ Regras que a tela garante:
 
 ---
 
+## Arquivos públicos — data/public/ (pipeline, R2.7)
+
+Dado **derivado de fonte pública oficial**, gerado por `pipeline/` (Python, GitHub Actions) e
+lido pelo site na mesma origem do GitHub Pages. Não é aba da planilha: não tem
+`REQUIRED_HEADERS`, não passa pelo Apps Script e **nunca é editado à mão** (R2.8). O contrato
+humano é esta seção; o contrato executável são os JSON Schemas em `data/public/schemas/`, que
+o validador (`python -m imob_pipeline validate data/public`) aplica em toda PR.
+
+Regras comuns a todo arquivo:
+
+- extensão **`.json`** (GeoJSON dentro) — o GitHub Pages comprime `.json`; `.geojson` não é garantido;
+- `FeatureCollection` em WGS84 `[longitude, latitude]`, **5 casas decimais**, anéis fechados;
+- toda feição tem `id` (texto) igual à propriedade‑chave;
+- `additionalProperties: false`: propriedade fora do schema reprova;
+- **ausência é `null`, nunca `0`**; dado suprimido na fonte vira `null` + `quality_flags`, nunca é saturado (R8.59);
+- chave de RA é **`RA_nn`** (R2.9); `null` quando a feição cai fora de todo limite oficial;
+- escrita determinística (feições ordenadas por `id`, chaves ordenadas): mesma entrada, mesmos bytes.
+
+### manifest.json
+
+| Campo | Tipo | Significado |
+|---|---|---|
+| `manifest_version` | inteiro | `1`; o cliente recusa versão que não conhece (`MANIFEST_SCHEMA_VERSION` em `src/territorio/manifest.js`) |
+| `generated_at` | data-hora ISO (UTC) | só avança quando algum dataset mudou de conteúdo |
+| `pipeline_version` / `pipeline_commit` / `config_sha256` | texto | reprodutibilidade: versão do pacote, commit e hash do `pipeline/config/df.toml` |
+| `attribution_pt` | texto | frase de atribuição de todas as fontes, exibida em "Sobre estes dados" |
+| `datasets[]` | lista | um por conjunto publicado — ver abaixo |
+
+Cada `datasets[]`: `id` (`^[a-z][a-z0-9_]*$`), `title_pt`, `version` (`AAAA-MM-DD` da última
+mudança de conteúdo), `generated_at`, `content_hash` (sha256 dos sha256 dos arquivos — dataset
+inalterado preserva `version`/`generated_at`), `schema` (caminho em `schemas/`), `years`,
+`crs` (`EPSG:4326`), `bbox`, `files[]`, `sources[]`, `method_pt`, `ra_assignment_method`
+(`centroid_within_ra` | `midpoint_within_ra`), `class_breaks`, `counts`, `quality_flags`,
+`notes_pt`.
+
+`files[]`: `path` (relativo, sem `..`, termina em `.json`), `role` ∈ `overview` | `detail` |
+`detail_shard` | `data`, `bytes`, `budget_bytes` (o validador reprova `bytes > budget_bytes`),
+`sha256`, `features` (feições ou linhas), `bbox`, e nos shards `shard_key`/`shard_value`
+(`ra_geo_id`/`RA_nn`) e `zoom_min` (a partir de que zoom o cliente usa o detalhe).
+
+`sources[]`: `name`, `url` (só http/https), `retrieved_at`, `license`, `license_url`
+(opcional), `attribution_pt`, `files`/`etag`/`sha256` do download quando houver.
+
+`class_breaks`: por métrica, `{ method: "fixed", breaks: [...], classes, n, zero_is_absent? }`.
+Os cortes são **fixos e declarados em `pipeline/config/df.toml`** (os mesmos dos mapas de
+referência), nunca calculados do dado — estáveis entre execuções e interpretáveis. Cortes
+crescentes `[b1..bk]` definem `k+1` classes; **valor igual ao corte cai na classe de cima**
+(`classIndexFor` no cliente e `assign_class` no pipeline implementam a mesma regra). O pipeline
+grava a classe publicada por feição (`class_<métrica>`); o cliente recalcula a partir dos cortes
+e **avisa** divergência — publicado prevalece, recálculo sinaliza (R8.54).
+
+### ra_crosswalk
+
+`ra_crosswalk.json` (`role: data`), a ponte declarada da R2.9. Derivada **só** dos atributos do
+GeoPortal/SEDUH (`ra_cira`, `ra_codigo`, `ra_nome`, `ra_areakm2`); nunca por nome.
+
+| Campo | Tipo | Origem / regra |
+|---|---|---|
+| `ra_number` | inteiro | `ra_cira`; único; a execução falha se a contagem ≠ `expected_count` (37) |
+| `ra_geo_id` | texto | `RA_nn` — `'RA_' + ('0' + n).slice(-2)`, a mesma fórmula de `Code.gs` (`syncAdministrativeRegions_`) |
+| `ra_code` | texto | `RA-XIX`, de `ra_codigo`, **validado por ida‑e‑volta** contra `int_to_roman(ra_number)`; divergência falha nomeando a RA |
+| `ra_geo_id_roman` | texto | `RA2026_` + `ra_code` — a chave de LISTINGS/DEVELOPMENTS/ANCHORS |
+| `ra_name` | texto | `titleCaseRaName_` do Code.gs, copiada em Python (`SIA`/`SCIA` preservados) |
+| `ra_name_source` | texto | `ra_nome` cru |
+| `ra_slug` | texto | `normalizeSlug_` do Code.gs |
+| `ra_area_km2` | número ou `null` | `ra_areakm2` |
+| `geoportal_objectid` | inteiro | `objectid` |
+| `geometry_sha256` | texto | hash da geometria em resolução plena usada na atribuição (difere do `geometry_hash` simplificado da planilha, de propósito) |
+
+`tests/ra-crosswalk-parity.test.js` executa o `Code.gs` real sobre cada linha do arquivo.
+RA 36 e 37 existem no limite oficial; se têm perfil PDAD é decisão do cliente, não da ponte.
+
+### households_grid
+
+IBGE Grade Estatística, Censos 2010 e 2022 — **as mesmas células** nas duas edições, por isso a
+variação é direta. Arquivos: `households_grid/overview_1km.json` (`role: overview`, células de
+1 km, DF inteiro) e `households_grid/detail_200m/RA_nn.json` (`role: detail_shard`, células de
+200 m, uma por RA; `SEM_RA.json` para as não atribuídas; `zoom_min: 12`).
+
+| Propriedade | Tipo | Ausência | Regra |
+|---|---|---|---|
+| `cell_id` | texto | — | `ID_UNICO`, chave estável 2010↔2022; no overview, `nome_1KM` |
+| `cell_size` | enum `200M` / `1KM` | — | do prefixo do id |
+| `area_km2` | número | — | da tabela por tamanho; área projetada conferida ± 3 % |
+| `pop_2010`, `pop_2022` | inteiro | `null` | `POP` |
+| `dom_ocu_2010`, `dom_ocu_2022` | inteiro | `null` | `DOM_OCU` (domicílios particulares ocupados) |
+| `households_delta` | inteiro | `null` se um lado é nulo | `dom_ocu_2022 − dom_ocu_2010` |
+| `households_delta_per_km2` | número | idem | `households_delta ÷ area_km2`, 2 casas |
+| `households_delta_pct_change` | número (**fração decimal**) | `null` se 2010 nulo ou zero | `households_delta ÷ dom_ocu_2010` |
+| `ra_geo_id` | texto | `null` fora de toda RA | centroide da célula dentro do limite oficial |
+| `class_households_delta_per_km2` | inteiro 0–5 | `null` | cortes `[100, 350, 750, 1000, 2000]` |
+| `children`, `children_missing` | inteiro | só no overview | nº de células de 200 m somadas; quantas vieram nulas |
+| `quality_flags` | lista | — | `cell_missing_2010`, `cell_missing_2022`, `value_suppressed_2010`, `value_suppressed_2022`, `ra_unassigned`, `partial_children` |
+
+Overview: somas **estritas** (filho nulo → soma nula + `partial_children`), geometria = união
+dos filhos. Omitidas da publicação: células sem domicílio nos dois anos (contadas em
+`counts.dropped_empty_both_years`). A primeira classe (`até 100`) inclui perda e zero.
+
+### jobs_hex
+
+Ipea — Projeto Acesso a Oportunidades (empregos formais da RAIS por hexágono H3 r9, Brasília
+`bra`). Arquivos: `jobs_hex/overview_r8.json` (`role: overview`, somas por hexágono‑pai r8) e
+`jobs_hex/detail_r9/RA_nn.json` (`role: detail_shard`, `zoom_min: 12`).
+
+| Propriedade | Tipo | Ausência | Regra |
+|---|---|---|---|
+| `h3_index` | texto | — | `id_hex` (r9); no overview, o índice r8 |
+| `h3_parent_r8` | texto | — | pai r8 (só no detalhe) |
+| `year` | inteiro | — | ano principal (2019) |
+| `jobs_total`, `jobs_low`, `jobs_mid`, `jobs_high` | inteiro | `null` | `T001`–`T004` (tercis de renda) |
+| `jobs_total_2017` | inteiro | `null` (+ `hex_missing_2017`) | mesmo hexágono no ano anterior |
+| `pop_total` | inteiro | `null` | `P001` — base Censo 2010 (flag `aop_population_2010_based` em toda feição) |
+| `income_avg_brl`, `income_decile` | número / inteiro 1–10 | `null` | `R001`, `R003` |
+| `ra_geo_id` | texto | `null` | centro do hexágono dentro da RA |
+| `class_jobs_total` (e `_low/_mid/_high`) | inteiro 0–9 | `null` | cortes `[75, 125, 250, 500, 1000, 1500, 2000, 2500, 5000]`; **zero é ausente** (`zero_is_absent`) |
+| `hexes` | inteiro | só no overview | hexágonos r9 somados |
+| `quality_flags` | lista | — | `aop_population_2010_based`, `ra_unassigned`, `hex_missing_2017`, `partial_children` |
+
+Detalhe publica `jobs_total ≥ 1`; zeros são contados em `counts.omitted_zero_jobs` — **omitido
+não é "sem dado"**, e `notes_pt` diz isso para a tela repetir.
+
+### road_centrality
+
+OpenStreetMap (extrato Geofabrik centro‑oeste), rede viária de automóvel, **betweenness de
+aresta amostrado** (`sample_sources` origens, semente fixa). Arquivos:
+`road_centrality/overview.json` (`role: overview`, percentil ≥ 90 + arteriais, simplificado) e
+`road_centrality/detail.json` (`role: detail`, percentil ≥ 50 + arteriais, `zoom_min: 12`).
+
+| Propriedade | Tipo | Ausência | Regra |
+|---|---|---|---|
+| `edge_id` | texto | — | `u-v-key` do grafo simplificado |
+| `osmid` | lista de inteiros | — | ways do OSM fundidas na aresta |
+| `name` | texto | `null` | |
+| `highway` | texto | — | tag principal |
+| `oneway` | booleano | — | |
+| `length_m` | número | — | 1 casa |
+| `betweenness` | número 0–1 | — | normalizado pelo máximo |
+| `betweenness_percentile` | número 0–100 | — | posição percentual sobre **todas** as arestas do grafo (empates com posição média), não só as publicadas |
+| `class_betweenness_percentile` | inteiro 0–4 | — | cortes `[50, 75, 90, 97]` |
+| `ra_geo_id` | texto | `null` | ponto médio da aresta dentro da RA |
+| `quality_flags` | lista | — | `betweenness_sampled` (sempre), `geometry_simplified`, `ra_unassigned` |
+
+Atribuição ODbL obrigatória onde a camada aparece (`sources[].attribution_pt`).
+
+### ra_aggregates
+
+`ra_aggregates.json` (`role: data`): uma linha por `RA_nn` da ponte, com os três conjuntos somados
+por **centroide/ponto médio dentro do limite oficial** — contagens inteiras, cada feição contada
+uma vez, Σ RAs + balde `SEM_RA` = total do DF (invariante testado). Bloco de um dataset não
+gerado vem `null` em todos os campos dele (nunca zero), com a flag correspondente.
+
+| Campo | Tipo | Regra |
+|---|---|---|
+| `ra_geo_id`, `ra_geo_id_roman`, `ra_name`, `ra_area_km2` | — | da ponte |
+| `households_source`, `households_2010`, `households_2022`, `households_delta`, `households_growth_pct` (**fração decimal**), `households_per_km2_2022`, `pop_2010`, `pop_2022`, `cells_2010`, `cells_2022`, `cells_partial` | — | soma das células de 200 m atribuídas; `households_growth_pct = delta ÷ households_2010` (`null` se 2010 nulo ou zero) |
+| `jobs_source`, `jobs_year`, `jobs_total`, `jobs_low`, `jobs_mid`, `jobs_high`, `jobs_population_basis`, `jobs_per_1000_residents`, `jobs_per_km2`, `hexes` | — | soma dos hexágonos r9; `jobs_per_1000_residents = jobs_total ÷ jobs_population_basis × 1000` (base: `pop_total` do AOP, Censo 2010); `jobs_per_km2 = jobs_total ÷ ra_area_km2` |
+| `centrality_source`, `centrality_snapshot`, `edges_total`, `road_km_total`, `road_km_top_decile`, `centrality_mean`, `centrality_p90` | — | sobre as arestas atribuídas à RA |
+| `quality_flags` | lista | `households_missing`, `jobs_missing`, `centrality_missing`, `partial_children` |
+
+Escalas declaradas no cliente (`DATASET_PERCENT_SCALE`): `RA_AGGREGATES` decimal;
+`PUBLIC_CENTRALITY` pontos (percentil 0–100).
+
+---
+
 ## Provisionamento pós-semente (Apps Script v2.0.0 e v2.2.1)
 
 `migration/imob-intelligence-backend.xlsx` é a **semente histórica de importação**, não um espelho
@@ -1570,5 +1740,6 @@ planilha existente ganha as três colunas novas.
 | **D2** | `IVV_REGION` | `ivv_pct` é alias de compatibilidade de `ivv_pct_published` |
 | **D3** | `reference/index-v3.html` × planilha | No V3, `primaryMarket` traz ofertas aninhadas. Na migração futura, elas podem ser preservadas na aba opcional `PRIMARY_OFFERS`; não formam uma aba obrigatória do runtime |
 | **D4** | `DEVELOPMENTS` | 22 linhas na planilha × 10 no V3: 12 registros do mercado primário foram incorporados usando apenas campos semanticamente equivalentes |
+| **D5** | `ra_geo_id` | Duas grafias convivem: `RA_nn` (RA_PROFILES, POLYGONS, PDAD_A_DATA, FIPEZAP_LOCALITY_MAP, `data/public/*`) e `RA2026_RA-<romano>` (LISTINGS, DEVELOPMENTS, ANCHORS). Reconciliadas **só** por `data/public/ra_crosswalk.json` (R2.9); nunca por nome |
 
 Divergência se registra. Não se resolve em silêncio (R8.3).

@@ -32,6 +32,25 @@ Regras são numeradas e estáveis. Não renumere ao inserir — acrescente ao fi
   Nunca derrube a aplicação porque uma aba futura está vazia.
 - **R2.6** Dado inválido não derruba a aplicação. Registro ruim é descartado ou sinalizado, nunca
   fatal.
+- **R2.7** *(2026-10-05, issue #146)* **Dado derivado de fonte pública oficial mora em
+  `data/public/`.** O que o IBGE, o Ipea, o OpenStreetMap ou o GeoPortal publicam e o pipeline
+  (`pipeline/`) transforma — células, hexágonos, arestas, agregados por RA — é commitado como
+  arquivo estático, lido pelo site na mesma origem do GitHub Pages, **sempre** acompanhado do
+  `manifest.json` com procedência (fonte, URL, data de coleta, licença), `sha256`, tamanho e
+  orçamento de cada arquivo. Isto **não** relaxa R2.2: a planilha continua sendo a fonte do dado
+  curado e nunca é exportada para o repositório. Não é demo (R2.3). Ausência de `data/public/`
+  é aviso, nunca erro (R2.5). O cliente recusa arquivo cujo hash difere do manifest.
+- **R2.8** *(2026-10-05, issue #146)* **Nada em `data/public/` é editado à mão.** Mudou o dado,
+  muda no pipeline e regera; o validador (`python -m imob_pipeline validate`) roda em toda PR
+  (`.github/workflows/validate-dados-publicos.yml`) e recusa hash, tamanho, schema ou classe que
+  não confere. A única porta de entrada em `main` é a PR automática do workflow
+  `dados-publicos.yml`, que o dono revisa e faz merge (R7.1).
+- **R2.9** *(2026-10-05, issue #146)* **A chave de Região Administrativa tem duas grafias e um
+  de‑para declarado.** `RA_nn` (RA_PROFILES, POLYGONS, PDAD_A_DATA, FIPEZAP_LOCALITY_MAP, todo
+  arquivo público) e `RA2026_RA-<romano>` (LISTINGS, DEVELOPMENTS, ANCHORS) só se cruzam por
+  `data/public/ra_crosswalk.json`, derivado dos atributos oficiais do GeoPortal com código romano
+  validado por ida‑e‑volta. Nunca por semelhança de nome, nunca por aritmética de algarismos
+  romanos no cliente: sem a ponte carregada, o cruzamento resolve ausente.
 
 ## 3. Contrato de dados
 
@@ -83,6 +102,13 @@ Regras são numeradas e estáveis. Não renumere ao inserir — acrescente ao fi
   resolvê-la — o que depende da configuração de implantação do Web App e não é garantido. Ver
   `docs/SHEET_SETUP.md` §8 para configurar o token e a rotação.
 
+- **R4.10** *(2026-10-05, issue #146)* **Credencial de nuvem só como secret do GitHub, e o job
+  que a usa nunca é o job que commita.** A chave de service account do GCP (`GCP_SA_KEY`) só é
+  materializada no job `extrair-bigquery` de `dados-publicos.yml`, que sobe um artefato e não
+  toca o git; o job que commita adiciona só `data/public/**`, `gha-creds-*.json` está no
+  `.gitignore` e a varredura de secret da CI é a última rede. Nenhum identificador de projeto,
+  token ou chave entra em `pipeline/config/`.
+
 ## 5. Qualidade de código
 
 - **R5.1** Mudanças pequenas e verificáveis. Não reescreva arquivo inteiro sem necessidade.
@@ -115,6 +141,10 @@ Regras são numeradas e estáveis. Não renumere ao inserir — acrescente ao fi
   [`AI_WORKFLOW.md`](AI_WORKFLOW.md). **Uma rodada é o normal.** O que bloqueia o merge é
   **P0 ou P1 em aberto** — não a ausência de qualquer achado. Achado P2 ou P3 não segura a PR:
   corrija se for trivial, senão registre como backlog e siga.
+  **Exceção declarada (2026-10-05, issue #146):** PR que toca **somente** `data/public/` (os
+  arquivos derivados e o `manifest.json`), com `validate-dados-publicos.yml` verde, dispensa o
+  review do Codex — o portão dela é o validador, não a leitura humana de milhares de feições.
+  Qualquer linha fora de `data/public/` na mesma PR devolve a exigência de review.
 - **R7.3** Todo achado do Codex que revele uma **classe** de erro vira regra nova na seção 8,
   na mesma PR que corrige o achado.
 - **R7.4** A PR relata: arquivos alterados, resumo do diff, testes executados, problemas restantes.

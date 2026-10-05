@@ -22,6 +22,9 @@ Estática, sem build, sem backend obrigatório. **Código mora no GitHub. Dados 
 2. Se for mexer em ingestão, schema, CSV ou planilha: leia [`docs/DATA_CONTRACT.md`](docs/DATA_CONTRACT.md) **antes**.
 3. Se for mexer no Apps Script: leia [`docs/SHEET_SETUP.md`](docs/SHEET_SETUP.md).
 4. Escolha a skill certa em [`.agents/skills/`](.agents/skills/) e siga o workflow dela.
+5. Se for mexer em `pipeline/`, `data/public/`, no manifest ou nos schemas: leia a seção
+   "Arquivos públicos — data/public/" do [`docs/DATA_CONTRACT.md`](docs/DATA_CONTRACT.md) e a
+   skill `imob-pipeline`. **Nada em `data/public/` é editado à mão** (R2.8).
 
 ## Obrigações inegociáveis
 
@@ -65,7 +68,9 @@ apenas o que for material — não elogie genericamente.
    sobreviver ao pipeline. **Coordenada aproximada nunca pode ser apresentada como endereço
    exato.** A maioria dos listings usa centroide de localidade com jitter.
 6. **Google Sheets / GViz** — parsing do envelope, aba ausente, célula vazia, tipo de coluna.
-   Aba **opcional** ausente é warning, nunca erro fatal.
+   Aba **opcional** ausente é warning, nunca erro fatal. O mesmo vale para `data/public/`:
+   manifest ou arquivo público ausente é aviso e controle desabilitado com motivo, nunca erro;
+   arquivo cujo hash difere do manifest é recusado, nunca desenhado.
 7. **Apps Script** — idempotência, `LockService` onde há escrita concorrente, endpoint read-only
    com allowlist, segredo em Script Properties e nunca em célula.
 8. **GitHub Pages** — caminho relativo, ausência de build, nada que dependa de servidor.

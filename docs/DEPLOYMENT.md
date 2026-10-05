@@ -27,6 +27,9 @@ src/
   format.js                formatação e saneamento
   app.js                   interação e mapa
 data/demo.json             dataset de demonstração
+data/public/               dado derivado de fonte pública + manifest (gerado por pipeline/, R2.7)
+pipeline/                  pipeline Python (GitHub Actions / máquina própria; nunca no navegador)
+warehouse/                 Modelo 2 — base histórica multi-cidade (esqueleto)
 tests/                     suíte de testes (node --test)
 tools/                     migração, geração do demo, smoke test
 migration/                 semente .xlsx de importação

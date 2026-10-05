@@ -25,6 +25,7 @@ Ferramenta que exige arquivo próprio (`CLAUDE.md`, `.cursorrules`, `.github/cop
 | [`imob-data-contract`](../.agents/skills/imob-data-contract/SKILL.md) | Qualquer coisa que toque schema, cabeçalho, ID, coordenada, preço, data |
 | [`imob-appscript`](../.agents/skills/imob-appscript/SKILL.md) | Qualquer mudança no `Code.gs` |
 | [`imob-release`](../.agents/skills/imob-release/SKILL.md) | Antes de publicar uma versão |
+| [`imob-pipeline`](../.agents/skills/imob-pipeline/SKILL.md) | Qualquer mudança em `pipeline/`, `data/public/`, manifest ou schemas; site passando a ler arquivo público novo |
 
 Escolha uma. Se a tarefa é construir, é `imob-implementer`; se é descobrir por que quebrou, é
 `imob-debugger`. Confundir as duas leva a "consertar" sintoma.

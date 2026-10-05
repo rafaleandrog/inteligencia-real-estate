@@ -1,0 +1,21 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://rafaleandrog.github.io/inteligencia-real-estate/data/public/schemas/road_centrality.properties.schema.json",
+  "title": "road_centrality — propriedades de cada aresta da rede viária (OpenStreetMap)",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["edge_id", "osmid", "name", "highway", "oneway", "length_m", "betweenness", "betweenness_percentile", "class_betweenness_percentile", "ra_geo_id", "quality_flags"],
+  "properties": {
+    "edge_id": { "type": "string", "minLength": 1 },
+    "osmid": { "type": "array", "items": { "type": "integer" } },
+    "name": { "type": ["string", "null"] },
+    "highway": { "type": "string" },
+    "oneway": { "type": "boolean" },
+    "length_m": { "type": "number", "minimum": 0 },
+    "betweenness": { "type": "number", "minimum": 0, "maximum": 1 },
+    "betweenness_percentile": { "type": "number", "minimum": 0, "maximum": 100 },
+    "class_betweenness_percentile": { "type": "integer", "minimum": 0, "maximum": 4 },
+    "ra_geo_id": { "type": ["string", "null"], "pattern": "^RA_[0-9]{2}$" },
+    "quality_flags": { "type": "array", "items": { "enum": ["betweenness_sampled", "geometry_simplified", "ra_unassigned"] } }
+  }
+}

@@ -41,6 +41,15 @@ temporal nos gráficos (período anterior, mesmo período do ano anterior, no me
 preço × liquidez por RA (IVV × preço, IVV × oferta, gap × preço); link compartilhável com view e
 filtros na URL.
 
+### Fase 3b — Território (em curso, issue #146)
+Dados públicos por pipeline reprodutível (`pipeline/` → `data/public/`, R2.7): crescimento de
+domicílios 2010→2022 por célula da Grade Estatística (IBGE), empregos formais por hexágono
+(Ipea/RAIS), centralidade viária (OpenStreetMap) — três camadas no Mapa com legenda, detalhe e
+procedência; agregados por RA no Diagnóstico, Ranking e Comparar; ponte declarada entre as duas
+grafias de RA. Foco de decisão: **produto e tipologia de lançamento** — perfil de domicílios e
+renda, mix de quartos demandado, concorrência e velocidade por RA, lidos lado a lado com o
+retrato territorial.
+
 ### Fase 4 — Decidir (adiante)
 Watchlists, alertas, relatórios e cenários — só com necessidade de usuário comprovada e sem
 score automático de oportunidade: a tela mostra números e metodologia; a leitura é de quem usa.
@@ -51,9 +60,21 @@ versionadas — quando o Google Sheets deixar de bastar (`docs/ARCHITECTURE.md`,
 
 ## O que não entra agora
 
-Score de oportunidade; recomendação gerada por IA; modelo preditivo; heatmap/hexbin
-obrigatórios; distância exata a partir de coordenada aproximada (`canUseForDistance` é a guarda);
-cruzamento automático PDAD + FipeZap + IVV + anúncios num único número.
+Score de oportunidade; recomendação gerada por IA; modelo preditivo no app (o Modelo 2, abaixo,
+só publica previsão com backtest ao lado do número); distância exata a partir de coordenada
+aproximada (`canUseForDistance` é a guarda); cruzamento de bases num único número sem fonte e
+ano ao lado — cruzar **é** permitido, mas só por chave declarada (`ra_crosswalk.json`, R2.9) e
+sempre com a fonte e o ano de cada parcela visíveis. Heatmap/hexbin deixaram de ser "não entra":
+entram quando a fonte pública os publica (Grade IBGE, hexágonos do Ipea), nunca como estética
+sobre dado aproximado.
+
+## Modelo 2 — base histórica multi‑cidade (planejado, issue #154)
+
+Segunda base, em `warehouse/`: painel histórico de São Paulo, Florianópolis e Goiânia (Brasília
+como alvo) — população, domicílios, renda, empregos (RAIS/CAGED), PIB, frota, área urbanizada
+(MapBiomas/GHSL), preço (FipeZap) — para ler como as cidades evoluem e produzir cenários 5–10
+anos com incerteza declarada. Chega ao app como view "Cidades" lendo `data/public/cidades/`,
+pelo mesmo caminho da Fase 3b. Implementação depois da Fase 3b.
 
 ## Base de dados: filas, não volume
 

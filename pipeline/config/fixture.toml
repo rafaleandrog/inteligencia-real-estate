@@ -1,0 +1,70 @@
+# Configuração de TESTE (fixture): mesmas chaves do df.toml, apontando para fixtures locais.
+#
+# Nenhuma chave tem padrão no código: faltou aqui, a execução falha nomeando a chave.
+# Os cortes de classe são FIXOS (os mesmos dos mapas de referência) e viajam no manifest;
+# o cliente só lê os cortes, nunca os calcula.
+
+[project]
+crs = "EPSG:4326"
+coordinate_decimals = 5
+# lon_min, lat_min, lon_max, lat_max — o DF inteiro com folga; conferido contra as RAs em tempo de execução.
+bbox = [-48.30, -16.06, -47.30, -15.48]
+
+[ra]
+geoportal_layer_url = "https://www.geoservicos.ide.df.gov.br/arcgis/rest/services/Publico/LIMITES/FeatureServer/1"
+out_fields = "objectid,ra_cira,ra_codigo,ra_nome,ra_path,ra_areakm2"
+# Copiado do Code.gs (`'RA2026_' + c.ra`, L5590) — R8.44: copie o valor e cite a origem.
+roman_key_prefix = "RA2026_"
+expected_count = 2
+assignment_method = "centroid_within_ra"
+page_size = 1000
+source = { name = "GeoPortal/SEDUH-DF — Limites das Regiões Administrativas", url = "https://www.geoportal.seduh.df.gov.br/mapa/", license = "Dado aberto do GDF — citar a fonte", attribution_pt = "Fonte: GeoPortal/SEDUH-DF (IDE/DF), camada Limites das Regiões Administrativas." }
+
+[households_grid]
+base_url_2010 = "https://geoftp.ibge.gov.br/recortes_para_fins_estatisticos/grade_estatistica/censo_2010/"
+base_url_2022 = "https://geoftp.ibge.gov.br/recortes_para_fins_estatisticos/grade_estatistica/censo_2022/"
+# Vazio até a primeira execução real: `python -m imob_pipeline discover grade` lista os quadrantes
+# que cruzam o bbox; os ids são pinados aqui (ex.: ["grade_id45"]).
+quadrant_ids = ["grade_fixture"]
+columns_2010 = { cell_id = "ID_UNICO", parent_1km = "nome_1KM", pop = "POP", dom_ocu = "DOM_OCU" }
+columns_2022 = { cell_id = "ID_UNICO", parent_1km = "nome_1KM", pop = "POP", dom_ocu = "DOM_OCU" }
+cell_area_km2 = { "200M" = 0.04, "1KM" = 1.0 }
+drop_if_empty_both_years = true
+breaks = { households_delta_per_km2 = [100, 350, 750, 1000, 2000], households_delta = [5, 10, 20, 40, 80] }
+budgets = { overview = 2000000, shard = 2000000 }
+
+[households_grid.sources]
+censo_2010 = { name = "IBGE — Grade Estatística, Censo Demográfico 2010", url = "https://geoftp.ibge.gov.br/recortes_para_fins_estatisticos/grade_estatistica/censo_2010/", license = "Dados abertos do IBGE — reprodução permitida com citação da fonte", attribution_pt = "Fonte: IBGE, Censo Demográfico 2010 — Grade Estatística." }
+censo_2022 = { name = "IBGE — Grade Estatística, Censo Demográfico 2022", url = "https://geoftp.ibge.gov.br/recortes_para_fins_estatisticos/grade_estatistica/censo_2022/", license = "Dados abertos do IBGE — reprodução permitida com citação da fonte", attribution_pt = "Fonte: IBGE, Censo Demográfico 2022 — Grade Estatística." }
+
+[jobs_hex]
+# Candidato; confirmado na primeira execução real (o pacote aopdata resolve os arquivos por este índice).
+metadata_url = "https://www.ipea.gov.br/acessooportunidades/dados/metadata.csv"
+city = "bra"
+year = 2019
+previous_year = 2017
+h3_resolution = 9
+overview_resolution = 8
+columns = { hex = "id_hex", jobs_total = "T001", jobs_low = "T002", jobs_mid = "T003", jobs_high = "T004", pop = "P001", income_avg = "R001", income_decile = "R003" }
+detail_min_jobs = 1
+breaks = { jobs_total = [75, 125, 250, 500, 1000, 1500, 2000, 2500, 5000], jobs_low = [25, 50, 100, 200, 400, 600, 800, 1000, 2000], jobs_mid = [25, 50, 100, 200, 400, 600, 800, 1000, 2000], jobs_high = [25, 50, 100, 200, 400, 600, 800, 1000, 2000] }
+budgets = { overview = 2000000, shard = 2000000 }
+source = { name = "Ipea — Projeto Acesso a Oportunidades (AOP), uso do solo e empregos (RAIS)", url = "https://www.ipea.gov.br/acessooportunidades/", license = "Citação obrigatória; termos conforme o site do projeto", attribution_pt = "Fonte: Ipea, Projeto Acesso a Oportunidades (Pereira, R. H. M. et al.). Empregos formais da RAIS/MTE." }
+
+[road_centrality]
+pbf_url = "https://download.geofabrik.de/south-america/brazil/centro-oeste-latest.osm.pbf"
+highway_filter = ["motorway", "trunk", "primary", "secondary", "tertiary", "unclassified", "residential", "living_street", "motorway_link", "trunk_link", "primary_link", "secondary_link", "tertiary_link"]
+sample_sources = 2000
+seed = 20260101
+publish_min_percentile = 50
+overview_min_percentile = 90
+always_publish_highways = ["motorway", "trunk", "primary", "secondary"]
+simplify_tolerance_deg = 0.00005
+min_refresh_days = 90
+breaks = { betweenness_percentile = [50, 75, 90, 97] }
+budgets = { overview = 2000000, detail = 4000000 }
+source = { name = "OpenStreetMap (extrato Geofabrik centro-oeste)", url = "https://www.openstreetmap.org/copyright", license = "ODbL 1.0 — base de dados derivada, disponibilizada sob ODbL", license_url = "https://www.opendatacommons.org/licenses/odbl/1-0/", attribution_pt = "© OpenStreetMap contributors — https://www.openstreetmap.org/copyright. Extrato: Geofabrik." }
+
+[manifest]
+budgets = { manifest = 200000, crosswalk = 40000, aggregates = 150000 }
+attribution_pt = "Contém dados do IBGE, do Ipea (Projeto Acesso a Oportunidades), do GeoPortal/SEDUH-DF e © OpenStreetMap contributors (ODbL)."

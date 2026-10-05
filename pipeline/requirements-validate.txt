@@ -1,0 +1,2 @@
+# Só o validador da CI (validate-dados-publicos.yml): o núcleo é stdlib, jsonschema é a camada extra.
+jsonschema==4.23.0
