@@ -2537,6 +2537,254 @@ padrao.avisos.length === 0
   ? pass('o manifest vazio não gera aviso técnico — é o estado esperado antes da primeira execução')
   : fail('aviso indevido com manifest vazio: ' + JSON.stringify(padrao.avisos));
 
+// --- Território: mapa de domicílios 2010→2022 (issue #150) ----------------------------
+console.log('\n== Território · mapa de domicílios (issue #150) ==');
+const { TERRITORY_LAYERS, RAMPS } = await import('../src/territorio/layers.js');
+const HOUSEHOLDS = TERRITORY_LAYERS.find((l) => l.id === 'households_grid');
+const HH_DATASET = FIXTURE_MANIFEST.datasets.find((d) => d.id === HOUSEHOLDS.datasetId);
+const HH_BREAKS = HH_DATASET.class_breaks[HOUSEHOLDS.defaultMetric].breaks;
+
+const terrPage = await context.newPage();
+const terrErros = [];
+terrPage.on('console', (m) => { if (m.type() === 'error') terrErros.push(m.text()); });
+terrPage.on('pageerror', (e) => terrErros.push('pageerror: ' + e.message));
+await terrPage.addInitScript(() => {
+  Object.defineProperty(window, 'APP_CONFIG', {
+    configurable: true,
+    set(value) {
+      delete window.APP_CONFIG; window.APP_CONFIG = value;
+      if (value) { value.demoMode = true; value.publicDataUrl = './tests/fixtures/public/'; }
+    },
+    get() { return undefined; },
+  });
+});
+// O demo não traz contorno de RA; uma RA sintética cobrindo as células de fixture é o que
+// prova que, com a coroplética ligada, o limite oficial vira SÓ contorno por cima dela.
+await terrPage.route('**/data/demo.json', async (route) => {
+  const response = await route.fetch();
+  const payload = await response.json();
+  payload.polygons = [{
+    polygon_id: 'SMOKE_RA_TERR',
+    name: 'RA sintética do território',
+    layer_group: 'administrative_regions',
+    entity_type: 'administrative_region',
+    ra_geo_id: 'RA2026_RA-I',
+    entity_id: 'RA2026_RA-I',
+    geometry_geojson: JSON.stringify({
+      type: 'Polygon',
+      coordinates: [[[-48.00, -15.95], [-47.85, -15.95], [-47.85, -15.75], [-48.00, -15.75], [-48.00, -15.95]]],
+    }),
+    status: 'active',
+  }];
+  await route.fulfill({ response, json: payload });
+});
+await terrPage.goto('http://localhost:8080/', { waitUntil: 'networkidle' });
+await terrPage.waitForTimeout(1200);
+
+const controles = await terrPage.evaluate(() => [...document.querySelectorAll('#territoryLayers input[name="territoryArea"]')]
+  .map((i) => ({ value: i.value, disabled: i.disabled, checked: i.checked, title: i.closest('label').title })));
+controles.length === 3 && controles.every((c) => !c.disabled) && controles[0].checked
+  ? pass('com o manifest de fixture, os rádios das duas camadas de área habilitam e "nenhuma" começa marcada')
+  : fail('controles territoriais: ' + JSON.stringify(controles));
+(await terrPage.locator('#territoryLegend').isHidden()) && (await terrPage.locator('.leaflet-territory-pane canvas').count()) === 0
+  ? pass('sem camada ligada, não há legenda nem canvas')
+  : fail('legenda ou canvas presentes sem camada ligada');
+
+await terrPage.check('#territoryLayers input[value="households_grid"]');
+await terrPage.waitForTimeout(1500);
+const ligada = await terrPage.evaluate(() => {
+  const legenda = document.querySelector('#territoryLegend');
+  const probe = document.createElement('span');
+  document.body.append(probe);
+  const rgb = (token) => { probe.style.color = getComputedStyle(document.documentElement).getPropertyValue(token).trim(); return getComputedStyle(probe).color; };
+  const amostras = [...document.querySelectorAll('#territoryClasses li')].map((li) => {
+    const dot = li.querySelector('.dot-territorio-sample');
+    return { classe: dot.dataset.territoryClass, cor: getComputedStyle(dot).backgroundColor, vazio: dot.classList.contains('dot-territorio-vazio'), texto: li.textContent.trim() };
+  });
+  const tokens = Array.from({ length: 6 }, (_, i) => rgb(`--seq-${i + 1}`));
+  probe.remove();
+  return {
+    legendaVisivel: !legenda.hidden,
+    titulo: document.querySelector('#territoryLegendTitle').textContent,
+    role: legenda.dataset.territoryRole,
+    features: legenda.dataset.territoryFeatures,
+    amostras,
+    tokens,
+    canvas: document.querySelectorAll('.leaflet-territory-pane canvas').length,
+    contornosRa: document.querySelectorAll('.leaflet-raOutline-pane path.polygon-outline-only').length,
+    preenchidos: document.querySelectorAll('.leaflet-polygons-pane path.polygon-shape').length,
+    procedencia: document.querySelector('#territoryProvenance').textContent,
+    linkBase: document.querySelector('#territoryProvenance a')?.getAttribute('href'),
+    hash: location.hash,
+    contador: document.querySelector('[data-territory-count="households_grid"]').textContent,
+  };
+});
+ligada.legendaVisivel && ligada.canvas === 1
+  ? pass('ligar a camada de domicílios abre a legenda e desenha num canvas no pane territory')
+  : fail('camada não ligou: ' + JSON.stringify({ legenda: ligada.legendaVisivel, canvas: ligada.canvas }));
+ligada.amostras.length === HH_BREAKS.length + 1 + 1
+  ? pass(`a legenda tem ${HH_BREAKS.length + 1} classes mais "sem dado" (cortes lidos do manifest de fixture, R8.72)`)
+  : fail('linhas da legenda: ' + JSON.stringify(ligada.amostras.map((a) => a.texto)));
+ligada.amostras.slice(0, -1).every((a, i) => a.cor === ligada.tokens[i]) && ligada.amostras.at(-1).vazio
+  ? pass('cada amostra da legenda é o token --seq-N correspondente, e "sem dado" é vazada')
+  : fail('amostras × tokens: ' + JSON.stringify({ amostras: ligada.amostras.map((a) => a.cor), tokens: ligada.tokens }));
+/Domicílios novos por km²/.test(ligada.titulo) && /2010→2022/.test(ligada.titulo)
+  ? pass('o título da legenda diz métrica, unidade e período')
+  : fail('título da legenda: ' + ligada.titulo);
+ligada.role === 'overview' && Number(ligada.features) > 0 && ligada.contador === ligada.features
+  ? pass(`no zoom inicial desenha o overview (${ligada.features} células) e o contador confere`)
+  : fail('papel/contador: ' + JSON.stringify({ role: ligada.role, features: ligada.features, contador: ligada.contador }));
+ligada.contornosRa > 0 && ligada.preenchidos === 0
+  ? pass('com a coroplética ligada, as RAs viram só contorno no pane raOutline')
+  : fail('contorno das RAs: ' + JSON.stringify({ contornos: ligada.contornosRa, preenchidos: ligada.preenchidos }));
+/Fonte: IBGE/.test(ligada.procedencia) && /versão/.test(ligada.procedencia) && ligada.linkBase === '#base'
+  ? pass('a procedência traz fonte, coleta e versão, com link para a Base de dados')
+  : fail('procedência: ' + ligada.procedencia);
+/terr=households_grid/.test(ligada.hash)
+  ? pass('a URL do mapa carrega terr=households_grid')
+  : fail('hash sem terr: ' + ligada.hash);
+
+// Pixel do canvas: toda cor desenhada é um token da rampa (ou o traço "sem dado"), e um
+// clique numa célula pintada abre o painel. Sem DOM por feição, a prova é por amostragem.
+const pixels = await terrPage.evaluate(() => {
+  const canvas = document.querySelector('.leaflet-territory-pane canvas');
+  const mapa = document.querySelector('#map').getBoundingClientRect();
+  const rect = canvas.getBoundingClientRect();
+  const ctx = canvas.getContext('2d');
+  const { width, height } = canvas;
+  const data = ctx.getImageData(0, 0, width, height).data;
+  const dpr = width / rect.width;
+  const probe = document.createElement('span');
+  document.body.append(probe);
+  const rgb = (token) => { probe.style.color = getComputedStyle(document.documentElement).getPropertyValue(token).trim(); const m = getComputedStyle(probe).color.match(/\d+/g); return m.slice(0, 3).map(Number); };
+  const permitidas = [...Array.from({ length: 6 }, (_, i) => rgb(`--seq-${i + 1}`)), rgb('--terr-sem-dado-borda')];
+  probe.remove();
+  const perto = (a, b) => a.every((v, i) => Math.abs(v - b[i]) <= 4);
+  let pintados = 0; let fora = 0; let alvo = null;
+  for (let i = 0; i < data.length; i += 4) {
+    if (data[i + 3] < 150) continue;
+    const cor = [data[i], data[i + 1], data[i + 2]];
+    pintados += 1;
+    const idx = permitidas.findIndex((p) => perto(p, cor));
+    if (idx < 0) { fora += 1; continue; }
+    if (idx === permitidas.length - 1 || alvo) continue;
+    // Centro de uma corrida horizontal da mesma cor, dentro da área visível do mapa.
+    const x = (i / 4) % width; const y = Math.floor(i / 4 / width);
+    let fim = x;
+    while (fim + 1 < width) { const j = (y * width + fim + 1) * 4; if (data[j + 3] < 150 || !perto([data[j], data[j + 1], data[j + 2]], cor)) break; fim += 1; }
+    const cx = rect.left + ((x + fim) / 2) / dpr; const cy = rect.top + y / dpr + 1;
+    if (cx > mapa.left + 5 && cx < mapa.right - 5 && cy > mapa.top + 5 && cy < mapa.bottom - 5 && fim - x >= 3) alvo = { x: cx, y: cy, corrida: fim - x + 1 };
+  }
+  return { pintados, fora, alvo };
+});
+pixels.pintados > 0 && pixels.fora === 0
+  ? pass(`todos os ${pixels.pintados} pixels pintados no canvas são tokens da rampa (prova por amostragem, R8.83)`)
+  : fail('pixels fora dos tokens: ' + JSON.stringify(pixels));
+if (pixels.alvo) {
+  await terrPage.mouse.click(pixels.alvo.x, pixels.alvo.y);
+  await terrPage.waitForTimeout(400);
+  const detalhe = await terrPage.evaluate(() => ({
+    aberto: !document.querySelector('#detail').hidden,
+    titulo: document.querySelector('#detailTitle').textContent,
+    essencial: [...document.querySelectorAll('#detailBody .detail-essential dt')].map((n) => n.textContent),
+    fontes: [...document.querySelectorAll('#detailBody .detail-source a')].map((a) => ({ href: a.getAttribute('href'), rel: a.rel })),
+  }));
+  detalhe.aberto && /^Célula de/.test(detalhe.titulo)
+    ? pass(`o clique na célula abre o painel "${detalhe.titulo}"`)
+    : fail('painel da célula não abriu: ' + JSON.stringify(detalhe));
+  detalhe.essencial.length >= 1 && detalhe.essencial.length <= 6 && detalhe.essencial.every((r) => !/_/.test(r))
+    ? pass(`o essencial da célula tem ${detalhe.essencial.length} linhas, sem chave crua`)
+    : fail('essencial da célula: ' + JSON.stringify(detalhe.essencial));
+  detalhe.fontes.length > 0 && detalhe.fontes.every((f) => /^https?:\/\//.test(f.href) && /noopener/.test(f.rel))
+    ? pass('as fontes do conjunto viram links seguros no painel')
+    : fail('fontes no painel: ' + JSON.stringify(detalhe.fontes));
+  await terrPage.click('#closeDetail');
+} else {
+  fail('nenhuma célula pintada visível para clicar: ' + JSON.stringify(pixels));
+}
+
+// Troca de métrica: no overview, a métrica absoluta é indisponível com motivo (R8.15).
+const opcoes = await terrPage.evaluate(() => [...document.querySelectorAll('#territoryMetric option')].map((o) => ({ value: o.value, disabled: o.disabled, title: o.title })));
+opcoes.length === HOUSEHOLDS.metrics.length && opcoes.find((o) => o.value === 'households_delta')?.disabled && /R8\.15/.test(opcoes.find((o) => o.value === 'households_delta').title)
+  ? pass('no overview a métrica absoluta fica desabilitada no select, com o motivo')
+  : fail('opções de métrica: ' + JSON.stringify(opcoes));
+
+// Zoom até o detalhe: a partir do zoom_min os shards por RA substituem o overview.
+for (let i = 0; i < 3; i += 1) { await terrPage.click('.leaflet-control-zoom-in'); await terrPage.waitForTimeout(450); }
+await terrPage.waitForTimeout(1200);
+const detalhado = await terrPage.evaluate(() => ({ role: document.querySelector('#territoryLegend').dataset.territoryRole, status: document.querySelector('#territoryStatus').textContent }));
+detalhado.role === 'detail_shard'
+  ? pass('a partir do zoom_min a camada passa para os shards de detalhe por RA')
+  : fail('papel após o zoom: ' + JSON.stringify(detalhado));
+await terrPage.selectOption('#territoryMetric', 'households_delta');
+await terrPage.waitForTimeout(800);
+const metricaAbs = await terrPage.evaluate(() => ({ titulo: document.querySelector('#territoryLegendTitle').textContent, hash: location.hash, classes: document.querySelectorAll('#territoryClasses li').length }));
+/Domicílios novos \(absoluto\)/.test(metricaAbs.titulo) && /terr_metrica=households_delta/.test(metricaAbs.hash)
+  ? pass('trocar a métrica muda o título e entra na URL como terr_metrica')
+  : fail('troca de métrica: ' + JSON.stringify(metricaAbs));
+
+// Desligar: canvas some, RAs voltam preenchidas, URL perde terr.
+await terrPage.check('#territoryLayers input[value=""]');
+await terrPage.waitForTimeout(600);
+const desligada = await terrPage.evaluate(() => ({
+  legenda: document.querySelector('#territoryLegend').hidden,
+  preenchidos: document.querySelectorAll('.leaflet-polygons-pane path.polygon-shape').length,
+  contornos: document.querySelectorAll('.leaflet-raOutline-pane path').length,
+  hash: location.hash,
+}));
+desligada.legenda && desligada.preenchidos > 0 && desligada.contornos === 0 && !/terr=/.test(desligada.hash)
+  ? pass('desligar a camada esconde a legenda, devolve o preenchimento das RAs e limpa a URL')
+  : fail('estado após desligar: ' + JSON.stringify(desligada));
+
+// Abrir pela URL: #mapa?terr=households_grid liga a camada sozinho.
+const terrUrl = await context.newPage();
+await terrUrl.addInitScript(() => {
+  Object.defineProperty(window, 'APP_CONFIG', {
+    configurable: true,
+    set(value) { delete window.APP_CONFIG; window.APP_CONFIG = value; if (value) { value.demoMode = true; value.publicDataUrl = './tests/fixtures/public/'; } },
+    get() { return undefined; },
+  });
+});
+await terrUrl.goto('http://localhost:8080/#mapa?terr=households_grid', { waitUntil: 'networkidle' });
+await terrUrl.waitForTimeout(1800);
+const pelaUrl = await terrUrl.evaluate(() => ({
+  marcado: document.querySelector('#territoryLayers input[value="households_grid"]')?.checked,
+  canvas: document.querySelectorAll('.leaflet-territory-pane canvas').length,
+  legenda: !document.querySelector('#territoryLegend').hidden,
+}));
+pelaUrl.marcado && pelaUrl.canvas === 1 && pelaUrl.legenda
+  ? pass('#mapa?terr=households_grid abre com a camada ligada')
+  : fail('abertura pela URL: ' + JSON.stringify(pelaUrl));
+await terrUrl.setViewportSize({ width: 390, height: 844 });
+await terrUrl.waitForTimeout(500);
+const terrOverflow = await terrUrl.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
+terrOverflow <= 1 ? pass('a legenda territorial não cria overflow em 390px') : fail(`overflow de ${terrOverflow}px com a legenda territorial`);
+
+const terrReal = terrErros.filter((e) => !/tile|openstreetmap|ERR_|net::/i.test(e));
+terrReal.length === 0
+  ? pass('console sem erro de aplicação com a camada de domicílios')
+  : fail('erros no console (território): ' + JSON.stringify(terrReal.slice(0, 3)));
+
+// Página com camada pedida pela URL mas manifest ausente: nada liga, controle diz por quê.
+const terrSem = await context.newPage();
+await terrSem.route('**/nao-existe/manifest.json', (route) => route.abort());
+await terrSem.addInitScript(() => {
+  Object.defineProperty(window, 'APP_CONFIG', {
+    configurable: true,
+    set(value) { delete window.APP_CONFIG; window.APP_CONFIG = value; if (value) { value.demoMode = true; value.publicDataUrl = './nao-existe/'; } },
+    get() { return undefined; },
+  });
+});
+await terrSem.goto('http://localhost:8080/#mapa?terr=households_grid', { waitUntil: 'networkidle' });
+await terrSem.waitForTimeout(1200);
+const semManifest = await terrSem.evaluate(() => {
+  const input = document.querySelector('#territoryLayers input[value="households_grid"]');
+  return { disabled: input?.disabled, title: input?.closest('label').title, canvas: document.querySelectorAll('.leaflet-territory-pane canvas').length, hash: location.hash };
+});
+semManifest.disabled && /inacessível|manifest/.test(semManifest.title) && semManifest.canvas === 0
+  ? pass('sem manifest, o rádio fica desabilitado com o motivo e terr= na URL não liga nada')
+  : fail('camada sem manifest: ' + JSON.stringify(semManifest));
+
 console.log(`\n===== ${ok.length} ok, ${errors.length} falhas =====`);
 await browser.close();
 process.exit(errors.length > 0 ? 1 : 0);

@@ -24,6 +24,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync, readdirSync } from 'node:fs';
 import { SEASONALITY_CHART } from '../src/ivv/history.js';
+import { RAMPS } from '../src/territorio/layers.js';
 
 const read = (p) => readFileSync(new URL(p, import.meta.url), 'utf8');
 
@@ -31,7 +32,7 @@ const RE_COR_LITERAL = /#[0-9a-fA-F]{3,8}\b|\b(?:rgba?|hsla?)\s*\(/;
 /** Propriedades cujo valor tem escala declarada — literal aqui é densidade improvisada. */
 const PROPRIEDADES_DE_ESCALA = /(?:^|[;{\s])(font-size|padding|margin|gap|row-gap|column-gap)\s*:\s*([^;}]+)/g;
 const RE_VAR_COM_FALLBACK = /var\(\s*--[\w-]+\s*,/;
-const SELETORES_DA_TELA = /(^|[\s,>+~])[.](market|chart|serie|ano)[-\w]*/;
+const SELETORES_DA_TELA = /(^|[\s,>+~])[.](market|chart|serie|ano|territorio|dot-territorio)[-\w]*/;
 
 /** CSS sem comentários. O corte é textual: o arquivo não tem `/*` dentro de string. */
 export function semComentarios(css) {
@@ -186,6 +187,30 @@ test('a rampa ordinal do CSS tem exatamente os degraus que a sazonalidade usa', 
     Array.from({ length: SEASONALITY_CHART.anos }, (_, i) => `.ano-${i + 1}`).sort(),
     'os degraus precisam ser 1..N, sem buraco nem salto',
   );
+});
+
+/**
+ * As rampas sequenciais das camadas territoriais (issue #150): `--seq-N`, `--seq10-N` e
+ * `--via-N` no CSS têm que ter EXATAMENTE os degraus que `RAMPS` declara — o renderizador lê
+ * `--<rampa>-1..N` por getComputedStyle, e token a menos é célula transparente sem erro
+ * (família da R8.70); token a mais é rampa que ninguém emite. Nos dois sentidos, como a
+ * rampa ordinal acima.
+ */
+test('cada rampa territorial do CSS tem exatamente os degraus que RAMPS declara', () => {
+  const css = read('../assets/styles.css');
+  const definidos = tokensDefinidos(css);
+  for (const [ramp, size] of Object.entries(RAMPS)) {
+    const degraus = [...definidos].filter((t) => new RegExp(`^--${ramp}-\\d+$`).test(t)).sort();
+    assert.deepEqual(degraus, Array.from({ length: size }, (_, i) => `--${ramp}-${i + 1}`).sort(),
+      `rampa ${ramp}: CSS define ${degraus.length} degrau(s), RAMPS declara ${size}`);
+  }
+  assert.ok(definidos.has('--terr-amostra-borda') && definidos.has('--terr-sem-dado-borda'));
+});
+
+test('o guard cobre as regras territoriais', () => {
+  const achados = violacoesCss(':root { --raio-xs: 4px; }\n.territorio-x { color: #abc; }\n.dot-territorio-y { border-radius: 3px; }');
+  assert.ok(achados.some((a) => a.includes('literal de cor em ".territorio-x"')), achados.join(' · '));
+  assert.ok(achados.some((a) => a.includes('raio literal em ".dot-territorio-y"')), achados.join(' · '));
 });
 
 test('nenhum módulo de src/ivv conhece cor — sem exceção e sem lista', () => {

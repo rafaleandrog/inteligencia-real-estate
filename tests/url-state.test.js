@@ -70,3 +70,14 @@ test('ranking serializa apenas `ra`; `ano` e `tema` são descartados nos dois se
   assert.equal(buildHash('ranking', { ra: 'RA_20', ano: 2024, tema: 'domicilios' }), '#ranking?ra=RA_20');
   assert.deepEqual(parseHash('#ranking?ra=RA_20&ano=2024'), { view: 'ranking', params: { ra: 'RA_20' } });
 });
+
+// Camadas territoriais na URL do mapa (issue #150): `terr`, `terr_metrica` e `vias` entram
+// e saem como qualquer outra chave; fora do mapa são descartadas.
+test('terr, terr_metrica e vias são chaves do mapa e só do mapa', () => {
+  assert.ok(['terr', 'terr_metrica', 'vias'].every((k) => URL_KEYS.mapa.includes(k)));
+  assert.equal(buildHash('mapa', { terr: 'households_grid', terr_metrica: 'households_delta', vias: '1' }),
+    '#mapa?terr=households_grid&terr_metrica=households_delta&vias=1');
+  assert.deepEqual(parseHash('#mapa?terr=households_grid&vias=1').params, { terr: 'households_grid', vias: '1' });
+  assert.deepEqual(parseHash('#mercado?terr=households_grid').params, {});
+  assert.equal(buildHash('mapa', { terr: '', vias: '' }), '#mapa');
+});

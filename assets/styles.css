@@ -355,6 +355,52 @@
   --ano-3: #4fb07b;
   --ano-4: #8fd6ac;
 
+  /* Rampas SEQUENCIAIS das camadas territoriais (issue #150). Desenhadas sobre o tile
+     claro do OSM (#f2efe9), não sobre a superfície escura da interface: claro → escuro,
+     um matiz por família — quente para domicílios (`--seq`, 6 degraus), frio para
+     empregos (`--seq10`, 10 degraus), roxo monocromático para a centralidade viária
+     (`--via`, 5 degraus).
+
+     Conferido com o mesmo critério da rampa ordinal acima, registrado aqui (R8.75):
+     luminância monotônica em todos os degraus; ΔL mínimo 0,108 (seq), 0,030 (seq10 — dez
+     degraus não cabem a 0,06 dentro de uma faixa de luminância só; o passo é o maior que
+     o número de classes permite) e 0,055 (via); contraste do degrau mais escuro sobre o
+     tile 8,6:1 (seq), 12,8:1 (seq10) e 11,9:1 (via); o mais claro fica a ≈1,05:1 do tile
+     de propósito — "quase nada" é a classe mais baixa, e a legenda a nomeia.
+
+     A CONTAGEM de degraus é a de `RAMPS` em src/territorio/layers.js, conferida nos dois
+     sentidos por tests/ui-tokens.test.js. Nenhum módulo puro conhece estes valores: o
+     renderizador os lê por getComputedStyle no desenho, e a legenda pinta a amostra pela
+     mesma função que pinta o mapa (R8.42). */
+  --seq-1: #fff3dc;
+  --seq-2: #fdd9a5;
+  --seq-3: #fdb46d;
+  --seq-4: #f0821f;
+  --seq-5: #c4480c;
+  --seq-6: #7a2704;
+
+  --seq10-1: #f2f6fc;
+  --seq10-2: #dbe7f6;
+  --seq10-3: #c0d4ee;
+  --seq10-4: #a2bfe4;
+  --seq10-5: #7fa5d8;
+  --seq10-6: #5f8acb;
+  --seq10-7: #4670b8;
+  --seq10-8: #33569e;
+  --seq10-9: #213d7e;
+  --seq10-10: #12245c;
+
+  --via-1: #dccae9;
+  --via-2: #b995d2;
+  --via-3: #9263b9;
+  --via-4: #6b369c;
+  --via-5: #420a75;
+
+  /* Borda das amostras da legenda territorial (sobre a superfície escura) e traço da
+     feição SEM DADO no mapa (sobre o tile claro): um cinza que não é degrau de rampa. */
+  --terr-amostra-borda: rgba(255, 255, 255, .35);
+  --terr-sem-dado-borda: #8d97a1;
+
   /* Manrope e DM Mono vêm de `assets/fonts/` (bloco `@font-face` no topo). A pilha de
      sistema que era o valor inteiro destes dois tokens até a #95 continua aqui como
      FALLBACK: se o `.woff2` faltar, a página perde o acabamento e não a legibilidade. */
@@ -1143,6 +1189,67 @@ select:focus, input[type="number"]:focus {
    moldura. Em 390 px a coluna da legenda tem ~300 px úteis: 16 px de recuo é o
    suficiente para ler a hierarquia sem empurrar a contagem para fora. */
 .polygon-type-row { margin-left: 16px; }
+
+/* Camadas territoriais dos arquivos públicos (issue #150). Só tokens — o guard de
+   tests/ui-tokens.test.js cobre `.territorio-*` e `.dot-territorio-*`.
+
+   A COR da amostra não é definida aqui: vem inline, do mesmo `territoryColor()` que pinta
+   a célula no canvas (R8.42) — a legenda mostra exatamente a cor que está no mapa. O que
+   mora aqui é forma, borda e tipografia. */
+.territorio-camadas label[aria-disabled='true'] { cursor: not-allowed; color: var(--texto-fraco); }
+.territorio-legenda {
+  margin: var(--esp-2) 0 0;
+  padding: var(--esp-2) 0 0;
+  border-top: 1px solid var(--line);
+}
+.territorio-legenda[hidden] { display: none; }
+.territorio-legenda-titulo {
+  margin: 0 0 var(--esp-1);
+  font-size: var(--tipo-sm);
+  font-weight: 600;
+  color: var(--texto-base);
+}
+.territorio-metrica {
+  width: 100%;
+  margin: 0 0 var(--esp-2);
+  font-size: var(--tipo-sm);
+}
+.territorio-classes {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: var(--esp-1);
+}
+.territorio-classes li {
+  display: flex;
+  align-items: center;
+  gap: var(--esp-2);
+  font-size: var(--tipo-xs);
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+.dot-territorio-sample {
+  width: 14px;
+  height: 10px;
+  border-radius: var(--raio-xs);
+  border: 1px solid var(--terr-amostra-borda);
+  box-sizing: border-box;
+  flex: none;
+}
+/* "Sem dado": vazado e tracejado, como a feição no mapa — ausência tem presença (R5.7). */
+.dot-territorio-vazio { background: none; border-style: dashed; border-color: var(--terr-sem-dado-borda); }
+.territorio-procedencia,
+.territorio-status {
+  margin: var(--esp-2) 0 0;
+  font-size: var(--tipo-2xs);
+  line-height: 1.45;
+  color: var(--texto-fraco);
+}
+.territorio-status[hidden] { display: none; }
+.territorio-status[data-tone='erro'] { color: var(--texto-sec); }
+.territorio-procedencia a { color: var(--accent-text); text-decoration: none; }
+.territorio-procedencia a:hover { text-decoration: underline; }
 .polygon-type-row label { font-size: 12px; color: var(--muted); }
 
 /* Gaveta de filtros secundários (issue #124). O resumo tem a mesma anatomia de rótulo

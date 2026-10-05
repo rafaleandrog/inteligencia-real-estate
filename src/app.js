@@ -81,6 +81,13 @@ import {
 } from './traffic/road-geometry.js';
 import { ANCHOR_ICONS, ANCHOR_FALLBACK_ICON } from './icons.js';
 import { datasetById, fileFor, formatBytes } from './territorio/manifest.js';
+import {
+  TERRITORY_LAYERS, AREA_LAYER_IDS, RAMPS, layerById, metricFor, layerAvailability, metricAvailability,
+  layerFilesFor, featureValue, classCheckMismatch,
+} from './territorio/layers.js';
+import { classIndexFor } from './territorio/classes.js';
+import { legendRows, legendTitle, provenanceLine } from './territorio/legend.js';
+import { territoryDetailTiers, territoryTooltipText } from './territorio/detail.js';
 import { buildRaCrosswalk, EMPTY_CROSSWALK, excludeRas, raNameConflicts } from './territorio/ra-keys.js';
 import { normalizeRaAggregates } from './territorio/aggregates.js';
 
@@ -172,6 +179,11 @@ const dom = {
   pdadBasePdadSection: el('pdadBasePdadSection'),
   publicDataStatus: el('publicDataStatus'), publicDataHeader: el('publicDataHeader'),
   publicDataList: el('publicDataList'),
+
+  territoryLayerLabel: el('territoryLayerLabel'), territoryLayers: el('territoryLayers'),
+  territoryLegend: el('territoryLegend'), territoryLegendTitle: el('territoryLegendTitle'),
+  territoryMetric: el('territoryMetric'), territoryClasses: el('territoryClasses'),
+  territoryProvenance: el('territoryProvenance'), territoryStatus: el('territoryStatus'),
 
   pdadDrillOverlay: el('pdadDrillOverlay'), pdadDrillTitle: el('pdadDrillTitle'),
   pdadDrillSub: el('pdadDrillSub'), pdadDrillClose: el('pdadDrillClose'),
@@ -278,7 +290,21 @@ const state = {
     crosswalk: EMPTY_CROSSWALK,
     aggregates: { byRa: {}, rows: [], sources: {}, years: [] },
     warnings: [],
+    // Mapa (issue #150): a camada de ÁREA ligada (rádio — uma coroplética por vez), a
+    // métrica escolhida por camada, a camada de linhas (#152), os arquivos já baixados
+    // (chave `dataset/caminho@sha256` → grupo Leaflet por métrica) e a assinatura do que
+    // está desenhado, para pan/zoom não redesenhar à toa.
+    area: null,
+    metric: {},
+    lines: false,
+    loaded: new Map(),
+    loading: new Set(),
+    errors: new Map(),
+    drawn: null,
+    pendingParams: null,
   },
+  /** O que `showWarnings` mostrou por último — para quem adiciona um aviso depois da carga. */
+  shownWarnings: [],
 };
 
 let map = null;
@@ -292,6 +318,14 @@ let polygonLayer = null;
  * em `initMap`), não a ordem em que a planilha devolveu as linhas.
  */
 let roadLayer = null;
+/**
+ * Camadas territoriais (issue #150): um renderizador de CANVAS próprio no pane `territory`
+ * — dezenas de milhares de células como `<path>` em SVG engasgam o navegador; em canvas são
+ * um desenho só — e dois grupos: a coroplética ligada e o contorno das RAs redesenhado só
+ * como linha por cima dela (pane `raOutline`).
+ */
+let territoryRenderer = null;
+let territoryAreaLayer = null;
 
 /** Raio do marcador por camada: anúncio é o dado principal, âncora é contexto. */
 /**
@@ -341,6 +375,21 @@ function initMap() {
   // o clique ao ponto, que é o dado.
   map.createPane('roadSegments').style.zIndex = 360;
   map.createPane('anchors').style.zIndex = 380;
+  // Camadas territoriais (issue #150): a coroplética fica ACIMA do contorno das RAs (350) —
+  // abaixo dele, o preenchimento clicável da RA roubaria todo clique na célula — e abaixo
+  // dos eixos rodoviários (360), das âncoras (380) e dos marcadores (600). Enquanto uma
+  // camada de área está ligada, o limite oficial das RAs é redesenhado SÓ como linha em
+  // `raOutline` (357), para continuar visível sobre a coroplética como nos mapas de
+  // referência; `territoryLines` (358) é a centralidade viária (issue #152), abaixo dos
+  // eixos do DER, que são dado medido e ficam por cima.
+  map.createPane('territory').style.zIndex = 355;
+  map.createPane('raOutline').style.zIndex = 357;
+  map.createPane('territoryLines').style.zIndex = 358;
+  territoryRenderer = L.canvas({ pane: 'territory', padding: 0.5 });
+  territoryAreaLayer = L.layerGroup().addTo(map);
+  // Pan/zoom só redesenham quando o CONJUNTO de arquivos muda (overview ↔ shards, shard que
+  // entra na viewport); `renderTerritory` compara a assinatura antes de tocar no mapa.
+  map.on('moveend zoomend', () => { renderTerritory().catch(reportTerritoryError); });
 
   polygonLayer = L.layerGroup().addTo(map);
   roadLayer = L.layerGroup().addTo(map);
@@ -418,19 +467,23 @@ function renderPolygons() {
     if (geometry.type !== 'Polygon' && geometry.type !== 'MultiPolygon') continue;
 
     const style = polygonStyle(polygon);
+    // Com uma coroplética ligada (issue #150), a RA vira SÓ contorno, por cima dela: o
+    // preenchimento da RA cobriria as células, e o limite oficial precisa continuar visível.
+    const soContorno = state.territory.area !== null && polygonEntityType(polygon) === 'administrative_region';
     let shape = null;
     try {
       shape = L.geoJSON(geometry, {
-        pane: 'polygons', // ver `initMap`: abaixo das âncoras e dos marcadores
+        pane: soContorno ? 'raOutline' : 'polygons', // ver `initMap`: abaixo das âncoras e dos marcadores
         // `className` serve só para achar o contorno no DOM (teste e depuração): a cor
         // continua vindo daqui, por `color`/`fillColor`. Nenhuma regra de CSS pode
         // pintar `.polygon-shape` — regra de classe vence o atributo que o Leaflet
         // escreve no SVG, que foi como todas as âncoras acabaram verdes na PR #40.
         style: {
-          className: 'polygon-shape',
+          className: soContorno ? 'polygon-shape polygon-outline-only' : 'polygon-shape',
           color: style.color,
           weight: style.weight,
           opacity: 0.9,
+          fill: !soContorno,
           fillColor: style.fillColor,
           fillOpacity: style.fillOpacity,
           // `null`/`undefined` já significa "sólido" para o Leaflet — não precisa de `if`.
@@ -2701,6 +2754,7 @@ function showError(messages) {
 }
 
 function showWarnings(messages) {
+  state.shownWarnings = [...messages];
   if (messages.length === 0) {
     dom.dataWarnings.hidden = true;
     dom.dataWarnings.open = false;
@@ -2829,6 +2883,7 @@ function currentUrlParams(view) {
       price_min: f.priceMin === null ? '' : String(f.priceMin),
       price_max: f.priceMax === null ? '' : String(f.priceMax),
       locality: f.locality, q: f.search,
+      ...territoryUrlParams(),
     };
   }
   if (view === 'mercado') {
@@ -2898,6 +2953,10 @@ function applyUrlParams() {
   if (intParam(params.price_min) !== null) dom.priceMin.value = String(intParam(params.price_min));
   if (intParam(params.price_max) !== null) dom.priceMax.value = String(intParam(params.price_max));
   if (params.q) dom.search.value = params.q;
+  // As camadas territoriais são aplicadas por `initializeTerritoryControls`, depois que o
+  // manifest disse o que existe: um `terr=` de camada indisponível é ignorado com o motivo
+  // no controle, nunca liga nada às cegas.
+  state.territory.pendingParams = { terr: params.terr || '', terr_metrica: params.terr_metrica || '', vias: params.vias || '' };
 }
 
 async function copyAnalysisLink() {
@@ -5419,6 +5478,376 @@ async function loadTerritorySmallFiles() {
   return warnings;
 }
 
+// --- Território: camadas públicas no mapa (issues #150–#152) ------------------------
+
+/**
+ * Paleta de uma rampa: os tokens `--<rampa>-1..N` lidos do CSS no momento do desenho.
+ *
+ * Lidos aqui, e não digitados num módulo, porque módulo puro não conhece cor (R8.31) e o
+ * canvas não tem DOM por feição para uma regra de classe pintar. Token ausente LANÇA — a
+ * alternativa, uma célula transparente sem erro nenhum, é a falha silenciosa que o teste de
+ * tokens existe para impedir (família da R8.70).
+ */
+function rampPalette(ramp) {
+  const size = RAMPS[ramp];
+  if (!size) throw new Error(`rampa desconhecida: ${ramp}`);
+  const styles = getComputedStyle(document.documentElement);
+  const palette = [];
+  for (let i = 1; i <= size; i += 1) {
+    const value = styles.getPropertyValue(`--${ramp}-${i}`).trim();
+    if (!value) throw new Error(`token --${ramp}-${i} ausente no CSS`);
+    palette.push(value);
+  }
+  return palette;
+}
+
+/**
+ * Cor de uma classe: a MESMA função pinta a célula no mapa e a amostra da legenda (R8.42).
+ * Com menos classes que degraus, as classes se espalham pela rampa inteira (a mais alta é
+ * sempre o degrau mais escuro); `null` (sem dado) não tem cor — quem chama desenha vazado.
+ */
+function territoryColor(palette, classIndex, classes) {
+  if (classIndex === null || classIndex === undefined) return null;
+  const last = palette.length - 1;
+  const index = classes <= 1 ? last : Math.round((classIndex * last) / (classes - 1));
+  return palette[Math.max(0, Math.min(last, index))];
+}
+
+function territoryToken(name) {
+  const value = getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+  if (!value) throw new Error(`token ${name} ausente no CSS`);
+  return value;
+}
+
+/** Aviso de camada que não carregou: na legenda (status) e no canal técnico, uma vez cada. */
+function reportTerritoryError(error) {
+  const message = `Território (mapa): ${error?.message || error}`;
+  console.warn('[imob]', message);
+  setTerritoryStatus(message, 'erro');
+  if (!state.shownWarnings.includes(message)) showWarnings([...state.shownWarnings, message]);
+}
+
+function setTerritoryStatus(text, tone = '') {
+  dom.territoryStatus.textContent = text || '';
+  dom.territoryStatus.hidden = !text;
+  if (tone) dom.territoryStatus.dataset.tone = tone;
+  else delete dom.territoryStatus.dataset.tone;
+}
+
+/** Uma linha de rádio do bloco "Território": nasce desabilitada com o motivo (R8.64). */
+function territoryRadioRow({ value, label, available, reason, count }) {
+  const li = document.createElement('li');
+  const labelEl = document.createElement('label');
+  const input = document.createElement('input');
+  input.type = 'radio';
+  input.name = 'territoryArea';
+  input.value = value;
+  input.setAttribute('data-territory-area', value);
+  input.disabled = !available;
+  input.checked = value === (state.territory.area || '');
+  if (!available) {
+    labelEl.title = reason || 'indisponível';
+    labelEl.setAttribute('aria-disabled', 'true');
+  }
+  const text = document.createElement('span');
+  text.className = 'polygon-legend-label';
+  text.textContent = label;
+  labelEl.append(input, text);
+  if (value) {
+    const countEl = document.createElement('span');
+    countEl.className = 'count';
+    countEl.setAttribute('data-territory-count', value);
+    countEl.textContent = count === null || count === undefined ? '' : formatNumber(count);
+    labelEl.append(countEl);
+  }
+  li.append(labelEl);
+  return li;
+}
+
+/**
+ * Monta os rádios a partir do registro fechado (`TERRITORY_LAYERS`), uma vez por carga.
+ * Disponibilidade e motivo vêm de `layerAvailability`: manifest ausente, conjunto não
+ * publicado, cortes que não cabem na rampa — cada caso com a frase certa no `title`.
+ */
+function renderTerritoryControls() {
+  const { publicData } = state.territory;
+  const frag = document.createDocumentFragment();
+  frag.append(territoryRadioRow({ value: '', label: 'Nenhuma camada de área', available: true, reason: '', count: null }));
+  for (const id of AREA_LAYER_IDS) {
+    const layer = layerById(id);
+    const a = layerAvailability(layer, publicData);
+    const overview = a.dataset ? fileFor(a.dataset, { role: 'overview' }) : null;
+    frag.append(territoryRadioRow({ value: id, label: layer.short, available: a.available, reason: a.reason, count: overview ? overview.features : null }));
+  }
+  dom.territoryLayers.replaceChildren(frag);
+}
+
+/** Aplica `terr`/`terr_metrica`/`vias` da URL depois que o manifest disse o que existe. */
+function initializeTerritoryControls() {
+  const pending = state.territory.pendingParams;
+  state.territory.pendingParams = null;
+  if (!pending) return;
+  const layer = pending.terr ? layerById(pending.terr) : null;
+  if (layer && layer.kind === 'area' && layerAvailability(layer, state.territory.publicData).available) {
+    state.territory.area = layer.id;
+    const metric = metricFor(layer, pending.terr_metrica);
+    if (pending.terr_metrica && metric) state.territory.metric[layer.id] = metric.key;
+    const input = dom.territoryLayers.querySelector(`input[name="territoryArea"][value="${layer.id}"]`);
+    if (input) input.checked = true;
+  }
+}
+
+/** O que da camada territorial entra na URL do mapa (issue #150). */
+function territoryUrlParams() {
+  const t = state.territory;
+  const layer = t.area ? layerById(t.area) : null;
+  const metric = layer ? t.metric[layer.id] : '';
+  return {
+    terr: layer ? layer.id : '',
+    terr_metrica: layer && metric && metric !== layer.defaultMetric ? metric : '',
+    vias: t.lines ? '1' : '',
+  };
+}
+
+function updateTerritoryCount(layerId, text) {
+  const el = dom.territoryLayers.querySelector(`[data-territory-count="${layerId}"]`);
+  if (el) el.textContent = text;
+}
+
+function mapBbox() {
+  const b = map.getBounds();
+  return [b.getWest(), b.getSouth(), b.getEast(), b.getNorth()];
+}
+
+/**
+ * Baixa (uma vez) e constrói (uma vez por métrica) o grupo Leaflet de um arquivo.
+ *
+ * O arquivo vem de `fetchPublicLayer`, que confere bytes e sha256 contra o manifest e
+ * recusa o que não bate (R2.7). O grupo é construído por MÉTRICA — a cor depende dela — e
+ * guardado: trocar de métrica ou voltar a um zoom já visto não refaz geometria.
+ */
+async function territoryGroupFor({ layer, dataset, file, metric, breaks, palette }) {
+  const t = state.territory;
+  const key = `${dataset.id}/${file.path}@${file.sha256}`;
+  let entry = t.loaded.get(key);
+  if (!entry) {
+    t.loading.add(key);
+    try {
+      const { payload, integrity } = await fetchPublicLayer({ baseUrl: t.publicData.baseUrl, dataset, file });
+      if (!payload || payload.type !== 'FeatureCollection' || !Array.isArray(payload.features)) {
+        throw new Error(`${file.path} não é uma FeatureCollection`);
+      }
+      entry = { payload, integrity, groups: new Map() };
+      t.loaded.set(key, entry);
+      t.errors.delete(key);
+    } catch (error) {
+      t.errors.set(key, error?.message || String(error));
+      throw error;
+    } finally {
+      t.loading.delete(key);
+    }
+  }
+  if (!entry.groups.has(metric.key)) {
+    const semDado = territoryToken('--terr-sem-dado-borda');
+    const zeroIsAbsent = metric.zeroIsAbsent === true;
+    const group = L.geoJSON(entry.payload, {
+      renderer: territoryRenderer,
+      pane: 'territory',
+      style: (feature) => {
+        const classIndex = classIndexFor(featureValue(metric, feature.properties), breaks.breaks, { zeroIsAbsent });
+        const color = territoryColor(palette, classIndex, breaks.classes);
+        // Célula sem dado: vazada e tracejada, mas presente e clicável — ausência tem
+        // presença na tela (R5.7); um buraco seria lido como "aqui não há célula".
+        return color
+          ? { stroke: false, fill: true, fillColor: color, fillOpacity: layer.fillOpacity }
+          : { stroke: true, color: semDado, weight: 0.8, opacity: 0.7, dashArray: '2 3', fill: true, fillOpacity: 0 };
+      },
+    });
+    // Balão com FUNÇÃO que devolve um nó (R8.17): o texto tem nome de RA vindo da ponte e
+    // nunca passa por innerHTML.
+    group.bindTooltip((child) => {
+      const span = document.createElement('span');
+      span.textContent = territoryTooltipText(layer, metric, child?.feature?.properties, { crosswalk: t.crosswalk });
+      return span;
+    }, { sticky: true });
+    group.on('click', (event) => {
+      const feature = event.propagatedFrom?.feature || event.layer?.feature;
+      if (feature) openTerritoryDetail(layer, { dataset, file, integrity: entry.integrity, feature });
+    });
+    entry.groups.set(metric.key, group);
+  }
+  return entry.groups.get(metric.key);
+}
+
+/**
+ * Desenha a camada de área ligada para o zoom e a viewport atuais (issue #150).
+ *
+ * Fora do `render()` por tecla, de propósito: roda no toggle, na troca de métrica, no
+ * `moveend`/`zoomend` e uma vez após o carregamento. Abaixo do `zoom_min` do detalhe desenha
+ * o overview; a partir dele, só os shards cuja caixa cruza a viewport. A assinatura
+ * (arquivos + métrica) é comparada antes de tocar no mapa, então um pan dentro dos shards já
+ * desenhados não refaz nada. Legenda e contador saem da MESMA passada que o desenho.
+ */
+async function renderTerritory() {
+  if (!map || !territoryAreaLayer) return;
+  const t = state.territory;
+  const layer = t.area ? layerById(t.area) : null;
+  if (!layer) {
+    if (t.drawn !== null) { territoryAreaLayer.clearLayers(); t.drawn = null; }
+    renderTerritoryLegend(null);
+    if (viewFromHash() === 'mapa') syncHash();
+    return;
+  }
+  const availability = layerAvailability(layer, t.publicData);
+  if (!availability.available) {
+    territoryAreaLayer.clearLayers();
+    t.drawn = null;
+    renderTerritoryLegend(null);
+    setTerritoryStatus(availability.reason, 'erro');
+    return;
+  }
+  const dataset = availability.dataset;
+  const { role, files } = layerFilesFor(layer, dataset, { zoom: map.getZoom(), bounds: mapBbox() });
+  // Métrica pedida indisponível neste papel (ex.: absoluto no overview, R8.15): cai na
+  // padrão e a legenda diz por quê no `select`.
+  let metric = metricFor(layer, t.metric[layer.id]) || metricFor(layer);
+  if (!metricAvailability(layer, metric, dataset, { role }).available) metric = metricFor(layer);
+  const breaks = dataset.classBreaks[metric.key];
+  const signature = `${role}|${metric.key}|${files.map((f) => f.sha256).join(',')}`;
+  renderTerritoryLegend(layer, metric, dataset, { role });
+  if (t.drawn === signature) return;
+
+  const palette = rampPalette(layer.ramp);
+  updateTerritoryCount(layer.id, files.length === 0 ? '0' : 'carregando…');
+  setTerritoryStatus(files.length === 0 ? 'Nenhum arquivo desta camada cruza a área visível do mapa.' : 'carregando…');
+  const groups = [];
+  let features = 0;
+  let mismatches = 0;
+  const falhas = [];
+  for (const file of files) {
+    try {
+      const group = await territoryGroupFor({ layer, dataset, file, metric, breaks, palette });
+      const entry = t.loaded.get(`${dataset.id}/${file.path}@${file.sha256}`);
+      groups.push(group);
+      features += entry.payload.features.length;
+      mismatches += classCheckMismatch(entry.payload.features, metric, breaks, classIndexFor);
+    } catch (error) {
+      falhas.push(`${file.path}: ${error?.message || error}`);
+    }
+  }
+  // Enquanto os arquivos baixavam, a pessoa pode ter trocado de camada ou de métrica: o
+  // desenho é de quem pediu por último, nunca de uma resposta atrasada (R8.29).
+  const stillWanted = t.area === layer.id && (metricFor(layer, t.metric[layer.id]) || metricFor(layer)).key === metric.key
+    || (t.area === layer.id && !metricAvailability(layer, metricFor(layer, t.metric[layer.id]), dataset, { role }).available);
+  if (!stillWanted) return;
+
+  territoryAreaLayer.clearLayers();
+  for (const group of groups) territoryAreaLayer.addLayer(group);
+  t.drawn = signature;
+  updateTerritoryCount(layer.id, formatNumber(features));
+  const avisos = [];
+  if (mismatches > 0) avisos.push(`${formatNumber(mismatches)} feição(ões) com classe publicada diferente dos cortes do manifest — a tela usa os cortes (R8.54).`);
+  if (falhas.length > 0) {
+    avisos.push(`${falhas.length} arquivo(s) não carregaram: ${falhas.join('; ')}`);
+    reportTerritoryError(new Error(falhas.join('; ')));
+  }
+  setTerritoryStatus(avisos.join(' '), falhas.length > 0 ? 'erro' : '');
+  dom.territoryLegend.dataset.territoryRole = role || '';
+  dom.territoryLegend.dataset.territoryFeatures = String(features);
+  if (viewFromHash() === 'mapa') syncHash();
+}
+
+/**
+ * Legenda da camada ligada: título com métrica e período, `select` de métrica (opção
+ * indisponível fica desabilitada com o motivo), uma amostra por classe pintada pela mesma
+ * função do mapa, a linha "sem dado", e a procedência com link para a Base de dados.
+ */
+function renderTerritoryLegend(layer, metric = null, dataset = null, { role = null } = {}) {
+  if (!layer || !metric || !dataset) {
+    dom.territoryLegend.hidden = true;
+    dom.territoryClasses.replaceChildren();
+    dom.territoryMetric.replaceChildren();
+    delete dom.territoryLegend.dataset.territoryRole;
+    delete dom.territoryLegend.dataset.territoryFeatures;
+    setTerritoryStatus('');
+    return;
+  }
+  dom.territoryLegend.hidden = false;
+  dom.territoryLegendTitle.textContent = legendTitle(layer, metric, dataset);
+
+  const select = dom.territoryMetric;
+  select.replaceChildren();
+  for (const m of layer.metrics) {
+    const option = document.createElement('option');
+    option.value = m.key;
+    option.textContent = m.label;
+    const a = metricAvailability(layer, m, dataset, { role });
+    option.disabled = !a.available;
+    if (!a.available) option.title = a.reason;
+    select.append(option);
+  }
+  select.value = metric.key;
+  select.hidden = layer.metrics.length < 2;
+
+  const breaks = dataset.classBreaks[metric.key];
+  const palette = rampPalette(layer.ramp);
+  const frag = document.createDocumentFragment();
+  for (const row of legendRows(breaks.breaks, { zeroIsAbsent: metric.zeroIsAbsent === true })) {
+    const li = document.createElement('li');
+    const sample = document.createElement('span');
+    const color = territoryColor(palette, row.classIndex, breaks.classes);
+    sample.className = color ? 'dot dot-territorio-sample' : 'dot dot-territorio-sample dot-territorio-vazio';
+    if (color) {
+      sample.style.background = color;
+      // A opacidade da amostra é a da célula no mapa: o tom na legenda é o tom no mapa.
+      sample.style.opacity = String(layer.fillOpacity ?? 1);
+    }
+    sample.setAttribute('data-territory-class', row.classIndex === null ? 'null' : String(row.classIndex));
+    const text = document.createElement('span');
+    text.textContent = `${row.label}${row.classIndex !== null && metric.unit ? ` ${metric.unit}` : ''}`;
+    li.append(sample, text);
+    frag.append(li);
+  }
+  dom.territoryClasses.replaceChildren(frag);
+
+  dom.territoryProvenance.replaceChildren();
+  const procedencia = provenanceLine(dataset);
+  if (procedencia) dom.territoryProvenance.append(document.createTextNode(`${procedencia} · `));
+  const link = document.createElement('a');
+  link.href = '#base';
+  link.textContent = 'Sobre estes dados';
+  dom.territoryProvenance.append(link);
+}
+
+/**
+ * Painel de detalhe de uma feição territorial: três níveis via `appendTiers` (essencial ≤ 6
+ * linhas, R8.61) e, no fim, o link de cada fonte do conjunto. Tudo por `textContent`.
+ */
+function openTerritoryDetail(layer, { dataset, file, integrity, feature }) {
+  const tiers = territoryDetailTiers(layer, feature.properties, { dataset, file, integrity, crosswalk: state.territory.crosswalk });
+  const frag = document.createDocumentFragment();
+  appendTiers(frag, tiers);
+  for (const source of dataset.sources || []) {
+    const href = safeExternalUrl(source.url);
+    if (!href) continue;
+    const p = document.createElement('p');
+    p.className = 'detail-source';
+    const link = document.createElement('a');
+    link.href = href;
+    link.target = '_blank';
+    link.rel = 'noopener noreferrer';
+    link.textContent = `Fonte: ${source.name || hostnameOf(href) || 'abrir'}`;
+    p.append(link);
+    frag.append(p);
+  }
+  state.selectedId = null;
+  state.detailPolygonId = null;
+  dom.detailTitle.textContent = tiers.title;
+  dom.detailBody.replaceChildren(frag);
+  dom.detail.hidden = false;
+  dom.closeDetail.focus();
+}
+
 // --- Diagnóstico Territorial PDAD-A: drill-down (issue #102) ----------------------
 
 function pdadStatusBadgeText(status) {
@@ -5630,6 +6059,7 @@ async function load() {
   state.territory.publicData = result.publicData || EMPTY_PUBLIC_DATA;
   const avisosTerritorio = await loadTerritorySmallFiles();
   state.baseWarnings = [...state.baseWarnings, ...avisosTerritorio];
+  renderTerritoryControls();
   renderPolygonLegend();
   renderTrafficPanel();
 
@@ -5651,6 +6081,7 @@ async function load() {
   renderAnchorLegend(state.records);
 
   applyUrlParams();
+  initializeTerritoryControls();
   refreshMarketView();
   refreshPdadView();
   render();
@@ -5668,6 +6099,8 @@ async function load() {
   if (pontos.length > 0) {
     map.fitBounds(pontos, { padding: [40, 40] });
   }
+  // Depois do enquadramento: a escolha overview × shards depende do zoom final.
+  renderTerritory().catch(reportTerritoryError);
 }
 
 // --- Ligação --------------------------------------------------------------
@@ -5688,6 +6121,20 @@ function bindEvents() {
   });
   dom.layers.addEventListener('change', render);
   renderLayerSamples();
+  // Camadas territoriais (issue #150): rádio de área e métrica. Fora de `readFilters()` de
+  // propósito — não são filtro de registro, e `render()` não precisa rodar por elas.
+  dom.territoryLayers.addEventListener('change', (event) => {
+    const input = event.target.closest('input[name="territoryArea"]');
+    if (!input) return;
+    state.territory.area = input.value || null;
+    renderPolygons();
+    renderTerritory().catch(reportTerritoryError);
+  });
+  dom.territoryMetric.addEventListener('change', () => {
+    if (!state.territory.area) return;
+    state.territory.metric[state.territory.area] = dom.territoryMetric.value;
+    renderTerritory().catch(reportTerritoryError);
+  });
   dom.clearFilters.addEventListener('click', clearFilters);
   for (const node of trafficFilterInputs()) {
     node.addEventListener('change', () => {
