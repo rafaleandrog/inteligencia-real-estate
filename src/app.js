@@ -82,11 +82,11 @@ import {
 import { ANCHOR_ICONS, ANCHOR_FALLBACK_ICON } from './icons.js';
 import { datasetById, fileFor, formatBytes } from './territorio/manifest.js';
 import {
-  TERRITORY_LAYERS, AREA_LAYER_IDS, RAMPS, layerById, metricFor, layerAvailability, metricAvailability,
+  TERRITORY_LAYERS, AREA_LAYER_IDS, LINE_LAYER_IDS, RAMPS, layerById, metricFor, layerAvailability, metricAvailability,
   layerFilesFor, featureValue, classCheckMismatch,
 } from './territorio/layers.js';
 import { classIndexFor, rampIndexFor } from './territorio/classes.js';
-import { legendRows, legendTitle, provenanceLine } from './territorio/legend.js';
+import { legendRows, legendTitle, lineLegendRows, provenanceLine } from './territorio/legend.js';
 import { territoryDetailTiers, territoryTooltipText } from './territorio/detail.js';
 import { buildRaCrosswalk, EMPTY_CROSSWALK, excludeRas, raNameConflicts } from './territorio/ra-keys.js';
 import { normalizeRaAggregates } from './territorio/aggregates.js';
@@ -185,6 +185,9 @@ const dom = {
   territoryMetric: el('territoryMetric'), territoryClasses: el('territoryClasses'),
   territoryProvenance: el('territoryProvenance'), territoryStatus: el('territoryStatus'),
   territoryNote: el('territoryNote'),
+  territoryLineLegend: el('territoryLineLegend'), territoryLineLegendTitle: el('territoryLineLegendTitle'),
+  territoryLineClasses: el('territoryLineClasses'), territoryLineNote: el('territoryLineNote'),
+  territoryLineProvenance: el('territoryLineProvenance'), territoryLineStatus: el('territoryLineStatus'),
 
   pdadDrillOverlay: el('pdadDrillOverlay'), pdadDrillTitle: el('pdadDrillTitle'),
   pdadDrillSub: el('pdadDrillSub'), pdadDrillClose: el('pdadDrillClose'),
@@ -302,6 +305,7 @@ const state = {
     loading: new Set(),
     errors: new Map(),
     drawn: null,
+    drawnLines: null,
     pendingParams: null,
   },
   /** O que `showWarnings` mostrou por último — para quem adiciona um aviso depois da carga. */
@@ -327,6 +331,9 @@ let roadLayer = null;
  */
 let territoryRenderer = null;
 let territoryAreaLayer = null;
+/** Centralidade viária (issue #152): canvas próprio no pane `territoryLines`, acima da coroplética. */
+let territoryLineRenderer = null;
+let territoryLineLayer = null;
 
 /** Raio do marcador por camada: anúncio é o dado principal, âncora é contexto. */
 /**
@@ -388,9 +395,14 @@ function initMap() {
   map.createPane('territoryLines').style.zIndex = 358;
   territoryRenderer = L.canvas({ pane: 'territory', padding: 0.5 });
   territoryAreaLayer = L.layerGroup().addTo(map);
+  territoryLineRenderer = L.canvas({ pane: 'territoryLines', padding: 0.5 });
+  territoryLineLayer = L.layerGroup().addTo(map);
   // Pan/zoom só redesenham quando o CONJUNTO de arquivos muda (overview ↔ shards, shard que
   // entra na viewport); `renderTerritory` compara a assinatura antes de tocar no mapa.
-  map.on('moveend zoomend', () => { renderTerritory().catch(reportTerritoryError); });
+  map.on('moveend zoomend', () => {
+    renderTerritory().catch(reportTerritoryError);
+    renderTerritoryLines().catch(reportTerritoryError);
+  });
 
   polygonLayer = L.layerGroup().addTo(map);
   roadLayer = L.layerGroup().addTo(map);
@@ -5578,7 +5590,42 @@ function renderTerritoryControls() {
     const overview = a.dataset ? fileFor(a.dataset, { role: 'overview' }) : null;
     frag.append(territoryRadioRow({ value: id, label: layer.short, available: a.available, reason: a.reason, count: overview ? overview.features : null }));
   }
+  // Linhas (issue #152): caixa de seleção, porque convivem com a coroplética — uma via
+  // sobre uma célula ainda se lê, duas áreas sobrepostas não.
+  for (const id of LINE_LAYER_IDS) {
+    const layer = layerById(id);
+    const a = layerAvailability(layer, publicData);
+    const overview = a.dataset ? fileFor(a.dataset, { role: 'overview' }) : null;
+    frag.append(territoryCheckboxRow({ value: id, label: layer.short, available: a.available, reason: a.reason, count: overview ? overview.features : null }));
+  }
   dom.territoryLayers.replaceChildren(frag);
+}
+
+/** A linha da camada de LINHAS: caixa de seleção, desabilitada com motivo até o manifest confirmar. */
+function territoryCheckboxRow({ value, label, available, reason, count }) {
+  const li = document.createElement('li');
+  const labelEl = document.createElement('label');
+  const input = document.createElement('input');
+  input.type = 'checkbox';
+  input.name = 'territoryLines';
+  input.value = value;
+  input.setAttribute('data-territory-lines', value);
+  input.disabled = !available;
+  input.checked = state.territory.lines === true;
+  if (!available) {
+    labelEl.title = reason || 'indisponível';
+    labelEl.setAttribute('aria-disabled', 'true');
+  }
+  const text = document.createElement('span');
+  text.className = 'polygon-legend-label';
+  text.textContent = label;
+  const countEl = document.createElement('span');
+  countEl.className = 'count';
+  countEl.setAttribute('data-territory-count', value);
+  countEl.textContent = count === null || count === undefined ? '' : formatNumber(count);
+  labelEl.append(input, text, countEl);
+  li.append(labelEl);
+  return li;
 }
 
 /** Aplica `terr`/`terr_metrica`/`vias` da URL depois que o manifest disse o que existe. */
@@ -5593,6 +5640,14 @@ function initializeTerritoryControls() {
     if (pending.terr_metrica && metric) state.territory.metric[layer.id] = metric.key;
     const input = dom.territoryLayers.querySelector(`input[name="territoryArea"][value="${layer.id}"]`);
     if (input) input.checked = true;
+  }
+  if (pending.vias === '1' && LINE_LAYER_IDS.length > 0) {
+    const lines = layerById(LINE_LAYER_IDS[0]);
+    if (layerAvailability(lines, state.territory.publicData).available) {
+      state.territory.lines = true;
+      const input = dom.territoryLayers.querySelector('input[name="territoryLines"]');
+      if (input) input.checked = true;
+    }
   }
 }
 
@@ -5649,12 +5704,22 @@ async function territoryGroupFor({ layer, dataset, file, metric, breaks, palette
   if (!entry.groups.has(metric.key)) {
     const semDado = territoryToken('--terr-sem-dado-borda');
     const zeroIsAbsent = metric.zeroIsAbsent === true;
+    const isLine = layer.kind === 'line';
     const group = L.geoJSON(entry.payload, {
-      renderer: territoryRenderer,
-      pane: 'territory',
+      renderer: isLine ? territoryLineRenderer : territoryRenderer,
+      pane: isLine ? 'territoryLines' : 'territory',
       style: (feature) => {
         const classIndex = classIndexFor(featureValue(metric, feature.properties), breaks.breaks, { zeroIsAbsent });
         const color = territoryColor(palette, classIndex, breaks.classes);
+        if (isLine) {
+          // Peso e opacidade por classe vêm do registro (números, R8.71); a cor do token.
+          // `fill: false` explícito: uma LineString com fill ganharia uma área que a fonte
+          // nunca publicou.
+          const step = classIndex === null ? null : Math.min(classIndex, layer.line.weight.length - 1);
+          return color
+            ? { stroke: true, color, weight: layer.line.weight[step], opacity: layer.line.opacity[step], fill: false, lineCap: 'round' }
+            : { stroke: true, color: semDado, weight: 1, opacity: 0.6, dashArray: '3 3', fill: false };
+        }
         // Célula sem dado: vazada e tracejada, mas presente e clicável — ausência tem
         // presença na tela (R5.7); um buraco seria lido como "aqui não há célula".
         return color
@@ -5754,6 +5819,137 @@ async function renderTerritory() {
   dom.territoryLegend.dataset.territoryRole = role || '';
   dom.territoryLegend.dataset.territoryFeatures = String(features);
   if (viewFromHash() === 'mapa') syncHash();
+}
+
+const OSM_LINES_ATTRIBUTION = 'Centralidade viária: © colaboradores do OpenStreetMap (ODbL)';
+
+/**
+ * Desenha a centralidade viária (issue #152) — a camada de LINHAS, independente da área.
+ *
+ * Mesmo contrato de `renderTerritory`: overview abaixo do `zoom_min`, detalhe a partir
+ * dele, arquivo baixado uma vez e conferido contra o manifest, assinatura comparada antes
+ * de tocar no mapa. A atribuição ODbL entra no controle do Leaflet enquanto a camada está
+ * ligada — é base derivada do OpenStreetMap e a licença pede o crédito onde o dado aparece.
+ */
+async function renderTerritoryLines() {
+  if (!map || !territoryLineLayer) return;
+  const t = state.territory;
+  const layer = t.lines && LINE_LAYER_IDS.length > 0 ? layerById(LINE_LAYER_IDS[0]) : null;
+  if (!layer) {
+    if (t.drawnLines !== null) {
+      territoryLineLayer.clearLayers();
+      t.drawnLines = null;
+      if (map.attributionControl) map.attributionControl.removeAttribution(OSM_LINES_ATTRIBUTION);
+    }
+    renderTerritoryLineLegend(null);
+    if (viewFromHash() === 'mapa') syncHash();
+    return;
+  }
+  const availability = layerAvailability(layer, t.publicData);
+  if (!availability.available) {
+    territoryLineLayer.clearLayers();
+    t.drawnLines = null;
+    renderTerritoryLineLegend(null);
+    setTerritoryLineStatus(availability.reason, 'erro');
+    return;
+  }
+  const dataset = availability.dataset;
+  const { role, files } = layerFilesFor(layer, dataset, { zoom: map.getZoom(), bounds: mapBbox() });
+  const metric = metricFor(layer);
+  const breaks = dataset.classBreaks[metric.key];
+  const signature = `${role}|${metric.key}|${files.map((f) => f.sha256).join(',')}`;
+  renderTerritoryLineLegend(layer, metric, dataset, { role });
+  if (t.drawnLines === signature) return;
+
+  const palette = rampPalette(layer.ramp);
+  updateTerritoryCount(layer.id, files.length === 0 ? '0' : 'carregando…');
+  setTerritoryLineStatus(files.length === 0 ? 'Nenhum arquivo desta camada cruza a área visível do mapa.' : 'carregando…');
+  const groups = [];
+  let features = 0;
+  let mismatches = 0;
+  const falhas = [];
+  for (const file of files) {
+    try {
+      const group = await territoryGroupFor({ layer, dataset, file, metric, breaks, palette });
+      const entry = t.loaded.get(`${dataset.id}/${file.path}@${file.sha256}`);
+      groups.push(group);
+      features += entry.payload.features.length;
+      mismatches += classCheckMismatch(entry.payload.features, metric, breaks, classIndexFor);
+    } catch (error) {
+      falhas.push(`${file.path}: ${error?.message || error}`);
+    }
+  }
+  if (!t.lines) return; // desligada enquanto baixava: resposta atrasada não desenha (R8.29)
+
+  territoryLineLayer.clearLayers();
+  for (const group of groups) territoryLineLayer.addLayer(group);
+  t.drawnLines = signature;
+  if (map.attributionControl) map.attributionControl.addAttribution(OSM_LINES_ATTRIBUTION);
+  updateTerritoryCount(layer.id, formatNumber(features));
+  const avisos = [];
+  if (mismatches > 0) avisos.push(`${formatNumber(mismatches)} via(s) com classe publicada diferente dos cortes do manifest — a tela usa os cortes (R8.54).`);
+  if (falhas.length > 0) {
+    avisos.push(`${falhas.length} arquivo(s) não carregaram: ${falhas.join('; ')}`);
+    reportTerritoryError(new Error(falhas.join('; ')));
+  }
+  setTerritoryLineStatus(avisos.join(' '), falhas.length > 0 ? 'erro' : '');
+  dom.territoryLineLegend.dataset.territoryRole = role || '';
+  dom.territoryLineLegend.dataset.territoryFeatures = String(features);
+  if (viewFromHash() === 'mapa') syncHash();
+}
+
+function setTerritoryLineStatus(text, tone = '') {
+  dom.territoryLineStatus.textContent = text || '';
+  dom.territoryLineStatus.hidden = !text;
+  if (tone) dom.territoryLineStatus.dataset.tone = tone;
+  else delete dom.territoryLineStatus.dataset.tone;
+}
+
+/**
+ * Legenda das linhas: uma amostra por classe com a espessura, a opacidade e a cor que o
+ * mapa usa — a forma (traço) diz que o mapa desenha linha, não área (R8.45).
+ */
+function renderTerritoryLineLegend(layer, metric = null, dataset = null, { role = null } = {}) {
+  if (!layer || !metric || !dataset) {
+    dom.territoryLineLegend.hidden = true;
+    dom.territoryLineClasses.replaceChildren();
+    delete dom.territoryLineLegend.dataset.territoryRole;
+    delete dom.territoryLineLegend.dataset.territoryFeatures;
+    setTerritoryLineStatus('');
+    return;
+  }
+  dom.territoryLineLegend.hidden = false;
+  dom.territoryLineLegendTitle.textContent = `${legendTitle(layer, metric, dataset)}${role === 'overview' ? ' · só as vias mais centrais neste zoom' : ''}`;
+  const breaks = dataset.classBreaks[metric.key];
+  const palette = rampPalette(layer.ramp);
+  const frag = document.createDocumentFragment();
+  for (const row of lineLegendRows(breaks.breaks, layer.line)) {
+    const li = document.createElement('li');
+    const sample = document.createElement('span');
+    const color = territoryColor(palette, row.classIndex, breaks.classes);
+    sample.className = color ? 'dot dot-via-sample' : 'dot dot-via-sample dot-territorio-vazio';
+    if (color) {
+      sample.style.background = color;
+      sample.style.height = `${row.weight}px`;
+      sample.style.opacity = String(row.opacity);
+    }
+    sample.setAttribute('data-territory-class', row.classIndex === null ? 'null' : String(row.classIndex));
+    const text = document.createElement('span');
+    text.textContent = row.classIndex === null ? row.label : `${row.label}${metric.unit ? ` (${metric.unit})` : ''}`;
+    li.append(sample, text);
+    frag.append(li);
+  }
+  dom.territoryLineClasses.replaceChildren(frag);
+  dom.territoryLineNote.textContent = dataset.notesPt || '';
+  dom.territoryLineNote.hidden = !dataset.notesPt;
+  dom.territoryLineProvenance.replaceChildren();
+  const procedencia = provenanceLine(dataset);
+  const licenca = (dataset.sources || []).map((s) => s.license).filter(Boolean)[0];
+  dom.territoryLineProvenance.append(document.createTextNode(`${procedencia}${licenca ? ` · ${licenca}` : ''} · `));
+  const link = document.createElement('a');
+  link.href = '#base';
+  link.textContent = 'Sobre estes dados';
+  dom.territoryLineProvenance.append(link);
 }
 
 /**
@@ -6105,6 +6301,7 @@ async function load() {
   }
   // Depois do enquadramento: a escolha overview × shards depende do zoom final.
   renderTerritory().catch(reportTerritoryError);
+  renderTerritoryLines().catch(reportTerritoryError);
 }
 
 // --- Ligação --------------------------------------------------------------
@@ -6138,6 +6335,12 @@ function bindEvents() {
     if (!state.territory.area) return;
     state.territory.metric[state.territory.area] = dom.territoryMetric.value;
     renderTerritory().catch(reportTerritoryError);
+  });
+  dom.territoryLayers.addEventListener('change', (event) => {
+    const input = event.target.closest('input[name="territoryLines"]');
+    if (!input) return;
+    state.territory.lines = input.checked;
+    renderTerritoryLines().catch(reportTerritoryError);
   });
   dom.clearFilters.addEventListener('click', clearFilters);
   for (const node of trafficFilterInputs()) {
