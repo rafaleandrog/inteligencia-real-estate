@@ -1239,6 +1239,7 @@ select:focus, input[type="number"]:focus {
 }
 /* "Sem dado": vazado e tracejado, como a feição no mapa — ausência tem presença (R5.7). */
 .dot-territorio-vazio { background: none; border-style: dashed; border-color: var(--terr-sem-dado-borda); }
+.territorio-nota,
 .territorio-procedencia,
 .territorio-status {
   margin: var(--esp-2) 0 0;
@@ -1246,7 +1247,9 @@ select:focus, input[type="number"]:focus {
   line-height: 1.45;
   color: var(--texto-fraco);
 }
-.territorio-status[hidden] { display: none; }
+.territorio-status[hidden],
+.territorio-nota[hidden] { display: none; }
+.territorio-nota { color: var(--texto-sec); }
 .territorio-status[data-tone='erro'] { color: var(--texto-sec); }
 .territorio-procedencia a { color: var(--accent-text); text-decoration: none; }
 .territorio-procedencia a:hover { text-decoration: underline; }

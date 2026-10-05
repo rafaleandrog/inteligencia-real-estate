@@ -2785,6 +2785,119 @@ semManifest.disabled && /inacessível|manifest/.test(semManifest.title) && semMa
   ? pass('sem manifest, o rádio fica desabilitado com o motivo e terr= na URL não liga nada')
   : fail('camada sem manifest: ' + JSON.stringify(semManifest));
 
+// --- Território: empregos formais por hexágono H3 (issue #151) ---------------------------
+console.log('\n== Território · empregos formais (issue #151) ==');
+const JOBS = TERRITORY_LAYERS.find((l) => l.id === 'jobs_hex');
+const JOBS_DATASET = FIXTURE_MANIFEST.datasets.find((d) => d.id === JOBS.datasetId);
+const JOBS_BREAKS = JOBS_DATASET.class_breaks[JOBS.defaultMetric].breaks;
+
+// Mesma página da seção anterior, já em zoom de detalhe: trocar de rádio troca a camada
+// inteira — um canvas só, uma coroplética por vez.
+await terrPage.check('#territoryLayers input[value="jobs_hex"]');
+await terrPage.waitForTimeout(1500);
+const empregos = await terrPage.evaluate((size) => {
+  const legenda = document.querySelector('#territoryLegend');
+  const probe = document.createElement('span');
+  document.body.append(probe);
+  const rgb = (token) => { probe.style.color = getComputedStyle(document.documentElement).getPropertyValue(token).trim(); return getComputedStyle(probe).color; };
+  const amostras = [...document.querySelectorAll('#territoryClasses li')].map((li) => {
+    const dot = li.querySelector('.dot-territorio-sample');
+    return { cor: getComputedStyle(dot).backgroundColor, vazio: dot.classList.contains('dot-territorio-vazio'), texto: li.textContent.trim() };
+  });
+  const tokens = Array.from({ length: size }, (_, i) => rgb(`--seq10-${i + 1}`));
+  probe.remove();
+  return {
+    titulo: document.querySelector('#territoryLegendTitle').textContent,
+    role: legenda.dataset.territoryRole,
+    features: Number(legenda.dataset.territoryFeatures),
+    amostras, tokens,
+    canvas: document.querySelectorAll('.leaflet-territory-pane canvas').length,
+    nota: document.querySelector('#territoryNote').textContent,
+    notaVisivel: !document.querySelector('#territoryNote').hidden,
+    opcoes: [...document.querySelectorAll('#territoryMetric option')].map((o) => ({ value: o.value, disabled: o.disabled })),
+    hash: location.hash,
+  };
+}, RAMPS.seq10);
+/Empregos formais · total/.test(empregos.titulo) && empregos.canvas === 1
+  ? pass('trocar o rádio para empregos troca a coroplética no mesmo canvas')
+  : fail('camada de empregos: ' + JSON.stringify({ titulo: empregos.titulo, canvas: empregos.canvas }));
+empregos.amostras.length === JOBS_BREAKS.length + 2
+  ? pass(`a legenda de empregos tem ${JOBS_BREAKS.length + 1} classes mais "sem dado" (cortes do manifest, R8.72)`)
+  : fail('linhas da legenda de empregos: ' + JSON.stringify(empregos.amostras.map((a) => a.texto)));
+empregos.amostras.slice(0, -1).every((a, i) => a.cor === empregos.tokens[i]) && empregos.amostras.at(-1).vazio
+  ? pass('cada amostra é o token --seq10-N correspondente, na rampa fria')
+  : fail('amostras × tokens (seq10): ' + JSON.stringify({ amostras: empregos.amostras.map((a) => a.cor), tokens: empregos.tokens }));
+/inclui zero/.test(empregos.amostras.at(-1).texto)
+  ? pass('a linha "sem dado" diz que zero conta como ausência nesta camada')
+  : fail('linha final: ' + empregos.amostras.at(-1).texto);
+empregos.notaVisivel && /omitido/i.test(empregos.nota)
+  ? pass('a nota do manifest explica que hexágono omitido não é "sem dado"')
+  : fail('nota do conjunto: ' + JSON.stringify({ visivel: empregos.notaVisivel, nota: empregos.nota }));
+empregos.opcoes.length === JOBS.metrics.length && empregos.opcoes.every((o) => !o.disabled)
+  ? pass('as quatro métricas (total e três faixas de renda) ficam disponíveis')
+  : fail('opções de métrica (empregos): ' + JSON.stringify(empregos.opcoes));
+/terr=jobs_hex/.test(empregos.hash) && !/terr_metrica/.test(empregos.hash)
+  ? pass('a URL troca para terr=jobs_hex e a métrica padrão não entra')
+  : fail('hash (empregos): ' + empregos.hash);
+empregos.role === 'detail_shard' && empregos.features > 0
+  ? pass(`em zoom de detalhe desenha os hexágonos r9 dos shards (${empregos.features})`)
+  : fail('papel/feições (empregos): ' + JSON.stringify({ role: empregos.role, features: empregos.features }));
+
+const pixelsJobs = await terrPage.evaluate((size) => {
+  const canvas = document.querySelector('.leaflet-territory-pane canvas');
+  const mapa = document.querySelector('#map').getBoundingClientRect();
+  const rect = canvas.getBoundingClientRect();
+  const ctx = canvas.getContext('2d');
+  const { width, height } = canvas;
+  const data = ctx.getImageData(0, 0, width, height).data;
+  const dpr = width / rect.width;
+  const probe = document.createElement('span');
+  document.body.append(probe);
+  const rgb = (token) => { probe.style.color = getComputedStyle(document.documentElement).getPropertyValue(token).trim(); const m = getComputedStyle(probe).color.match(/\d+/g); return m.slice(0, 3).map(Number); };
+  const permitidas = [...Array.from({ length: size }, (_, i) => rgb(`--seq10-${i + 1}`)), rgb('--terr-sem-dado-borda')];
+  probe.remove();
+  const perto = (a, b) => a.every((v, i) => Math.abs(v - b[i]) <= 4);
+  let pintados = 0; let fora = 0; let alvo = null;
+  for (let i = 0; i < data.length; i += 4) {
+    if (data[i + 3] < 150) continue;
+    const cor = [data[i], data[i + 1], data[i + 2]];
+    pintados += 1;
+    const idx = permitidas.findIndex((p) => perto(p, cor));
+    if (idx < 0) { fora += 1; continue; }
+    if (idx === permitidas.length - 1 || alvo) continue;
+    const x = (i / 4) % width; const y = Math.floor(i / 4 / width);
+    let fim = x;
+    while (fim + 1 < width) { const j = (y * width + fim + 1) * 4; if (data[j + 3] < 150 || !perto([data[j], data[j + 1], data[j + 2]], cor)) break; fim += 1; }
+    const cx = rect.left + ((x + fim) / 2) / dpr; const cy = rect.top + y / dpr + 2;
+    if (cx > mapa.left + 5 && cx < mapa.right - 5 && cy > mapa.top + 5 && cy < mapa.bottom - 5 && fim - x >= 3) alvo = { x: cx, y: cy };
+  }
+  return { pintados, fora, alvo };
+}, RAMPS.seq10);
+pixelsJobs.pintados > 0 && pixelsJobs.fora === 0
+  ? pass(`todos os ${pixelsJobs.pintados} pixels pintados são tokens da rampa de empregos (nenhum resto da camada anterior)`)
+  : fail('pixels fora dos tokens (empregos): ' + JSON.stringify(pixelsJobs));
+if (pixelsJobs.alvo) {
+  await terrPage.mouse.click(pixelsJobs.alvo.x, pixelsJobs.alvo.y);
+  await terrPage.waitForTimeout(400);
+  const hex = await terrPage.evaluate(() => ({
+    aberto: !document.querySelector('#detail').hidden,
+    titulo: document.querySelector('#detailTitle').textContent,
+    essencial: [...document.querySelectorAll('#detailBody .detail-essential dt')].map((n) => n.textContent),
+  }));
+  hex.aberto && /^Hexágono H3 · /.test(hex.titulo) && hex.essencial.some((r) => /^Empregos formais/.test(r)) && hex.essencial.length <= 6
+    ? pass(`o clique no hexágono abre "${hex.titulo}" com empregos e ano no essencial`)
+    : fail('painel do hexágono: ' + JSON.stringify(hex));
+  await terrPage.click('#closeDetail');
+} else {
+  fail('nenhum hexágono pintado visível para clicar: ' + JSON.stringify(pixelsJobs));
+}
+await terrPage.selectOption('#territoryMetric', 'jobs_high');
+await terrPage.waitForTimeout(800);
+const altaRenda = await terrPage.evaluate(() => ({ titulo: document.querySelector('#territoryLegendTitle').textContent, hash: location.hash }));
+/renda alta/.test(altaRenda.titulo) && /terr_metrica=jobs_high/.test(altaRenda.hash)
+  ? pass('a faixa de renda alta vira métrica da legenda e entra na URL')
+  : fail('métrica de renda alta: ' + JSON.stringify(altaRenda));
+
 console.log(`\n===== ${ok.length} ok, ${errors.length} falhas =====`);
 await browser.close();
 process.exit(errors.length > 0 ? 1 : 0);

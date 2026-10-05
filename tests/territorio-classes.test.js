@@ -5,7 +5,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 
-import { classIndexFor, classCount, ensureBreaksFit } from '../src/territorio/classes.js';
+import { classIndexFor, classCount, ensureBreaksFit, rampIndexFor } from '../src/territorio/classes.js';
 import { RAMPS, TERRITORY_LAYERS } from '../src/territorio/layers.js';
 
 const BREAKS = [100, 350, 750, 1000, 2000];
@@ -52,4 +52,15 @@ test('os cortes de fixture de cada métrica cabem na rampa da camada (o manifest
       assert.equal(classCount(spec.breaks), spec.classes);
     }
   }
+});
+
+test('rampIndexFor espalha as classes pela rampa inteira; identidade quando os tamanhos batem', () => {
+  assert.deepEqual(Array.from({ length: 6 }, (_, i) => rampIndexFor(i, 6, 6)), [0, 1, 2, 3, 4, 5]);
+  assert.deepEqual(Array.from({ length: 10 }, (_, i) => rampIndexFor(i, 10, 10)), [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]);
+  assert.deepEqual(Array.from({ length: 5 }, (_, i) => rampIndexFor(i, 5, 10)), [0, 2, 5, 7, 9], 'a mais alta é sempre o degrau mais escuro');
+  assert.deepEqual(Array.from({ length: 3 }, (_, i) => rampIndexFor(i, 3, 6)), [0, 3, 5]);
+  assert.equal(rampIndexFor(null, 6, 6), null);
+  assert.equal(rampIndexFor(0, 1, 6), 5, 'uma classe só: o degrau mais escuro');
+  assert.equal(rampIndexFor(7, 6, 6), 5, 'nunca passa do último degrau');
+  assert.equal(rampIndexFor(0, 6, 0), null);
 });

@@ -102,6 +102,16 @@ export function layerAvailability(layer, publicData) {
   if (breaks.classes > RAMPS[layer.ramp]) {
     return { available: false, reason: `"${metric.key}" tem ${breaks.classes} classes e a rampa "${layer.ramp}" tem ${RAMPS[layer.ramp]} degraus.`, dataset };
   }
+  // "Zero é ausência" é declarado nos DOIS lados — no registro (a legenda e a marca leem daqui)
+  // e no manifest (o pipeline gravou as classes assim). Divergência é erro de contrato da
+  // mesma classe da R8.53: pintar zero como classe 1 numa camada que omite zeros, ou apagar
+  // zeros legítimos de domicílios. A camada não liga até os dois concordarem.
+  for (const m of layer.metrics) {
+    const spec = dataset.classBreaks[m.key];
+    if (spec && Boolean(spec.zeroIsAbsent) !== Boolean(m.zeroIsAbsent)) {
+      return { available: false, reason: `O manifest declara zero_is_absent=${Boolean(spec.zeroIsAbsent)} para "${m.key}" e o registro da camada declara ${Boolean(m.zeroIsAbsent)}; o contrato precisa ser corrigido de um dos lados.`, dataset };
+    }
+  }
   return { available: true, reason: null, dataset };
 }
 

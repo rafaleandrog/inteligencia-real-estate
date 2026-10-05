@@ -42,3 +42,19 @@ export function ensureBreaksFit(breaks, rampSize) {
   }
   return { ok: true, reason: null };
 }
+
+/**
+ * Degrau da rampa (0..rampSize−1) para a classe `classIndex` de `classes` classes.
+ *
+ * Com menos classes que degraus, as classes se espalham pela rampa inteira — a mais alta é
+ * sempre o degrau mais escuro, a mais baixa o mais claro — em vez de usar só os degraus
+ * claros. Com classes = degraus é identidade. `null` (sem dado) continua `null`.
+ */
+export function rampIndexFor(classIndex, classes, rampSize) {
+  if (classIndex === null || classIndex === undefined) return null;
+  if (!Number.isInteger(rampSize) || rampSize < 1) return null;
+  const last = rampSize - 1;
+  if (!Number.isInteger(classes) || classes <= 1) return last;
+  const index = Math.round((classIndex * last) / (classes - 1));
+  return Math.max(0, Math.min(last, index));
+}

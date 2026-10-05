@@ -13,6 +13,7 @@ import { DATASET_PERCENT_SCALE, PERCENT_SCALES } from '../src/format.js';
 
 const read = (p) => readFileSync(new URL(p, import.meta.url), 'utf8');
 const manifestSchema = JSON.parse(read('../data/public/schemas/manifest.schema.json'));
+const fixtureManifest = JSON.parse(read('./fixtures/public/manifest.json'));
 const contrato = read('../docs/DATA_CONTRACT.md');
 
 test('versão do manifest e papéis de arquivo: cliente e schema dizem a mesma coisa', () => {
@@ -56,4 +57,17 @@ test('config.js aponta os arquivos públicos para um caminho relativo da mesma o
   assert.ok(url, 'publicDataUrl ausente em src/config.js');
   assert.match(url[1], /^\.\/[^:]*\/$/, 'publicDataUrl precisa ser relativo e terminar em barra');
   assert.match(config, /publicManifestFile:\s*'manifest\.json'/);
+});
+
+// "Zero é ausência" declarado nos dois lados (issue #151): o pipeline grava `zero_is_absent`
+// no manifest e o registro da camada o repete — a legenda e a marca leem do registro, as
+// classes publicadas vieram do manifest. Os dois têm que concordar métrica a métrica.
+test('zero_is_absent do manifest de fixture e zeroIsAbsent do registro concordam em toda métrica', () => {
+  for (const layer of TERRITORY_LAYERS) {
+    const dataset = fixtureManifest.datasets.find((d) => d.id === layer.datasetId);
+    for (const metric of layer.metrics) {
+      const spec = dataset.class_breaks[metric.key];
+      assert.equal(Boolean(spec.zero_is_absent), Boolean(metric.zeroIsAbsent), `${layer.id}/${metric.key}`);
+    }
+  }
 });

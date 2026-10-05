@@ -85,7 +85,7 @@ import {
   TERRITORY_LAYERS, AREA_LAYER_IDS, RAMPS, layerById, metricFor, layerAvailability, metricAvailability,
   layerFilesFor, featureValue, classCheckMismatch,
 } from './territorio/layers.js';
-import { classIndexFor } from './territorio/classes.js';
+import { classIndexFor, rampIndexFor } from './territorio/classes.js';
 import { legendRows, legendTitle, provenanceLine } from './territorio/legend.js';
 import { territoryDetailTiers, territoryTooltipText } from './territorio/detail.js';
 import { buildRaCrosswalk, EMPTY_CROSSWALK, excludeRas, raNameConflicts } from './territorio/ra-keys.js';
@@ -184,6 +184,7 @@ const dom = {
   territoryLegend: el('territoryLegend'), territoryLegendTitle: el('territoryLegendTitle'),
   territoryMetric: el('territoryMetric'), territoryClasses: el('territoryClasses'),
   territoryProvenance: el('territoryProvenance'), territoryStatus: el('territoryStatus'),
+  territoryNote: el('territoryNote'),
 
   pdadDrillOverlay: el('pdadDrillOverlay'), pdadDrillTitle: el('pdadDrillTitle'),
   pdadDrillSub: el('pdadDrillSub'), pdadDrillClose: el('pdadDrillClose'),
@@ -5507,10 +5508,8 @@ function rampPalette(ramp) {
  * sempre o degrau mais escuro); `null` (sem dado) não tem cor — quem chama desenha vazado.
  */
 function territoryColor(palette, classIndex, classes) {
-  if (classIndex === null || classIndex === undefined) return null;
-  const last = palette.length - 1;
-  const index = classes <= 1 ? last : Math.round((classIndex * last) / (classes - 1));
-  return palette[Math.max(0, Math.min(last, index))];
+  const index = rampIndexFor(classIndex, classes, palette.length);
+  return index === null ? null : palette[index];
 }
 
 function territoryToken(name) {
@@ -5809,6 +5808,11 @@ function renderTerritoryLegend(layer, metric = null, dataset = null, { role = nu
     frag.append(li);
   }
   dom.territoryClasses.replaceChildren(frag);
+
+  // A nota do conjunto vem do manifest e diz o que a legenda sozinha não diz — nos empregos,
+  // que hexágono OMITIDO (zero empregos) não é "sem dado" (issue #151).
+  dom.territoryNote.textContent = dataset.notesPt || '';
+  dom.territoryNote.hidden = !dataset.notesPt;
 
   dom.territoryProvenance.replaceChildren();
   const procedencia = provenanceLine(dataset);

@@ -63,6 +63,11 @@ test('indisponível sempre diz por quê, em português', () => {
   classesDemais.datasets[0].class_breaks.households_delta_per_km2.breaks = [1, 2, 3, 4, 5, 6, 7];
   assert.match(layerAvailability(layer, { available: true, manifest: normalizeManifest(classesDemais).manifest }).reason, /8 classes/);
   assert.equal(layerAvailability(null, publicData()).available, false);
+  // zero_is_absent divergente entre manifest e registro (issue #151): a camada não liga.
+  const zeroDivergente = JSON.parse(JSON.stringify(RAW));
+  const jobsRaw = zeroDivergente.datasets.find((d) => d.id === 'jobs_hex');
+  delete jobsRaw.class_breaks.jobs_high.zero_is_absent;
+  assert.match(layerAvailability(layerById('jobs_hex'), { available: true, manifest: normalizeManifest(zeroDivergente).manifest }).reason, /zero_is_absent=false para "jobs_high"/);
 });
 
 test('métrica só de detalhe fica indisponível no overview, com o motivo da R8.15', () => {
