@@ -9,7 +9,7 @@
 
 import { toInteger, toNumber, toText } from '../normalize.js';
 import { formatBRL, formatDecimal, formatNumber, formatPercent, percentFromDecimal } from '../format.js';
-import { EMPTY_CROSSWALK, toRaRoman } from './ra-keys.js';
+import { EMPTY_CROSSWALK, toRaNn, toRaRoman } from './ra-keys.js';
 
 /** As colunas do contrato (docs/DATA_CONTRACT.md, "ra_aggregates"). Fora daqui é aviso. */
 export const RA_AGGREGATE_COLUMNS = Object.freeze([
@@ -212,9 +212,19 @@ export function attachTerritory(pdadIndex, byRa) {
  */
 export function raProfileFor(raGeoId, raProfiles, crosswalk = EMPTY_CROSSWALK) {
   if (!raProfiles || !raGeoId) return null;
-  if (Object.prototype.hasOwnProperty.call(raProfiles, raGeoId)) return raProfiles[raGeoId];
+  const hasOwn = (key) => Object.prototype.hasOwnProperty.call(raProfiles, key);
+  const bridged = Boolean(crosswalk && crosswalk.byNn && crosswalk.byNn.size > 0);
+  const nn = toRaNn(raGeoId, crosswalk);
+  // Ponte carregada e a RA fora dela — excluída por conflito de nome (`excludeRas`) ou de
+  // número desconhecido: o join falha FECHADO, inclusive pela chave direta. É um cruzamento
+  // entre fontes (PDAD/LISTINGS × RA_PROFILES) mesmo quando a chave coincide, e a exclusão
+  // existe justamente porque o mesmo número pode nomear regiões diferentes nas duas
+  // (R8.16, R8.51; achado do Codex na PR #157). Sem ponte, só a chave direta resolve.
+  if (bridged && !nn) return null;
+  if (hasOwn(raGeoId)) return raProfiles[raGeoId];
+  if (nn && hasOwn(nn)) return raProfiles[nn];
   const roman = toRaRoman(raGeoId, crosswalk);
-  return roman && Object.prototype.hasOwnProperty.call(raProfiles, roman) ? raProfiles[roman] : null;
+  return roman && hasOwn(roman) ? raProfiles[roman] : null;
 }
 
 /**

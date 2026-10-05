@@ -119,7 +119,7 @@ test('territoryProfileRows leva ano e fonte no rótulo e omite o que está ausen
 // --- Cruzamento com o PDAD e com RA_PROFILES (issue #153) ---------------------------------
 
 import { attachTerritory, attachRaProfiles, raProfileFor, raTerritoryProfile, TERRITORY_ATTRS } from '../src/territorio/aggregates.js';
-import { toRaRoman } from '../src/territorio/ra-keys.js';
+import { toRaRoman, excludeRas } from '../src/territorio/ra-keys.js';
 
 const INDEX = {
   2024: {
@@ -190,4 +190,20 @@ test('raTerritoryProfile: mediana entre as RAs COM dado, n, diferença e posiç�
   assert.equal(centr.reference.n, 1, 'a referência conta só quem tem dado');
   assert.equal(raTerritoryProfile(byRa, 'RA_07'), null);
   assert.equal(raTerritoryProfile(null, 'RA_11'), null);
+});
+
+test('com a ponte carregada, RA excluída por conflito de nome falha fechado — inclusive pela chave direta (Codex, PR #157)', () => {
+  const sincronizada = { RA_11: { income_per_capita_brl: 4100 }, RA_19: { income_per_capita_brl: 2350.5 } };
+  const romanos = { 'RA2026_RA-XI': { income_per_capita_brl: 4100 } };
+  const sem11 = excludeRas(CW, ['RA_11']);
+  assert.equal(raProfileFor('RA_11', sincronizada, sem11), null, 'chave direta não contorna a exclusão');
+  assert.equal(raProfileFor('RA2026_RA-XI', romanos, sem11), null, 'grafia romana idem');
+  assert.equal(raProfileFor('RA_19', sincronizada, sem11), sincronizada.RA_19, 'as outras RAs seguem');
+  assert.equal(raProfileFor('RA2026_RA-XIX', sincronizada, CW), sincronizada.RA_19, 'filtro romano acha o perfil RA_nn pela ponte');
+  const out = attachRaProfiles(INDEX, sincronizada, sem11);
+  assert.equal(out[2024].RA_11.incomePerCapita, null);
+  assert.equal(out[2024].RA_19.incomePerCapita, 2350.5);
+  // Sem ponte não há exclusão a respeitar: só a chave direta, sem tradução.
+  assert.equal(raProfileFor('RA_11', sincronizada, EMPTY_CROSSWALK), sincronizada.RA_11);
+  assert.equal(raProfileFor('RA2026_RA-XI', sincronizada, EMPTY_CROSSWALK), null);
 });

@@ -2067,10 +2067,7 @@ function renderRaProfile() {
   // O filtro usa a grafia romana (LISTINGS); a aba RA_PROFILES sincronizada usa `RA_nn`
   // (achado do Codex na PR #157). `raProfileFor` tenta a chave direta e, pela ponte, a outra
   // grafia — nunca por nome.
-  const chaveNn = state.filters.ra ? toRaNn(state.filters.ra, state.territory.crosswalk) : null;
-  const profile = state.filters.ra
-    ? (raProfileFor(state.filters.ra, state.raProfiles, state.territory.crosswalk) || (chaveNn ? raProfileFor(chaveNn, state.raProfiles, state.territory.crosswalk) : null))
-    : null;
+  const profile = state.filters.ra ? raProfileFor(state.filters.ra, state.raProfiles, state.territory.crosswalk) : null;
   const frag = document.createDocumentFragment();
 
   const stats = document.createElement('ul');
