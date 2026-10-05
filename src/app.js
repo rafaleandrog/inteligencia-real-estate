@@ -309,6 +309,11 @@ const state = {
     errors: new Map(),
     drawn: null,
     drawnLines: null,
+    // Geração de cada desenho: uma chamada que termina depois de outra mais nova é
+    // descartada — resposta atrasada não desenha por cima da vista atual.
+    generation: 0,
+    lineGeneration: 0,
+    attributionOn: false,
     pendingParams: null,
   },
   /** O que `showWarnings` mostrou por último — para quem adiciona um aviso depois da carga. */
@@ -327,15 +332,14 @@ let polygonLayer = null;
  */
 let roadLayer = null;
 /**
- * Camadas territoriais (issue #150): um renderizador de CANVAS próprio no pane `territory`
- * — dezenas de milhares de células como `<path>` em SVG engasgam o navegador; em canvas são
- * um desenho só — e dois grupos: a coroplética ligada e o contorno das RAs redesenhado só
- * como linha por cima dela (pane `raOutline`).
+ * Camadas territoriais (issue #150): um renderizador de CANVAS no pane `territory` —
+ * dezenas de milhares de células como `<path>` em SVG engasgam o navegador; em canvas são
+ * um desenho só — compartilhado pela coroplética e pelas vias (ver `initMap`), abaixo do
+ * pane `polygons`, onde o contorno das RAs é redesenhado só como linha por cima dele.
  */
 let territoryRenderer = null;
 let territoryAreaLayer = null;
-/** Centralidade viária (issue #152): canvas próprio no pane `territoryLines`, acima da coroplética. */
-let territoryLineRenderer = null;
+/** Centralidade viária (issue #152): no MESMO canvas da coroplética, trazida à frente a cada desenho. */
 let territoryLineLayer = null;
 
 /** Raio do marcador por camada: anúncio é o dado principal, âncora é contexto. */
@@ -386,19 +390,19 @@ function initMap() {
   // o clique ao ponto, que é o dado.
   map.createPane('roadSegments').style.zIndex = 360;
   map.createPane('anchors').style.zIndex = 380;
-  // Camadas territoriais (issue #150): a coroplética fica ACIMA do contorno das RAs (350) —
-  // abaixo dele, o preenchimento clicável da RA roubaria todo clique na célula — e abaixo
-  // dos eixos rodoviários (360), das âncoras (380) e dos marcadores (600). Enquanto uma
-  // camada de área está ligada, o limite oficial das RAs é redesenhado SÓ como linha em
-  // `raOutline` (357), para continuar visível sobre a coroplética como nos mapas de
-  // referência; `territoryLines` (358) é a centralidade viária (issue #152), abaixo dos
-  // eixos do DER, que são dado medido e ficam por cima.
-  map.createPane('territory').style.zIndex = 355;
-  map.createPane('raOutline').style.zIndex = 357;
-  map.createPane('territoryLines').style.zIndex = 358;
-  territoryRenderer = L.canvas({ pane: 'territory', padding: 0.5 });
+  // Camadas territoriais (issues #150–#152): UM canvas só, ABAIXO do pane `polygons` (350).
+  //
+  // Um canvas cobre a viewport inteira e engole todo evento de ponteiro de quem está
+  // embaixo dele; dois canvases empilhados fariam o de cima engolir o de baixo (achado da
+  // revisão da PR #157). Por isso células e vias dividem o MESMO renderizador — o hit-test
+  // do Leaflet resolve quem está por cima: a via, trazida à frente depois de cada desenho —
+  // e ficam sob os vetores SVG. Com uma camada ligada, o contorno das RAs vira só linha
+  // (ver `renderPolygons`) e o SVG vazio deixa o evento passar (regra `.leaflet-pane > svg`
+  // no CSS); áreas importadas, corredores e eixos do DER continuam acima e clicáveis.
+  // `tolerance` alarga o alvo das linhas finas (peso 1 px) para o toque.
+  map.createPane('territory').style.zIndex = 340;
+  territoryRenderer = L.canvas({ pane: 'territory', padding: 0.5, tolerance: 6 });
   territoryAreaLayer = L.layerGroup().addTo(map);
-  territoryLineRenderer = L.canvas({ pane: 'territoryLines', padding: 0.5 });
   territoryLineLayer = L.layerGroup().addTo(map);
   // Pan/zoom só redesenham quando o CONJUNTO de arquivos muda (overview ↔ shards, shard que
   // entra na viewport); `renderTerritory` compara a assinatura antes de tocar no mapa.
@@ -483,13 +487,15 @@ function renderPolygons() {
     if (geometry.type !== 'Polygon' && geometry.type !== 'MultiPolygon') continue;
 
     const style = polygonStyle(polygon);
-    // Com uma coroplética ligada (issue #150), a RA vira SÓ contorno, por cima dela: o
-    // preenchimento da RA cobriria as células, e o limite oficial precisa continuar visível.
-    const soContorno = state.territory.area !== null && polygonEntityType(polygon) === 'administrative_region';
+    // Com uma camada territorial ligada (issues #150–#152), a RA vira SÓ contorno: o
+    // preenchimento cobriria as células e engoliria o clique delas (o canvas fica abaixo
+    // deste pane), e o limite oficial precisa continuar visível por cima da coroplética.
+    const territorioLigado = state.territory.area !== null || state.territory.lines === true;
+    const soContorno = territorioLigado && polygonEntityType(polygon) === 'administrative_region';
     let shape = null;
     try {
       shape = L.geoJSON(geometry, {
-        pane: soContorno ? 'raOutline' : 'polygons', // ver `initMap`: abaixo das âncoras e dos marcadores
+        pane: 'polygons', // ver `initMap`: abaixo das âncoras e dos marcadores
         // `className` serve só para achar o contorno no DOM (teste e depuração): a cor
         // continua vindo daqui, por `color`/`fillColor`. Nenhuma regra de CSS pode
         // pintar `.polygon-shape` — regra de classe vence o atributo que o Leaflet
@@ -4802,6 +4808,7 @@ function renderPdadView() {
   if (!temDado) {
     const atual = viewFromHash();
     if (['diagnostico', 'ranking', 'comparar'].includes(atual) || (atual === 'base' && !temPublico)) setView('mapa');
+    else if (atual === 'base') setView('base'); // só com arquivos públicos (achado da revisão da PR #157)
     return [];
   }
 
@@ -5587,8 +5594,10 @@ async function loadTerritorySmallFiles() {
     const { payload } = await fetchPublicLayer({ baseUrl: publicData.baseUrl, dataset, file });
     return payload;
   };
+  // Os dois arquivos em paralelo: a normalização dos agregados precisa da ponte, o download não.
+  const [pontePromise, agregadosPromise] = [fetchData('ra_crosswalk'), fetchData('ra_aggregates')];
   try {
-    const payload = await fetchData('ra_crosswalk');
+    const payload = await pontePromise;
     if (payload) {
       crosswalk = buildRaCrosswalk(payload.rows);
       warnings.push(...crosswalk.warnings);
@@ -5606,7 +5615,7 @@ async function loadTerritorySmallFiles() {
     warnings.push(`Território (ponte de RAs): ra_crosswalk.json não carregou — ${error?.message || error}.`);
   }
   try {
-    const payload = await fetchData('ra_aggregates');
+    const payload = await agregadosPromise;
     if (payload) {
       aggregates = normalizeRaAggregates(payload.rows, crosswalk);
       warnings.push(...aggregates.warnings);
@@ -5835,8 +5844,8 @@ async function territoryGroupFor({ layer, dataset, file, metric, breaks, palette
     const zeroIsAbsent = metric.zeroIsAbsent === true;
     const isLine = layer.kind === 'line';
     const group = L.geoJSON(entry.payload, {
-      renderer: isLine ? territoryLineRenderer : territoryRenderer,
-      pane: isLine ? 'territoryLines' : 'territory',
+      renderer: territoryRenderer,
+      pane: 'territory',
       style: (feature) => {
         const classIndex = classIndexFor(featureValue(metric, feature.properties), breaks.breaks, { zeroIsAbsent });
         const color = territoryColor(palette, classIndex, breaks.classes);
@@ -5865,7 +5874,7 @@ async function territoryGroupFor({ layer, dataset, file, metric, breaks, palette
     }, { sticky: true });
     group.on('click', (event) => {
       const feature = event.propagatedFrom?.feature || event.layer?.feature;
-      if (feature) openTerritoryDetail(layer, { dataset, file, integrity: entry.integrity, feature });
+      if (feature) openTerritoryDetail(layer, { dataset, file, integrity: entry.integrity, feature, metric });
     });
     entry.groups.set(metric.key, group);
   }
@@ -5884,11 +5893,11 @@ async function territoryGroupFor({ layer, dataset, file, metric, breaks, palette
 async function renderTerritory() {
   if (!map || !territoryAreaLayer) return;
   const t = state.territory;
+  const gen = ++t.generation;
   const layer = t.area ? layerById(t.area) : null;
   if (!layer) {
     if (t.drawn !== null) { territoryAreaLayer.clearLayers(); t.drawn = null; }
     renderTerritoryLegend(null);
-    if (viewFromHash() === 'mapa') syncHash();
     return;
   }
   const availability = layerAvailability(layer, t.publicData);
@@ -5912,34 +5921,40 @@ async function renderTerritory() {
 
   const palette = rampPalette(layer.ramp);
   updateTerritoryCount(layer.id, files.length === 0 ? '0' : 'carregando…');
-  setTerritoryStatus(files.length === 0 ? 'Nenhum arquivo desta camada cruza a área visível do mapa.' : 'carregando…');
+  setTerritoryStatus('carregando…');
+  // Shards em paralelo; cada falha é registrada por arquivo, nunca derruba os outros.
+  const resultados = await Promise.allSettled(files.map((file) => territoryGroupFor({ layer, dataset, file, metric, breaks, palette })));
+  // Uma chamada mais nova (zoom, pan, troca de camada ou de métrica) já passou por aqui:
+  // esta resposta é a atrasada e não desenha por cima da vista atual (achado da revisão da
+  // PR #157).
+  if (gen !== t.generation) return;
+
   const groups = [];
   let features = 0;
   let mismatches = 0;
   const falhas = [];
-  for (const file of files) {
-    try {
-      const group = await territoryGroupFor({ layer, dataset, file, metric, breaks, palette });
-      const entry = t.loaded.get(`${dataset.id}/${file.path}@${file.sha256}`);
-      groups.push(group);
-      features += entry.payload.features.length;
-      mismatches += classCheckMismatch(entry.payload.features, metric, breaks, classIndexFor);
-    } catch (error) {
-      falhas.push(`${file.path}: ${error?.message || error}`);
+  resultados.forEach((resultado, i) => {
+    const file = files[i];
+    if (resultado.status === 'rejected') {
+      falhas.push(`${file.path}: ${resultado.reason?.message || resultado.reason}`);
+      return;
     }
-  }
-  // Enquanto os arquivos baixavam, a pessoa pode ter trocado de camada ou de métrica: o
-  // desenho é de quem pediu por último, nunca de uma resposta atrasada (R8.29).
-  const stillWanted = t.area === layer.id && (metricFor(layer, t.metric[layer.id]) || metricFor(layer)).key === metric.key
-    || (t.area === layer.id && !metricAvailability(layer, metricFor(layer, t.metric[layer.id]), dataset, { role }).available);
-  if (!stillWanted) return;
+    const entry = t.loaded.get(`${dataset.id}/${file.path}@${file.sha256}`);
+    groups.push(resultado.value);
+    features += entry.payload.features.length;
+    mismatches += classCheckMismatch(entry.payload.features, metric, breaks, classIndexFor);
+  });
 
   territoryAreaLayer.clearLayers();
   for (const group of groups) territoryAreaLayer.addLayer(group);
-  t.drawn = signature;
+  bringTerritoryLinesToFront();
+  // Falha de arquivo não grava a assinatura: o próximo pan/zoom tenta de novo em vez de
+  // ficar com o buraco "grudado".
+  t.drawn = falhas.length > 0 ? null : signature;
   updateTerritoryCount(layer.id, formatNumber(features));
   const avisos = [];
-  if (mismatches > 0) avisos.push(`${formatNumber(mismatches)} feição(ões) com classe publicada diferente dos cortes do manifest — a tela usa os cortes (R8.54).`);
+  if (files.length === 0) avisos.push('Nenhum arquivo desta camada cruza a área visível do mapa.');
+  if (mismatches > 0) avisos.push(`${formatNumber(mismatches)} feição(ões) com classe publicada diferente da que os cortes publicados no manifest dão — legenda e mapa seguem os cortes (R8.42); confira o pipeline.`);
   if (falhas.length > 0) {
     avisos.push(`${falhas.length} arquivo(s) não carregaram: ${falhas.join('; ')}`);
     reportTerritoryError(new Error(falhas.join('; ')));
@@ -5950,6 +5965,13 @@ async function renderTerritory() {
   if (viewFromHash() === 'mapa') syncHash();
 }
 
+/** As vias ficam por cima das células no canvas compartilhado — depois de cada desenho. */
+function bringTerritoryLinesToFront() {
+  if (!territoryLineLayer) return;
+  territoryLineLayer.eachLayer((group) => {
+    if (typeof group.eachLayer === 'function') group.eachLayer((path) => { if (typeof path.bringToFront === 'function') path.bringToFront(); });
+  });
+}
 const OSM_LINES_ATTRIBUTION = 'Centralidade viária: © colaboradores do OpenStreetMap (ODbL)';
 
 /**
@@ -5963,15 +5985,15 @@ const OSM_LINES_ATTRIBUTION = 'Centralidade viária: © colaboradores do OpenStr
 async function renderTerritoryLines() {
   if (!map || !territoryLineLayer) return;
   const t = state.territory;
+  const gen = ++t.lineGeneration;
   const layer = t.lines && LINE_LAYER_IDS.length > 0 ? layerById(LINE_LAYER_IDS[0]) : null;
   if (!layer) {
-    if (t.drawnLines !== null) {
-      territoryLineLayer.clearLayers();
-      t.drawnLines = null;
-      if (map.attributionControl) map.attributionControl.removeAttribution(OSM_LINES_ATTRIBUTION);
-    }
+    if (t.drawnLines !== null) { territoryLineLayer.clearLayers(); t.drawnLines = null; }
+    // A atribuição sai na transição ligada→desligada, uma vez: `removeAttribution` decrementa
+    // um contador por texto, e um `add` por redesenho a deixaria presa (achado da revisão da
+    // PR #157).
+    if (t.attributionOn && map.attributionControl) { map.attributionControl.removeAttribution(OSM_LINES_ATTRIBUTION); t.attributionOn = false; }
     renderTerritoryLineLegend(null);
-    if (viewFromHash() === 'mapa') syncHash();
     return;
   }
   const availability = layerAvailability(layer, t.publicData);
@@ -5992,31 +6014,35 @@ async function renderTerritoryLines() {
 
   const palette = rampPalette(layer.ramp);
   updateTerritoryCount(layer.id, files.length === 0 ? '0' : 'carregando…');
-  setTerritoryLineStatus(files.length === 0 ? 'Nenhum arquivo desta camada cruza a área visível do mapa.' : 'carregando…');
+  setTerritoryLineStatus('carregando…');
+  const resultados = await Promise.allSettled(files.map((file) => territoryGroupFor({ layer, dataset, file, metric, breaks, palette })));
+  if (gen !== t.lineGeneration) return; // resposta atrasada não desenha
+
   const groups = [];
   let features = 0;
   let mismatches = 0;
   const falhas = [];
-  for (const file of files) {
-    try {
-      const group = await territoryGroupFor({ layer, dataset, file, metric, breaks, palette });
-      const entry = t.loaded.get(`${dataset.id}/${file.path}@${file.sha256}`);
-      groups.push(group);
-      features += entry.payload.features.length;
-      mismatches += classCheckMismatch(entry.payload.features, metric, breaks, classIndexFor);
-    } catch (error) {
-      falhas.push(`${file.path}: ${error?.message || error}`);
+  resultados.forEach((resultado, i) => {
+    const file = files[i];
+    if (resultado.status === 'rejected') {
+      falhas.push(`${file.path}: ${resultado.reason?.message || resultado.reason}`);
+      return;
     }
-  }
-  if (!t.lines) return; // desligada enquanto baixava: resposta atrasada não desenha (R8.29)
+    const entry = t.loaded.get(`${dataset.id}/${file.path}@${file.sha256}`);
+    groups.push(resultado.value);
+    features += entry.payload.features.length;
+    mismatches += classCheckMismatch(entry.payload.features, metric, breaks, classIndexFor);
+  });
 
   territoryLineLayer.clearLayers();
   for (const group of groups) territoryLineLayer.addLayer(group);
-  t.drawnLines = signature;
-  if (map.attributionControl) map.attributionControl.addAttribution(OSM_LINES_ATTRIBUTION);
+  bringTerritoryLinesToFront();
+  t.drawnLines = falhas.length > 0 ? null : signature;
+  if (!t.attributionOn && map.attributionControl) { map.attributionControl.addAttribution(OSM_LINES_ATTRIBUTION); t.attributionOn = true; }
   updateTerritoryCount(layer.id, formatNumber(features));
   const avisos = [];
-  if (mismatches > 0) avisos.push(`${formatNumber(mismatches)} via(s) com classe publicada diferente dos cortes do manifest — a tela usa os cortes (R8.54).`);
+  if (files.length === 0) avisos.push('Nenhum arquivo desta camada cruza a área visível do mapa.');
+  if (mismatches > 0) avisos.push(`${formatNumber(mismatches)} via(s) com classe publicada diferente da que os cortes publicados no manifest dão — legenda e mapa seguem os cortes (R8.42); confira o pipeline.`);
   if (falhas.length > 0) {
     avisos.push(`${falhas.length} arquivo(s) não carregaram: ${falhas.join('; ')}`);
     reportTerritoryError(new Error(falhas.join('; ')));
@@ -6026,7 +6052,6 @@ async function renderTerritoryLines() {
   dom.territoryLineLegend.dataset.territoryFeatures = String(features);
   if (viewFromHash() === 'mapa') syncHash();
 }
-
 function setTerritoryLineStatus(text, tone = '') {
   dom.territoryLineStatus.textContent = text || '';
   dom.territoryLineStatus.hidden = !text;
@@ -6152,8 +6177,9 @@ function renderTerritoryLegend(layer, metric = null, dataset = null, { role = nu
  * Painel de detalhe de uma feição territorial: três níveis via `appendTiers` (essencial ≤ 6
  * linhas, R8.61) e, no fim, o link de cada fonte do conjunto. Tudo por `textContent`.
  */
-function openTerritoryDetail(layer, { dataset, file, integrity, feature }) {
-  const tiers = territoryDetailTiers(layer, feature.properties, { dataset, file, integrity, crosswalk: state.territory.crosswalk });
+function openTerritoryDetail(layer, { dataset, file, integrity, feature, metric = null }) {
+  // A classe do painel é a da métrica ATIVA, a mesma que pintou a célula (R8.42).
+  const tiers = territoryDetailTiers(layer, feature.properties, { dataset, file, integrity, metric, crosswalk: state.territory.crosswalk });
   const frag = document.createDocumentFragment();
   appendTiers(frag, tiers);
   for (const source of dataset.sources || []) {
@@ -6383,19 +6409,12 @@ async function load() {
   ).warnings;
   state.baseWarnings = [...state.baseWarnings, ...avisosRodoviarios];
   // Arquivos públicos (issue #149): o manifest já veio com o dataset; a ponte de RAs e os
-  // agregados por RA são buscados agora, antes das views que os leem. Avisos entram no mesmo
-  // canal das abas opcionais — nunca erro (R2.5).
+  // agregados por RA começam a baixar AGORA, mas ninguém espera por eles para desenhar o
+  // mapa — recurso opcional não entra no caminho crítico (R8.29, achado da revisão da PR
+  // #157): o `await` fica depois do primeiro `render()`, e o que os lê é redesenhado quando
+  // eles chegam. Avisos entram no mesmo canal das abas opcionais — nunca erro (R2.5).
   state.territory.publicData = result.publicData || EMPTY_PUBLIC_DATA;
-  const avisosTerritorio = await loadTerritorySmallFiles();
-  state.baseWarnings = [...state.baseWarnings, ...avisosTerritorio];
-  // Ranking, dispersão e Comparar leem `ra[attr]` (issue #153): os agregados territoriais e
-  // a renda de RA_PROFILES entram no índice do PDAD aqui, cruzados pela ponte — sem ponte ou
-  // sem arquivo, o índice fica como era e os indicadores resolvem ausentes (R2.5).
-  state.pdadIndex = attachRaProfiles(
-    attachTerritory(state.pdadIndex, state.territory.aggregates.byRa),
-    state.raProfiles,
-    state.territory.crosswalk,
-  );
+  const arquivosPequenos = loadTerritorySmallFiles();
   renderTerritoryControls();
   renderPolygonLegend();
   renderTrafficPanel();
@@ -6439,6 +6458,22 @@ async function load() {
   // Depois do enquadramento: a escolha overview × shards depende do zoom final.
   renderTerritory().catch(reportTerritoryError);
   renderTerritoryLines().catch(reportTerritoryError);
+
+  // Ponte de RAs e agregados (issue #153): chegaram depois do primeiro desenho. Ranking,
+  // dispersão e Comparar leem `ra[attr]`, então o índice do PDAD é cruzado aqui — sem ponte
+  // ou sem arquivo, fica como era e os indicadores resolvem ausentes (R2.5) — e o que os
+  // mostra é redesenhado uma vez.
+  const avisosTerritorio = await arquivosPequenos;
+  state.baseWarnings = [...state.baseWarnings, ...avisosTerritorio];
+  state.pdadIndex = attachRaProfiles(
+    attachTerritory(state.pdadIndex, state.territory.aggregates.byRa),
+    state.raProfiles,
+    state.territory.crosswalk,
+  );
+  if (state.territory.aggregates.rows.length > 0 || avisosTerritorio.length > 0) {
+    refreshPdadView();
+    renderRaProfile();
+  }
 }
 
 // --- Ligação --------------------------------------------------------------
@@ -6466,6 +6501,7 @@ function bindEvents() {
     if (!input) return;
     state.territory.area = input.value || null;
     renderPolygons();
+    if (viewFromHash() === 'mapa') syncHash();
     renderTerritory().catch(reportTerritoryError);
   });
   dom.territoryMetric.addEventListener('change', () => {
@@ -6477,6 +6513,8 @@ function bindEvents() {
     const input = event.target.closest('input[name="territoryLines"]');
     if (!input) return;
     state.territory.lines = input.checked;
+    renderPolygons();
+    if (viewFromHash() === 'mapa') syncHash();
     renderTerritoryLines().catch(reportTerritoryError);
   });
   dom.clearFilters.addEventListener('click', clearFilters);

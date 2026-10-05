@@ -143,7 +143,12 @@ def write_empty_manifest(public_dir: Path, *, generated_at: str, pipeline_commit
     dizendo por quê. Recusa sobrescrever um manifest que já lista datasets — apagar dado
     publicado é trabalho do pipeline, não de um comando de inicialização.
     """
-    previous = read_manifest(public_dir)
+    try:
+        previous = read_manifest(public_dir)
+    except ValueError as error:  # JSON ilegível: recusa de forma legível, nunca sobrescreve
+        raise ValueError(f"{public_dir / MANIFEST_NAME} existe e não é JSON válido ({error}); nada feito") from error
+    if previous is not None and not isinstance(previous, dict):
+        raise ValueError(f"{public_dir / MANIFEST_NAME} existe e não é um objeto JSON; nada feito")
     if previous and previous.get("datasets"):
         raise FileExistsError(f"{public_dir / MANIFEST_NAME} já lista {len(previous['datasets'])} dataset(s); nada feito")
     manifest = {

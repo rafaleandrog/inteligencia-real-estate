@@ -192,7 +192,7 @@ def cmd_init_manifest(args: argparse.Namespace) -> int:
             config_sha256=config.sha256,
             attribution_pt=config.manifest.attribution_pt,
         )
-    except FileExistsError as error:
+    except (FileExistsError, ValueError) as error:
         print(str(error), file=sys.stderr)
         return 1
     print(f"manifest vazio escrito em {out_dir / 'manifest.json'}")

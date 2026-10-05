@@ -1144,7 +1144,7 @@ async function sha256Hex(bytes) {
  * mostra o motivo e não desenha. Sem `crypto.subtle` (contexto inseguro) o hash não é
  * conferido e o resultado diz isso em `integrity`, em vez de fingir que conferiu.
  */
-export async function fetchPublicLayer({ baseUrl, dataset, file }, { fetchRef = null } = {}) {
+export async function fetchPublicLayer({ baseUrl, dataset, file }, { fetchRef = null, timeoutMs = PUBLIC_LAYER_TIMEOUT_MS } = {}) {
   if (!dataset || !file) throw new Error('fetchPublicLayer: dataset e arquivo são obrigatórios');
   const key = `${dataset.id}/${file.path}@${file.sha256}`;
   if (publicLayerCache.has(key)) return publicLayerCache.get(key);
@@ -1152,10 +1152,24 @@ export async function fetchPublicLayer({ baseUrl, dataset, file }, { fetchRef = 
   if (!url) throw new Error(`${dataset.id}: caminho "${file.path}" recusado (fora da mesma origem)`);
   const versioned = `${url}${url.includes('?') ? '&' : '?'}v=${file.sha256.slice(0, 12)}`;
   const pending = (async () => {
-    const response = await fetchWithTimeout(versioned, { timeoutMs: PUBLIC_LAYER_TIMEOUT_MS, fetchRef });
-    if (!response.ok) throw new Error(`${dataset.id}: ${file.path} respondeu HTTP ${response.status}`);
-    const buffer = await response.arrayBuffer();
-    const bytes = new Uint8Array(buffer);
+    // O teto cobre o CORPO, não só os cabeçalhos: `fetchWithTimeout` limpa o timer assim que
+    // a resposta começa, e um corpo de 2 MB travado deixaria a camada "carregando…" para
+    // sempre (achado da revisão da PR #157). Aqui o `abort` vale até o último byte.
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), timeoutMs);
+    let bytes;
+    try {
+      const doFetch = fetchRef || fetch;
+      const response = await doFetch(versioned, { signal: controller.signal });
+      if (!response.ok) throw new Error(`${dataset.id}: ${file.path} respondeu HTTP ${response.status}`);
+      const buffer = await response.arrayBuffer();
+      bytes = new Uint8Array(buffer);
+    } catch (error) {
+      if (error?.name === 'AbortError') throw new Error(`${dataset.id}: ${file.path} demorou mais que ${Math.round(timeoutMs / 1000)} s`);
+      throw error;
+    } finally {
+      clearTimeout(timer);
+    }
     if (bytes.byteLength !== file.bytes) {
       throw new Error(`${dataset.id}: ${file.path} tem ${bytes.byteLength} bytes e o manifest diz ${file.bytes} — arquivo não confere com o manifest`);
     }

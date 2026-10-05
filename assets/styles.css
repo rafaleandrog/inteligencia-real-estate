@@ -1719,6 +1719,12 @@ p.precision.precision-exact {
 .marker-icon-legend.marker-icon-listing svg { width: 10px; height: 10px; }
 
 .leaflet-container { font: inherit; background: var(--superficie-hover); }
+/* O canvas das camadas territoriais fica ABAIXO dos panes SVG (issues #150–#152). O elemento
+   <svg> raiz de cada pane cobre a viewport inteira e, por padrão, recebe o clique nas áreas
+   vazias — o que impediria o evento de chegar ao canvas. Aqui ele deixa passar; os <path>
+   interativos continuam clicáveis pela regra própria do Leaflet (`path.leaflet-interactive`
+   com `pointer-events: auto`, mais específica que esta). */
+.leaflet-pane > svg { pointer-events: none; }
 
 /* Mobile ---------------------------------------------------------------- */
 

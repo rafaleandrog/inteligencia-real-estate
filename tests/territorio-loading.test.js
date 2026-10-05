@@ -207,3 +207,26 @@ test('loadDataset devolve publicData nos dois caminhos e não pede o manifest se
     globalThis.fetch = original;
   }
 });
+
+test('o teto de tempo de fetchPublicLayer cobre o corpo da resposta, não só os cabeçalhos', async () => {
+  clearPublicLayerCache();
+  const { manifest } = normalizeManifest(RAW_MANIFEST);
+  const dataset = datasetById(manifest, 'ra_crosswalk');
+  const file = dataset.files[0];
+  // Cabeçalhos chegam; o corpo nunca termina — a menos que o `signal` aborte.
+  const travado = async (url, { signal } = {}) => ({
+    ok: true,
+    status: 200,
+    arrayBuffer: () => new Promise((_, reject) => {
+      signal?.addEventListener('abort', () => reject(Object.assign(new Error('aborted'), { name: 'AbortError' })));
+    }),
+  });
+  const inicio = Date.now();
+  await assert.rejects(fetchPublicLayer({ baseUrl: BASE, dataset, file }, { fetchRef: travado, timeoutMs: 80 }), /demorou mais que/);
+  assert.ok(Date.now() - inicio < 2000, 'abortou pelo teto, não pelo fim do corpo');
+  // Depois do aborto a próxima chamada tenta de novo.
+  const certo = fixtureFetch();
+  const out = await fetchPublicLayer({ baseUrl: BASE, dataset, file }, { fetchRef: certo });
+  assert.equal(out.payload.rows.length, 2);
+  clearPublicLayerCache();
+});

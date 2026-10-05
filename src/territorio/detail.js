@@ -45,6 +45,19 @@ function classLabel(value, breaks, { zeroIsAbsent = false } = {}) {
   return row ? `${index + 1} de ${breaks.classes} · ${row.label}` : null;
 }
 
+/**
+ * A linha "Classe no mapa" é da métrica ATIVA — a que pintou a feição — e diz qual é. Com a
+ * métrica padrão o rótulo fica curto; com outra, o nome dela entra entre parênteses para o
+ * painel nunca descrever uma escala que não está na tela (R8.42; achado da revisão da PR #157).
+ */
+function classRow(add, rows, layer, metric, props, dataset, defaultKey) {
+  const active = metric || (layer.metrics || []).find((m) => m.key === defaultKey) || null;
+  if (!active) return;
+  const breaks = dataset?.classBreaks?.[active.key];
+  const label = active.key === defaultKey ? 'Classe no mapa' : `Classe no mapa (${active.label})`;
+  add(rows, label, classLabel(toNumber(props[active.key]), breaks, { zeroIsAbsent: active.zeroIsAbsent === true }));
+}
+
 function provenanceRows(dataset, file, integrity) {
   const rows = [];
   if (!dataset) return rows;
@@ -63,7 +76,7 @@ function provenanceRows(dataset, file, integrity) {
   return rows;
 }
 
-function householdsTiers(props, { dataset, crosswalk }) {
+function householdsTiers(props, { dataset, crosswalk, layer, metric }) {
   const size = toText(props.cell_size) === '1KM' ? '1 km' : '200 m';
   const dom2010 = toInteger(props.dom_ocu_2010);
   const dom2022 = toInteger(props.dom_ocu_2022);
@@ -77,7 +90,7 @@ function householdsTiers(props, { dataset, crosswalk }) {
   add(essencial, 'Variação 2010→2022', pct === null ? null : formatPercent(percentFromDecimal(pct)), 'fração decimal publicada: (2022 − 2010) ÷ 2010');
   add(essencial, 'População 2022', toInteger(props.pop_2022) === null ? null : formatNumber(toInteger(props.pop_2022)));
   add(essencial, 'Região Administrativa', raLabel(props.ra_geo_id, crosswalk));
-  add(essencial, 'Classe no mapa', classLabel(perKm2, dataset?.classBreaks?.households_delta_per_km2));
+  classRow(add, essencial, layer, metric, props, dataset, 'households_delta_per_km2');
 
   const complementar = [];
   add(complementar, 'Domicílios novos (absoluto)', delta === null ? null : formatNumber(delta));
@@ -91,7 +104,7 @@ function householdsTiers(props, { dataset, crosswalk }) {
   return { title: `Célula de ${size} · ${toText(props.cell_id) || '—'}`, essencial, complementar };
 }
 
-function jobsTiers(props, { dataset, crosswalk }) {
+function jobsTiers(props, { dataset, crosswalk, layer, metric }) {
   const total = toInteger(props.jobs_total);
   const essencial = [];
   const add = (rows, label, value, title) => { if (value !== null && value !== undefined && value !== '') rows.push(title ? { label, value, title } : { label, value }); };
@@ -105,7 +118,7 @@ function jobsTiers(props, { dataset, crosswalk }) {
   if (anterior !== null && total !== null) add(essencial, 'Empregos 2017 → 2019', `${formatNumber(anterior)} → ${formatNumber(total)}`);
   add(essencial, 'População (Censo 2010, AOP)', toInteger(props.pop_total) === null ? null : formatNumber(toInteger(props.pop_total)));
   add(essencial, 'Região Administrativa', raLabel(props.ra_geo_id, crosswalk));
-  add(essencial, 'Classe no mapa', classLabel(total, dataset?.classBreaks?.jobs_total, { zeroIsAbsent: true }));
+  classRow(add, essencial, layer, metric, props, dataset, 'jobs_total');
 
   const complementar = [];
   add(complementar, 'Renda média (R$, AOP)', toNumber(props.income_avg_brl) === null ? null : formatNumber(Math.round(toNumber(props.income_avg_brl))));
@@ -116,7 +129,7 @@ function jobsTiers(props, { dataset, crosswalk }) {
   return { title: `Hexágono H3 · ${toText(props.h3_index) || '—'}`, essencial, complementar };
 }
 
-function centralityTiers(props, { dataset, crosswalk }) {
+function centralityTiers(props, { dataset, crosswalk, layer, metric }) {
   const essencial = [];
   const add = (rows, label, value, title) => { if (value !== null && value !== undefined && value !== '') rows.push(title ? { label, value, title } : { label, value }); };
   const pct = toNumber(props.betweenness_percentile);
@@ -125,7 +138,7 @@ function centralityTiers(props, { dataset, crosswalk }) {
   add(essencial, 'Tipo de via (OSM)', toText(props.highway) || null);
   add(essencial, 'Extensão', toNumber(props.length_m) === null ? null : `${formatNumber(Math.round(toNumber(props.length_m)))} m`);
   add(essencial, 'Região Administrativa', raLabel(props.ra_geo_id, crosswalk));
-  add(essencial, 'Classe no mapa', classLabel(pct, dataset?.classBreaks?.betweenness_percentile));
+  classRow(add, essencial, layer, metric, props, dataset, 'betweenness_percentile');
   const complementar = [];
   add(complementar, 'Mão', props.oneway === true ? 'única' : props.oneway === false ? 'dupla' : null);
   add(complementar, 'OSM ids', Array.isArray(props.osmid) ? props.osmid.map((v) => toText(v)).join(', ') : toText(props.osmid) || null);
@@ -139,11 +152,11 @@ const BUILDERS = Object.freeze({ households_grid: householdsTiers, jobs_hex: job
  * Os três níveis do painel para uma feição da camada. `essencial` tem no máximo
  * `ESSENTIAL_MAX_ROWS` linhas (R8.61); `tecnico` é a procedência do conjunto.
  */
-export function territoryDetailTiers(layer, properties, { dataset = null, file = null, integrity = null, crosswalk = EMPTY_CROSSWALK } = {}) {
+export function territoryDetailTiers(layer, properties, { dataset = null, file = null, integrity = null, crosswalk = EMPTY_CROSSWALK, metric = null } = {}) {
   const props = properties && typeof properties === 'object' ? properties : {};
   const build = BUILDERS[layer?.id];
   if (!build) return { title: layer?.title || 'Feição', essencial: [], complementar: [], tecnico: provenanceRows(dataset, file, integrity) };
-  const { title, essencial, complementar } = build(props, { dataset, crosswalk });
+  const { title, essencial, complementar } = build(props, { dataset, crosswalk, layer, metric });
   return {
     title,
     essencial: essencial.slice(0, ESSENTIAL_MAX_ROWS),
@@ -156,8 +169,11 @@ export function territoryDetailTiers(layer, properties, { dataset = null, file =
 export function territoryTooltipText(layer, metric, properties, { crosswalk = EMPTY_CROSSWALK } = {}) {
   const props = properties && typeof properties === 'object' ? properties : {};
   const value = toNumber(metric ? props[metric.key] : null);
-  const formatted = value === null
-    ? 'sem dado'
+  // Zero numa métrica em que zero é ausência (empregos por faixa) é "sem dado", como na
+  // legenda e no mapa — nunca "0 empregos" num hexágono desenhado vazado.
+  const absent = value === null || (metric?.zeroIsAbsent === true && value === 0);
+  const formatted = absent
+    ? (value === 0 ? 'sem dado (zero)' : 'sem dado')
     : metric.format === 'decimal1' ? `${formatDecimal(value, { digits: 1 })} ${metric.unit}` : `${formatNumber(value)} ${metric.unit}`;
   const ra = raLabel(props.ra_geo_id, crosswalk);
   return `${metric ? metric.label : layer?.short || ''}: ${formatted} · ${ra}`;

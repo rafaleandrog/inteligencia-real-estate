@@ -2611,8 +2611,8 @@ const ligada = await terrPage.evaluate(() => {
     amostras,
     tokens,
     canvas: document.querySelectorAll('.leaflet-territory-pane canvas').length,
-    contornosRa: document.querySelectorAll('.leaflet-raOutline-pane path.polygon-outline-only').length,
-    preenchidos: document.querySelectorAll('.leaflet-polygons-pane path.polygon-shape').length,
+    contornosRa: document.querySelectorAll('.leaflet-polygons-pane path.polygon-outline-only').length,
+    preenchidos: document.querySelectorAll('.leaflet-polygons-pane path.polygon-shape:not(.polygon-outline-only)').length,
     procedencia: document.querySelector('#territoryProvenance').textContent,
     linkBase: document.querySelector('#territoryProvenance a')?.getAttribute('href'),
     hash: location.hash,
@@ -2635,7 +2635,7 @@ ligada.role === 'overview' && Number(ligada.features) > 0 && ligada.contador ===
   ? pass(`no zoom inicial desenha o overview (${ligada.features} células) e o contador confere`)
   : fail('papel/contador: ' + JSON.stringify({ role: ligada.role, features: ligada.features, contador: ligada.contador }));
 ligada.contornosRa > 0 && ligada.preenchidos === 0
-  ? pass('com a coroplética ligada, as RAs viram só contorno no pane raOutline')
+  ? pass('com a coroplética ligada, as RAs viram só contorno (o canvas fica abaixo do pane polygons)')
   : fail('contorno das RAs: ' + JSON.stringify({ contornos: ligada.contornosRa, preenchidos: ligada.preenchidos }));
 /Fonte: IBGE/.test(ligada.procedencia) && /versão/.test(ligada.procedencia) && ligada.linkBase === '#base'
   ? pass('a procedência traz fonte, coleta e versão, com link para a Base de dados')
@@ -2728,8 +2728,8 @@ await terrPage.check('#territoryLayers input[value=""]');
 await terrPage.waitForTimeout(600);
 const desligada = await terrPage.evaluate(() => ({
   legenda: document.querySelector('#territoryLegend').hidden,
-  preenchidos: document.querySelectorAll('.leaflet-polygons-pane path.polygon-shape').length,
-  contornos: document.querySelectorAll('.leaflet-raOutline-pane path').length,
+  preenchidos: document.querySelectorAll('.leaflet-polygons-pane path.polygon-shape:not(.polygon-outline-only)').length,
+  contornos: document.querySelectorAll('.leaflet-polygons-pane path.polygon-outline-only').length,
   hash: location.hash,
 }));
 desligada.legenda && desligada.preenchidos > 0 && desligada.contornos === 0 && !/terr=/.test(desligada.hash)
@@ -2904,8 +2904,8 @@ const VIAS = TERRITORY_LAYERS.find((l) => l.id === 'road_centrality');
 const VIAS_DATASET = FIXTURE_MANIFEST.datasets.find((d) => d.id === VIAS.datasetId);
 const VIAS_BREAKS = VIAS_DATASET.class_breaks[VIAS.defaultMetric].breaks;
 
-// Mesma página, com a coroplética de empregos ligada: linha e área convivem, cada uma no
-// seu pane e com a sua legenda.
+// Mesma página da seção anterior, com a coroplética de empregos ligada: linha e área
+// convivem no MESMO canvas (a via por cima), cada uma com a sua legenda.
 await terrPage.check('#territoryLayers input[name="territoryLines"]');
 await terrPage.waitForTimeout(1500);
 const vias = await terrPage.evaluate((size) => {
@@ -2925,18 +2925,18 @@ const vias = await terrPage.evaluate((size) => {
     role: legenda.dataset.territoryRole,
     features: Number(legenda.dataset.territoryFeatures),
     amostras, tokens,
-    canvasLinhas: document.querySelectorAll('.leaflet-territoryLines-pane canvas').length,
-    canvasArea: document.querySelectorAll('.leaflet-territory-pane canvas').length,
+    canvas: document.querySelectorAll('.leaflet-territory-pane canvas').length,
     areaLegenda: !document.querySelector('#territoryLegend').hidden,
     procedencia: document.querySelector('#territoryLineProvenance').textContent,
     atribuicao: document.querySelector('.leaflet-control-attribution')?.textContent || '',
     hash: location.hash,
     contador: document.querySelector('[data-territory-count="road_centrality"]').textContent,
+    contornosRa: document.querySelectorAll('.leaflet-polygons-pane path.polygon-outline-only').length,
   };
 }, RAMPS.via);
-vias.legendaVisivel && vias.canvasLinhas === 1 && vias.canvasArea === 1 && vias.areaLegenda
-  ? pass('a centralidade liga num canvas próprio e convive com a coroplética (duas legendas, dois panes)')
-  : fail('camada de linhas: ' + JSON.stringify({ legenda: vias.legendaVisivel, linhas: vias.canvasLinhas, area: vias.canvasArea, areaLegenda: vias.areaLegenda }));
+vias.legendaVisivel && vias.canvas === 1 && vias.areaLegenda && vias.contornosRa > 0
+  ? pass('a centralidade liga no mesmo canvas da coroplética (duas legendas, um canvas, RAs só contorno)')
+  : fail('camada de linhas: ' + JSON.stringify({ legenda: vias.legendaVisivel, canvas: vias.canvas, areaLegenda: vias.areaLegenda, contornos: vias.contornosRa }));
 vias.amostras.length === VIAS_BREAKS.length + 2
   ? pass(`a legenda de linhas tem ${VIAS_BREAKS.length + 1} classes mais "sem dado" (cortes do manifest, R8.72)`)
   : fail('linhas da legenda de vias: ' + JSON.stringify(vias.amostras.map((a) => a.texto)));
@@ -2959,8 +2959,10 @@ vias.amostras.slice(0, -1).every((a, i) => a.altura === `${VIAS.line.weight[i]}p
   ? pass('a URL carrega vias=1 junto da coroplética')
   : fail('hash (vias): ' + vias.hash);
 
-const pixelsVias = await terrPage.evaluate((size) => {
-  const canvas = document.querySelector('.leaflet-territoryLines-pane canvas');
+/** Varre o canvas territorial: pixels por faixa de alfa, cores permitidas e um alvo clicável. */
+const amostrarCanvas = (pg, { tokens, alfaMin, alfaMax = 255, tolerancia = 6 }) => pg.evaluate(({ tokens, alfaMin, alfaMax, tolerancia }) => {
+  const canvas = document.querySelector('.leaflet-territory-pane canvas');
+  if (!canvas) return null;
   const mapa = document.querySelector('#map').getBoundingClientRect();
   const rect = canvas.getBoundingClientRect();
   const ctx = canvas.getContext('2d');
@@ -2970,47 +2972,96 @@ const pixelsVias = await terrPage.evaluate((size) => {
   const probe = document.createElement('span');
   document.body.append(probe);
   const rgb = (token) => { probe.style.color = getComputedStyle(document.documentElement).getPropertyValue(token).trim(); const m = getComputedStyle(probe).color.match(/\d+/g); return m.slice(0, 3).map(Number); };
-  const permitidas = [...Array.from({ length: size }, (_, i) => rgb(`--via-${i + 1}`)), rgb('--terr-sem-dado-borda')];
+  const permitidas = tokens.map(rgb);
   probe.remove();
-  // Traço com antialiasing e opacidade por classe: só pixels (quase) opacos entram na
-  // conferência de cor, e a tolerância cobre o arredondamento da composição. Onde duas vias
-  // semitransparentes se cruzam, o pixel é a MISTURA das duas cores — legítimo, e raro: a
-  // asserção abaixo tolera até 2 % de pixels compostos, nunca um canvas pintado fora da rampa.
-  const perto = (a, b) => a.every((v, i) => Math.abs(v - b[i]) <= 6);
+  const perto = (a, b) => a.every((v, i) => Math.abs(v - b[i]) <= tolerancia);
   let pintados = 0; let fora = 0; let alvo = null;
   for (let i = 0; i < data.length; i += 4) {
-    if (data[i + 3] < 230) continue;
+    const alfa = data[i + 3];
+    if (alfa < alfaMin || alfa > alfaMax) continue;
     const cor = [data[i], data[i + 1], data[i + 2]];
     pintados += 1;
     const idx = permitidas.findIndex((p) => perto(p, cor));
     if (idx < 0) { fora += 1; continue; }
-    if (alvo || idx === permitidas.length - 1) continue;
+    if (alvo) continue;
     const x = (i / 4) % width; const y = Math.floor(i / 4 / width);
-    const cx = rect.left + x / dpr; const cy = rect.top + y / dpr;
-    if (cx > mapa.left + 5 && cx < mapa.right - 5 && cy > mapa.top + 5 && cy < mapa.bottom - 5) alvo = { x: cx, y: cy };
+    let fim = x;
+    while (fim + 1 < width) { const j = (y * width + fim + 1) * 4; if (data[j + 3] < alfaMin || data[j + 3] > alfaMax || !perto([data[j], data[j + 1], data[j + 2]], cor)) break; fim += 1; }
+    const cx = rect.left + ((x + fim) / 2) / dpr; const cy = rect.top + y / dpr + 1;
+    if (cx > mapa.left + 5 && cx < mapa.right - 5 && cy > mapa.top + 5 && cy < mapa.bottom - 5 && fim - x >= 3) alvo = { x: cx, y: cy, topo: rect.top + y / dpr };
   }
   return { pintados, fora, alvo };
-}, RAMPS.via);
-pixelsVias.pintados > 0 && pixelsVias.fora <= pixelsVias.pintados * 0.02
+}, { tokens, alfaMin, alfaMax, tolerancia });
+const lerPainel = (pg) => pg.evaluate(() => ({ aberto: !document.querySelector('#detail').hidden, titulo: document.querySelector('#detailTitle').textContent, essencial: [...document.querySelectorAll('#detailBody .detail-essential dt')].map((n) => n.textContent) }));
+const VIA_TOKENS = [...Array.from({ length: RAMPS.via }, (_, i) => `--via-${i + 1}`), '--terr-sem-dado-borda'];
+const SEQ10_TOKENS = Array.from({ length: RAMPS.seq10 }, (_, i) => `--seq10-${i + 1}`);
+
+// Só as vias (coroplética desligada): toda cor opaca é um token da rampa; o clique abre a via.
+await terrPage.check('#territoryLayers input[value=""]');
+await terrPage.waitForTimeout(900);
+const pixelsVias = await amostrarCanvas(terrPage, { tokens: VIA_TOKENS, alfaMin: 230 });
+// Onde duas vias semitransparentes se cruzam o pixel é a MISTURA das duas cores — legítimo
+// e raro: até 2 % de pixels compostos passam; um canvas pintado fora da rampa, não.
+pixelsVias && pixelsVias.pintados > 0 && pixelsVias.fora <= pixelsVias.pintados * 0.02
   ? pass(`os pixels opacos do canvas de linhas são tokens --via-N (${pixelsVias.fora} de ${pixelsVias.pintados} são cruzamentos compostos)`)
   : fail('pixels fora dos tokens (vias): ' + JSON.stringify(pixelsVias));
-if (pixelsVias.alvo) {
-  await terrPage.mouse.click(pixelsVias.alvo.x, pixelsVias.alvo.y);
+let viaAlvo = null;
+if (pixelsVias && pixelsVias.alvo) {
+  viaAlvo = pixelsVias.alvo;
+  await terrPage.mouse.click(viaAlvo.x, viaAlvo.y);
   await terrPage.waitForTimeout(400);
-  const via = await terrPage.evaluate(() => ({
-    aberto: !document.querySelector('#detail').hidden,
-    titulo: document.querySelector('#detailTitle').textContent,
-    essencial: [...document.querySelectorAll('#detailBody .detail-essential dt')].map((n) => n.textContent),
-  }));
+  const via = await lerPainel(terrPage);
   via.aberto && via.essencial.includes('Centralidade (percentil)') && via.essencial.length <= 6
     ? pass(`o clique na via abre "${via.titulo}" com o percentil no essencial`)
     : fail('painel da via: ' + JSON.stringify(via));
   await terrPage.click('#closeDetail');
+  await terrPage.waitForTimeout(200);
+  // Alvo alargado (tolerance do canvas): 4 px ACIMA da borda superior da via ainda abre o painel —
+  // uma via de 1 px seria inacessível no toque sem isso (achado da revisão da PR #157).
+  await terrPage.mouse.click(viaAlvo.x, viaAlvo.topo - 4);
+  await terrPage.waitForTimeout(400);
+  const perto = await lerPainel(terrPage);
+  perto.aberto && perto.essencial.includes('Centralidade (percentil)')
+    ? pass('o clique a 4 px da via ainda abre o painel (tolerância do canvas para o toque)')
+    : fail('clique perto da via não abriu: ' + JSON.stringify(perto));
+  await terrPage.click('#closeDetail');
+  await terrPage.waitForTimeout(200);
 } else {
   fail('nenhuma via pintada visível para clicar: ' + JSON.stringify(pixelsVias));
 }
 
-// Desligar as linhas: canvas de linhas some, atribuição sai, a coroplética continua.
+// Área e vias juntas: a célula continua clicável onde não há via, e a via fica por cima.
+await terrPage.check('#territoryLayers input[value="jobs_hex"]');
+await terrPage.waitForTimeout(1500);
+const pixelsCelulas = await amostrarCanvas(terrPage, { tokens: SEQ10_TOKENS, alfaMin: 150, alfaMax: 215 });
+if (pixelsCelulas && pixelsCelulas.alvo) {
+  await terrPage.mouse.click(pixelsCelulas.alvo.x, pixelsCelulas.alvo.y);
+  await terrPage.waitForTimeout(400);
+  const celula = await lerPainel(terrPage);
+  celula.aberto && /^Hexágono H3 · /.test(celula.titulo)
+    ? pass('com as vias ligadas, o clique numa célula sem via por perto ainda abre o hexágono (um canvas só)')
+    : fail('célula sob as vias: ' + JSON.stringify(celula));
+  await terrPage.click('#closeDetail');
+  await terrPage.waitForTimeout(200);
+} else {
+  fail('nenhuma célula pintada visível com as vias ligadas: ' + JSON.stringify(pixelsCelulas));
+}
+if (viaAlvo) {
+  await terrPage.mouse.click(viaAlvo.x, viaAlvo.y);
+  await terrPage.waitForTimeout(400);
+  const viaPorCima = await lerPainel(terrPage);
+  viaPorCima.aberto && viaPorCima.essencial.includes('Centralidade (percentil)')
+    ? pass('com a coroplética ligada, a via continua por cima e clicável')
+    : fail('via sob a coroplética: ' + JSON.stringify(viaPorCima));
+  await terrPage.click('#closeDetail');
+  await terrPage.waitForTimeout(200);
+}
+
+// Atribuição: várias redesenhadas (zoom para o overview e de volta) e um único desligar.
+await terrPage.click('.leaflet-control-zoom-out'); await terrPage.waitForTimeout(500);
+await terrPage.click('.leaflet-control-zoom-out'); await terrPage.waitForTimeout(900);
+await terrPage.click('.leaflet-control-zoom-in'); await terrPage.waitForTimeout(500);
+await terrPage.click('.leaflet-control-zoom-in'); await terrPage.waitForTimeout(1200);
 await terrPage.uncheck('#territoryLayers input[name="territoryLines"]');
 await terrPage.waitForTimeout(600);
 const semVias = await terrPage.evaluate(() => ({
@@ -3020,8 +3071,34 @@ const semVias = await terrPage.evaluate(() => ({
   hash: location.hash,
 }));
 semVias.legenda && !/Centralidade viária/.test(semVias.atribuicao) && semVias.areaLegenda && !/vias=/.test(semVias.hash)
-  ? pass('desligar as vias esconde a legenda delas, retira a atribuição e mantém a coroplética')
+  ? pass('desligar as vias depois de vários redesenhos esconde a legenda, retira a atribuição e mantém a coroplética')
   : fail('estado após desligar as vias: ' + JSON.stringify(semVias));
+
+// Tudo desligado: o clique na RA volta a abrir o painel dela (regressão apontada na revisão).
+await terrPage.check('#territoryLayers input[value=""]');
+await terrPage.waitForTimeout(600);
+const pontoRa = await terrPage.evaluate(() => {
+  const mapa = document.querySelector('#map').getBoundingClientRect();
+  for (let fy = 0.2; fy <= 0.8; fy += 0.1) {
+    for (let fx = 0.2; fx <= 0.8; fx += 0.1) {
+      const x = mapa.left + mapa.width * fx; const y = mapa.top + mapa.height * fy;
+      const el = document.elementFromPoint(x, y);
+      if (el && el.matches('path.polygon-shape:not(.polygon-outline-only)')) return { x, y };
+    }
+  }
+  return null;
+});
+if (pontoRa) {
+  await terrPage.mouse.click(pontoRa.x, pontoRa.y);
+  await terrPage.waitForTimeout(400);
+  const ra = await lerPainel(terrPage);
+  ra.aberto && ra.titulo === 'RA sintética do território'
+    ? pass('com as camadas desligadas, o clique no interior da RA abre o painel da RA')
+    : fail('painel da RA após desligar: ' + JSON.stringify(ra));
+  await terrPage.click('#closeDetail');
+} else {
+  fail('nenhum ponto da RA preenchida sob o cursor para clicar');
+}
 
 // Abrir pela URL só com as vias, sem área.
 const viasUrl = await context.newPage();
@@ -3036,14 +3113,69 @@ await viasUrl.goto('http://localhost:8080/#mapa?vias=1', { waitUntil: 'networkid
 await viasUrl.waitForTimeout(1800);
 const soVias = await viasUrl.evaluate(() => ({
   marcado: document.querySelector('#territoryLayers input[name="territoryLines"]')?.checked,
-  canvasLinhas: document.querySelectorAll('.leaflet-territoryLines-pane canvas').length,
-  canvasArea: document.querySelectorAll('.leaflet-territory-pane canvas').length,
+  canvas: document.querySelectorAll('.leaflet-territory-pane canvas').length,
+  areaLegenda: !document.querySelector('#territoryLegend').hidden,
   role: document.querySelector('#territoryLineLegend').dataset.territoryRole,
   titulo: document.querySelector('#territoryLineLegendTitle').textContent,
 }));
-soVias.marcado && soVias.canvasLinhas === 1 && soVias.canvasArea === 0 && soVias.role === 'overview' && /mais centrais/.test(soVias.titulo)
+soVias.marcado && soVias.canvas === 1 && !soVias.areaLegenda && soVias.role === 'overview' && /mais centrais/.test(soVias.titulo)
   ? pass('#mapa?vias=1 abre só com as vias, no overview (as mais centrais), sem coroplética')
   : fail('abertura pela URL (vias): ' + JSON.stringify(soVias));
+
+// Carga lenta: zoom durante o "Carregando…" não pode apagar a busca nem a camada da URL
+// (regressão apontada na revisão da PR #157: `syncHash` no moveend antes de applyUrlParams).
+const lenta = await context.newPage();
+await lenta.addInitScript(() => {
+  Object.defineProperty(window, 'APP_CONFIG', {
+    configurable: true,
+    set(value) { delete window.APP_CONFIG; window.APP_CONFIG = value; if (value) { value.demoMode = true; value.publicDataUrl = './tests/fixtures/public/'; } },
+    get() { return undefined; },
+  });
+});
+await lenta.route('**/data/demo.json', async (route) => {
+  await new Promise((resolve) => setTimeout(resolve, 1500));
+  await route.continue();
+});
+await lenta.goto('http://localhost:8080/#mapa?q=casa&terr=households_grid&vias=1', { waitUntil: 'commit' });
+await lenta.waitForSelector('.leaflet-control-zoom-in');
+await lenta.click('.leaflet-control-zoom-in').catch(() => {});
+await lenta.waitForTimeout(4000);
+const aposCargaLenta = await lenta.evaluate(() => ({
+  hash: location.hash,
+  busca: document.querySelector('#search').value,
+  area: document.querySelector('#territoryLayers input[value="households_grid"]')?.checked,
+  vias: document.querySelector('#territoryLayers input[name="territoryLines"]')?.checked,
+}));
+/q=casa/.test(aposCargaLenta.hash) && /terr=households_grid/.test(aposCargaLenta.hash) && /vias=1/.test(aposCargaLenta.hash) && aposCargaLenta.busca === 'casa' && aposCargaLenta.area && aposCargaLenta.vias
+  ? pass('zoom durante a carga não apaga q=, terr= nem vias= da URL')
+  : fail('URL após zoom na carga lenta: ' + JSON.stringify(aposCargaLenta));
+
+// Só arquivos públicos (sem IVV e sem PDAD): #base abre mesmo assim.
+const soPublico = await context.newPage();
+await soPublico.addInitScript(() => {
+  Object.defineProperty(window, 'APP_CONFIG', {
+    configurable: true,
+    set(value) { delete window.APP_CONFIG; window.APP_CONFIG = value; if (value) { value.demoMode = true; value.publicDataUrl = './tests/fixtures/public/'; } },
+    get() { return undefined; },
+  });
+});
+await soPublico.route('**/data/demo.json', async (route) => {
+  const response = await route.fetch();
+  const payload = await response.json();
+  payload.ivv_monthly = [];
+  payload.pdad_a_data = [];
+  await route.fulfill({ response, json: payload });
+});
+await soPublico.goto('http://localhost:8080/#base', { waitUntil: 'networkidle' });
+await soPublico.waitForTimeout(1200);
+const baseSoPublico = await soPublico.evaluate(() => ({
+  baseVisivel: !document.querySelector('#pdadBaseView').hidden,
+  cartoes: document.querySelectorAll('#publicDataList article').length,
+  mercadoDesabilitado: document.querySelector('#marketTab').disabled,
+}));
+baseSoPublico.baseVisivel && baseSoPublico.cartoes > 0 && baseSoPublico.mercadoDesabilitado
+  ? pass('sem IVV e sem PDAD, #base abre só com os arquivos públicos')
+  : fail('#base só com arquivos públicos: ' + JSON.stringify(baseSoPublico));
 
 // --- Território: indicadores no Ranking, dispersão, Comparar, Diagnóstico e mapa (issue #153) --
 console.log('\n== Território · indicadores cruzados com o PDAD (issue #153) ==');

@@ -87,3 +87,27 @@ test('territoryTooltipText: valor com unidade e RA; "sem dado" quando falta', ()
   const abs = metricFor(layer, 'households_delta');
   assert.equal(territoryTooltipText(layer, abs, { households_delta: 42, ra_geo_id: 'RA_11' }), 'Domicílios novos (absoluto): 42 dom. · RA_11');
 });
+
+test('a linha "Classe no mapa" é da métrica ATIVA, não da padrão (achado da revisão da PR #157)', () => {
+  const layer = layerById('households_grid');
+  const dataset = datasetById(manifest, 'households_grid');
+  const props = { ...SHARD.features[0].properties, households_delta: 100, households_delta_per_km2: 2500 };
+  const padrao = territoryDetailTiers(layer, props, { dataset, crosswalk: CW });
+  assert.equal(padrao.essencial.find((r) => r.label === 'Classe no mapa').value, '6 de 6 · mais de 2.000');
+  const absoluto = territoryDetailTiers(layer, props, { dataset, crosswalk: CW, metric: metricFor(layer, 'households_delta') });
+  const linha = absoluto.essencial.find((r) => r.label.startsWith('Classe no mapa'));
+  assert.equal(linha.label, 'Classe no mapa (Domicílios novos (absoluto))');
+  assert.equal(linha.value, '6 de 6 · mais de 80');
+  const jobs = layerById('jobs_hex');
+  const hex = { ...read('./fixtures/public/jobs_hex/detail_r9/RA_11.json').features[0].properties, jobs_total: 6000, jobs_high: 30 };
+  const alta = territoryDetailTiers(jobs, hex, { dataset: datasetById(manifest, 'jobs_hex'), crosswalk: CW, metric: metricFor(jobs, 'jobs_high') });
+  assert.equal(alta.essencial.find((r) => r.label.startsWith('Classe no mapa')).value, '2 de 10 · 25 a 50');
+  const zero = territoryDetailTiers(jobs, { ...hex, jobs_high: 0 }, { dataset: datasetById(manifest, 'jobs_hex'), crosswalk: CW, metric: metricFor(jobs, 'jobs_high') });
+  assert.ok(!zero.essencial.some((r) => r.label.startsWith('Classe no mapa')), 'zero é ausência: sem classe');
+});
+
+test('tooltip: zero numa métrica com zero-ausente diz "sem dado (zero)"', () => {
+  const jobs = layerById('jobs_hex');
+  assert.equal(territoryTooltipText(jobs, metricFor(jobs, 'jobs_high'), { jobs_high: 0, ra_geo_id: 'RA_11' }, { crosswalk: CW }), 'Empregos · renda alta: sem dado (zero) · Cruzeiro (RA_11)');
+  assert.equal(territoryTooltipText(jobs, metricFor(jobs, 'jobs_high'), { jobs_high: 7, ra_geo_id: 'RA_11' }, { crosswalk: CW }), 'Empregos · renda alta: 7 empregos · Cruzeiro (RA_11)');
+});

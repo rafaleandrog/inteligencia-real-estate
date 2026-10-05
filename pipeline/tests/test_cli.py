@@ -137,3 +137,15 @@ class InitManifestTests(unittest.TestCase):
             before = (out / "manifest.json").read_bytes()
             self.assertEqual(main(["init-manifest", "--out", str(out), "--config", str(FIXTURE_CONFIG)]), 1)
             self.assertEqual((out / "manifest.json").read_bytes(), before)
+
+    def test_init_manifest_refuses_invalid_existing_manifest(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            out = Path(tmp) / "public"
+            out.mkdir()
+            seed_public_dir(out)
+            (out / "manifest.json").write_text("{nao e json", "utf-8")
+            self.assertEqual(main(["init-manifest", "--out", str(out), "--config", str(FIXTURE_CONFIG)]), 1)
+            self.assertEqual((out / "manifest.json").read_text("utf-8"), "{nao e json")
+            (out / "manifest.json").write_text("[]", "utf-8")
+            self.assertEqual(main(["init-manifest", "--out", str(out), "--config", str(FIXTURE_CONFIG)]), 1)
+            self.assertEqual((out / "manifest.json").read_text("utf-8"), "[]")
