@@ -23,8 +23,9 @@ site pelo `manifest.json` (R2.7–R2.9 em `docs/ENGINEERING_RULES.md`; contrato 
 
 ## Workflow
 
-1. Mudança no pipeline → `cd pipeline && python3 -m unittest discover -s tests -t .` (geo pula
-   com motivo onde a stack não existe; a CI `pipeline-tests.yml` roda a suíte inteira).
+1. Mudança no pipeline → `cd pipeline && python3 -m unittest discover -s tests -t .` (a suíte
+   roda só com a biblioteca padrão, nos motores puros; a CI `pipeline-tests.yml` instala a stack
+   geo completa e prova os pinos de versão).
 2. `python -m imob_pipeline run all --out <tmp> --config config/fixture.toml --fixture-dir tests/fixtures`
    e `validate <tmp> --config config/fixture.toml` — ponta a ponta sem rede.
 3. Mudou o formato de saída → atualizar contrato, schemas, `src/territorio/*`, fixtures e testes

@@ -17,8 +17,10 @@ python -m imob_pipeline validate ../data/public --config config/df.toml
 python -m imob_pipeline init-manifest          # só antes da 1ª execução real: manifest vazio (datasets: [])
 ```
 
-Sem a stack geoespacial o núcleo continua funcionando (`ra_crosswalk`, validador, manifest,
-testes puros): `python -m unittest discover -s tests -t .` pula os testes geo com motivo.
+Sem a stack geoespacial o núcleo continua funcionando (`ra_crosswalk`, validador, manifest) e a
+suíte inteira roda só com a biblioteca padrão: os testes usam os motores puros (`use_shapely=False`,
+`engine="pure"`). Shapely/STRtree e igraph entram na execução real (`--engine auto`) e são
+instalados e importados na CI `pipeline-tests.yml` — é lá que os pinos de versão se provam.
 
 - `--fixture-dir DIR`: usa `DIR/fixture_urls.json` (URL → arquivo local) e **nunca** toca a rede.
 - `--refresh`: ignora o cache de downloads (`pipeline/.cache/raw`, gitignored; ETag/If-Modified-Since nas reexecuções).

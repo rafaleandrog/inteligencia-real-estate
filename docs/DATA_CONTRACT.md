@@ -451,15 +451,15 @@ Chave composta: `ra_geo_id` + `pdad_year` + `indicator_code` + `segment_value` +
 > **Estado da planilha viva (lido em 2026-09, issue #105):** `RA_PROFILES` e `POLYGONS`
 > (`administrative_regions`) já usam `RA_01`…`RA_37` — a mesma chave desta aba — e é essa a
 > convenção que `syncAdministrativeRegions_` (`Code.gs` v2.3.0) grava em `ra_geo_id`. Só
-> `LISTINGS`/`DEVELOPMENTS`/`ANCHORS` continuam em `RA2026_RA-I`. O cruzamento entre
-> `PDAD_A_DATA` e `RA_PROFILES` passa a ser possível por chave igual, mas ainda **não é feito**
-> no cliente (ver "Renda per capita" abaixo).
+> `LISTINGS`/`DEVELOPMENTS`/`ANCHORS` continuam em `RA2026_RA-I`.
 >
 > **Desde 2026-10 (issue #146) o de-para existe, declarado:** `data/public/ra_crosswalk.json`
 > (seção "Arquivos públicos — data/public/", R2.9), derivado dos atributos oficiais do GeoPortal.
-> É por ele — e só por ele — que o cliente pode traduzir `RA2026_RA-<romano>` ↔ `RA_nn`. O
-> cruzamento em si entra na issue #153; enquanto não entrar, o que está escrito acima continua
-> valendo.
+> É por ele — e só por ele — que o cliente traduz `RA2026_RA-<romano>` ↔ `RA_nn`. O cruzamento
+> é feito desde a issue #153 em `load()`: `attachRaProfiles` leva `income_per_capita_brl` de
+> `RA_PROFILES` (grafia romana) até a RA do PDAD (`RA_nn`) pela ponte, e `attachTerritory` leva
+> os agregados de `ra_aggregates.json`. Sem a ponte carregada nada é anexado — ausência, nunca
+> um join adivinhado (R8.30, R8.51).
 
 **Cobertura por ano, confirmada no dataset real, não assumida**: `2024` publica as 35 RAs;
 `2021` publica **só o Plano Piloto** (`RA_01`) — é o lote histórico anterior à pesquisa virar
@@ -599,19 +599,22 @@ segue disponível no drill-down).
 Quatro peças adicionais, todas derivadas do mesmo índice agregado — nenhuma tem `indicator_code`
 próprio:
 
-- **Ranking dos territórios** (`PDAD_RANK_SET`): 10 indicadores curados de qualidade territorial.
-  O item `income` (Renda per capita) usa `attr: 'incomePerCapita'`, um campo que **não existe** em
-  `PDAD_A_DATA` — resolve sempre ausente (`rankScalar` devolve `null`), de propósito: `RA_PROFILES`
-  usa a convenção `RA2026_RA-I` (romano) para `ra_geo_id`, `PDAD_A_DATA` usa `RA_01..RA_35` — as
-  duas NÃO são a mesma chave (ver nota no topo desta seção), e um join por nome de RA seria frágil
-  o bastante para preferir mostrar ausência a inventar uma correspondência.
+- **Ranking dos territórios** (`PDAD_RANK_SET`): os 10 indicadores curados do protótipo mais os 4
+  territoriais dos arquivos públicos (issue #153: crescimento de domicílios, empregos por mil
+  moradores, empregos por km², centralidade viária média — cada um com `formula` e `source`
+  mostrados no cartão). O item `income` (Renda per capita) usa `attr: 'incomePerCapita'`, um campo
+  que **não existe** em `PDAD_A_DATA`: ele é anexado por `attachRaProfiles` a partir de
+  `RA_PROFILES.income_per_capita_brl`, cruzando `RA2026_RA-I` (romano) com `RA_01..RA_35` pela
+  ponte `ra_crosswalk.json` — e segue ausente enquanto a planilha não publicar a coluna (0/35 hoje)
+  ou a ponte não carregar. Nunca por nome de RA.
 - **Comparar RAs** (`PDAD_COMPARE_KITS`): seleção livre de 2–6 RAs × até 4 indicadores, com três
   kits prontos (`imob`, `perfil`, `infra`).
-- **Dispersão territorial** (`PDAD_SCATTER_VIEWS`): 7 leituras cruzadas pré-definidas, correlação
-  de Pearson descritiva sobre os pontos com os dois eixos publicados — mesma ausência-nunca-vira-
+- **Dispersão territorial** (`PDAD_SCATTER_VIEWS`): 7 leituras cruzadas do protótipo mais 2 com os
+  arquivos públicos (`cresc_vert`, `emprego_loc`; o eixo cruzado declara `unit`), correlação de
+  Pearson descritiva sobre os pontos com os dois eixos publicados — mesma ausência-nunca-vira-
   substituição de `rankScalar` para ler cada eixo (`attr` ou `key`+`category`). Trava no ano de
   cobertura completa (o mais recente do lote), mesma leitura do protótipo de referência.
-  `renda_escritura` herda a mesma ausência de `incomePerCapita` do Ranking.
+  `renda_escritura` lê o mesmo `incomePerCapita` do Ranking, com a mesma origem e a mesma ausência.
 - **Drill-down**: `detailRowsForKey()` devolve as linhas cruas de `PDAD_A_DATA` para uma
   RA+ano+chave de exibição — a Figura inteira, com segmentação/categoria/total/percentual/status,
   para clique em qualquer categoria de qualquer gráfico. `buildFigureMeta()` deriva o cabeçalho
