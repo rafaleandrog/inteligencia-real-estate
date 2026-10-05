@@ -35,6 +35,16 @@ site pelo `manifest.json` (R2.7–R2.9 em `docs/ENGINEERING_RULES.md`; contrato 
    `datasets: <id>`; ler `summary.json` e os logs (artefato `logs-pipeline`); conferir tamanhos
    contra os orçamentos; pinar o que a descoberta encontrou (`quadrant_ids`, nomes de arquivo).
 
+## Fixtures do site e manifest vazio
+
+- `tests/fixtures/public/` é gerado pelo pipeline em modo fixture (comando em `pipeline/README.md`,
+  "Fixtures do site"). Mudou dataset, schema ou manifest → regenere, rode `npm test`
+  (`public-data-integrity`, `territorio-*`) e o smoke (`npm run smoke`, seção "Base de dados ·
+  arquivos públicos", que aponta `APP_CONFIG.publicDataUrl` para a fixture).
+- `data/public/manifest.json` vazio vem de `python -m imob_pipeline init-manifest`; o comando
+  recusa sobrescrever um manifest que já lista datasets. Depois da primeira execução real, só o
+  workflow `dados-publicos.yml` o reescreve.
+
 ## Checklist antes de declarar pronto
 
 - [ ] Validador recusa cada defeito que a mudança podia introduzir (teste plantado, R8.23)

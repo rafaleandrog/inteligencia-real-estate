@@ -2530,6 +2530,28 @@ p.precision.precision-exact {
 
 .pdad-card-wide { grid-column: 1 / -1; }
 
+/* Base de dados — arquivos públicos de data/public (issue #149). Só tokens: tipo, espaço,
+   raio, superfície e texto; nenhuma cor literal. */
+.publico-lista { display: grid; gap: var(--esp-3); margin-top: var(--esp-4); }
+.publico-card { padding: var(--esp-4); background: var(--superficie-elevada); }
+.publico-card .pdad-card-titulo { font-size: var(--tipo-md); }
+.publico-card .mono { margin: var(--esp-1) 0 0; }
+.publico-dl {
+  display: grid;
+  grid-template-columns: minmax(96px, 160px) minmax(0, 1fr);
+  gap: var(--esp-1) var(--esp-3);
+  margin: var(--esp-3) 0 0;
+  font-size: var(--tipo-sm);
+  line-height: 1.5;
+  color: var(--texto-sec);
+}
+.publico-dl dt { margin: 0; color: var(--texto-fraco); }
+.publico-dl dd { margin: 0; min-width: 0; overflow-wrap: anywhere; }
+.publico-dl a { color: var(--accent-text); text-decoration: none; }
+.publico-dl a:hover { text-decoration: underline; }
+.publico-cabecalho:empty { display: none; }
+.publico-arquivos { margin: 0; padding: 0; list-style: none; font-family: var(--font-mono); font-size: var(--tipo-xs); }
+
 /* Gráfico de colunas (`age`) e colunas+linha acumulada (`ordline`). */
 .pdad-cols-svg, .pdad-ord-svg { display: block; width: 100%; height: auto; }
 .pdad-col-val, .pdad-ord-val {
@@ -3071,6 +3093,9 @@ p.precision.precision-exact {
 }
 
 @media (max-width: 640px) {
+  /* Arquivos públicos (issue #149): rótulo e valor empilhados, uma coluna só. */
+  .publico-dl { grid-template-columns: minmax(0, 1fr); }
+
   /* O trilho vira faixa horizontal no topo. Aqui o rótulo VOLTA: numa faixa que rola na
      horizontal cabe texto, e dois ícones sozinhos numa barra larga não dizem o que são. */
   .app { grid-template-columns: minmax(0, 1fr); }

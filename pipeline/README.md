@@ -14,6 +14,7 @@ pip install -r requirements.txt            # stack geoespacial completa (Actions
 python -m imob_pipeline run ra_crosswalk --out ../data/public --config config/df.toml
 python -m imob_pipeline run all --out ../data/public
 python -m imob_pipeline validate ../data/public --config config/df.toml
+python -m imob_pipeline init-manifest          # só antes da 1ª execução real: manifest vazio (datasets: [])
 ```
 
 Sem a stack geoespacial o núcleo continua funcionando (`ra_crosswalk`, validador, manifest,
@@ -22,6 +23,17 @@ testes puros): `python -m unittest discover -s tests -t .` pula os testes geo co
 - `--fixture-dir DIR`: usa `DIR/fixture_urls.json` (URL → arquivo local) e **nunca** toca a rede.
 - `--refresh`: ignora o cache de downloads (`pipeline/.cache/raw`, gitignored; ETag/If-Modified-Since nas reexecuções).
 - Logs e `summary.json` ficam em `pipeline/.cache/runs/<timestamp>/` (`latest` aponta para o último).
+
+## Fixtures do site
+
+`tests/fixtures/public/` é a saída do pipeline em modo fixture, lida pelos testes Node e pelo
+smoke (`APP_CONFIG.publicDataUrl = './tests/fixtures/public/'`). Regenere sempre que um dataset,
+um schema ou o manifest mudar — nunca edite à mão (R2.8):
+
+```bash
+PYTHONPATH=pipeline python -m imob_pipeline run all --fixture-dir pipeline/tests/fixtures \
+  --config pipeline/config/fixture.toml --out tests/fixtures/public --cache /tmp/imob-cache --engine pure
+```
 
 ## O que é commitado
 

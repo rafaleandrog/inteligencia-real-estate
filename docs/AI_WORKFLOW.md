@@ -146,6 +146,11 @@ npm run smoke      # roda o roteiro completo em navegador
 Se o ambiente tiver um Chromium pré-instalado com build diferente da que o Playwright baixaria,
 aponte para ele: `CHROMIUM_PATH=/caminho/para/chrome npm run smoke`.
 
+A seção "Base de dados · arquivos públicos" do smoke não depende de `data/public/` ter dado real:
+ela aponta `APP_CONFIG.publicDataUrl` para `tests/fixtures/public/` (saída do pipeline em modo
+fixture) por `addInitScript`, e numa segunda página aborta o manifest para provar que a ausência
+vira aviso com motivo, nunca erro (issue #149, R2.5).
+
 Ele já pegou dois bugs que nenhum teste unitário pegaria: `leaflet.js` ausente do HTML (R8.13) e
 marcadores SVG estilizados com `background` em vez de `fill` (R8.14).
 

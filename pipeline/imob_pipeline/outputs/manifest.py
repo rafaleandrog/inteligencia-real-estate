@@ -131,3 +131,29 @@ def upsert_manifest(public_dir: Path, entry: dict[str, Any], *, generated_at: st
     }
     write_json(public_dir / MANIFEST_NAME, manifest, indent=2)
     return manifest
+
+
+def write_empty_manifest(public_dir: Path, *, generated_at: str, pipeline_commit: str,
+                         config_sha256: str, attribution_pt: str) -> dict[str, Any]:
+    """`manifest.json` com `datasets: []` — o estado ANTES da primeira execução real.
+
+    Existe para o site nunca pedir um arquivo que não existe: um 404 de `manifest.json` é
+    um erro no console em toda abertura de página, e o smoke test (com razão) não o filtra.
+    Com o manifest vazio o cliente lê "publicado sem nenhum conjunto" e desliga as camadas
+    dizendo por quê. Recusa sobrescrever um manifest que já lista datasets — apagar dado
+    publicado é trabalho do pipeline, não de um comando de inicialização.
+    """
+    previous = read_manifest(public_dir)
+    if previous and previous.get("datasets"):
+        raise FileExistsError(f"{public_dir / MANIFEST_NAME} já lista {len(previous['datasets'])} dataset(s); nada feito")
+    manifest = {
+        "manifest_version": MANIFEST_VERSION,
+        "generated_at": generated_at,
+        "pipeline_version": __version__,
+        "pipeline_commit": pipeline_commit,
+        "config_sha256": config_sha256,
+        "attribution_pt": attribution_pt,
+        "datasets": [],
+    }
+    write_json(public_dir / MANIFEST_NAME, manifest, indent=2)
+    return manifest

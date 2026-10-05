@@ -1,4 +1,4 @@
-"""`python -m imob_pipeline …` — run | validate | pr-body (| discover | extract, nas fases seguintes)."""
+"""`python -m imob_pipeline …` — run | validate | pr-body | init-manifest (| discover | extract, nas fases seguintes)."""
 
 from __future__ import annotations
 
@@ -14,7 +14,7 @@ from .config import ConfigError, load_config
 from .datasets import households_grid, jobs_hex, ra_aggregates, ra_crosswalk, road_centrality
 from .datasets.context import RunContext, git_commit
 from .fetch import FixtureFetcher, HttpFetcher
-from .outputs.manifest import read_manifest
+from .outputs.manifest import read_manifest, write_empty_manifest
 from .outputs.pr_body import render_pr_body
 from .outputs.validator import has_errors, validate_public_dir
 
@@ -175,6 +175,30 @@ def cmd_extract(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_init_manifest(args: argparse.Namespace) -> int:
+    """Escreve o manifest VAZIO (datasets: []) — só antes da primeira execução real."""
+    try:
+        config = load_config(args.config)
+    except ConfigError as error:
+        print(f"config inválida: {error}", file=sys.stderr)
+        return 2
+    out_dir = Path(args.out)
+    out_dir.mkdir(parents=True, exist_ok=True)
+    try:
+        write_empty_manifest(
+            out_dir,
+            generated_at=datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+            pipeline_commit=git_commit(REPO_ROOT),
+            config_sha256=config.sha256,
+            attribution_pt=config.manifest.attribution_pt,
+        )
+    except FileExistsError as error:
+        print(str(error), file=sys.stderr)
+        return 1
+    print(f"manifest vazio escrito em {out_dir / 'manifest.json'}")
+    return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="imob_pipeline", description="Pipeline de dados públicos do Imob Intelligence")
     sub = parser.add_subparsers(dest="command", required=True)
@@ -207,6 +231,11 @@ def build_parser() -> argparse.ArgumentParser:
     body.add_argument("--to", required=True)
     body.add_argument("--summary", default=None)
     body.set_defaults(func=cmd_pr_body)
+
+    init = sub.add_parser("init-manifest", help="escreve o manifest vazio (datasets: []) antes da primeira execução real")
+    init.add_argument("--out", default=str(REPO_ROOT / "data" / "public"))
+    init.add_argument("--config", default=str(DEFAULT_CONFIG))
+    init.set_defaults(func=cmd_init_manifest)
 
     extract = sub.add_parser("extract", help="fase 2: extração BigQuery (Base dos Dados)")
     extract.add_argument("source", choices=["rais"])

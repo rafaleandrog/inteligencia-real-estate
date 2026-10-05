@@ -1,0 +1,117 @@
+// Agregados por RA de data/public (issue #149): publicado prevalece, escala declarada,
+// coluna fora do contrato vira aviso nomeado, unidade desconhecida lança.
+
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+
+import {
+  normalizeRaAggregates, RA_AGGREGATE_COLUMNS, TERRITORY_INDICATORS, formatByUnit, territoryProfileRows,
+} from '../src/territorio/aggregates.js';
+import { buildRaCrosswalk, EMPTY_CROSSWALK } from '../src/territorio/ra-keys.js';
+import { formatBRL } from '../src/format.js';
+
+const read = (p) => JSON.parse(readFileSync(new URL(p, import.meta.url), 'utf8'));
+const ROWS = read('./fixtures/public/ra_aggregates.json').rows;
+const CW = buildRaCrosswalk(read('./fixtures/public/ra_crosswalk.json').rows);
+const SCHEMA = read('../data/public/schemas/ra_aggregates.schema.json');
+
+test('as colunas declaradas são exatamente as do schema publicado pelo pipeline', () => {
+  const noSchema = Object.keys(SCHEMA.properties.rows.items.properties).sort();
+  assert.deepEqual([...RA_AGGREGATE_COLUMNS].sort(), noSchema);
+});
+
+test('o ra_aggregates.json de fixture normaliza sem aviso, com fontes e anos', () => {
+  const out = normalizeRaAggregates(ROWS, CW);
+  assert.deepEqual(out.warnings, []);
+  assert.deepEqual(out.rows.map((r) => r.raGeoId), ['RA_11', 'RA_19']);
+  assert.equal(out.byRa.RA_11.householdsGrowthPct, 0.1143);
+  assert.equal(out.byRa.RA_11.jobsPer1000Residents, 18000);
+  assert.equal(out.byRa.RA_19.cellsPartial, 2);
+  assert.deepEqual(out.byRa.RA_19.qualityFlags, ['partial_children']);
+  assert.equal(out.byRa.RA_19.edgesCount, 3);
+  assert.match(out.sources.households, /IBGE/);
+  assert.match(out.sources.jobs, /Ipea/);
+  assert.match(out.sources.centrality, /OpenStreetMap/);
+  assert.deepEqual(out.years, [2019]);
+});
+
+test('RA fora da ponte é descartada; sem ponte carregada, tudo entra', () => {
+  const extra = { ...ROWS[0], ra_geo_id: 'RA_07', ra_geo_id_roman: 'RA2026_RA-VII' };
+  const comPonte = normalizeRaAggregates([...ROWS, extra], CW);
+  assert.equal(comPonte.rows.length, 2);
+  assert.ok(comPonte.warnings.some((w) => /RA_07/.test(w) && /ponte/.test(w)));
+  const semPonte = normalizeRaAggregates([...ROWS, extra], EMPTY_CROSSWALK);
+  assert.equal(semPonte.rows.length, 3);
+  const duplicada = normalizeRaAggregates([...ROWS, { ...ROWS[0] }], CW);
+  assert.equal(duplicada.rows.length, 2);
+  assert.ok(duplicada.warnings.some((w) => /duas vezes/.test(w)));
+  const invalida = normalizeRaAggregates([{ ra_geo_id: 'RA2026_RA-XI' }], CW);
+  assert.equal(invalida.rows.length, 0);
+  assert.ok(invalida.warnings.some((w) => /fora do padrão/.test(w)));
+  assert.equal(normalizeRaAggregates(null).rows.length, 0);
+});
+
+test('coluna que o contrato não declara vira aviso COLUNA_NAO_DECLARADA', () => {
+  const out = normalizeRaAggregates([{ ...ROWS[0], jobs_median_brl: 1 }], CW);
+  assert.ok(out.warnings.some((w) => /^COLUNA_NAO_DECLARADA: .*"jobs_median_brl"/.test(w)), out.warnings.join('\n'));
+  assert.equal(out.rows.length, 1, 'a linha continua — a coluna extra é ignorada, não a RA');
+});
+
+test('publicado prevalece: divergência de recálculo e escala suspeita só avisam', () => {
+  const crescimento = normalizeRaAggregates([{ ...ROWS[0], households_growth_pct: 0.5 }], CW);
+  assert.equal(crescimento.byRa.RA_11.householdsGrowthPct, 0.5, 'o publicado fica');
+  assert.ok(crescimento.warnings.some((w) => /crescimento 0\.5/.test(w) && /publicado foi mantido/.test(w)));
+
+  const escala = normalizeRaAggregates([{ ...ROWS[0], households_growth_pct: 11.43, households_delta: null }], CW);
+  assert.equal(escala.byRa.RA_11.householdsGrowthPct, 11.43, 'nunca convertido');
+  assert.ok(escala.warnings.some((w) => /fora da escala decimal/.test(w)));
+
+  const empregos = normalizeRaAggregates([{ ...ROWS[0], jobs_per_1000_residents: 10 }], CW);
+  assert.equal(empregos.byRa.RA_11.jobsPer1000Residents, 10);
+  assert.ok(empregos.warnings.some((w) => /empregos\/mil hab/.test(w)));
+
+  // Ausência é null, nunca zero — e não dispara recálculo nenhum.
+  const ausente = normalizeRaAggregates([{ ra_geo_id: 'RA_11', ra_geo_id_roman: 'RA2026_RA-XI', ra_name: 'Cruzeiro', ra_area_km2: null, quality_flags: ['jobs_missing'] }], CW);
+  assert.deepEqual(ausente.warnings, []);
+  assert.equal(ausente.byRa.RA_11.jobsTotal, null);
+  assert.equal(ausente.byRa.RA_11.householdsGrowthPct, null);
+});
+
+test('formatByUnit formata pela unidade declarada e LANÇA para unidade desconhecida', () => {
+  assert.equal(formatByUnit('pct_decimal', 0.1143), '11,4%');
+  assert.equal(formatByUnit('ratio1', 18000), '18.000,0');
+  assert.equal(formatByUnit('index3', 0.55), '0,550');
+  assert.equal(formatByUnit('number', 1234), '1.234');
+  // Mesmo formatador da tela (o espaço entre `R$` e o número é o do Intl, não digitado aqui).
+  assert.equal(formatByUnit('currency', 1500), formatBRL(1500));
+  for (const unit of ['pct_decimal', 'ratio1', 'index3', 'number', 'currency']) assert.equal(formatByUnit(unit, null), '—');
+  assert.throws(() => formatByUnit('pontos', 1), /unidade de indicador desconhecida: pontos/);
+});
+
+test('TERRITORY_INDICATORS apontam para campos reais da linha e trazem fórmula e fonte', () => {
+  const { byRa } = normalizeRaAggregates(ROWS, CW);
+  const ids = new Set();
+  for (const ind of TERRITORY_INDICATORS) {
+    assert.ok(!ids.has(ind.id), `id repetido ${ind.id}`);
+    ids.add(ind.id);
+    assert.ok(ind.attr in byRa.RA_11, `${ind.attr} não existe na linha normalizada`);
+    assert.ok(ind.formula && ind.source && ind.tema && ind.label);
+    assert.doesNotThrow(() => formatByUnit(ind.unit, byRa.RA_11[ind.attr]));
+  }
+});
+
+test('territoryProfileRows leva ano e fonte no rótulo e omite o que está ausente', () => {
+  const { byRa } = normalizeRaAggregates(ROWS, CW);
+  const linhas = territoryProfileRows(byRa.RA_11);
+  assert.deepEqual(linhas.map((l) => l.label), [
+    'Domicílios 2022 (IBGE)', 'Crescimento de domicílios 2010→2022 (IBGE)', 'Empregos formais 2019 (Ipea)',
+    'Empregos por mil moradores (Ipea)', 'Centralidade viária média (OSM)',
+  ]);
+  assert.equal(linhas[0].value, '390');
+  assert.equal(linhas[1].value, '11,4%');
+  assert.ok(linhas.every((l) => l.title));
+  const parcial = territoryProfileRows({ ...byRa.RA_11, jobsTotal: null, jobsPer1000Residents: null, centralityMean: null });
+  assert.equal(parcial.length, 2);
+  assert.deepEqual(territoryProfileRows(null), []);
+});

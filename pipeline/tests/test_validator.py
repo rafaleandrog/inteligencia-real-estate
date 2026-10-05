@@ -241,3 +241,17 @@ class ValidatorTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class SchemasDirAbsentTests(unittest.TestCase):
+    """Diretório gerado fora de data/public (fixtures do site) não carrega `schemas/`: informa, não falha."""
+
+    def test_missing_schemas_dir_is_info_not_error(self):
+        public = PublicDir()
+        root = public.build()
+        import shutil
+        shutil.rmtree(root / "schemas")
+        findings = validate_public_dir(root, bbox=BBOX)
+        self.assertFalse(has_errors(findings), [str(f) for f in findings])
+        self.assertTrue(any(f.check == "schema" and "schemas/ ausente" in f.message for f in findings))
+        public.tmp.cleanup()

@@ -43,7 +43,11 @@ function executableSource(source) {
     .replace(/`(?:[^`\\]|\\.)*`/g, '``');
 }
 
-const MODULOS = ['./format.js', './filters.js', './normalize.js'];
+const MODULOS = [
+  './format.js', './filters.js', './normalize.js', './data.js',
+  // Arquivos públicos (issue #149): mesmo defeito possível, mesma guarda.
+  './territorio/manifest.js', './territorio/ra-keys.js', './territorio/aggregates.js', './territorio/layers.js',
+];
 
 test('todo export chamado em src/app.js está na lista de imports dele', () => {
   const app = read('../src/app.js');

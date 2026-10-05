@@ -14,6 +14,7 @@
 // KPIs são verificados normalmente; erros de rede de tile são filtrados do console.
 
 import { chromium } from 'playwright';
+import { readFileSync } from 'node:fs';
 // Contagens vêm do módulo que as DECLARA, nunca digitadas aqui (R8.72): um `4` literal
 // deixaria o teste verde subtestando quando o quinto gráfico chegasse, e vermelho sem
 // nada ter quebrado quando um saísse.
@@ -2418,6 +2419,123 @@ await page.screenshot({ path: process.env.SHOT_MOBILE || 'mobile.png' });
 await page.setViewportSize({ width: 1440, height: 900 });
 await page.waitForTimeout(500);
 await page.screenshot({ path: process.env.SHOT_DESKTOP || 'desktop.png' });
+
+// --- Base de dados · arquivos públicos (issue #149) --------------------------------
+console.log('\n== Base de dados · arquivos públicos (issue #149) ==');
+
+// Página A: o manifest de FIXTURE gerado pelo pipeline (tests/fixtures/public), apontado por
+// override de APP_CONFIG — nada é copiado para data/public (R2.8). A contagem de conjuntos vem
+// do próprio manifest de fixture, não de um literal (R8.72).
+const FIXTURE_MANIFEST = JSON.parse(readFileSync(new URL('../tests/fixtures/public/manifest.json', import.meta.url), 'utf8'));
+const publicPage = await context.newPage();
+const publicErros = [];
+publicPage.on('console', (m) => { if (m.type() === 'error') publicErros.push(m.text()); });
+publicPage.on('pageerror', (e) => publicErros.push('pageerror: ' + e.message));
+await publicPage.addInitScript(() => {
+  Object.defineProperty(window, 'APP_CONFIG', {
+    configurable: true,
+    set(value) {
+      delete window.APP_CONFIG; window.APP_CONFIG = value;
+      if (value) { value.demoMode = true; value.publicDataUrl = './tests/fixtures/public/'; }
+    },
+    get() { return undefined; },
+  });
+});
+await publicPage.goto('http://localhost:8080/#base', { waitUntil: 'networkidle' });
+await publicPage.waitForTimeout(1200);
+
+const publicReal = publicErros.filter((e) => !/tile|openstreetmap|ERR_|net::/i.test(e));
+publicReal.length === 0
+  ? pass('com o manifest de fixture, console sem erro de aplicação')
+  : fail('erros no console (arquivos públicos): ' + JSON.stringify(publicReal.slice(0, 3)));
+
+const base = await publicPage.evaluate(() => {
+  const view = document.querySelector('#pdadBaseView');
+  return {
+    tabDisabled: document.querySelector('#pdadBaseTab').disabled,
+    baseVisivel: !view.hidden && view.getBoundingClientRect().height > 0,
+    hash: location.hash,
+    cartoes: [...document.querySelectorAll('#publicDataList article')].map((a) => a.dataset.datasetId),
+    statusHidden: document.querySelector('#publicDataStatus').hidden,
+    links: [...document.querySelectorAll('#publicDataList a')].map((a) => ({ href: a.getAttribute('href'), rel: a.rel, target: a.target })),
+    pdadSectionHidden: document.querySelector('#pdadBasePdadSection').hidden,
+    cabecalho: document.querySelector('#publicDataHeader').textContent,
+    avisos: [...document.querySelectorAll('#dataWarningsList li')].map((li) => li.textContent).filter((t) => /Território|Arquivos públicos/.test(t)),
+    inner: document.querySelector('#publicDataList').innerHTML.includes('&lt;') || !/<script/i.test(document.querySelector('#publicDataList').innerHTML),
+  };
+});
+!base.tabDisabled
+  ? pass('a aba Base habilita só com os arquivos públicos (o demo não tem PDAD)')
+  : fail('aba Base desabilitada com manifest disponível');
+base.baseVisivel && base.hash === '#base'
+  ? pass('#base abre a Base de dados pela URL')
+  : fail('a Base não abriu: ' + JSON.stringify({ visivel: base.baseVisivel, hash: base.hash }));
+const esperados = FIXTURE_MANIFEST.datasets.map((d) => d.id).sort();
+JSON.stringify([...base.cartoes].sort()) === JSON.stringify(esperados)
+  ? pass(`a seção lista os ${esperados.length} conjuntos do manifest de fixture`)
+  : fail('conjuntos listados divergem do manifest: ' + JSON.stringify(base.cartoes));
+base.statusHidden
+  ? pass('com manifest disponível, a linha de status fica escondida')
+  : fail('linha de status visível com manifest disponível');
+base.links.length > 0 && base.links.every((l) => /^https?:\/\//.test(l.href) && /noopener/.test(l.rel) && /noreferrer/.test(l.rel) && l.target === '_blank')
+  ? pass('toda fonte vira link http(s) com rel="noopener noreferrer"')
+  : fail('link de fonte fora do padrão: ' + JSON.stringify(base.links.slice(0, 3)));
+base.pdadSectionHidden
+  ? pass('sem PDAD, a seção da planilha some em vez de ficar vazia')
+  : fail('seção PDAD visível sem dado');
+/Pipeline/.test(base.cabecalho) && /Atribuição/.test(base.cabecalho)
+  ? pass('o cabeçalho traz versão do pipeline e atribuição das fontes')
+  : fail('cabeçalho incompleto: ' + base.cabecalho);
+base.avisos.length === 0
+  ? pass('a fixture carrega sem aviso territorial (ponte, agregados e manifest íntegros)')
+  : fail('avisos territoriais com a fixture: ' + JSON.stringify(base.avisos));
+
+// Página B: manifest INACESSÍVEL (requisição abortada). A ausência é aviso com motivo e a aba
+// Base fica desabilitada dizendo por quê (R2.5, R8.64); `#base` volta para o mapa.
+const semPublico = await context.newPage();
+await semPublico.route('**/nao-existe/manifest.json', (route) => route.abort());
+await semPublico.addInitScript(() => {
+  Object.defineProperty(window, 'APP_CONFIG', {
+    configurable: true,
+    set(value) {
+      delete window.APP_CONFIG; window.APP_CONFIG = value;
+      if (value) { value.demoMode = true; value.publicDataUrl = './nao-existe/'; }
+    },
+    get() { return undefined; },
+  });
+});
+await semPublico.goto('http://localhost:8080/#base', { waitUntil: 'networkidle' });
+await semPublico.waitForTimeout(1200);
+const semBase = await semPublico.evaluate(() => ({
+  tabDisabled: document.querySelector('#pdadBaseTab').disabled,
+  title: document.querySelector('#pdadBaseTab').title,
+  mapaVisivel: !document.querySelector('#mapView').hidden,
+  aviso: [...document.querySelectorAll('#dataWarningsList li')].map((li) => li.textContent).find((t) => /Arquivos públicos/.test(t)) || null,
+  erro: !document.querySelector('#errorState').hidden,
+}));
+semBase.tabDisabled && /Arquivos públicos/.test(semBase.title)
+  ? pass('sem manifest, a aba Base fica desabilitada com o motivo no title')
+  : fail('aba Base sem motivo: ' + JSON.stringify({ disabled: semBase.tabDisabled, title: semBase.title }));
+semBase.mapaVisivel && !semBase.erro
+  ? pass('#base sem dado volta para o mapa, sem estado de erro')
+  : fail('manifest ausente derrubou a página: ' + JSON.stringify(semBase));
+semBase.aviso && /inacessível/.test(semBase.aviso)
+  ? pass('manifest inacessível vira aviso técnico com motivo')
+  : fail('aviso do manifest ausente ou sem motivo: ' + JSON.stringify(semBase.aviso));
+
+// Página padrão (demo + data/public real): o manifest vazio é estado esperado — aba Base
+// desabilitada com o motivo, e NENHUM aviso técnico por isso.
+const padrao = await page.evaluate(() => ({
+  tabDisabled: document.querySelector('#pdadBaseTab').disabled,
+  title: document.querySelector('#pdadBaseTab').title,
+  avisos: [...document.querySelectorAll('#dataWarningsList li')].map((li) => li.textContent).filter((t) => /Arquivos públicos|Território/.test(t)),
+}));
+padrao.tabDisabled && /sem nenhum conjunto|ainda não/.test(padrao.title)
+  ? pass('com o manifest vazio de data/public, a aba Base diz que o pipeline ainda não rodou')
+  : fail('aba Base com o manifest vazio: ' + JSON.stringify(padrao));
+padrao.avisos.length === 0
+  ? pass('o manifest vazio não gera aviso técnico — é o estado esperado antes da primeira execução')
+  : fail('aviso indevido com manifest vazio: ' + JSON.stringify(padrao.avisos));
 
 console.log(`\n===== ${ok.length} ok, ${errors.length} falhas =====`);
 await browser.close();

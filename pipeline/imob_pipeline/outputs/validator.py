@@ -217,6 +217,12 @@ def validate_public_dir(public_dir: str | Path, *, bbox: tuple[float, float, flo
         return [Finding("erro", "manifest", f"manifest.json inválido: {error}")]
     if jsonschema is None:
         findings.append(Finding("info", "schema", "jsonschema ausente: validação por schema não rodou"))
+    if not schemas_dir.is_dir():
+        # Diretório gerado fora de data/public (fixtures de teste do site): os schemas moram
+        # só no repositório. Dizer que não rodou é informação; falhar seria recusar um
+        # diretório íntegro por um arquivo que ele nunca deveria carregar.
+        findings.append(Finding("info", "schema", "schemas/ ausente neste diretório: validação por schema não rodou"))
+        schemas_dir = None
     findings.extend(_schema_validate(schemas_dir, "schemas/manifest.schema.json", manifest, "manifest.json"))
 
     if manifest.get("manifest_version") != MANIFEST_VERSION:

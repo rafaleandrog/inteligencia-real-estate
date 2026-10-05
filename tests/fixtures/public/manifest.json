@@ -1,0 +1,555 @@
+{
+  "attribution_pt": "Contém dados do IBGE, do Ipea (Projeto Acesso a Oportunidades), do GeoPortal/SEDUH-DF e © OpenStreetMap contributors (ODbL).",
+  "config_sha256": "b754e9c5248917877001c234f683d7d50edbf43a2e4f9751be1cd9b9e78fb490",
+  "datasets": [
+    {
+      "bbox": [
+        -47.9475,
+        -15.9,
+        -47.89813,
+        -15.79096
+      ],
+      "class_breaks": {
+        "households_delta": {
+          "breaks": [
+            5.0,
+            10.0,
+            20.0,
+            40.0,
+            80.0
+          ],
+          "classes": 6,
+          "method": "fixed",
+          "n": 6
+        },
+        "households_delta_per_km2": {
+          "breaks": [
+            100.0,
+            350.0,
+            750.0,
+            1000.0,
+            2000.0
+          ],
+          "classes": 6,
+          "method": "fixed",
+          "n": 6
+        }
+      },
+      "content_hash": "b3851fec8c6715caafa31d72dbac9a4fb6e7ffa8d82104245da41b358f879708",
+      "counts": {
+        "cells_2010": 8,
+        "cells_2022": 7,
+        "dropped_empty_both_years": 1,
+        "overview_cells": 4,
+        "partial_children": 1,
+        "published": 6,
+        "ra_unassigned": 1,
+        "suppressed_2010": 1,
+        "suppressed_2022": 0
+      },
+      "crs": "EPSG:4326",
+      "files": [
+        {
+          "bbox": [
+            -47.9385,
+            -15.793,
+            -47.93663,
+            -15.79119
+          ],
+          "budget_bytes": 2000000,
+          "bytes": 566,
+          "features": 1,
+          "path": "households_grid/detail_200m/RA_11.json",
+          "role": "detail_shard",
+          "sha256": "f2f4c79c55c981c46e51afb46cff67ab125fb6f73668f92b296aa78b53e2dc1e",
+          "shard_key": "ra_geo_id",
+          "shard_value": "RA_11",
+          "zoom_min": 12
+        },
+        {
+          "bbox": [
+            -47.9475,
+            -15.86,
+            -47.94376,
+            -15.85638
+          ],
+          "budget_bytes": 2000000,
+          "bytes": 2223,
+          "features": 4,
+          "path": "households_grid/detail_200m/RA_19.json",
+          "role": "detail_shard",
+          "sha256": "8ea921e1580cbf51e451dfbc598f2ce122c1bc6d65808208a2db6bafd8a815e2",
+          "shard_key": "ra_geo_id",
+          "shard_value": "RA_19",
+          "zoom_min": 12
+        },
+        {
+          "bbox": [
+            -47.9,
+            -15.9,
+            -47.89813,
+            -15.89819
+          ],
+          "budget_bytes": 2000000,
+          "bytes": 557,
+          "features": 1,
+          "path": "households_grid/detail_200m/SEM_RA.json",
+          "role": "detail_shard",
+          "sha256": "7766a1499312d7832aac51e0e0409c1b1b5a2cf71ea1033fd100dacfa1132433",
+          "shard_key": "ra_geo_id",
+          "shard_value": "SEM_RA",
+          "zoom_min": 12
+        },
+        {
+          "bbox": [
+            -47.9475,
+            -15.9,
+            -47.89813,
+            -15.79096
+          ],
+          "budget_bytes": 2000000,
+          "bytes": 2141,
+          "features": 4,
+          "path": "households_grid/overview_1km.json",
+          "role": "overview",
+          "sha256": "7e7134039abfa14773335b40e965958ff9b2c7ec0307246019d885cbf31546c0"
+        }
+      ],
+      "generated_at": "2026-10-05T16:47:15Z",
+      "id": "households_grid",
+      "method_pt": "As mesmas células nas duas edições (join por ID_UNICO). households_delta = dom_ocu_2022 − dom_ocu_2010; por km² pela área nominal da célula; variação relativa é fração decimal e é nula quando 2010 é nulo ou zero. Overview de 1 km com somas estritas (filho nulo → soma nula + partial_children). Célula sem domicílio nos dois anos é omitida e contada. Valor suprimido vira nulo + flag, nunca é saturado. RA pelo centroide da célula.",
+      "notes_pt": "A primeira classe (até 100 dom./km²) inclui perda e zero. 'Omitida' (sem domicílio nos dois anos) não é 'sem dado'.",
+      "quality_flags": [
+        "partial_children",
+        "ra_unassigned"
+      ],
+      "ra_assignment_method": "centroid_within_ra",
+      "schema": "schemas/households_grid.properties.schema.json",
+      "sources": [
+        {
+          "attribution_pt": "Fonte: IBGE, Censo Demográfico 2010 — Grade Estatística.",
+          "files": [
+            "grade_fixture.zip"
+          ],
+          "license": "Dados abertos do IBGE — reprodução permitida com citação da fonte",
+          "name": "IBGE — Grade Estatística, Censo Demográfico 2010",
+          "retrieved_at": "fixture",
+          "url": "https://geoftp.ibge.gov.br/recortes_para_fins_estatisticos/grade_estatistica/censo_2010/"
+        },
+        {
+          "attribution_pt": "Fonte: IBGE, Censo Demográfico 2022 — Grade Estatística.",
+          "files": [
+            "grade_fixture.zip"
+          ],
+          "license": "Dados abertos do IBGE — reprodução permitida com citação da fonte",
+          "name": "IBGE — Grade Estatística, Censo Demográfico 2022",
+          "retrieved_at": "fixture",
+          "url": "https://geoftp.ibge.gov.br/recortes_para_fins_estatisticos/grade_estatistica/censo_2022/"
+        }
+      ],
+      "title_pt": "Domicílios ocupados por célula da Grade Estatística, 2010→2022 (IBGE)",
+      "version": "2026-10-05",
+      "years": [
+        2010,
+        2022
+      ]
+    },
+    {
+      "bbox": [
+        -47.94727,
+        -15.90774,
+        -47.90173,
+        -15.78826
+      ],
+      "class_breaks": {
+        "jobs_high": {
+          "breaks": [
+            25.0,
+            50.0,
+            100.0,
+            200.0,
+            400.0,
+            600.0,
+            800.0,
+            1000.0,
+            2000.0
+          ],
+          "classes": 10,
+          "method": "fixed",
+          "n": 4,
+          "zero_is_absent": true
+        },
+        "jobs_low": {
+          "breaks": [
+            25.0,
+            50.0,
+            100.0,
+            200.0,
+            400.0,
+            600.0,
+            800.0,
+            1000.0,
+            2000.0
+          ],
+          "classes": 10,
+          "method": "fixed",
+          "n": 4,
+          "zero_is_absent": true
+        },
+        "jobs_mid": {
+          "breaks": [
+            25.0,
+            50.0,
+            100.0,
+            200.0,
+            400.0,
+            600.0,
+            800.0,
+            1000.0,
+            2000.0
+          ],
+          "classes": 10,
+          "method": "fixed",
+          "n": 4,
+          "zero_is_absent": true
+        },
+        "jobs_total": {
+          "breaks": [
+            75.0,
+            125.0,
+            250.0,
+            500.0,
+            1000.0,
+            1500.0,
+            2000.0,
+            2500.0,
+            5000.0
+          ],
+          "classes": 10,
+          "method": "fixed",
+          "n": 4,
+          "zero_is_absent": true
+        }
+      },
+      "content_hash": "abea4d89d78116d692011781080f62cf8369be884c23d3d775470c328b4308a2",
+      "counts": {
+        "hexes_source": 5,
+        "omitted_zero_jobs": 1,
+        "overview_hexes": 3,
+        "published": 4,
+        "ra_unassigned": 1
+      },
+      "crs": "EPSG:4326",
+      "files": [
+        {
+          "bbox": [
+            -47.93912,
+            -15.79194,
+            -47.93688,
+            -15.79006
+          ],
+          "budget_bytes": 2000000,
+          "bytes": 661,
+          "features": 1,
+          "path": "jobs_hex/detail_r9/RA_11.json",
+          "role": "detail_shard",
+          "sha256": "cb8e681a8340e59452871f3775b672f5b2fde476ff1be8befac493f9cdc8f721",
+          "shard_key": "ra_geo_id",
+          "shard_value": "RA_11",
+          "zoom_min": 12
+        },
+        {
+          "bbox": [
+            -47.94712,
+            -15.85994,
+            -47.94288,
+            -15.85506
+          ],
+          "budget_bytes": 2000000,
+          "bytes": 1268,
+          "features": 2,
+          "path": "jobs_hex/detail_r9/RA_19.json",
+          "role": "detail_shard",
+          "sha256": "961dfc3c6f2a99c2ebbc7fc526e1782deceb84a786d98adb68524a6875271088",
+          "shard_key": "ra_geo_id",
+          "shard_value": "RA_19",
+          "zoom_min": 12
+        },
+        {
+          "bbox": [
+            -47.90612,
+            -15.90594,
+            -47.90388,
+            -15.90406
+          ],
+          "budget_bytes": 2000000,
+          "bytes": 688,
+          "features": 1,
+          "path": "jobs_hex/detail_r9/SEM_RA.json",
+          "role": "detail_shard",
+          "sha256": "b09e9c8e3dc43e8def165471433d270d2eaa117b8a62e82c0f337782ac5d41cb",
+          "shard_key": "ra_geo_id",
+          "shard_value": "SEM_RA",
+          "zoom_min": 12
+        },
+        {
+          "bbox": [
+            -47.94727,
+            -15.90774,
+            -47.90173,
+            -15.78826
+          ],
+          "budget_bytes": 2000000,
+          "bytes": 1713,
+          "features": 3,
+          "path": "jobs_hex/overview_r8.json",
+          "role": "overview",
+          "sha256": "0194f27ad741bb380cd9cf37285e0dd6f0399ff77968e713ba5502e219c07dda"
+        }
+      ],
+      "generated_at": "2026-10-05T16:47:15Z",
+      "id": "jobs_hex",
+      "method_pt": "Hexágonos H3 resolução 9 do AOP para a cidade 'bra', ano 2019; T001–T004 são empregos formais (RAIS) por tercil de renda; P001 é população com base no Censo 2010. Detalhe publica jobs_total ≥ 1; overview soma por hexágono-pai r8 com somas estritas. RA pelo centro do hexágono.",
+      "notes_pt": "Hexágono omitido (sem emprego formal) não é 'sem dado': conta em omitted_zero_jobs. População-base é do Censo 2010 (AOP).",
+      "quality_flags": [
+        "aop_population_2010_based",
+        "ra_unassigned"
+      ],
+      "ra_assignment_method": "centroid_within_ra",
+      "schema": "schemas/jobs_hex.properties.schema.json",
+      "sources": [
+        {
+          "attribution_pt": "Fonte: Ipea, Projeto Acesso a Oportunidades (Pereira, R. H. M. et al.). Empregos formais da RAIS/MTE.",
+          "files": [
+            "aop_landuse_bra_2017.txt",
+            "aop_landuse_bra_2019.txt",
+            "metadata.csv"
+          ],
+          "license": "Citação obrigatória; termos conforme o site do projeto",
+          "name": "Ipea — Projeto Acesso a Oportunidades (AOP), uso do solo e empregos (RAIS)",
+          "retrieved_at": "fixture",
+          "url": "https://www.ipea.gov.br/acessooportunidades/"
+        }
+      ],
+      "title_pt": "Empregos formais por hexágono H3 (Ipea Acesso a Oportunidades / RAIS, 2019)",
+      "version": "2026-10-05",
+      "years": [
+        2017,
+        2019
+      ]
+    },
+    {
+      "content_hash": "9f24da088722e413e73d596f9e6a1d39028735bbd2060406c9422d558bd1ca4c",
+      "counts": {
+        "edges_total": 7,
+        "households_2022_total": 518,
+        "jobs_total": 6675,
+        "ras": 2,
+        "unassigned_edges": 1,
+        "unassigned_households_2022": 12,
+        "unassigned_jobs": 15
+      },
+      "crs": "EPSG:4326",
+      "files": [
+        {
+          "budget_bytes": 150000,
+          "bytes": 1791,
+          "features": 2,
+          "path": "ra_aggregates.json",
+          "role": "data",
+          "sha256": "4343c8864a7364f56544607155996ef9e131fd2dfb5f5684c7c76f9ff1034065"
+        }
+      ],
+      "generated_at": "2026-10-05T16:47:15Z",
+      "id": "ra_aggregates",
+      "method_pt": "Somas sobre os arquivos publicados: domicílios = células de 200 m + células de 1 km não subdivididas; empregos = hexágonos r9 publicados, população-base = overview r8 (inclui hexágonos sem emprego); centralidade = arestas publicadas. households_growth_pct = delta ÷ 2010 (fração decimal); jobs_per_1000_residents = empregos ÷ população-base × 1000; por km² pela área oficial da RA. Feição fora de toda RA vai para o balde SEM_RA, contado em counts.",
+      "notes_pt": "Bloco de dataset não gerado vem nulo (nunca zero) com a flag correspondente.",
+      "quality_flags": [],
+      "ra_assignment_method": "centroid_within_ra",
+      "schema": "schemas/ra_aggregates.schema.json",
+      "sources": [
+        {
+          "attribution_pt": "Fonte: IBGE, Censo Demográfico 2010 — Grade Estatística.",
+          "files": [
+            "grade_fixture.zip"
+          ],
+          "license": "Dados abertos do IBGE — reprodução permitida com citação da fonte",
+          "name": "IBGE — Grade Estatística, Censo Demográfico 2010",
+          "retrieved_at": "fixture",
+          "url": "https://geoftp.ibge.gov.br/recortes_para_fins_estatisticos/grade_estatistica/censo_2010/"
+        },
+        {
+          "attribution_pt": "Fonte: IBGE, Censo Demográfico 2022 — Grade Estatística.",
+          "files": [
+            "grade_fixture.zip"
+          ],
+          "license": "Dados abertos do IBGE — reprodução permitida com citação da fonte",
+          "name": "IBGE — Grade Estatística, Censo Demográfico 2022",
+          "retrieved_at": "fixture",
+          "url": "https://geoftp.ibge.gov.br/recortes_para_fins_estatisticos/grade_estatistica/censo_2022/"
+        },
+        {
+          "attribution_pt": "Fonte: Ipea, Projeto Acesso a Oportunidades (Pereira, R. H. M. et al.). Empregos formais da RAIS/MTE.",
+          "files": [
+            "aop_landuse_bra_2017.txt",
+            "aop_landuse_bra_2019.txt",
+            "metadata.csv"
+          ],
+          "license": "Citação obrigatória; termos conforme o site do projeto",
+          "name": "Ipea — Projeto Acesso a Oportunidades (AOP), uso do solo e empregos (RAIS)",
+          "retrieved_at": "fixture",
+          "url": "https://www.ipea.gov.br/acessooportunidades/"
+        },
+        {
+          "attribution_pt": "© OpenStreetMap contributors — https://www.openstreetmap.org/copyright. Extrato: Geofabrik.",
+          "files": [
+            "centro-oeste-latest.osm.pbf"
+          ],
+          "license": "ODbL 1.0 — base de dados derivada, disponibilizada sob ODbL",
+          "license_url": "https://www.opendatacommons.org/licenses/odbl/1-0/",
+          "name": "OpenStreetMap (extrato Geofabrik centro-oeste)",
+          "retrieved_at": "fixture",
+          "url": "https://www.openstreetmap.org/copyright"
+        }
+      ],
+      "title_pt": "Agregados por Região Administrativa (domicílios, empregos, centralidade)",
+      "version": "2026-10-05",
+      "years": [
+        2010,
+        2017,
+        2019,
+        2022,
+        2026
+      ]
+    },
+    {
+      "content_hash": "8d679e155fea2a84baad3aba61c97f8bc752118f6f356ff5289701a882e99f24",
+      "counts": {
+        "ras": 2
+      },
+      "crs": "EPSG:4326",
+      "files": [
+        {
+          "budget_bytes": 40000,
+          "bytes": 1180,
+          "features": 2,
+          "path": "ra_crosswalk.json",
+          "role": "data",
+          "sha256": "8877ea416ea8eda7822ac732e60921844fe8c05f701eb11e890f635a2468e3a1"
+        }
+      ],
+      "generated_at": "2026-10-05T16:47:15Z",
+      "id": "ra_crosswalk",
+      "method_pt": "Derivada só dos atributos oficiais do GeoPortal/SEDUH (ra_cira, ra_codigo, ra_nome, ra_areakm2); o código romano é validado por ida-e-volta contra o número; nome e slug seguem as mesmas funções do Code.gs.",
+      "notes_pt": "RA 36 e 37 existem no limite oficial e podem não ter perfil PDAD; a ausência de perfil é decidida pelo cliente, não aqui.",
+      "quality_flags": [],
+      "schema": "schemas/ra_crosswalk.schema.json",
+      "sources": [
+        {
+          "attribution_pt": "Fonte: GeoPortal/SEDUH-DF (IDE/DF), camada Limites das Regiões Administrativas.",
+          "license": "Dado aberto do GDF — citar a fonte",
+          "name": "GeoPortal/SEDUH-DF — Limites das Regiões Administrativas",
+          "retrieved_at": "fixture",
+          "url": "https://www.geoportal.seduh.df.gov.br/mapa/"
+        }
+      ],
+      "title_pt": "Ponte entre as grafias de Região Administrativa (RA_nn ↔ RA2026_RA-romano)",
+      "version": "2026-10-05",
+      "years": []
+    },
+    {
+      "bbox": [
+        -47.947,
+        -15.858,
+        -47.937,
+        -15.791
+      ],
+      "class_breaks": {
+        "betweenness_percentile": {
+          "breaks": [
+            50.0,
+            75.0,
+            90.0,
+            97.0
+          ],
+          "classes": 5,
+          "method": "fixed",
+          "n": 7
+        }
+      },
+      "content_hash": "61efe72aa2d89baf07b29a9fc3036c67abaf1b95e9fe1379fc95d49c3296ceba",
+      "counts": {
+        "edges_graph": 12,
+        "nodes_graph": 11,
+        "overview": 3,
+        "published": 7,
+        "ra_unassigned": 1,
+        "sample_sources": 11
+      },
+      "crs": "EPSG:4326",
+      "files": [
+        {
+          "bbox": [
+            -47.947,
+            -15.858,
+            -47.937,
+            -15.791
+          ],
+          "budget_bytes": 4000000,
+          "bytes": 2750,
+          "features": 7,
+          "path": "road_centrality/detail.json",
+          "role": "detail",
+          "sha256": "f68d5a60ebca3da9929e10edd497dad512a1965c83d28831952c36bf4de900d4",
+          "zoom_min": 12
+        },
+        {
+          "bbox": [
+            -47.944,
+            -15.858,
+            -47.9385,
+            -15.7935
+          ],
+          "budget_bytes": 2000000,
+          "bytes": 1225,
+          "features": 3,
+          "path": "road_centrality/overview.json",
+          "role": "overview",
+          "sha256": "6e709c3ee2e3cb3c4acf2e4da05210fff31020b0ecc3c24e32b109125b423d63"
+        }
+      ],
+      "generated_at": "2026-10-05T16:47:15Z",
+      "id": "road_centrality",
+      "method_pt": "Rede viária de automóvel (motorway, trunk, primary, secondary, tertiary, unclassified, residential, living_street, motorway_link, trunk_link, primary_link, secondary_link, tertiary_link) recortada pelo bbox; betweenness de aresta com 11 origens amostradas (semente 20260101, motor pure), pesos = comprimento, normalizado pelo máximo; percentil sobre todas as 12 arestas do grafo (empates com posição média). Publicadas: percentil ≥ 50 ou classe arterial (motorway, trunk, primary, secondary); overview: percentil ≥ 90 ou arterial, simplificado a 5e-05 grau. RA pelo ponto médio da aresta. Extrato OSM de 2026-09-28.",
+      "notes_pt": "Valor amostrado: a ordem relativa é estável, o valor absoluto não é comparável entre execuções com amostra diferente.",
+      "quality_flags": [
+        "betweenness_sampled",
+        "ra_unassigned"
+      ],
+      "ra_assignment_method": "midpoint_within_ra",
+      "schema": "schemas/road_centrality.properties.schema.json",
+      "sources": [
+        {
+          "attribution_pt": "© OpenStreetMap contributors — https://www.openstreetmap.org/copyright. Extrato: Geofabrik.",
+          "files": [
+            "centro-oeste-latest.osm.pbf"
+          ],
+          "license": "ODbL 1.0 — base de dados derivada, disponibilizada sob ODbL",
+          "license_url": "https://www.opendatacommons.org/licenses/odbl/1-0/",
+          "name": "OpenStreetMap (extrato Geofabrik centro-oeste)",
+          "retrieved_at": "fixture",
+          "url": "https://www.openstreetmap.org/copyright"
+        }
+      ],
+      "title_pt": "Centralidade viária (betweenness de aresta, OpenStreetMap)",
+      "version": "2026-10-05",
+      "years": [
+        2026
+      ]
+    }
+  ],
+  "generated_at": "2026-10-05T16:47:15Z",
+  "manifest_version": 1,
+  "pipeline_commit": "c00a06ddec4f664e41bf63db0e56d499dcf62d07",
+  "pipeline_version": "0.1.0"
+}

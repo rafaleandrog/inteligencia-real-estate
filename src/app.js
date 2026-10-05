@@ -7,7 +7,7 @@
 // entra em innerHTML. Todo texto vai por textContent e todo elemento é criado com
 // createElement (docs/ENGINEERING_RULES.md, R4.4).
 
-import { loadDataset, flattenEntities } from './data.js';
+import { loadDataset, flattenEntities, fetchPublicLayer, EMPTY_PUBLIC_DATA } from './data.js';
 import { isApproximateLocation, canUseForDistance, appMetaRows } from './normalize.js';
 import { comparableSample, comparableStats, positionVsMedian, rulerPosition, RECENT_DAYS } from './map/comparables.js';
 import { ivvProvenance, IVV_SCOPE_NOTICE } from './ivv/scope.js';
@@ -80,6 +80,9 @@ import {
   roadSegmentCodeOf, selectRoadSegmentPolygons, validateRoadSegmentLayer,
 } from './traffic/road-geometry.js';
 import { ANCHOR_ICONS, ANCHOR_FALLBACK_ICON } from './icons.js';
+import { datasetById, fileFor, formatBytes } from './territorio/manifest.js';
+import { buildRaCrosswalk, EMPTY_CROSSWALK, excludeRas, raNameConflicts } from './territorio/ra-keys.js';
+import { normalizeRaAggregates } from './territorio/aggregates.js';
 
 const CONFIG = window.APP_CONFIG || {};
 
@@ -166,6 +169,9 @@ const dom = {
 
   pdadBaseTab: el('pdadBaseTab'), pdadBaseView: el('pdadBaseView'),
   pdadBaseDescription: el('pdadBaseDescription'), pdadBaseKpis: el('pdadBaseKpis'),
+  pdadBasePdadSection: el('pdadBasePdadSection'),
+  publicDataStatus: el('publicDataStatus'), publicDataHeader: el('publicDataHeader'),
+  publicDataList: el('publicDataList'),
 
   pdadDrillOverlay: el('pdadDrillOverlay'), pdadDrillTitle: el('pdadDrillTitle'),
   pdadDrillSub: el('pdadDrillSub'), pdadDrillClose: el('pdadDrillClose'),
@@ -258,6 +264,21 @@ const state = {
   pdadCompareState: { ras: [], inds: [], colors: {} },
   // Recorte aberto no modal de drill-down (issue #102). `null` quando o modal está fechado.
   pdadDrillState: null,
+  /**
+   * Arquivos públicos de `data/public/` (issue #149, R2.7) — separado de `filters` porque
+   * nada aqui é filtro de registro. `publicData` é o resultado do manifest (`available`
+   * falso com motivo é estado normal antes da primeira execução do pipeline); `crosswalk`
+   * é a ponte RA_nn ↔ RA2026_RA-romano (R2.9), vazia até `ra_crosswalk.json` chegar;
+   * `aggregates` são os agregados por RA já normalizados (`byRa` vazio = nenhum publicado).
+   * Os dois arquivos pequenos são buscados no carregamento; as camadas de mapa (#150–#152)
+   * só quando alguém as liga.
+   */
+  territory: {
+    publicData: EMPTY_PUBLIC_DATA,
+    crosswalk: EMPTY_CROSSWALK,
+    aggregates: { byRa: {}, rows: [], sources: {}, years: [] },
+    warnings: [],
+  },
 };
 
 let map = null;
@@ -2917,10 +2938,13 @@ function setView(name) {
   // As 4 telas do PDAD-A (issue #102) compartilham o mesmo dado carregado — sem ele,
   // nenhuma das quatro tem o que mostrar.
   const temDiagnostico = state.pdadData.length > 0;
-  const PDAD_VIEWS = new Set(['diagnostico', 'ranking', 'comparar', 'base']);
+  const PDAD_VIEWS = new Set(['diagnostico', 'ranking', 'comparar']);
   let view = 'mapa';
   if (name === 'mercado' && temMercado) view = 'mercado';
   else if (PDAD_VIEWS.has(name) && temDiagnostico) view = name;
+  // A Base de dados descreve DUAS origens (issue #149): a aba PDAD_A_DATA e os arquivos
+  // públicos de data/public. Basta uma delas para a tela ter o que mostrar.
+  else if (name === 'base' && (temDiagnostico || state.territory.publicData.available)) view = 'base';
 
   dom.mapView.hidden = view !== 'mapa';
   dom.marketView.hidden = view !== 'mercado';
@@ -4590,13 +4614,19 @@ function renderPdadView() {
   const temDado = state.pdadData.length > 0;
 
   const semAba = 'A aba PDAD_A_DATA não foi carregada, então não há diagnóstico territorial para mostrar.';
-  for (const tab of [dom.pdadTab, dom.pdadRankingTab, dom.pdadCompareTab, dom.pdadBaseTab]) {
+  for (const tab of [dom.pdadTab, dom.pdadRankingTab, dom.pdadCompareTab]) {
     tab.disabled = !temDado;
     tab.title = temDado ? '' : semAba;
   }
+  // A Base abre com qualquer uma das duas origens (issue #149); desabilitada, o `title` diz
+  // o que falta nas duas — um botão apagado sem motivo é indistinguível de defeito (R8.64).
+  const temPublico = state.territory.publicData.available;
+  dom.pdadBaseTab.disabled = !(temDado || temPublico);
+  dom.pdadBaseTab.title = (temDado || temPublico) ? '' : `${semAba} ${state.territory.publicData.reason ? `Arquivos públicos: ${state.territory.publicData.reason}.` : ''}`.trim();
 
   if (!temDado) {
-    if (['diagnostico', 'ranking', 'comparar', 'base'].includes(viewFromHash())) setView('mapa');
+    const atual = viewFromHash();
+    if (['diagnostico', 'ranking', 'comparar'].includes(atual) || (atual === 'base' && !temPublico)) setView('mapa');
     return [];
   }
 
@@ -5208,6 +5238,11 @@ function renderPdadCompareView() {
 
 /** Monta a tela Base de dados: como o dado chega até a tela, e a cobertura do lote atual. */
 function renderPdadBaseView() {
+  renderPublicDataSection();
+  // Sem PDAD a tela continua existindo por causa dos arquivos públicos (issue #149): a
+  // seção da planilha some com o cabeçalho dela em vez de ficar um pipeline vazio.
+  dom.pdadBasePdadSection.hidden = !state.pdadData.length;
+  dom.pdadBaseKpis.hidden = !state.pdadData.length;
   if (!state.pdadData.length) return;
   const anos = pdadYearsAvailable(state.pdadData);
   const totalRas = new Set(state.pdadData.map((item) => item.raGeoId)).size;
@@ -5224,6 +5259,164 @@ function renderPdadBaseView() {
     pdadKpiTile('Indicadores na planilha', String(totalIndicadores), `${PDAD_INDICATOR_LIST.length} exibidos na tela`, { icon: 'home', tint: 3 }),
     pdadKpiTile('Anos disponíveis', anos.join(' · '), 'PDAD-A', { icon: 'avg', tint: 4, small: true }),
   );
+}
+
+/** `<dt>`/`<dd>` de uma linha de procedência — texto puro, nunca markup (R4.4). */
+function publicDataRow(label, value) {
+  const dt = document.createElement('dt');
+  dt.textContent = label;
+  const dd = document.createElement('dd');
+  if (value instanceof Node) dd.append(value);
+  else dd.textContent = value;
+  return [dt, dd];
+}
+
+/** Link externo validado (http/https) com `rel="noopener noreferrer"`; texto puro sem URL. */
+function publicDataLink(url, text) {
+  const href = safeExternalUrl(url);
+  if (!href) return document.createTextNode(text);
+  const link = document.createElement('a');
+  link.href = href;
+  link.target = '_blank';
+  link.rel = 'noopener noreferrer';
+  link.textContent = text;
+  return link;
+}
+
+/**
+ * Seção "Arquivos públicos (data/public)" da Base de dados (issue #149).
+ *
+ * Um cartão por conjunto do manifest: versão, anos, arquivos (tamanho e feições), fontes com
+ * link validado e data de coleta, licença, método, flags e notas — tudo por `textContent`,
+ * porque o manifest chega pela rede como qualquer dado (R4.4). Sem manifest a seção não
+ * some: diz POR QUE não há arquivos (pipeline ainda não rodou, 404, hash, versão), que é a
+ * informação que quem opera precisa (R2.5, R8.64).
+ */
+function renderPublicDataSection() {
+  const { publicData } = state.territory;
+  dom.publicDataList.replaceChildren();
+  dom.publicDataHeader.replaceChildren();
+  if (!publicData.available) {
+    dom.publicDataStatus.textContent = `Nenhum arquivo público carregado: ${publicData.reason || 'motivo não informado'}.`;
+    dom.publicDataStatus.hidden = false;
+    return;
+  }
+  const { manifest } = publicData;
+  dom.publicDataStatus.hidden = true;
+  const cabecalho = document.createDocumentFragment();
+  cabecalho.append(...publicDataRow('Gerado em', manifest.generatedAt ? formatDateTimeIso(manifest.generatedAt) : '—'));
+  cabecalho.append(...publicDataRow('Pipeline', `${manifest.pipelineVersion || '—'}${manifest.pipelineCommit ? ` · commit ${manifest.pipelineCommit.slice(0, 7)}` : ''}`));
+  if (manifest.attributionPt) cabecalho.append(...publicDataRow('Atribuição', manifest.attributionPt));
+  dom.publicDataHeader.append(cabecalho);
+
+  for (const dataset of manifest.datasets) {
+    const card = document.createElement('article');
+    card.className = 'pdad-card publico-card';
+    card.dataset.datasetId = dataset.id;
+    const titulo = document.createElement('h3');
+    titulo.className = 'pdad-card-titulo';
+    titulo.textContent = dataset.titlePt;
+    const codigo = document.createElement('p');
+    codigo.className = 'mono';
+    codigo.textContent = `${dataset.id} · versão ${dataset.version || '—'}${dataset.years.length ? ` · ${dataset.years.join(', ')}` : ''}`;
+    card.append(titulo, codigo);
+
+    const dl = document.createElement('dl');
+    dl.className = 'publico-dl';
+    const arquivos = document.createElement('ul');
+    arquivos.className = 'publico-arquivos';
+    for (const file of dataset.files) {
+      const li = document.createElement('li');
+      const tabular = dataset.id === 'ra_crosswalk' || dataset.id === 'ra_aggregates';
+      const unidade = file.features === 1 ? (tabular ? 'linha' : 'feição') : (tabular ? 'linhas' : 'feições');
+      li.textContent = `${file.path} · ${formatBytes(file.bytes)} · ${formatNumber(file.features)} ${unidade}`;
+      arquivos.append(li);
+    }
+    dl.append(...publicDataRow(`Arquivos (${dataset.files.length})`, arquivos));
+    for (const source of dataset.sources) {
+      const frag = document.createDocumentFragment();
+      frag.append(publicDataLink(source.url, source.name || hostnameOf(source.url) || 'fonte'));
+      const detalhes = [];
+      if (source.retrievedAt) detalhes.push(`coletado em ${source.retrievedAt}`);
+      if (source.license) detalhes.push(source.license);
+      if (detalhes.length) frag.append(document.createTextNode(` · ${detalhes.join(' · ')}`));
+      dl.append(...publicDataRow('Fonte', frag));
+    }
+    if (dataset.methodPt) dl.append(...publicDataRow('Método', dataset.methodPt));
+    const cortes = Object.entries(dataset.classBreaks);
+    if (cortes.length) {
+      dl.append(...publicDataRow('Cortes de classe', cortes.map(([metric, spec]) => `${metric}: ${spec.breaks.map((b) => formatNumber(b)).join(' · ')}${spec.zeroIsAbsent ? ' (zero = sem dado)' : ''}`).join(' | ')));
+    }
+    if (dataset.qualityFlags.length) dl.append(...publicDataRow('Flags', dataset.qualityFlags.join(', ')));
+    if (dataset.notesPt) dl.append(...publicDataRow('Notas', dataset.notesPt));
+    card.append(dl);
+    dom.publicDataList.append(card);
+  }
+}
+
+/** `2026-11-01T06:21:00Z` → "01/11/2026 06:21 UTC"; só a data quando não há hora. */
+function formatDateTimeIso(value) {
+  const m = String(value).match(/^(\d{4})-(\d{2})-(\d{2})(?:T(\d{2}):(\d{2}))?/);
+  if (!m) return String(value);
+  return m[4] ? `${m[3]}/${m[2]}/${m[1]} ${m[4]}:${m[5]} UTC` : `${m[3]}/${m[2]}/${m[1]}`;
+}
+
+/**
+ * Busca a ponte de RAs e os agregados por RA assim que o manifest confirma que existem
+ * (issue #149). São os dois arquivos pequenos (dezenas de kB) que o Ranking, o Comparar e o
+ * perfil da RA leem; as camadas de mapa continuam lazy. Falha de qualquer um é aviso com o
+ * nome do arquivo, nunca erro (R2.5) — e nunca silêncio: um agregado que não chegou deixa a
+ * coluna ausente com motivo, não zerada.
+ */
+async function loadTerritorySmallFiles() {
+  const { publicData } = state.territory;
+  const warnings = [];
+  let crosswalk = EMPTY_CROSSWALK;
+  let aggregates = { byRa: {}, rows: [], sources: {}, years: [] };
+  if (!publicData.available) {
+    state.territory.crosswalk = crosswalk;
+    state.territory.aggregates = aggregates;
+    state.territory.warnings = warnings;
+    return warnings;
+  }
+  const fetchData = async (id) => {
+    const dataset = datasetById(publicData.manifest, id);
+    if (!dataset) return null;
+    const file = fileFor(dataset, { role: 'data' }) || dataset.files[0];
+    const { payload } = await fetchPublicLayer({ baseUrl: publicData.baseUrl, dataset, file });
+    return payload;
+  };
+  try {
+    const payload = await fetchData('ra_crosswalk');
+    if (payload) {
+      crosswalk = buildRaCrosswalk(payload.rows);
+      warnings.push(...crosswalk.warnings);
+      // Nome diferente entre a ponte e a planilha é sinal de que o NÚMERO aponta para outra RA
+      // em alguma das fontes; o join daquela RA fica bloqueado, não "provavelmente certo"
+      // (R8.16, R8.51).
+      const pdadRas = state.pdadData.length ? rasForYear(state.pdadIndex, pdadPrimaryYear()) : [];
+      const conflitos = raNameConflicts(crosswalk, { raProfiles: state.raProfiles, pdadRas });
+      for (const conflict of conflitos) {
+        warnings.push(`Território (ponte de RAs): ${conflict.raGeoId} chama-se "${conflict.crosswalk}" na ponte e "${conflict.raProfiles || conflict.pdad}" na planilha; o cruzamento desta RA fica bloqueado até a divergência ser resolvida.`);
+      }
+      crosswalk = excludeRas(crosswalk, conflitos.map((c) => c.raGeoId));
+    }
+  } catch (error) {
+    warnings.push(`Território (ponte de RAs): ra_crosswalk.json não carregou — ${error?.message || error}.`);
+  }
+  try {
+    const payload = await fetchData('ra_aggregates');
+    if (payload) {
+      aggregates = normalizeRaAggregates(payload.rows, crosswalk);
+      warnings.push(...aggregates.warnings);
+    }
+  } catch (error) {
+    warnings.push(`Território (agregados por RA): ra_aggregates.json não carregou — ${error?.message || error}.`);
+  }
+  state.territory.crosswalk = crosswalk;
+  state.territory.aggregates = aggregates;
+  state.territory.warnings = warnings;
+  return warnings;
 }
 
 // --- Diagnóstico Territorial PDAD-A: drill-down (issue #102) ----------------------
@@ -5431,6 +5624,12 @@ async function load() {
     { trafficSegmentIds: segmentIdsWithTraffic(state.trafficAll.bySegmentId) },
   ).warnings;
   state.baseWarnings = [...state.baseWarnings, ...avisosRodoviarios];
+  // Arquivos públicos (issue #149): o manifest já veio com o dataset; a ponte de RAs e os
+  // agregados por RA são buscados agora, antes das views que os leem. Avisos entram no mesmo
+  // canal das abas opcionais — nunca erro (R2.5).
+  state.territory.publicData = result.publicData || EMPTY_PUBLIC_DATA;
+  const avisosTerritorio = await loadTerritorySmallFiles();
+  state.baseWarnings = [...state.baseWarnings, ...avisosTerritorio];
   renderPolygonLegend();
   renderTrafficPanel();
 

@@ -1448,6 +1448,20 @@ crescentes `[b1..bk]` definem `k+1` classes; **valor igual ao corte cai na class
 grava a classe publicada por feição (`class_<métrica>`); o cliente recalcula a partir dos cortes
 e **avisa** divergência — publicado prevalece, recálculo sinaliza (R8.54).
 
+**Carregamento no cliente** (issue #149). `src/config.js` declara `publicDataUrl` (relativo,
+mesma origem — o carregador recusa outra origem) e `publicManifestFile`. `loadDataset()` pede o
+manifest **antes** da estratégia de dados e devolve `publicData = { available, reason, baseUrl,
+manifest, warnings }` nos dois caminhos; 404, rede, timeout, JSON inválido e versão desconhecida
+viram `available: false` com motivo e aviso técnico, nunca erro (R2.5). O manifest **vazio**
+(`datasets: []`, escrito por `python -m imob_pipeline init-manifest` antes da primeira execução)
+é estado esperado: indisponível sem aviso. A ponte de RAs e os agregados por RA são buscados no
+carregamento; cada camada de mapa só quando ligada (`fetchPublicLayer`, memoizada por
+`dataset/caminho@sha256`, com `?v=<sha256>` na URL). Tamanho ou `sha256` diferente do manifest
+**recusa** o arquivo com a mensagem "não confere com o manifest" (R2.7); sem `crypto.subtle` o
+resultado declara `integrity: 'não verificada'`. `tests/public-data-integrity.test.js` confere
+bytes, hash, feições e `content_hash` de `data/public/` e de `tests/fixtures/public/` a cada
+`npm test`.
+
 ### ra_crosswalk
 
 `ra_crosswalk.json` (`role: data`), a ponte declarada da R2.9. Derivada **só** dos atributos do
