@@ -9,7 +9,7 @@
 
 import { toInteger, toNumber, toText } from '../normalize.js';
 import { formatBRL, formatDecimal, formatNumber, formatPercent, percentFromDecimal } from '../format.js';
-import { EMPTY_CROSSWALK, toRaNn, toRaRoman } from './ra-keys.js';
+import { EMPTY_CROSSWALK, isBridgeLoaded, toRaNn, toRaRoman } from './ra-keys.js';
 
 /** As colunas do contrato (docs/DATA_CONTRACT.md, "ra_aggregates"). Fora daqui é aviso. */
 export const RA_AGGREGATE_COLUMNS = Object.freeze([
@@ -90,7 +90,7 @@ export function normalizeRaAggregates(rawRows, crosswalk = EMPTY_CROSSWALK) {
       warnings.push(`Território (agregados por RA): linha com ra_geo_id ${JSON.stringify(raw.ra_geo_id)} fora do padrão RA_nn; descartada.`);
       continue;
     }
-    if (crosswalk.byNn.size > 0 && !crosswalk.byNn.has(row.raGeoId)) {
+    if (isBridgeLoaded(crosswalk) && !crosswalk.byNn.has(row.raGeoId)) {
       warnings.push(`Território (agregados por RA): ${row.raGeoId} não existe na ponte de RAs; linha descartada.`);
       continue;
     }
@@ -184,14 +184,17 @@ export const TERRITORY_ATTRS = Object.freeze(TERRITORY_INDICATORS.map((i) => i.a
  * RA fica exatamente como era, e `rankScalar` lê ausência (R2.5). RA sem linha nos
  * agregados recebe `null` em cada atributo — nunca zero.
  */
-export function attachTerritory(pdadIndex, byRa) {
+export function attachTerritory(pdadIndex, byRa, crosswalk = EMPTY_CROSSWALK) {
   if (!pdadIndex || typeof pdadIndex !== 'object') return pdadIndex;
   if (!byRa || Object.keys(byRa).length === 0) return pdadIndex;
   const out = {};
   for (const [year, ras] of Object.entries(pdadIndex)) {
     out[year] = {};
     for (const [id, ra] of Object.entries(ras)) {
-      const row = byRa[id] || null;
+      // PDAD × agregados é cruzamento entre fontes: com ponte carregada, RA fora dela
+      // (excluída por conflito de nome) recebe ausência, nunca o agregado (R8.16, R8.51).
+      const bloqueada = isBridgeLoaded(crosswalk) && !crosswalk.byNn.has(id);
+      const row = bloqueada ? null : (byRa[id] || null);
       const extra = {};
       for (const attr of TERRITORY_ATTRS) extra[attr] = row && Number.isFinite(row[attr]) ? row[attr] : null;
       out[year][id] = { ...ra, ...extra };
@@ -213,7 +216,9 @@ export function attachTerritory(pdadIndex, byRa) {
 export function raProfileFor(raGeoId, raProfiles, crosswalk = EMPTY_CROSSWALK) {
   if (!raProfiles || !raGeoId) return null;
   const hasOwn = (key) => Object.prototype.hasOwnProperty.call(raProfiles, key);
-  const bridged = Boolean(crosswalk && crosswalk.byNn && crosswalk.byNn.size > 0);
+  // "Carregada" e não "com linhas": uma ponte esvaziada por exclusões continua sendo uma
+  // ponte, e tudo falha fechado (achado do Codex na PR #157).
+  const bridged = isBridgeLoaded(crosswalk);
   const nn = toRaNn(raGeoId, crosswalk);
   // Ponte carregada e a RA fora dela — excluída por conflito de nome (`excludeRas`) ou de
   // número desconhecido: o join falha FECHADO, inclusive pela chave direta. É um cruzamento

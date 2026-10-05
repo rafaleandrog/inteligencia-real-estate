@@ -14,9 +14,20 @@ const NN_RE = /^RA_\d{2}$/;
 const ROMAN_KEY_RE = /^RA2026_RA-[IVXLC]+$/;
 const CODE_RE = /^RA-[IVXLC]+$/;
 
+/**
+ * `loaded` diz se um `ra_crosswalk.json` foi lido — independentemente de quantas linhas
+ * sobraram depois das exclusões. É o que distingue "não há ponte" (grafia `RA_nn` passa pela
+ * forma) de "há ponte e esta RA não está nela" (falha fechado), mesmo quando um conflito
+ * sistemático de nomes excluiu todas as linhas (achado do Codex na PR #157).
+ */
 export const EMPTY_CROSSWALK = Object.freeze({
-  byNn: new Map(), byRoman: new Map(), byCode: new Map(), byNumber: new Map(), rows: [], warnings: [],
+  loaded: false, byNn: new Map(), byRoman: new Map(), byCode: new Map(), byNumber: new Map(), rows: [], warnings: [], excluded: [],
 });
+
+/** A ponte foi carregada? (Linhas podem ter sido todas excluídas e ela continua "carregada".) */
+export function isBridgeLoaded(crosswalk) {
+  return Boolean(crosswalk && crosswalk.loaded === true);
+}
 
 function pad2(n) {
   return `RA_${String(n).padStart(2, '0')}`;
@@ -56,7 +67,7 @@ export function buildRaCrosswalk(rawRows) {
   const warnings = [];
   const rows = [];
   if (!Array.isArray(rawRows)) {
-    return { ...EMPTY_CROSSWALK, warnings: ['Território (ponte de RAs): rows não é uma lista.'] };
+    return { ...EMPTY_CROSSWALK, loaded: true, warnings: ['Território (ponte de RAs): rows não é uma lista.'] };
   }
   for (const raw of rawRows) {
     const { row, reason } = normalizeCrosswalkRow(raw);
@@ -81,12 +92,14 @@ export function buildRaCrosswalk(rawRows) {
   }
   kept.sort((a, b) => a.raNumber - b.raNumber);
   return {
+    loaded: true,
     byNn: new Map(kept.map((r) => [r.raGeoId, r])),
     byRoman: new Map(kept.map((r) => [r.raGeoIdRoman, r])),
     byCode: new Map(kept.map((r) => [r.raCode, r])),
     byNumber: new Map(kept.map((r) => [r.raNumber, r])),
     rows: kept,
     warnings,
+    excluded: [...conflicted].map((r) => r.raGeoId).sort(),
   };
 }
 
@@ -104,7 +117,9 @@ export function toRaNn(id, crosswalk = EMPTY_CROSSWALK) {
   }
   const text = toText(id);
   if (NN_RE.test(text)) {
-    if (crosswalk.byNn.size === 0) return text;
+    // Sem ponte carregada a forma basta; com ponte (mesmo esvaziada por exclusões), só quem
+    // está nela resolve — falha fechado.
+    if (!isBridgeLoaded(crosswalk)) return text;
     return crosswalk.byNn.has(text) ? text : null;
   }
   const upper = text.toUpperCase();
@@ -156,11 +171,13 @@ export function excludeRas(crosswalk, raGeoIds) {
   if (banned.size === 0) return crosswalk;
   const kept = crosswalk.rows.filter((row) => !banned.has(row.raGeoId));
   return {
+    loaded: crosswalk.loaded === true,
     byNn: new Map(kept.map((r) => [r.raGeoId, r])),
     byRoman: new Map(kept.map((r) => [r.raGeoIdRoman, r])),
     byCode: new Map(kept.map((r) => [r.raCode, r])),
     byNumber: new Map(kept.map((r) => [r.raNumber, r])),
     rows: kept,
     warnings: crosswalk.warnings,
+    excluded: [...new Set([...(crosswalk.excluded || []), ...banned])].sort(),
   };
 }

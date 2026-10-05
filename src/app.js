@@ -6469,7 +6469,7 @@ async function load() {
   const avisosTerritorio = await arquivosPequenos;
   state.baseWarnings = [...state.baseWarnings, ...avisosTerritorio];
   state.pdadIndex = attachRaProfiles(
-    attachTerritory(state.pdadIndex, state.territory.aggregates.byRa),
+    attachTerritory(state.pdadIndex, state.territory.aggregates.byRa, state.territory.crosswalk),
     state.raProfiles,
     state.territory.crosswalk,
   );

@@ -7,7 +7,7 @@ import { readFileSync } from 'node:fs';
 
 import {
   buildRaCrosswalk, normalizeCrosswalkRow, toRaNn, toRaRoman, raNameConflicts, excludeRas,
-  normalizeRaName, EMPTY_CROSSWALK,
+  normalizeRaName, isBridgeLoaded, EMPTY_CROSSWALK,
 } from '../src/territorio/ra-keys.js';
 
 const ROWS = JSON.parse(readFileSync(new URL('./fixtures/public/ra_crosswalk.json', import.meta.url), 'utf8')).rows;
@@ -95,4 +95,20 @@ test('excludeRas tira a RA de TODOS os índices sem mutar a ponte original', () 
   assert.equal(toRaNn('RA_11', sem19), 'RA_11');
   assert.equal(toRaNn('RA2026_RA-XIX', cw), 'RA_19', 'a original continua inteira');
   assert.equal(excludeRas(cw, []), cw);
+});
+
+test('ponte carregada e esvaziada por exclusões continua "carregada": tudo falha fechado (Codex, PR #157)', () => {
+  const cw = buildRaCrosswalk(ROWS);
+  assert.equal(isBridgeLoaded(cw), true);
+  assert.equal(isBridgeLoaded(EMPTY_CROSSWALK), false);
+  assert.equal(isBridgeLoaded(null), false);
+  const vazia = excludeRas(cw, ['RA_11', 'RA_19']);
+  assert.equal(vazia.byNn.size, 0);
+  assert.equal(isBridgeLoaded(vazia), true, 'zero linhas não é "sem ponte"');
+  assert.deepEqual(vazia.excluded, ['RA_11', 'RA_19']);
+  assert.equal(toRaNn('RA_11', vazia), null, 'a forma RA_nn não passa por uma ponte esvaziada');
+  assert.equal(toRaNn('RA2026_RA-XI', vazia), null);
+  assert.equal(toRaNn('RA_11', EMPTY_CROSSWALK), 'RA_11', 'sem ponte, a forma basta');
+  assert.equal(toRaNn('RA_11', buildRaCrosswalk(null)), null, 'rows inválido conta como ponte carregada e vazia');
+  assert.equal(excludeRas(cw, ['RA_11']).excluded.length, 1);
 });

@@ -207,3 +207,20 @@ test('com a ponte carregada, RA excluída por conflito de nome falha fechado —
   assert.equal(raProfileFor('RA_11', sincronizada, EMPTY_CROSSWALK), sincronizada.RA_11);
   assert.equal(raProfileFor('RA2026_RA-XI', sincronizada, EMPTY_CROSSWALK), null);
 });
+
+test('ponte esvaziada por exclusões bloqueia perfil e agregados mesmo pela chave direta; attachTerritory respeita a exclusão', () => {
+  const { byRa } = normalizeRaAggregates(ROWS, CW);
+  const sincronizada = { RA_11: { income_per_capita_brl: 4100 }, RA_19: { income_per_capita_brl: 2350.5 } };
+  const vazia = excludeRas(CW, ['RA_11', 'RA_19']);
+  assert.equal(raProfileFor('RA_11', sincronizada, vazia), null, 'chave direta não contorna uma ponte esvaziada');
+  assert.equal(attachRaProfiles(INDEX, sincronizada, vazia)[2024].RA_11.incomePerCapita, null);
+  const sem11 = excludeRas(CW, ['RA_11']);
+  const out = attachTerritory(INDEX, byRa, sem11);
+  assert.equal(out[2024].RA_11.householdsGrowthPct, null, 'RA excluída não recebe agregado');
+  assert.equal(out[2024].RA_19.householdsGrowthPct, 0.2889, 'as outras seguem');
+  assert.equal(attachTerritory(INDEX, byRa)[2024].RA_11.householdsGrowthPct, 0.1143, 'sem ponte carregada, a chave igual cruza');
+  // Agregados cuja RA foi excluída da ponte são descartados com aviso — mesma regra.
+  const agregados = normalizeRaAggregates(ROWS, sem11);
+  assert.deepEqual(agregados.rows.map((r) => r.raGeoId), ['RA_19']);
+  assert.ok(agregados.warnings.some((w) => /RA_11 não existe na ponte/.test(w)));
+});
