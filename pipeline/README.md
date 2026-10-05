@@ -48,3 +48,9 @@ PYTHONPATH=pipeline python -m imob_pipeline run all --fixture-dir pipeline/tests
 2. `workflow_dispatch` de `dados-publicos.yml` com `datasets: ra_crosswalk` → conferir a PR.
 3. `discover grade` (fase 2) para pinar `households_grid.quadrant_ids`; confirmar o `metadata.csv` do AOP.
 4. `datasets: all`; ler `summary.json` e os logs (tamanhos, tempos, contagens); ajustar orçamentos e percentis.
+
+Sem a permissão "Allow GitHub Actions to create and approve pull requests" (issue #155) a
+criação da PR falha, mas a branch `dados-publicos/atualizacao` é enviada com `data/public/`
+regenerado e validado: abra a PR à mão a partir dela (base `main`, labels `type:chore` e
+`dados-publicos`), com o corpo que o workflow deixa no artefato `corpo-da-pr`. O disparo do
+workflow em si (`workflow_dispatch`) pode ser feito pela API do GitHub ou pelo Claude Code.

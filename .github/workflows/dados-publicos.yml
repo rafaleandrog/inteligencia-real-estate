@@ -7,7 +7,8 @@
 #   (docs/ENGINEERING_RULES.md, R4.10). O job que commita só adiciona data/public/**.
 # - PR criada com GITHUB_TOKEN não dispara workflows de `pull_request`; por isso o último
 #   passo dispara os validadores na branch da PR via `gh workflow run`. Alternativa: um PAT
-#   fine-grained em `token:` do create-pull-request.
+#   fine-grained em `token:` do create-pull-request. Sem a permissão de PR do Actions
+#   (issue #155), a branch de dados é enviada mesmo assim e a PR é aberta à mão.
 # - Mês sem mudança = bytes idênticos = `git diff --quiet` = sem PR.
 name: dados-publicos
 
@@ -142,8 +143,21 @@ jobs:
         if: steps.diff.outputs.changed == 'true'
         run: PYTHONPATH=pipeline python -m imob_pipeline pr-body --out data/public --to pipeline/.cache/pr_body.md --summary pipeline/.cache/runs/latest/summary.json
 
+      - uses: actions/upload-artifact@v4
+        if: steps.diff.outputs.changed == 'true'
+        with:
+          name: corpo-da-pr
+          path: pipeline/.cache/pr_body.md
+          retention-days: 30
+
+      # O action faz PUSH da branch antes de criar a PR. Sem a permissão "Allow GitHub Actions
+      # to create and approve pull requests" (Settings → Actions → General, issue #155) a
+      # criação falha com 403, mas a branch `dados-publicos/atualizacao` já está no remoto:
+      # `continue-on-error` preserva esse resultado, e o passo seguinte diz como abrir a PR
+      # à mão a partir dela (o corpo está no artefato `corpo-da-pr`).
       - id: pr
         if: steps.diff.outputs.changed == 'true'
+        continue-on-error: true
         uses: peter-evans/create-pull-request@v7
         with:
           add-paths: data/public/**
@@ -154,8 +168,26 @@ jobs:
           body-path: pipeline/.cache/pr_body.md
           labels: type:chore,dados-publicos
 
-      - name: Disparar validações na branch da PR
-        if: steps.pr.outputs.pull-request-number != ''
+      - name: PR não criada — como abrir à mão
+        if: steps.diff.outputs.changed == 'true' && steps.pr.outcome == 'failure'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if git ls-remote --exit-code --heads origin dados-publicos/atualizacao >/dev/null; then
+            {
+              echo "## PR de dados não criada (permissão do Actions ausente — issue #155)"
+              echo
+              echo "A branch \`dados-publicos/atualizacao\` FOI enviada com \`data/public/\` regenerado e validado."
+              echo "Abra a PR à mão a partir dela (base \`main\`, labels \`type:chore\`, \`dados-publicos\`) usando o corpo do artefato \`corpo-da-pr\`."
+              echo "Para destravar as próximas execuções: Settings → Actions → General → \"Allow GitHub Actions to create and approve pull requests\"."
+            } >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "::error::a criação da PR falhou e a branch dados-publicos/atualizacao não está no remoto — veja o log do passo anterior"
+            exit 1
+          fi
+
+      - name: Disparar validações na branch de dados
+        if: steps.diff.outputs.changed == 'true'
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
