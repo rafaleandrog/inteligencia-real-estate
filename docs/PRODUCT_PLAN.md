@@ -42,13 +42,43 @@ preço × liquidez por RA (IVV × preço, IVV × oferta, gap × preço); link co
 filtros na URL.
 
 ### Fase 3b — Território (em curso, issue #146)
-Dados públicos por pipeline reprodutível (`pipeline/` → `data/public/`, R2.7): crescimento de
-domicílios 2010→2022 por célula da Grade Estatística (IBGE), empregos formais por hexágono
-(Ipea/RAIS), centralidade viária (OpenStreetMap) — três camadas no Mapa com legenda, detalhe e
-procedência; agregados por RA no Diagnóstico, Ranking e Comparar; ponte declarada entre as duas
-grafias de RA. Foco de decisão: **produto e tipologia de lançamento** — perfil de domicílios e
-renda, mix de quartos demandado, concorrência e velocidade por RA, lidos lado a lado com o
-retrato territorial.
+Dados públicos por pipeline reprodutível (`pipeline/` → `data/public/`, R2.7), lidos pelo site
+pelo `manifest.json`. Foco de decisão: **produto e tipologia de lançamento** — perfil de
+domicílios e renda, mix de quartos demandado, concorrência e velocidade por RA, lidos lado a lado
+com o retrato territorial.
+
+**Entregue no código**
+- **Pipeline** (`pipeline/`, issues #147 e #148): ponte entre as duas grafias de RA
+  (`ra_crosswalk.json`, R2.9), os três conjuntos e os agregados por RA, cada arquivo com `sha256`
+  e orçamento no manifest; validador em toda PR; workflow `dados-publicos.yml` que abre a PR de
+  dados.
+- **Três mapas** (issues #150 a #152), no bloco "Território (dados públicos)" do Mapa:
+  crescimento de domicílios 2010→2022 por célula da Grade Estatística (IBGE), empregos formais
+  por hexágono H3 (Ipea/RAIS) e centralidade viária (OpenStreetMap, em linhas). Cada um com
+  legenda de classes fixas, métrica selecionável onde há mais de uma, detalhe ao clicar
+  (essencial, complementar e técnico), procedência e estado na URL; controle desabilitado, com o
+  motivo, enquanto o arquivo não existe.
+- **Base de dados** (issue #149): a seção "Arquivos públicos (data/public)" lista cada conjunto do
+  manifest com versão, anos, arquivos, fontes (link, data de coleta e licença), método e cortes
+  de classe.
+- **Indicadores cruzados** (issue #153): crescimento de domicílios 2010→2022, empregos formais
+  por mil moradores e por km² e centralidade viária média, por RA, cruzados com o PDAD pela ponte
+  de RAs. Entram no Ranking (cartão com fórmula e fonte), em duas leituras da dispersão
+  (crescimento × verticalização; empregos × locação), em colunas do Comparar, no bloco "Perfil
+  territorial" do Diagnóstico (valor, diferença contra a mediana das RAs com dado, com o `n`, e
+  posição) e no bloco da RA do Mapa — sempre com fonte e ano. RA sem agregado, ou sem os arquivos
+  públicos, fica ausente, nunca zero. A renda per capita de `RA_PROFILES` cruza pela mesma ponte
+  e segue ausente enquanto a planilha não a publicar.
+
+**Pendente**
+- **Primeira execução real do pipeline.** `data/public/` tem hoje só o README, os schemas e um
+  manifest vazio. A PR automática do `dados-publicos.yml`, em etapas (a ponte de RAs primeiro), o
+  povoa depois do merge, e é nela que se confirma o que só a rede mostra — quadrantes da Grade,
+  layout do `metadata.csv` do AOP, orçamentos de tamanho (`pipeline/README.md`, "Primeira
+  execução real"). Até lá as camadas ficam desabilitadas, com o motivo.
+- **Extração BigQuery da RAIS** (fase 2 do pipeline): hoje só o esqueleto do comando `extract`,
+  que não grava nada.
+- **Modelo 2** (`warehouse/`, issue #154), descrito mais abaixo.
 
 ### Fase 4 — Decidir (adiante)
 Watchlists, alertas, relatórios e cenários — só com necessidade de usuário comprovada e sem

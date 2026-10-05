@@ -3,8 +3,10 @@
 Aplicação pública de inteligência do mercado imobiliário do Distrito Federal.
 
 - **GitHub Pages** hospeda todo o front-end.
-- **Google Sheets** é a fonte de verdade dos dados.
+- **Google Sheets** é a fonte de verdade dos dados curados.
 - **Google Visualization Query** lê as abas da planilha direto no navegador.
+- **`data/public/`** guarda o dado derivado de fonte pública oficial (IBGE, Ipea, OpenStreetMap,
+  GeoPortal), gerado por `pipeline/` e lido na mesma origem do Pages.
 - **Leaflet** desenha o mapa.
 
 A referência funcional do modelo anterior está preservada em
@@ -71,6 +73,14 @@ npm run smoke        # site público
 npm run smoke:admin  # área administrativa (issue #5) — Apps Script mockado via page.route()
 ```
 
+As seções territoriais do smoke apontam `APP_CONFIG.publicDataUrl` para `tests/fixtures/public/`
+(a saída do pipeline em modo fixture), então não dependem de `data/public/` ter dado real. O
+pipeline tem suíte própria, em Python, que roda só com a biblioteca padrão:
+
+```bash
+cd pipeline && python3 -m unittest discover -s tests -t .
+```
+
 ## Regra anti-dessincronização
 
 **Código mora no GitHub. Dados moram na Google Sheet.**
@@ -113,15 +123,58 @@ chamada, sem sessão para expirar por fora. Sem `ADMIN_TOKEN` configurado, `doPo
 gravação (`docs/ENGINEERING_RULES.md`, R4.9). Ver [`docs/SHEET_SETUP.md`](docs/SHEET_SETUP.md) §8
 para habilitar.
 
+## Camadas territoriais (dados públicos)
+
+O painel de camadas do Mapa tem o bloco **Território (dados públicos)**, com três camadas de
+fonte oficial lidas de `data/public/` pelo `manifest.json`:
+
+| Camada | Fonte | O que o mapa desenha |
+|---|---|---|
+| Domicílios 2010→2022 | IBGE — Grade Estatística dos Censos 2010 e 2022 | células pintadas por classe; padrão: domicílios novos por km² (o valor absoluto só no detalhe) |
+| Empregos formais | Ipea — Acesso a Oportunidades (RAIS) | hexágonos H3 pintados por classe; total ou por faixa de renda |
+| Centralidade viária | OpenStreetMap (ODbL) | vias em linha, mais grossas e escuras quanto maior o percentil de centralidade |
+
+Domicílios e empregos são coroplética em canvas, uma por vez; a centralidade convive com
+qualquer uma delas. Cada camada tem **legenda** (classes fixas do manifest e "sem dado"),
+**detalhe** ao clicar na célula, no hexágono ou na via (essencial, complementar e técnico) e uma
+linha de **procedência** que leva à **Base de dados**, onde cada conjunto aparece com versão,
+arquivos, fontes (link e data de coleta), licença, método e cortes de classe. O estado entra no
+link: `#mapa?terr=jobs_hex&vias=1`.
+
+Os agregados por RA (`ra_aggregates.json`) são cruzados com o PDAD pela ponte declarada entre as
+duas grafias de RA (`ra_crosswalk.json`, R2.9), nunca por nome: crescimento de domicílios,
+empregos formais por mil moradores e por km² e centralidade viária média entram no Ranking (cada
+cartão com fórmula e fonte), em duas leituras da dispersão, em colunas do Comparar, no bloco
+**Perfil territorial** do Diagnóstico (valor, diferença contra a mediana das RAs com dado e
+posição) e no bloco da RA do Mapa, sempre com fonte e ano. Sem os arquivos públicos ou sem a ponte,
+tudo isso fica ausente — nunca zero, nunca um cruzamento adivinhado.
+
+### Pipeline: `pipeline/` → `data/public/`
+
+`pipeline/` (Python) lê as fontes oficiais e escreve `data/public/` — ponte de RAs, os três
+conjuntos e os agregados por RA —, com manifest de procedência, `sha256` e orçamento de tamanho
+de cada arquivo. Roda no GitHub Actions (`.github/workflows/dados-publicos.yml`, mensal e manual)
+ou na máquina de quem opera, nunca no navegador, e só entra em `main` pela PR automática, que o
+validador confere em toda PR (R2.7–R2.9). Nada em `data/public/` se edita à mão. Comandos,
+fixtures e o passo a passo estão em [`pipeline/README.md`](pipeline/README.md).
+
+`data/public/` tem hoje só o README, os schemas e um manifest vazio. **A primeira execução real
+acontece pela PR automática do workflow `dados-publicos.yml` depois do merge.** Até lá as camadas
+territoriais ficam desabilitadas no Mapa, cada uma com o motivo, e o resto do site funciona
+igual (R2.5).
+
 ## Estado atual
 
 Três views em produção — Mapa, Mercado Residencial DF e Diagnóstico Territorial PDAD-A (com
 Ranking, Comparar e Base de dados) — alimentadas pela Google Sheet via GViz. Fases Explorar,
 Entender e Comparar entregues; ver [`docs/PRODUCT_PLAN.md`](docs/PRODUCT_PLAN.md).
 
-Em curso (Fase 3b, issue #146): camadas territoriais de fonte pública — crescimento de
-domicílios 2010→2022 (IBGE), empregos formais (Ipea/RAIS) e centralidade viária (OSM) — geradas
-por `pipeline/` e lidas de `data/public/` pelo manifest; ponte declarada entre as grafias de RA.
+Fase 3b (issue #146), no código: as três camadas territoriais do Mapa — domicílios 2010→2022
+(IBGE), empregos formais (Ipea/RAIS) e centralidade viária (OpenStreetMap) —, com legenda,
+detalhe e procedência; a seção "Arquivos públicos" da Base de dados, que lista as fontes; a ponte
+declarada entre as grafias de RA; e os agregados por RA cruzados com o PDAD. Pendentes: a
+primeira execução real do pipeline — até lá `data/public/` não tem nenhum conjunto e as camadas
+ficam desabilitadas, com o motivo — e o Modelo 2 (`warehouse/`, issue #154), só desenhado.
 
 O Apps Script v2.4.0 (`optional-apps-script/Code.gs`) é a camada de governança da planilha:
 validação, saneamento (dinheiro como número, período FipeZap como texto), filas de cobertura e
