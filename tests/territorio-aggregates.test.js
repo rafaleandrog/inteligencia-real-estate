@@ -115,3 +115,65 @@ test('territoryProfileRows leva ano e fonte no rótulo e omite o que está ausen
   assert.equal(parcial.length, 2);
   assert.deepEqual(territoryProfileRows(null), []);
 });
+
+// --- Cruzamento com o PDAD e com RA_PROFILES (issue #153) ---------------------------------
+
+import { attachTerritory, attachRaProfiles, raTerritoryProfile, TERRITORY_ATTRS } from '../src/territorio/aggregates.js';
+import { toRaRoman } from '../src/territorio/ra-keys.js';
+
+const INDEX = {
+  2024: {
+    RA_11: { raGeoId: 'RA_11', raName: 'Cruzeiro', population: 1000, households: 400, indicators: {} },
+    RA_19: { raGeoId: 'RA_19', raName: 'Candangolândia', population: 500, households: 200, indicators: {} },
+    RA_01: { raGeoId: 'RA_01', raName: 'Plano Piloto', population: 9000, households: 4000, indicators: {} },
+  },
+};
+
+test('attachTerritory anexa os atributos sem mutar o índice; RA sem agregado recebe null, nunca zero', () => {
+  const { byRa } = normalizeRaAggregates(ROWS, CW);
+  const out = attachTerritory(INDEX, byRa);
+  assert.notEqual(out, INDEX);
+  assert.equal(INDEX[2024].RA_11.householdsGrowthPct, undefined, 'o índice original não muda');
+  assert.equal(out[2024].RA_11.householdsGrowthPct, 0.1143);
+  assert.equal(out[2024].RA_11.jobsPer1000Residents, 18000);
+  assert.equal(out[2024].RA_19.centralityMean, 0.466667);
+  for (const attr of TERRITORY_ATTRS) assert.equal(out[2024].RA_01[attr], null, attr);
+  assert.equal(out[2024].RA_11.population, 1000, 'o resto da RA continua');
+  assert.equal(attachTerritory(INDEX, {}), INDEX, 'sem agregados, o mesmo índice');
+  assert.equal(attachTerritory(null, byRa), null);
+});
+
+test('attachRaProfiles cruza RA_PROFILES pela ponte; sem ponte, nada é anexado', () => {
+  const profiles = { 'RA2026_RA-XI': { income_per_capita_brl: 3250.5 }, 'RA2026_RA-XIX': { income_per_capita_brl: null } };
+  const out = attachRaProfiles(INDEX, profiles, CW);
+  assert.equal(toRaRoman('RA_11', CW), 'RA2026_RA-XI');
+  assert.equal(out[2024].RA_11.incomePerCapita, 3250.5);
+  assert.equal(out[2024].RA_19.incomePerCapita, null, 'coluna vazia é ausência');
+  assert.equal(out[2024].RA_01.incomePerCapita, null, 'RA fora da ponte não cruza');
+  assert.equal(INDEX[2024].RA_11.incomePerCapita, undefined, 'sem mutação');
+  assert.equal(attachRaProfiles(INDEX, profiles, EMPTY_CROSSWALK), INDEX, 'sem ponte, nenhuma aritmética de romanos');
+  assert.equal(attachRaProfiles(INDEX, null, CW), INDEX);
+});
+
+test('raTerritoryProfile: mediana entre as RAs COM dado, n, diferença e posição; ausência sem posição', () => {
+  const { byRa } = normalizeRaAggregates(ROWS, CW);
+  const perfil = raTerritoryProfile(byRa, 'RA_19');
+  assert.equal(perfil.raName, 'Candangolândia');
+  const cresc = perfil.items.find((i) => i.id === 'householdsGrowth');
+  assert.equal(cresc.value, 0.2889);
+  assert.equal(cresc.reference.n, 2);
+  assert.equal(cresc.reference.median, (0.1143 + 0.2889) / 2);
+  assert.equal(cresc.rank.position, 1);
+  assert.equal(cresc.rank.total, 2);
+  assert.equal(cresc.formatted, '28,9%');
+  assert.ok(cresc.formula && cresc.source);
+  assert.ok(Math.abs(cresc.delta - (0.2889 - (0.1143 + 0.2889) / 2)) < 1e-12);
+  const semDado = raTerritoryProfile({ RA_11: { ...byRa.RA_11, centralityMean: null }, RA_19: byRa.RA_19 }, 'RA_11');
+  const centr = semDado.items.find((i) => i.id === 'centrality');
+  assert.equal(centr.value, null);
+  assert.equal(centr.rank, null);
+  assert.equal(centr.formatted, '—');
+  assert.equal(centr.reference.n, 1, 'a referência conta só quem tem dado');
+  assert.equal(raTerritoryProfile(byRa, 'RA_07'), null);
+  assert.equal(raTerritoryProfile(null, 'RA_11'), null);
+});

@@ -59,7 +59,7 @@ import {
   datasetSourceLink,
   hostnameOf, anchorColor, markerIcon, anchorLegendEntries, formatAnchorCategory, formatAnchorGroup,
   formatAnchorSegment, formatSalesStage, formatRegularizationStatus, formatPercent,
-  percentFromPoints, raAgeBands, polygonStyle, sortPolygonsForDraw, raProfileEssentials,
+  percentFromPoints, percentFromDecimal, raAgeBands, polygonStyle, sortPolygonsForDraw, raProfileEssentials,
   raProfileUnavailability, polygonEssentials, polygonPropertyTiers, polygonEssentialKeys,
   polygonEntityType, polygonLayerGroup, compactNumber, polygonDuplicateKeys,
   polygonDescriptionText,
@@ -88,8 +88,10 @@ import {
 import { classIndexFor, rampIndexFor } from './territorio/classes.js';
 import { legendRows, legendTitle, lineLegendRows, provenanceLine } from './territorio/legend.js';
 import { territoryDetailTiers, territoryTooltipText } from './territorio/detail.js';
-import { buildRaCrosswalk, EMPTY_CROSSWALK, excludeRas, raNameConflicts } from './territorio/ra-keys.js';
-import { normalizeRaAggregates } from './territorio/aggregates.js';
+import { buildRaCrosswalk, EMPTY_CROSSWALK, excludeRas, raNameConflicts, toRaNn } from './territorio/ra-keys.js';
+import {
+  normalizeRaAggregates, attachTerritory, attachRaProfiles, raTerritoryProfile, territoryProfileRows, formatByUnit,
+} from './territorio/aggregates.js';
 
 const CONFIG = window.APP_CONFIG || {};
 
@@ -185,6 +187,7 @@ const dom = {
   territoryMetric: el('territoryMetric'), territoryClasses: el('territoryClasses'),
   territoryProvenance: el('territoryProvenance'), territoryStatus: el('territoryStatus'),
   territoryNote: el('territoryNote'),
+  pdadTerritoryProfile: el('pdadTerritoryProfile'),
   territoryLineLegend: el('territoryLineLegend'), territoryLineLegendTitle: el('territoryLineLegendTitle'),
   territoryLineClasses: el('territoryLineClasses'), territoryLineNote: el('territoryLineNote'),
   territoryLineProvenance: el('territoryLineProvenance'), territoryLineStatus: el('territoryLineStatus'),
@@ -670,6 +673,13 @@ function openPolygonDetail(polygon, { focus = true } = {}) {
     // Dizer de onde veio o número é o que permite conferir na planilha certa quando
     // alguém discordar do valor (R5.7).
     complementar.push({ label: 'Fonte do perfil', value: 'RA_PROFILES' });
+  }
+
+  // Agregados dos arquivos públicos da RA (issue #153), com ano e fonte no rótulo —
+  // complementares, não essenciais: o essencial do painel tem teto de 6 linhas (R8.61).
+  if (polygonEntityType(polygon) === 'administrative_region') {
+    const chave = String(polygon.ra_geo_id || '').trim() || String(polygon.entity_id || '').trim();
+    for (const row of territoryRowsForRaKey(chave)) complementar.push({ label: row.label, value: row.value });
   }
 
   // Campos do próprio registro que são informação de usuário.
@@ -1930,7 +1940,7 @@ function renderKpis(kpis) {
 }
 
 /** Uma linha "rótulo → valor" do bloco de indicadores da RA. */
-function raStatRow(label, value) {
+function raStatRow(label, value, title = '') {
   const li = document.createElement('li');
   const name = document.createElement('span');
   name.className = 'ra-stat-label';
@@ -1938,8 +1948,20 @@ function raStatRow(label, value) {
   const figure = document.createElement('span');
   figure.className = 'ra-stat-value';
   figure.textContent = value;
+  if (title) li.title = title;
   li.append(name, figure);
   return li;
+}
+
+/**
+ * Linhas territoriais da RA selecionada (issue #153): a chave do filtro é a romana
+ * (`RA2026_RA-XI`, de LISTINGS) e os agregados são por `RA_nn` — só a ponte liga as duas.
+ * Sem ponte ou sem arquivo, lista vazia: nada é adivinhado (R2.9, R8.30).
+ */
+function territoryRowsForRaKey(raKey) {
+  const nn = toRaNn(raKey, state.territory.crosswalk);
+  const row = nn ? state.territory.aggregates.byRa[nn] : null;
+  return territoryProfileRows(row);
 }
 
 /**
@@ -2051,6 +2073,11 @@ function renderRaProfile() {
     if (profile.income_per_capita_brl !== null) {
       stats.append(raStatRow('Renda per capita', formatBRL(profile.income_per_capita_brl)));
     }
+  }
+  // Agregados dos arquivos públicos, com ano e fonte no rótulo (R8.26, R8.52): são de outra
+  // pesquisa e nunca se confundem com os números de RA_PROFILES acima.
+  if (state.filters.ra) {
+    for (const row of territoryRowsForRaKey(state.filters.ra)) stats.append(raStatRow(row.label, row.value, row.title));
   }
   if (stats.childElementCount > 0) frag.append(stats);
 
@@ -4531,6 +4558,7 @@ function pdadIndicatorCard(indicador, raIds) {
  */
 function renderPdadProfile(raIds) {
   if (!dom.pdadProfile) return;
+  renderTerritoryProfile(raIds);
   const { year } = state.pdadFilters;
   const perfil = raIds.length === 1 ? raRealEstateProfile(state.pdadIndex, year, raIds[0]) : null;
   if (!perfil) {
@@ -4575,6 +4603,81 @@ function renderPdadProfile(raIds) {
 
   dom.pdadProfile.replaceChildren(frag);
   dom.pdadProfile.hidden = false;
+}
+
+/**
+ * Perfil territorial da RA no Diagnóstico (issue #153): os indicadores dos arquivos
+ * públicos com a referência explícita — mediana das RAs COM dado, com o `n` escrito
+ * (R8.87) — e a posição. Fórmula e fonte no `title` de cada bloco; a fonte também em
+ * texto, porque estes números não vêm da PDAD-A e a tela precisa dizer de onde vêm. Só
+ * aparece com UMA RA escolhida e com agregados carregados; ausência de arquivo esconde o
+ * bloco inteiro (R2.5).
+ */
+function renderTerritoryProfile(raIds) {
+  if (!dom.pdadTerritoryProfile) return;
+  const perfil = raIds.length === 1 ? raTerritoryProfile(state.territory.aggregates.byRa, raIds[0]) : null;
+  if (!perfil) {
+    dom.pdadTerritoryProfile.hidden = true;
+    dom.pdadTerritoryProfile.replaceChildren();
+    return;
+  }
+  const frag = document.createDocumentFragment();
+  const head = document.createElement('div');
+  head.className = 'pdad-tema-head pdad-profile-head';
+  const rotulo = document.createElement('span');
+  rotulo.textContent = `Perfil territorial · ${perfil.raName} (arquivos públicos)`;
+  head.append(rotulo);
+  frag.append(head);
+
+  const grid = document.createElement('div');
+  grid.className = 'pdad-profile-grid';
+  for (const item of perfil.items) {
+    const tile = document.createElement('article');
+    tile.className = 'pdad-profile-item';
+    tile.dataset.territoryItem = item.id;
+    tile.title = `${item.formula} · ${item.source}`;
+    const label = document.createElement('span');
+    label.className = 'pdad-profile-label';
+    label.textContent = item.label;
+    const valor = document.createElement('strong');
+    valor.className = item.value === null ? 'pdad-profile-value pdad-profile-absent' : 'pdad-profile-value';
+    valor.textContent = item.value === null ? 'não publicado' : item.formatted;
+    const ref = document.createElement('span');
+    ref.className = 'pdad-profile-ref';
+    if (item.delta !== null) {
+      const sinal = item.delta > 0 ? '+' : (item.delta < 0 ? '−' : '');
+      // A diferença é expressa na unidade do indicador: p.p. para fração decimal, a
+      // própria unidade para razões — nunca "p.p." numa contagem.
+      const diff = item.unit === 'pct_decimal'
+        ? `${formatPercent(percentFromDecimal(Math.abs(item.delta))).replace('%', ' p.p.')}`
+        : formatByUnit(item.unit, Math.abs(item.delta));
+      ref.textContent = `${sinal}${diff} vs. mediana de ${item.reference.n} RAs com dado`;
+      ref.dataset.sign = item.delta > 0 ? 'above' : (item.delta < 0 ? 'below' : 'equal');
+    } else {
+      ref.textContent = item.value === null ? '' : 'sem referência';
+    }
+    const fonte = document.createElement('span');
+    fonte.className = 'pdad-profile-ref pdad-profile-fonte';
+    fonte.textContent = item.source;
+    tile.append(label, valor, ref, fonte);
+    if (item.rank) {
+      const rank = document.createElement('span');
+      rank.className = 'pdad-profile-rank';
+      rank.textContent = `${item.rank.position}ª de ${item.rank.total} RAs com dado`;
+      tile.append(rank);
+    }
+    grid.append(tile);
+  }
+  frag.append(grid);
+
+  const nota = document.createElement('p');
+  nota.className = 'pdad-footnote pdad-profile-note';
+  nota.textContent = 'Referência: mediana das RAs com valor publicado nos arquivos públicos (data/public), não a média do DF. '
+    + 'Fontes e anos diferentes da PDAD-A — cada número leva a sua origem.';
+  frag.append(nota);
+
+  dom.pdadTerritoryProfile.replaceChildren(frag);
+  dom.pdadTerritoryProfile.hidden = false;
 }
 
 function pdadProfileTile(item, perfil) {
@@ -4773,6 +4876,7 @@ function pdadFmtTick(v) {
 }
 
 function pdadAxisFmt(spec, v) {
+  if (spec.unit) return formatByUnit(spec.unit, v);
   if (spec.attr === 'incomePerCapita') return `R$ ${Math.round(v).toLocaleString('pt-BR')}`;
   if (spec.attr === 'population' || spec.attr === 'households') return formatNumber(v);
   return formatPercent(percentFromPoints(v));
@@ -4930,6 +5034,9 @@ function pdadRankValues(item, mode) {
 }
 
 function pdadRankFormat(item, v, abs) {
+  // Indicador territorial (issue #153): a unidade declarada decide as casas e o símbolo —
+  // `formatByUnit` lança para unidade desconhecida, em vez de cair no percentual por engano.
+  if (item.unit && item.unit !== 'pct' && item.unit !== 'currency') return formatByUnit(item.unit, v);
   if (item.unit === 'currency') return `R$ ${Math.round(v).toLocaleString('pt-BR')}`;
   if (abs) return formatNumber(v);
   return formatPercent(percentFromPoints(v));
@@ -4967,6 +5074,13 @@ function pdadRankCard(item, raGeoId, mode) {
     posEl.textContent = 'sem valor publicado para esta RA';
   }
   article.append(posEl);
+  // Número cruzado de outra base leva fórmula e fonte ao lado (issue #153): no `title` do
+  // cartão e numa linha curta depois da posição — nunca só o número.
+  if (item.formula) {
+    article.title = `${item.formula} · ${item.source}`;
+    const fonteEl = document.createElement('div'); fonteEl.className = 'pdad-rank-fonte'; fonteEl.textContent = item.source;
+    article.append(fonteEl);
+  }
   if (pctil !== null) {
     const barra = document.createElement('div'); barra.className = 'pdad-rank-bar';
     const fill = document.createElement('i'); fill.style.width = `${Math.max(3, pctil)}%`;
@@ -5145,7 +5259,12 @@ function renderPdadCompareSummary(ras) {
   const tabela = document.createElement('table');
   const thead = document.createElement('thead');
   const trh = document.createElement('tr');
-  for (const texto of ['Região', 'População', 'Domicílios', 'Moradores/dom.', 'Escritura registrada']) {
+  // As colunas territoriais só existem quando os agregados públicos chegaram (R8.25):
+  // coluna vazia com travessão em toda linha afirmaria um dado que ninguém publicou.
+  const territorio = state.territory.aggregates.rows.length > 0;
+  const cabecalhos = ['Região', 'População', 'Domicílios', 'Moradores/dom.', 'Escritura registrada'];
+  if (territorio) cabecalhos.push('Dom. 2010→2022 (IBGE)', 'Empregos/mil hab. (Ipea)');
+  for (const texto of cabecalhos) {
     const th = document.createElement('th'); th.textContent = texto; trh.append(th);
   }
   thead.append(trh);
@@ -5168,6 +5287,16 @@ function renderPdadCompareSummary(ras) {
     const deed = (ra.indicators.deed?.values || []).find((v) => v.label === 'Sim');
     escrituraTd.textContent = deed && Number.isFinite(deed.pct) ? formatPercent(percentFromPoints(deed.pct)) : '—';
     tr.append(nomeTd, popTd, domTd, razaoTd, escrituraTd);
+    if (territorio) {
+      const agregado = state.territory.aggregates.byRa[ra.raGeoId] || null;
+      const crescTd = document.createElement('td');
+      crescTd.textContent = formatByUnit('pct_decimal', agregado ? agregado.householdsGrowthPct : null);
+      crescTd.title = 'IBGE · Grade Estatística 2010/2022: (domicílios 2022 − 2010) ÷ 2010';
+      const empregosTd = document.createElement('td');
+      empregosTd.textContent = formatByUnit('ratio1', agregado ? agregado.jobsPer1000Residents : null);
+      empregosTd.title = 'Ipea · Acesso a Oportunidades (RAIS): empregos formais ÷ população-base (Censo 2010) × 1.000';
+      tr.append(crescTd, empregosTd);
+    }
     tbody.append(tr);
   }
   tabela.append(thead, tbody);
@@ -6259,6 +6388,14 @@ async function load() {
   state.territory.publicData = result.publicData || EMPTY_PUBLIC_DATA;
   const avisosTerritorio = await loadTerritorySmallFiles();
   state.baseWarnings = [...state.baseWarnings, ...avisosTerritorio];
+  // Ranking, dispersão e Comparar leem `ra[attr]` (issue #153): os agregados territoriais e
+  // a renda de RA_PROFILES entram no índice do PDAD aqui, cruzados pela ponte — sem ponte ou
+  // sem arquivo, o índice fica como era e os indicadores resolvem ausentes (R2.5).
+  state.pdadIndex = attachRaProfiles(
+    attachTerritory(state.pdadIndex, state.territory.aggregates.byRa),
+    state.raProfiles,
+    state.territory.crosswalk,
+  );
   renderTerritoryControls();
   renderPolygonLegend();
   renderTrafficPanel();

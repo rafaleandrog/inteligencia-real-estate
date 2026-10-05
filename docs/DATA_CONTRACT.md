@@ -1573,6 +1573,12 @@ gerado vem `null` em todos os campos dele (nunca zero), com a flag correspondent
 Escalas declaradas no cliente (`DATASET_PERCENT_SCALE`): `RA_AGGREGATES` decimal;
 `PUBLIC_CENTRALITY` pontos (percentil 0–100).
 
+Cruzamento no cliente (issue #153): `attachTerritory` anexa `householdsGrowthPct`,
+`jobsPer1000Residents`, `jobsPerKm2` e `centralityMean` a cada RA do índice do PDAD, e
+`attachRaProfiles` anexa `incomePerCapita` de `RA_PROFILES` cruzando pela ponte — sem ponte,
+nada é anexado. Ranking, dispersão, Comparar, o perfil territorial do Diagnóstico e o bloco da
+RA no mapa leem esses campos com fórmula e fonte ao lado do número; ausência é `null`.
+
 ---
 
 ## Provisionamento pós-semente (Apps Script v2.0.0 e v2.2.1)

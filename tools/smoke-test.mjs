@@ -3045,6 +3045,189 @@ soVias.marcado && soVias.canvasLinhas === 1 && soVias.canvasArea === 0 && soVias
   ? pass('#mapa?vias=1 abre só com as vias, no overview (as mais centrais), sem coroplética')
   : fail('abertura pela URL (vias): ' + JSON.stringify(soVias));
 
+// --- Território: indicadores no Ranking, dispersão, Comparar, Diagnóstico e mapa (issue #153) --
+console.log('\n== Território · indicadores cruzados com o PDAD (issue #153) ==');
+
+// PDAD sintético para as duas RAs da fixture pública (Cruzeiro RA_11, Candangolândia RA_19):
+// o cruzamento é por `RA_nn` nos dois lados; o filtro do mapa usa a grafia romana e só a
+// ponte (`ra_crosswalk.json`) liga as duas.
+const pdadRow = (ra, nome, code, categoria, pct, total) => ({
+  pdad_year: '2024', geography_scope: 'ra', ra_geo_id: ra, ra_name: nome, figure_number: '1', table_number: '1',
+  section: 'smoke', indicator_code: code, indicator_name: code, universe: 'domicílios', segment_dimension: '',
+  segment_value: '', response_category: categoria, category_standard: categoria, estimate_total: String(total),
+  estimate_pct: String(pct), source_value_status: 'published', source_file: 'smoke', source_institution: 'smoke',
+});
+const PDAD_SMOKE = [
+  pdadRow('RA_11', 'Cruzeiro', 'dwelling_type', 'Apartamento', 70, 700), pdadRow('RA_11', 'Cruzeiro', 'dwelling_type', 'Casa', 30, 300),
+  pdadRow('RA_19', 'Candangolândia', 'dwelling_type', 'Apartamento', 20, 200), pdadRow('RA_19', 'Candangolândia', 'dwelling_type', 'Casa', 80, 800),
+  pdadRow('RA_11', 'Cruzeiro', 'tenure_status', 'Alugado', 35, 350), pdadRow('RA_11', 'Cruzeiro', 'tenure_status', 'Próprio', 65, 650),
+  pdadRow('RA_19', 'Candangolândia', 'tenure_status', 'Alugado', 25, 250), pdadRow('RA_19', 'Candangolândia', 'tenure_status', 'Próprio', 75, 750),
+  pdadRow('RA_11', 'Cruzeiro', 'registered_deed', 'Sim', 80, 520), pdadRow('RA_11', 'Cruzeiro', 'registered_deed', 'Não', 20, 130),
+  pdadRow('RA_19', 'Candangolândia', 'registered_deed', 'Sim', 60, 450), pdadRow('RA_19', 'Candangolândia', 'registered_deed', 'Não', 40, 300),
+];
+const novaPaginaIndicadores = async (hash) => {
+  const pg = await context.newPage();
+  await pg.addInitScript(() => {
+    Object.defineProperty(window, 'APP_CONFIG', {
+      configurable: true,
+      set(value) { delete window.APP_CONFIG; window.APP_CONFIG = value; if (value) { value.demoMode = true; value.publicDataUrl = './tests/fixtures/public/'; } },
+      get() { return undefined; },
+    });
+  });
+  await pg.route('**/data/demo.json', async (route) => {
+    const response = await route.fetch();
+    const payload = await response.json();
+    payload.pdad_a_data = PDAD_SMOKE;
+    // Um anúncio na RA XI para o filtro do mapa ter a opção (o demo não cobre o Cruzeiro).
+    payload.listings = [...payload.listings, { ...payload.listings[0], listing_id: 'SMOKE_RA_XI', title: 'Anúncio sintético no Cruzeiro', ra_geo_id: 'RA2026_RA-XI' }];
+    // Renda publicada em RA_PROFILES (grafia romana): só a ponte a leva até o PDAD (RA_nn).
+    const RENDA = { 'RA2026_RA-XI': '4100', 'RA2026_RA-XIX': '2350.5' };
+    payload.ra_profiles = payload.ra_profiles.map((r) => (RENDA[r.ra_geo_id] ? { ...r, income_per_capita_brl: RENDA[r.ra_geo_id] } : r));
+    await route.fulfill({ response, json: payload });
+  });
+  await pg.goto(`http://localhost:8080/${hash}`, { waitUntil: 'networkidle' });
+  await pg.waitForTimeout(1500);
+  return pg;
+};
+
+// Ranking: cartões territoriais com valor, posição, fórmula e fonte.
+const rankPage = await novaPaginaIndicadores('#ranking');
+const ranking = await rankPage.evaluate(() => {
+  const cartoes = [...document.querySelectorAll('#pdadRankCards .pdad-rank-card')];
+  const achar = (rotulo) => cartoes.find((c) => c.querySelector('.pdad-rank-label')?.textContent === rotulo);
+  const ler = (c) => c && { valor: c.querySelector('strong').textContent, pos: c.querySelector('.pdad-rank-pos')?.textContent, fonte: c.querySelector('.pdad-rank-fonte')?.textContent, title: c.title, off: c.classList.contains('pdad-rank-off') };
+  // `.pdad-rank-pos` é a linha de posição; a fonte vem depois dela, com classe própria.
+  return {
+    visivel: !document.querySelector('#pdadRankingView').hidden,
+    ra: document.querySelector('#pdadRankRa').value,
+    total: cartoes.length,
+    empregos: ler(achar('Empregos formais por mil moradores')),
+    crescimento: ler(achar('Crescimento de domicílios 2010→2022')),
+    centralidade: ler(achar('Centralidade viária média')),
+    renda: ler(achar('Renda per capita')),
+  };
+});
+ranking.visivel && ranking.total >= 14
+  ? pass(`o Ranking abre com ${ranking.total} cartões, incluindo os territoriais`)
+  : fail('ranking: ' + JSON.stringify({ visivel: ranking.visivel, total: ranking.total }));
+// A RA de referência do Ranking é a primeira em ordem alfabética (Candangolândia, RA_19):
+// 578 empregos/mil hab. contra 18.000 do Cruzeiro → 2ª de 2.
+ranking.empregos && ranking.empregos.valor === '578,0' && /2ª de 2 RAs/.test(ranking.empregos.pos) && /Ipea/.test(ranking.empregos.fonte) && /÷/.test(ranking.empregos.title)
+  ? pass(`empregos por mil moradores da ${ranking.ra}: ${ranking.empregos.valor}, ${ranking.empregos.pos}, fonte e fórmula no cartão`)
+  : fail('cartão de empregos: ' + JSON.stringify(ranking.empregos));
+ranking.crescimento && ranking.crescimento.valor === '28,9%' && /IBGE/.test(ranking.crescimento.fonte)
+  ? pass('crescimento de domicílios em fração decimal formatada como percentual, com a fonte IBGE')
+  : fail('cartão de crescimento: ' + JSON.stringify(ranking.crescimento));
+ranking.centralidade && /^0,\d{3}$/.test(ranking.centralidade.valor) && /OpenStreetMap/.test(ranking.centralidade.fonte)
+  ? pass('centralidade média com três casas e fonte OpenStreetMap')
+  : fail('cartão de centralidade: ' + JSON.stringify(ranking.centralidade));
+ranking.renda && ranking.renda.valor === 'R$ 2.351' && !ranking.renda.off && /1ª de 2 RAs|2ª de 2 RAs/.test(ranking.renda.pos)
+  ? pass(`renda per capita resolve pela ponte (RA_PROFILES, grafia romana → RA_nn): ${ranking.renda.valor}`)
+  : fail('renda per capita não cruzou pela ponte: ' + JSON.stringify(ranking.renda));
+
+// Dispersão: a leitura cruzada com o IBGE formata o eixo pela unidade declarada.
+await rankPage.goto('http://localhost:8080/#diagnostico', { waitUntil: 'networkidle' });
+await rankPage.waitForTimeout(800);
+await rankPage.selectOption('#pdadScatterView', 'cresc_vert');
+await rankPage.waitForTimeout(600);
+// Com 2 RAs a dispersão diz "poucas RAs" (ela exige 3) — o que se prova aqui é que a leitura
+// cruzada existe, resolve o eixo do IBGE para as DUAS RAs (nenhuma excluída por falta de
+// valor) e explica a fonte no insight.
+const dispersao = await rankPage.evaluate(() => ({
+  opcao: document.querySelector('#pdadScatterView').value,
+  insight: document.querySelector('#pdadScatterInsight').textContent,
+  plot: document.querySelector('#pdadScatterPlot').textContent,
+  nota: document.querySelector('#pdadScatterNote').textContent,
+}));
+dispersao.opcao === 'cresc_vert' && /IBGE/.test(dispersao.insight) && /Poucas RAs/.test(dispersao.plot) && dispersao.nota === ''
+  ? pass('a leitura "Crescimento de domicílios × Verticalização" resolve o eixo do IBGE para as 2 RAs (nenhuma excluída) e cita a fonte')
+  : fail('dispersão cruzada: ' + JSON.stringify(dispersao));
+
+// Comparar: colunas territoriais só porque os agregados chegaram.
+await rankPage.goto('http://localhost:8080/#comparar', { waitUntil: 'networkidle' });
+await rankPage.waitForTimeout(800);
+const comparar = await rankPage.evaluate(() => ({
+  cabecalhos: [...document.querySelectorAll('#pdadCvSummary th')].map((n) => n.textContent),
+  linhas: [...document.querySelectorAll('#pdadCvSummary tbody tr')].map((tr) => [...tr.querySelectorAll('td')].map((td) => td.textContent)),
+}));
+comparar.cabecalhos.includes('Dom. 2010→2022 (IBGE)') && comparar.cabecalhos.includes('Empregos/mil hab. (Ipea)')
+  && comparar.linhas.some((l) => l[0].includes('Cruzeiro') && l.includes('11,4%') && l.includes('18.000,0'))
+  ? pass('o Comparar ganha as colunas territoriais com fonte no cabeçalho e os valores por RA')
+  : fail('comparar: ' + JSON.stringify(comparar));
+
+// Diagnóstico com uma RA: o perfil territorial com referência explícita e posição.
+await rankPage.close();
+const diagPage = await novaPaginaIndicadores('#diagnostico?ra=RA_11');
+const perfil = await diagPage.evaluate(() => {
+  const bloco = document.querySelector('#pdadTerritoryProfile');
+  const tiles = [...bloco.querySelectorAll('.pdad-profile-item')].map((t) => ({
+    id: t.dataset.territoryItem, valor: t.querySelector('.pdad-profile-value').textContent, ref: t.querySelector('.pdad-profile-ref').textContent,
+    fonte: t.querySelector('.pdad-profile-fonte').textContent, rank: t.querySelector('.pdad-profile-rank')?.textContent, title: t.title,
+  }));
+  return { visivel: !bloco.hidden, titulo: bloco.querySelector('.pdad-profile-head')?.textContent, tiles, nota: bloco.querySelector('.pdad-profile-note')?.textContent };
+});
+perfil.visivel && /Cruzeiro/.test(perfil.titulo) && perfil.tiles.length === 4
+  ? pass('o Diagnóstico de uma RA mostra o perfil territorial com os 4 indicadores')
+  : fail('perfil territorial: ' + JSON.stringify({ visivel: perfil.visivel, titulo: perfil.titulo, n: perfil.tiles.length }));
+const cresc = perfil.tiles.find((t) => t.id === 'householdsGrowth');
+cresc && cresc.valor === '11,4%' && /mediana de 2 RAs com dado/.test(cresc.ref) && /p\.p\./.test(cresc.ref) && cresc.rank === '2ª de 2 RAs com dado' && /IBGE/.test(cresc.fonte) && /÷/.test(cresc.title)
+  ? pass('crescimento de domicílios: valor, diferença em p.p. contra a mediana de 2 RAs, posição, fonte e fórmula')
+  : fail('tile de crescimento: ' + JSON.stringify(cresc));
+/não a média do DF/.test(perfil.nota || '')
+  ? pass('a nota diz que a referência é a mediana das RAs com dado, não a média do DF')
+  : fail('nota do perfil territorial: ' + perfil.nota);
+
+// Mapa: o bloco da RA selecionada ganha as linhas territoriais, pela ponte romana → RA_nn.
+await diagPage.goto('http://localhost:8080/#mapa', { waitUntil: 'networkidle' });
+await diagPage.waitForTimeout(800);
+await diagPage.selectOption('#raFilter', 'RA2026_RA-XI');
+await diagPage.waitForTimeout(500);
+const blocoRa = await diagPage.evaluate(() => ({
+  visivel: !document.querySelector('#raProfile').hidden,
+  linhas: [...document.querySelectorAll('#raProfile .ra-stats li')].map((li) => [li.querySelector('.ra-stat-label').textContent, li.querySelector('.ra-stat-value').textContent, li.title]),
+}));
+const domIbge = blocoRa.linhas.find((l) => l[0] === 'Domicílios 2022 (IBGE)');
+const empIpea = blocoRa.linhas.find((l) => l[0] === 'Empregos formais 2019 (Ipea)');
+blocoRa.visivel && domIbge && domIbge[1] === '390' && empIpea && empIpea[1] === '5.400' && /Grade|IBGE/.test(domIbge[2])
+  ? pass('o bloco da RA no mapa traz domicílios (IBGE) e empregos (Ipea) com ano e fonte no rótulo, cruzados pela ponte')
+  : fail('bloco da RA (território): ' + JSON.stringify(blocoRa));
+blocoRa.linhas.some((l) => l[0] === 'População') && blocoRa.linhas.findIndex((l) => l[0] === 'População') < blocoRa.linhas.findIndex((l) => l[0] === 'Domicílios 2022 (IBGE)')
+  ? pass('os números de RA_PROFILES continuam primeiro; os públicos vêm depois, rotulados')
+  : fail('ordem do bloco da RA: ' + JSON.stringify(blocoRa.linhas.map((l) => l[0])));
+
+// Sem a ponte (manifest abortado), nada territorial aparece — nem no Ranking, nem no bloco.
+const semPontePage = await context.newPage();
+await semPontePage.route('**/nao-existe/manifest.json', (route) => route.abort());
+await semPontePage.addInitScript(() => {
+  Object.defineProperty(window, 'APP_CONFIG', {
+    configurable: true,
+    set(value) { delete window.APP_CONFIG; window.APP_CONFIG = value; if (value) { value.demoMode = true; value.publicDataUrl = './nao-existe/'; } },
+    get() { return undefined; },
+  });
+});
+await semPontePage.route('**/data/demo.json', async (route) => {
+  const response = await route.fetch();
+  const payload = await response.json();
+  payload.pdad_a_data = PDAD_SMOKE;
+  await route.fulfill({ response, json: payload });
+});
+await semPontePage.goto('http://localhost:8080/#ranking', { waitUntil: 'networkidle' });
+await semPontePage.waitForTimeout(1500);
+const semPonte = await semPontePage.evaluate(() => {
+  const cartoes = [...document.querySelectorAll('#pdadRankCards .pdad-rank-card')];
+  const empregos = cartoes.find((c) => c.querySelector('.pdad-rank-label')?.textContent === 'Empregos formais por mil moradores');
+  const renda = cartoes.find((c) => c.querySelector('.pdad-rank-label')?.textContent === 'Renda per capita');
+  return {
+    empregos: empregos && { valor: empregos.querySelector('strong').textContent, pos: empregos.querySelector('.pdad-rank-pos')?.textContent },
+    renda: renda && { valor: renda.querySelector('strong').textContent },
+    perfilEscondido: document.querySelector('#pdadTerritoryProfile').hidden,
+    cabecalhos: [...document.querySelectorAll('#pdadCvSummary th')].map((n) => n.textContent),
+  };
+});
+semPonte.empregos && semPonte.empregos.valor === '—' && /sem valor publicado/.test(semPonte.empregos.pos) && semPonte.renda && semPonte.renda.valor === '—'
+  ? pass('sem os arquivos públicos, os indicadores territoriais e a renda resolvem ausentes — nenhum join adivinhado')
+  : fail('ranking sem ponte: ' + JSON.stringify(semPonte));
+
 console.log(`\n===== ${ok.length} ok, ${errors.length} falhas =====`);
 await browser.close();
 process.exit(errors.length > 0 ? 1 : 0);

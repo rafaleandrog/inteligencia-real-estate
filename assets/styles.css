@@ -1261,6 +1261,11 @@ select:focus, input[type="number"]:focus {
 .territorio-status[hidden],
 .territorio-nota[hidden] { display: none; }
 .territorio-nota { color: var(--texto-sec); }
+/* Fonte do indicador territorial no Ranking e no perfil (issue #153): o mesmo tom miúdo da
+   linha de posição — é procedência, não valor. */
+.pdad-rank-fonte,
+.pdad-profile-fonte { color: var(--texto-fraco); }
+.pdad-rank-fonte { margin-top: var(--esp-1); font-size: var(--tipo-2xs); line-height: 1.4; }
 .territorio-status[data-tone='erro'] { color: var(--texto-sec); }
 .territorio-procedencia a { color: var(--accent-text); text-decoration: none; }
 .territorio-procedencia a:hover { text-decoration: underline; }

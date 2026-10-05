@@ -9,7 +9,7 @@
 
 import { toInteger, toNumber, toText } from '../normalize.js';
 import { formatBRL, formatDecimal, formatNumber, formatPercent, percentFromDecimal } from '../format.js';
-import { EMPTY_CROSSWALK } from './ra-keys.js';
+import { EMPTY_CROSSWALK, toRaRoman } from './ra-keys.js';
 
 /** As colunas do contrato (docs/DATA_CONTRACT.md, "ra_aggregates"). Fora daqui é aviso. */
 export const RA_AGGREGATE_COLUMNS = Object.freeze([
@@ -173,4 +173,93 @@ export function territoryProfileRows(row) {
   add('Centralidade viária média (OSM)', row.centralityMean === null ? null : formatByUnit('index3', row.centralityMean),
     row.centralitySource || 'OpenStreetMap');
   return out;
+}
+
+/** Os atributos que `attachTerritory` escreve em cada RA do índice do PDAD. */
+export const TERRITORY_ATTRS = Object.freeze(TERRITORY_INDICATORS.map((i) => i.attr));
+
+/**
+ * Anexa os agregados territoriais a cada RA do índice do PDAD (issue #153) — sem mutação:
+ * devolve um índice novo. Com `byRa` vazio devolve o MESMO índice: sem arquivo público, a
+ * RA fica exatamente como era, e `rankScalar` lê ausência (R2.5). RA sem linha nos
+ * agregados recebe `null` em cada atributo — nunca zero.
+ */
+export function attachTerritory(pdadIndex, byRa) {
+  if (!pdadIndex || typeof pdadIndex !== 'object') return pdadIndex;
+  if (!byRa || Object.keys(byRa).length === 0) return pdadIndex;
+  const out = {};
+  for (const [year, ras] of Object.entries(pdadIndex)) {
+    out[year] = {};
+    for (const [id, ra] of Object.entries(ras)) {
+      const row = byRa[id] || null;
+      const extra = {};
+      for (const attr of TERRITORY_ATTRS) extra[attr] = row && Number.isFinite(row[attr]) ? row[attr] : null;
+      out[year][id] = { ...ra, ...extra };
+    }
+  }
+  return out;
+}
+
+/**
+ * Anexa `incomePerCapita` (de `RA_PROFILES.income_per_capita_brl`) às RAs do índice do PDAD,
+ * cruzando pela PONTE (issue #153, R2.9): `RA_PROFILES` é indexada por `RA2026_RA-romano`,
+ * o PDAD por `RA_nn`, e só `ra_crosswalk.json` liga as duas. Sem ponte, nada é anexado — a
+ * renda continua ausente pelo motivo certo, nunca por um join adivinhado (R8.30, R8.51).
+ */
+export function attachRaProfiles(pdadIndex, raProfiles, crosswalk = EMPTY_CROSSWALK) {
+  if (!pdadIndex || typeof pdadIndex !== 'object') return pdadIndex;
+  if (!raProfiles || !crosswalk || crosswalk.byNn.size === 0) return pdadIndex;
+  const out = {};
+  for (const [year, ras] of Object.entries(pdadIndex)) {
+    out[year] = {};
+    for (const [id, ra] of Object.entries(ras)) {
+      const roman = toRaRoman(id, crosswalk);
+      const profile = roman ? raProfiles[roman] : null;
+      const income = profile ? toNumber(profile.income_per_capita_brl) : null;
+      out[year][id] = { ...ra, incomePerCapita: income === null ? (ra.incomePerCapita ?? null) : income };
+    }
+  }
+  return out;
+}
+
+function medianOf(values) {
+  const nums = values.filter((v) => Number.isFinite(v)).sort((a, b) => a - b);
+  if (nums.length === 0) return null;
+  const mid = Math.floor(nums.length / 2);
+  return nums.length % 2 === 1 ? nums[mid] : (nums[mid - 1] + nums[mid]) / 2;
+}
+
+/**
+ * Perfil territorial de uma RA para o Diagnóstico (issue #153): cada indicador com valor,
+ * referência explícita — mediana entre as RAs COM dado, com o `n` escrito (R8.87) —, a
+ * diferença e a posição entre elas. RA fora dos agregados devolve `null`; indicador sem
+ * valor fica com `value: null` e sem posição — nunca zero, nunca "0ª".
+ */
+export function raTerritoryProfile(byRa, raGeoId) {
+  const row = byRa ? byRa[raGeoId] : null;
+  if (!row) return null;
+  const rows = Object.values(byRa);
+  return {
+    raGeoId,
+    raName: row.raName,
+    items: TERRITORY_INDICATORS.map((ind) => {
+      const values = rows.map((r) => r[ind.attr]).filter((v) => Number.isFinite(v));
+      const value = Number.isFinite(row[ind.attr]) ? row[ind.attr] : null;
+      const median = medianOf(values);
+      const position = value === null ? null : values.filter((v) => v > value).length + 1;
+      return {
+        id: ind.id,
+        label: ind.label,
+        tema: ind.tema,
+        unit: ind.unit,
+        formula: ind.formula,
+        source: ind.source,
+        value,
+        formatted: formatByUnit(ind.unit, value),
+        reference: { median, n: values.length, formatted: formatByUnit(ind.unit, median) },
+        delta: value !== null && median !== null ? value - median : null,
+        rank: value === null ? null : { position, total: values.length },
+      };
+    }),
+  };
 }

@@ -1039,3 +1039,10 @@ Cada uma nasce de um erro que aconteceu de verdade.
   apresentada como se fosse o dado completo (R5.7). Mecanismo: `trafficDropWarnings` nomeia a
   aba, quantas linhas e por quê, nos três caminhos. Um contador de descarte sem consumidor é
   um bug esperando a próxima planilha suja.
+- **R8.99** *(2026-10-05, issue #153)* **Guarda que descarta template literal inteiro não vê
+  o código que vive dentro de `${…}`.** `tests/app-imports.test.js` apagava toda crase como se fosse
+  texto, e `percentFromDecimal(...)` entrou em `src/app.js` dentro de uma interpolação sem import:
+  `npm test` verde, `node --check` verde, e no navegador o `ReferenceError` derrubou a página inteira
+  para o estado de erro — a classe exata de defeito que a guarda existia para impedir. A guarda agora
+  preserva as interpolações e tem um caso plantado com a chamada dentro de `${…}`. Regra: ao limpar
+  código para uma checagem estática, trate `${…}` como código, não como string.
