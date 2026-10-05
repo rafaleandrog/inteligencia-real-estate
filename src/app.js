@@ -90,7 +90,7 @@ import { legendRows, legendTitle, lineLegendRows, provenanceLine } from './terri
 import { territoryDetailTiers, territoryTooltipText } from './territorio/detail.js';
 import { buildRaCrosswalk, EMPTY_CROSSWALK, excludeRas, raNameConflicts, toRaNn } from './territorio/ra-keys.js';
 import {
-  normalizeRaAggregates, attachTerritory, attachRaProfiles, raTerritoryProfile, territoryProfileRows, formatByUnit,
+  normalizeRaAggregates, attachTerritory, attachRaProfiles, raProfileFor, raTerritoryProfile, territoryProfileRows, formatByUnit,
 } from './territorio/aggregates.js';
 
 const CONFIG = window.APP_CONFIG || {};
@@ -2064,7 +2064,13 @@ function buildRaAgeChart(profile) {
  * que os registros já carregam.
  */
 function renderRaProfile() {
-  const profile = state.filters.ra ? state.raProfiles[state.filters.ra] : null;
+  // O filtro usa a grafia romana (LISTINGS); a aba RA_PROFILES sincronizada usa `RA_nn`
+  // (achado do Codex na PR #157). `raProfileFor` tenta a chave direta e, pela ponte, a outra
+  // grafia — nunca por nome.
+  const chaveNn = state.filters.ra ? toRaNn(state.filters.ra, state.territory.crosswalk) : null;
+  const profile = state.filters.ra
+    ? (raProfileFor(state.filters.ra, state.raProfiles, state.territory.crosswalk) || (chaveNn ? raProfileFor(chaveNn, state.raProfiles, state.territory.crosswalk) : null))
+    : null;
   const frag = document.createDocumentFragment();
 
   const stats = document.createElement('ul');

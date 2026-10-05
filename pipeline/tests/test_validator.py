@@ -255,3 +255,18 @@ class SchemasDirAbsentTests(unittest.TestCase):
         self.assertFalse(has_errors(findings), [str(f) for f in findings])
         self.assertTrue(any(f.check == "schema" and "schemas/ ausente" in f.message for f in findings))
         public.tmp.cleanup()
+
+
+@unittest.skipUnless(__import__("importlib").util.find_spec("jsonschema"), "jsonschema ausente")
+class EveryFeatureIsValidatedTests(unittest.TestCase):
+    """Achado do Codex na PR #157: a feição 5.001 também passa pelo schema."""
+
+    def test_invalid_property_after_the_5000th_feature_is_rejected(self):
+        public = PublicDir()
+        features = [make_feature(f"200ME{i}N1", square(-47.9, -15.8 + i * 1e-6), cell_props(f"200ME{i}N1", 50.0, 0)) for i in range(5001)]
+        features[-1]["properties"]["propriedade_fora_do_contrato"] = 1
+        root = public.build(features=features, budget=20_000_000)
+        findings = validate_public_dir(root, bbox=BBOX)
+        self.assertTrue(has_errors(findings), [str(f) for f in findings][:5])
+        self.assertTrue(any(f.check == "schema" and "200ME5000N1" in f.message for f in findings), [str(f) for f in findings][:5])
+        public.tmp.cleanup()

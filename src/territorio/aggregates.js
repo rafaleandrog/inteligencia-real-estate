@@ -201,20 +201,35 @@ export function attachTerritory(pdadIndex, byRa) {
 }
 
 /**
- * Anexa `incomePerCapita` (de `RA_PROFILES.income_per_capita_brl`) às RAs do índice do PDAD,
- * cruzando pela PONTE (issue #153, R2.9): `RA_PROFILES` é indexada por `RA2026_RA-romano`,
- * o PDAD por `RA_nn`, e só `ra_crosswalk.json` liga as duas. Sem ponte, nada é anexado — a
- * renda continua ausente pelo motivo certo, nunca por um join adivinhado (R8.30, R8.51).
+ * O perfil de `RA_PROFILES` de uma RA do PDAD (`RA_nn`), pelas DUAS grafias que a aba já
+ * teve — e só por elas (issue #153, R2.9; achado do Codex na PR #157):
+ *
+ * - `RA_nn` direto: é a chave que `syncAdministrativeRegions_` grava desde a v2.3.0
+ *   (`Code.gs`, `'RA_' + nn`) — a mesma do PDAD, sem tradução nenhuma;
+ * - `RA2026_RA-romano` via ponte: a grafia antiga (e a do `data/demo.json`), que só a
+ *   `ra_crosswalk.json` traduz. Sem ponte, a grafia romana não resolve — nunca por nome
+ *   nem por aritmética de romanos (R8.30, R8.51).
+ */
+export function raProfileFor(raGeoId, raProfiles, crosswalk = EMPTY_CROSSWALK) {
+  if (!raProfiles || !raGeoId) return null;
+  if (Object.prototype.hasOwnProperty.call(raProfiles, raGeoId)) return raProfiles[raGeoId];
+  const roman = toRaRoman(raGeoId, crosswalk);
+  return roman && Object.prototype.hasOwnProperty.call(raProfiles, roman) ? raProfiles[roman] : null;
+}
+
+/**
+ * Anexa `incomePerCapita` (de `RA_PROFILES.income_per_capita_brl`) às RAs do índice do PDAD.
+ * O perfil é achado por `raProfileFor`; RA sem perfil (ou com a coluna vazia) fica com o
+ * valor que já tinha, ou `null` — ausência, nunca zero.
  */
 export function attachRaProfiles(pdadIndex, raProfiles, crosswalk = EMPTY_CROSSWALK) {
   if (!pdadIndex || typeof pdadIndex !== 'object') return pdadIndex;
-  if (!raProfiles || !crosswalk || crosswalk.byNn.size === 0) return pdadIndex;
+  if (!raProfiles || Object.keys(raProfiles).length === 0) return pdadIndex;
   const out = {};
   for (const [year, ras] of Object.entries(pdadIndex)) {
     out[year] = {};
     for (const [id, ra] of Object.entries(ras)) {
-      const roman = toRaRoman(id, crosswalk);
-      const profile = roman ? raProfiles[roman] : null;
+      const profile = raProfileFor(id, raProfiles, crosswalk);
       const income = profile ? toNumber(profile.income_per_capita_brl) : null;
       out[year][id] = { ...ra, incomePerCapita: income === null ? (ra.incomePerCapita ?? null) : income };
     }

@@ -176,14 +176,27 @@ def _check_aggregates(payload: Any, crosswalk_ids: set[str] | None) -> list[Find
     return out
 
 
+_VALIDATORS: dict[Path, Any] = {}
+
+
+def _compiled_validator(schema_path: Path) -> Any:
+    """Um validador compilado por schema: validar 50 mil feições relendo o arquivo a cada uma
+    era o que fazia o laço parecer caro demais para cobrir tudo."""
+    validator = _VALIDATORS.get(schema_path)
+    if validator is None:
+        schema = json.loads(schema_path.read_text("utf-8"))
+        validator = jsonschema.Draft202012Validator(schema)
+        _VALIDATORS[schema_path] = validator
+    return validator
+
+
 def _schema_validate(schemas_dir: Path | None, schema_rel: str | None, instance: Any, label: str) -> list[Finding]:
     if jsonschema is None or not schemas_dir or not schema_rel:
         return []
     schema_path = schemas_dir.parent / schema_rel if schema_rel.startswith("schemas/") else schemas_dir / schema_rel
     if not schema_path.exists():
         return [Finding("erro", "schema", f"{label}: schema ausente {schema_rel}")]
-    schema = json.loads(schema_path.read_text("utf-8"))
-    validator = jsonschema.Draft202012Validator(schema)
+    validator = _compiled_validator(schema_path)
     errors = sorted(validator.iter_errors(instance), key=lambda e: list(e.path))
     out = []
     for error in errors[:20]:
@@ -312,7 +325,10 @@ def validate_public_dir(public_dir: str | Path, *, bbox: tuple[float, float, flo
             if isinstance(payload, dict) and payload.get("type") == "FeatureCollection":
                 actual = len(payload.get("features", []))
                 findings.extend(_check_geojson(dataset, entry, payload, decimals=decimals, bbox=bbox))
-                for feature in payload.get("features", [])[:5000]:
+                # TODA feição passa pelo schema (achado do Codex na PR #157: um teto de 5.000
+                # deixava o resto do arquivo entrar sem contrato). O laço para na primeira
+                # feição inválida — basta uma para reprovar o arquivo.
+                for feature in payload.get("features", []):
                     props = feature.get("properties") if isinstance(feature, dict) else None
                     if isinstance(props, dict):
                         findings.extend(_schema_validate(schemas_dir, dataset.get("schema"), props, f"{rel}#{feature.get('id')}"))

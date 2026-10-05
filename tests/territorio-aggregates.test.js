@@ -118,7 +118,7 @@ test('territoryProfileRows leva ano e fonte no rótulo e omite o que está ausen
 
 // --- Cruzamento com o PDAD e com RA_PROFILES (issue #153) ---------------------------------
 
-import { attachTerritory, attachRaProfiles, raTerritoryProfile, TERRITORY_ATTRS } from '../src/territorio/aggregates.js';
+import { attachTerritory, attachRaProfiles, raProfileFor, raTerritoryProfile, TERRITORY_ATTRS } from '../src/territorio/aggregates.js';
 import { toRaRoman } from '../src/territorio/ra-keys.js';
 
 const INDEX = {
@@ -143,16 +143,30 @@ test('attachTerritory anexa os atributos sem mutar o índice; RA sem agregado re
   assert.equal(attachTerritory(null, byRa), null);
 });
 
-test('attachRaProfiles cruza RA_PROFILES pela ponte; sem ponte, nada é anexado', () => {
-  const profiles = { 'RA2026_RA-XI': { income_per_capita_brl: 3250.5 }, 'RA2026_RA-XIX': { income_per_capita_brl: null } };
-  const out = attachRaProfiles(INDEX, profiles, CW);
+test('attachRaProfiles: RA_PROFILES sincronizada (RA_nn) cruza direto; a grafia romana só pela ponte', () => {
+  // Grafia romana (demo / aba antiga): só a ponte traduz.
+  const romanos = { 'RA2026_RA-XI': { income_per_capita_brl: 3250.5 }, 'RA2026_RA-XIX': { income_per_capita_brl: null } };
+  const out = attachRaProfiles(INDEX, romanos, CW);
   assert.equal(toRaRoman('RA_11', CW), 'RA2026_RA-XI');
   assert.equal(out[2024].RA_11.incomePerCapita, 3250.5);
   assert.equal(out[2024].RA_19.incomePerCapita, null, 'coluna vazia é ausência');
   assert.equal(out[2024].RA_01.incomePerCapita, null, 'RA fora da ponte não cruza');
   assert.equal(INDEX[2024].RA_11.incomePerCapita, undefined, 'sem mutação');
-  assert.equal(attachRaProfiles(INDEX, profiles, EMPTY_CROSSWALK), INDEX, 'sem ponte, nenhuma aritmética de romanos');
+  const semPonte = attachRaProfiles(INDEX, romanos, EMPTY_CROSSWALK);
+  assert.equal(semPonte[2024].RA_11.incomePerCapita, null, 'sem ponte, a grafia romana não resolve — nenhuma aritmética de romanos');
+  // Grafia publicada pela sincronização (`Code.gs`: 'RA_' + nn): mesma chave do PDAD, sem ponte
+  // (achado do Codex na PR #157).
+  const sincronizada = { RA_11: { income_per_capita_brl: '4100' }, RA_19: { income_per_capita_brl: 2350.5 } };
+  const direto = attachRaProfiles(INDEX, sincronizada, EMPTY_CROSSWALK);
+  assert.equal(direto[2024].RA_11.incomePerCapita, 4100);
+  assert.equal(direto[2024].RA_19.incomePerCapita, 2350.5);
+  assert.equal(direto[2024].RA_01.incomePerCapita, null);
+  assert.equal(raProfileFor('RA_11', sincronizada), sincronizada.RA_11);
+  assert.equal(raProfileFor('RA_11', romanos, CW), romanos['RA2026_RA-XI']);
+  assert.equal(raProfileFor('RA_11', romanos), null, 'romano sem ponte: ausente');
+  assert.equal(raProfileFor('RA_11', {}), null);
   assert.equal(attachRaProfiles(INDEX, null, CW), INDEX);
+  assert.equal(attachRaProfiles(INDEX, {}, CW), INDEX);
 });
 
 test('raTerritoryProfile: mediana entre as RAs COM dado, n, diferença e posição; ausência sem posição', () => {
