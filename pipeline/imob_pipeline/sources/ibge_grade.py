@@ -20,6 +20,8 @@ from ..geo import bbox_intersects, bbox_union, geometry_bbox
 ZIP_LINK = re.compile(r'href="?(?P<name>grade_id\w+\.zip)"?', re.IGNORECASE)
 # Qualquer link de arquivo na listagem: quando não há grade_id*.zip, o erro mostra o layout real do diretório.
 OTHER_LINK = re.compile(r'href="?(?P<name>[^"\s>]+\.(?:zip|gpkg|7z|rar|tar|gz|csv|xlsx|pdf|txt))"?', re.IGNORECASE)
+# Subpasta numa listagem do geoftp (`href="grade_estatistica/"`); ignora `../` e links absolutos.
+DIR_LINK = re.compile(r'href="?(?P<name>[A-Za-z0-9][A-Za-z0-9_.-]*)/"?', re.IGNORECASE)
 BBox = tuple[float, float, float, float]
 
 
@@ -51,6 +53,16 @@ def parse_other_links(html: str) -> list[str]:
     names: list[str] = []
     for match in OTHER_LINK.finditer(html):
         name = match.group("name").rsplit("/", 1)[-1]
+        if name not in names:
+            names.append(name)
+    return names
+
+
+def parse_dir_links(html: str) -> list[str]:
+    """Subpastas de uma listagem (sem `../`), na ordem, sem repetição."""
+    names: list[str] = []
+    for match in DIR_LINK.finditer(html):
+        name = match.group("name")
         if name not in names:
             names.append(name)
     return names
@@ -158,8 +170,25 @@ def _listing_html(fetcher: Fetcher, base_url: str) -> str:
     return retrieval.path.read_text("utf-8", errors="replace")
 
 
+def _discover(fetcher: Fetcher, base_url: str) -> tuple[list[str], list[str]]:
+    """(nomes `grade_id*.zip`, outros links). Sem zip na listagem, desce UM nível de subpastas
+    (no geoftp, `censo_2022/` só tem subpastas e os zips ficam em `censo_2022/grade_estatistica/`);
+    o nome volta prefixado pela subpasta (`grade_estatistica/grade_id45.zip`), que `quadrant_urls`
+    concatena à base — e é assim que o id deve ser pinado no config."""
+    base = base_url if base_url.endswith("/") else base_url + "/"
+    html = _listing_html(fetcher, base)
+    names = parse_listing(html)
+    others = parse_other_links(html)
+    if not names:
+        for sub in parse_dir_links(html):
+            sub_html = _listing_html(fetcher, f"{base}{sub}/")
+            names.extend(f"{sub}/{name}" for name in parse_listing(sub_html))
+            others.extend(f"{sub}/{name}" for name in parse_other_links(sub_html))
+    return names, others
+
+
 def discover(fetcher: Fetcher, base_url: str) -> list[str]:
-    return parse_listing(_listing_html(fetcher, base_url))
+    return _discover(fetcher, base_url)[0]
 
 
 def file_bounds(path: Path) -> BBox:
@@ -226,12 +255,11 @@ def resolve_quadrants(fetcher: Fetcher, base_url: str, *, bbox: BBox, label: str
     custa baixar a Grade inteira uma vez (o que fica fora do bbox sai do cache); depois da primeira
     execução, pine os ids no config. Devolve (ids sem `.zip`, relatório por arquivo). Sem nenhum
     `grade_id*.zip` na listagem, FALHA nomeando os outros links que encontrou (o layout real)."""
-    html = _listing_html(fetcher, base_url)
-    names = parse_listing(html)
+    names, others = _discover(fetcher, base_url)
     if not names:
-        others = parse_other_links(html)
         raise GradeError(
-            f"{label}: nenhum grade_id*.zip em {base_url}; links encontrados: {others[:40] if others else 'nenhum'}"
+            f"{label}: nenhum grade_id*.zip em {base_url} (nem um nível abaixo); "
+            f"links encontrados: {others[:40] if others else 'nenhum'}"
         )
     target: BBox = (bbox[0] - margin_deg, bbox[1] - margin_deg, bbox[2] + margin_deg, bbox[3] + margin_deg)
     kept: list[str] = []

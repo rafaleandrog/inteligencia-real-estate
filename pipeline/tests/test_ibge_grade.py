@@ -11,7 +11,7 @@ from pathlib import Path
 
 from imob_pipeline.datasets import households_grid
 from imob_pipeline.sources.ibge_grade import (
-    GradeError, discover, file_bounds, load_edition, parse_listing, parse_other_links, quadrant_urls,
+    GradeError, discover, file_bounds, load_edition, parse_dir_links, parse_listing, parse_other_links, quadrant_urls,
     read_grid_file, records_from_geojson, resolve_quadrants, to_wgs84_bounds,
 )
 
@@ -21,6 +21,7 @@ COLUMNS = {"cell_id": "ID_UNICO", "parent_1km": "nome_1KM", "pop": "POP", "dom_o
 BASE_2010 = "https://geoftp.ibge.gov.br/recortes_para_fins_estatisticos/grade_estatistica/censo_2010/"
 BASE_2022 = "https://geoftp.ibge.gov.br/recortes_para_fins_estatisticos/grade_estatistica/censo_2022/"
 DF_BBOX = (-48.30, -16.06, -47.30, -15.48)
+BASE_DIRS = "https://geoftp.ibge.gov.br/recortes_para_fins_estatisticos/grade_estatistica/censo_2022_dirs/"
 
 
 class GradeSourceTests(unittest.TestCase):
@@ -140,6 +141,34 @@ class QuadrantDiscoveryTests(unittest.TestCase):
         fetcher.discard = unittest.mock.Mock(return_value=True)  # o HttpFetcher real tem; a fixture ganha um para o teste
         resolve_quadrants(fetcher, BASE_2010, bbox=DF_BBOX, label="Grade 2010")
         fetcher.discard.assert_called_once_with(BASE_2010 + "grade_id46.zip")
+
+    def test_parse_dir_links_skips_parent_and_files(self):
+        html = (FIXTURES / "grade_listing_dirs.html").read_text("utf-8")
+        self.assertEqual(parse_dir_links(html), ["grade_estatistica", "documentacao"])
+
+    def test_discovery_descends_one_level_when_listing_has_only_subdirectories(self):
+        """`censo_2022/` no geoftp só tem subpastas; os zips estão em `censo_2022/grade_estatistica/`."""
+        fetcher = FixtureFetcher.from_dir(FIXTURES)
+        self.assertEqual(discover(fetcher, BASE_DIRS), ["grade_estatistica/grade_id45.zip", "grade_estatistica/grade_id46.zip"])
+        ids, report = resolve_quadrants(fetcher, BASE_DIRS, bbox=DF_BBOX, label="Grade 2022")
+        self.assertEqual(ids, ["grade_estatistica/grade_id45"])
+        self.assertEqual([r["file"] for r in report], ["grade_estatistica/grade_id45.zip", "grade_estatistica/grade_id46.zip"])
+        # o id prefixado é o que se pina no config: load_edition monta a URL certa a partir dele
+        records, _, retrievals = load_edition(fetcher, base_url=BASE_DIRS, quadrant_ids=ids, columns=COLUMNS, label="Grade 2022")
+        self.assertEqual(retrievals[0]["url"], BASE_DIRS + "grade_estatistica/grade_id45.zip")
+        self.assertGreater(len(records), 0)
+
+    def test_discovery_error_names_links_one_level_down_too(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            top = Path(tmp) / "top.html"
+            top.write_text('<a href="docs/">docs/</a> <a href="nota.txt">nota</a>', "utf-8")
+            sub = Path(tmp) / "sub.html"
+            sub.write_text('<a href="grade_2022.gpkg">g</a>', "utf-8")
+            fetcher = FixtureFetcher({BASE_2022: top, BASE_2022 + "docs/": sub})
+            with self.assertRaises(GradeError) as caught:
+                resolve_quadrants(fetcher, BASE_2022, bbox=DF_BBOX, label="Grade 2022")
+        self.assertIn("nota.txt", str(caught.exception))
+        self.assertIn("docs/grade_2022.gpkg", str(caught.exception))
 
     def test_resolve_quadrants_fails_naming_other_links_when_no_grade_file(self):
         with tempfile.TemporaryDirectory() as tmp:
