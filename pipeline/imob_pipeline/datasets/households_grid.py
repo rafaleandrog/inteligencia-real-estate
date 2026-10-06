@@ -55,6 +55,8 @@ def run(ctx: RunContext) -> dict:
     counts = {**result.counts, "suppressed_2010": len(sup10), "suppressed_2022": len(sup22),
               "quadrants_2010": len(ids10), "quadrants_2022": len(ids22)}
     notes = "A primeira classe (até 100 dom./km²) inclui perda e zero. 'Omitida' (sem domicílio nos dois anos) não é 'sem dado'."
+    if cfg.notes_pt:
+        notes += " " + cfg.notes_pt.strip()
     discovered = disc10 is not None or disc22 is not None
     if discovered:
         notes += (f" Quadrantes da Grade resolvidos pelo bbox do projeto nesta execução "
@@ -75,7 +77,7 @@ def run(ctx: RunContext) -> dict:
         ),
         ra_assignment_method=ctx.config.ra.assignment_method,
         class_breaks=breaks_block(dict(cfg.breaks), n=len(result.detail)),
-        counts=counts, quality_flags=sorted(result.flags),
+        counts=counts, quality_flags=sorted(set(result.flags) | set(cfg.dataset_flags)),
         notes_pt=notes,
         schema=SCHEMA,
     )

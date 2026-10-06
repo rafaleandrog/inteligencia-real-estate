@@ -32,9 +32,13 @@ base_url_2022 = "https://geoftp.ibge.gov.br/recortes_para_fins_estatisticos/grad
 quadrant_ids = []
 columns_2010 = { cell_id = "ID_UNICO", parent_1km = "nome_1KM", pop = "POP", dom_ocu = "DOM_OCU" }
 # Grade 2022 (layout real, primeira execução em 2026-10-06, #164): só duas variáveis, TOTAL (população) e
-# TOTAL_DOM (lido como domicílios particulares permanentes ocupados — conferir na nota técnica do IBGE),
-# e o pai de 1 km em minúsculas (nome_1km). Demais colunas: QUADRANTE, nome_5KM … nome_500KM.
+# TOTAL_DOM — domicílios ocupados, PARTICULARES E COLETIVOS, conforme as notas metodológicas da Grade 2022
+# (geoftp …/censo_2022/Notas_metodologicas_grade_estatistica_2022.pdf) —, e o pai de 1 km em minúsculas
+# (nome_1km). Demais colunas: QUADRANTE, nome_5KM … nome_500KM. Em 2010, DOM_OCU é "domicílios ocupados";
+# enquanto a nota de 2010 não confirmar o mesmo universo, o conjunto leva a flag e a nota abaixo.
 columns_2022 = { cell_id = "ID_UNICO", parent_1km = "nome_1km", pop = "TOTAL", dom_ocu = "TOTAL_DOM" }
+dataset_flags = ["dwelling_universe_to_confirm"]
+notes_pt = "Domicílios: em 2010, DOM_OCU é 'domicílios ocupados' (rótulo da Grade 2010); em 2022, TOTAL_DOM são domicílios ocupados particulares e coletivos (notas metodológicas da Grade 2022). Até a nota de 2010 confirmar o mesmo universo, a variação 2010→2022 deve ser lida com essa ressalva."
 cell_area_km2 = { "200M" = 0.04, "1KM" = 1.0 }
 drop_if_empty_both_years = true
 breaks = { households_delta_per_km2 = [100, 350, 750, 1000, 2000], households_delta = [5, 10, 20, 40, 80] }

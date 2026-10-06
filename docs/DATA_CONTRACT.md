@@ -1499,7 +1499,7 @@ variação é direta. Arquivos: `households_grid/overview_1km.json` (`role: over
 | `cell_size` | enum `200M` / `1KM` | — | do prefixo do id |
 | `area_km2` | número | — | da tabela por tamanho; área projetada conferida ± 3 % |
 | `pop_2010`, `pop_2022` | inteiro | `null` | 2010: `POP`; 2022: `TOTAL` |
-| `dom_ocu_2010`, `dom_ocu_2022` | inteiro | `null` | 2010: `DOM_OCU`; 2022: `TOTAL_DOM` (lido como domicílios particulares permanentes ocupados — correspondência registrada na primeira execução real, #164; o manifest declara as colunas em `method_pt`) |
+| `dom_ocu_2010`, `dom_ocu_2022` | inteiro | `null` | 2010: `DOM_OCU` ("domicílios ocupados", rótulo da Grade 2010); 2022: `TOTAL_DOM` (domicílios ocupados **particulares e coletivos**, notas metodológicas da Grade 2022). `households_delta` e `households_growth_pct` só são comparáveis se os dois universos coincidirem: até a nota de 2010 confirmar, o conjunto leva a flag `dwelling_universe_to_confirm` e a ressalva em `notes_pt` (#164); o manifest declara as colunas de origem em `method_pt` |
 | `households_delta` | inteiro | `null` se um lado é nulo | `dom_ocu_2022 − dom_ocu_2010` |
 | `households_delta_per_km2` | número | idem | `households_delta ÷ area_km2`, 2 casas |
 | `households_delta_pct_change` | número (**fração decimal**) | `null` se 2010 nulo ou zero | `households_delta ÷ dom_ocu_2010` |

@@ -108,6 +108,10 @@ class HouseholdsConfig:
     budgets: Mapping[str, int]
     source_2010: SourceInfo
     source_2022: SourceInfo
+    # Ressalvas do conjunto declaradas no config (ex.: universo de domicílios a confirmar), publicadas
+    # em `quality_flags` e `notes_pt` do manifest (#164).
+    dataset_flags: tuple[str, ...]
+    notes_pt: str
 
 
 @dataclass(frozen=True)
@@ -206,6 +210,8 @@ def parse_config(raw: Mapping[str, Any], *, path: Path, sha256: str) -> Config:
             budgets={str(k): int(v) for k, v in _require(hh, "households_grid", "budgets").items()},
             source_2010=_source({"source": _require(hh_sources, "households_grid.sources", "censo_2010")}, "households_grid.sources.censo_2010"),
             source_2022=_source({"source": _require(hh_sources, "households_grid.sources", "censo_2022")}, "households_grid.sources.censo_2022"),
+            dataset_flags=tuple(str(f) for f in hh.get("dataset_flags", [])),
+            notes_pt=str(hh.get("notes_pt", "")),
         ),
         jobs=JobsConfig(
             metadata_url=str(_require(jobs, "jobs_hex", "metadata_url")),

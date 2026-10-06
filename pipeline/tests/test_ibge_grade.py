@@ -15,7 +15,7 @@ from imob_pipeline.sources.ibge_grade import (
     read_grid_file, records_from_geojson, resolve_quadrants, to_wgs84_bounds,
 )
 
-from .helpers import FIXTURES, PROD_CONFIG, fixture_context
+from .helpers import FIXTURES, FIXTURE_CONFIG, PROD_CONFIG, fixture_context
 from imob_pipeline.config import load_config
 
 COLUMNS = {"cell_id": "ID_UNICO", "parent_1km": "nome_1KM", "pop": "POP", "dom_ocu": "DOM_OCU"}
@@ -213,6 +213,26 @@ class QuadrantDiscoveryTests(unittest.TestCase):
             self.assertNotIn("resolvidos pelo bbox", dataset["notes_pt"])
             self.assertNotIn(BASE_2010, ctx.fetcher.calls)  # a listagem não é baixada
 
+
+
+class DatasetCaveatsFromConfigTests(unittest.TestCase):
+    def test_config_flags_and_notes_reach_the_manifest(self):
+        """Ressalva declarada no config (ex.: universo de domicílios a confirmar) vira flag e nota do dataset (#164)."""
+        with tempfile.TemporaryDirectory() as tmp:
+            ctx = fixture_context(Path(tmp))
+            ctx.config = replace(ctx.config, households=replace(ctx.config.households, dataset_flags=("dwelling_universe_to_confirm",),
+                                                                 notes_pt="Universo de domicílios a confirmar."))
+            manifest = households_grid.run(ctx)
+            dataset = next(d for d in manifest["datasets"] if d["id"] == "households_grid")
+            self.assertIn("dwelling_universe_to_confirm", dataset["quality_flags"])
+            self.assertTrue(dataset["notes_pt"].endswith("Universo de domicílios a confirmar."))
+
+    def test_production_config_declares_the_dwelling_universe_caveat(self):
+        cfg = load_config(PROD_CONFIG).households
+        self.assertIn("dwelling_universe_to_confirm", cfg.dataset_flags)
+        self.assertIn("particulares e coletivos", cfg.notes_pt)
+        fixture = load_config(FIXTURE_CONFIG).households
+        self.assertEqual((fixture.dataset_flags, fixture.notes_pt), ((), ""))
 
 
 class Grade2022ColumnsTests(unittest.TestCase):
