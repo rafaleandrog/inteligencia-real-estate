@@ -90,9 +90,19 @@ def cmd_run(args: argparse.Namespace) -> int:
         if hex_file.exists():
             from .sources.aop import FixtureHexGeometry
             ctx.hex_geometry = FixtureHexGeometry.from_file(hex_file)
+    # Um conjunto que falha NÃO derruba os seguintes: o traceback vai para o log, o erro para o
+    # summary.json, e a execução termina com 1 — nada é publicado, mas todas as falhas aparecem
+    # numa execução só (cada ciclo real custa PR → merge → execução; #162).
+    failed: dict[str, str] = {}
     for dataset_id in _resolve_datasets(args.datasets):
         log.info("dataset %s: início", dataset_id)
-        DATASETS[dataset_id](ctx)
+        try:
+            DATASETS[dataset_id](ctx)
+        except Exception as error:  # noqa: BLE001 - qualquer falha do conjunto é registrada e o laço segue
+            failed[dataset_id] = f"{type(error).__name__}: {error}"
+            ctx.summary.dataset(dataset_id)["error"] = failed[dataset_id]
+            log.exception("dataset %s: FALHOU — %s", dataset_id, failed[dataset_id])
+            continue
         log.info("dataset %s: fim", dataset_id)
     summary = ctx.summary.datasets
     (run_dir / "summary.json").write_text(json.dumps(summary, ensure_ascii=False, indent=2, sort_keys=True), "utf-8")
@@ -106,10 +116,13 @@ def cmd_run(args: argparse.Namespace) -> int:
     findings = validate_public_dir(out_dir, bbox=config.project.bbox, decimals=config.project.coordinate_decimals)
     for finding in findings:
         print(finding)
+    if failed:
+        print("FALHA em " + str(len(failed)) + " conjunto(s): " + "; ".join(f"{k} — {v}" for k, v in failed.items()),
+              file=sys.stderr)
     for handler in list(log.handlers):
         handler.close()
         log.removeHandler(handler)
-    return 1 if has_errors(findings) else 0
+    return 1 if (failed or has_errors(findings)) else 0
 
 
 def cmd_discover(args: argparse.Namespace) -> int:

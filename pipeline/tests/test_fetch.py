@@ -95,5 +95,42 @@ class FetchTests(unittest.TestCase):
         self.assertEqual(basename_of("https://a/"), "download")
 
 
+
+class _StubResponse:
+    def __init__(self, body: bytes) -> None:
+        self._body = body
+        self.headers: dict = {}
+
+    def read(self, size: int = -1) -> bytes:
+        data, self._body = self._body, b""
+        return data
+
+    def getheader(self, name: str):
+        return None
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc):
+        return False
+
+
+class DiscardTests(unittest.TestCase):
+    def test_discard_removes_file_and_meta_and_reports_whether_it_existed(self):
+        import tempfile
+        from pathlib import Path
+        from imob_pipeline.fetch import HttpFetcher
+        with tempfile.TemporaryDirectory() as tmp:
+            fetcher = HttpFetcher(Path(tmp), opener=lambda request, timeout: _StubResponse(b"abc"), sleep=lambda s: None)
+            url = "https://example.org/grade_id99.zip"
+            retrieval = fetcher.fetch(url)
+            meta = retrieval.path.with_name(retrieval.path.name + ".meta.json")
+            self.assertTrue(retrieval.path.exists() and meta.exists())
+            self.assertTrue(fetcher.discard(url))
+            self.assertFalse(retrieval.path.exists())
+            self.assertFalse(meta.exists())
+            self.assertFalse(fetcher.discard(url))
+
+
 if __name__ == "__main__":
     unittest.main()

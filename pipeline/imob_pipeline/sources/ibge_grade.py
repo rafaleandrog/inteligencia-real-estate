@@ -15,8 +15,12 @@ from pathlib import Path
 from typing import Any, Iterable, Mapping
 
 from ..fetch import Fetcher
+from ..geo import bbox_intersects, bbox_union, geometry_bbox
 
 ZIP_LINK = re.compile(r'href="?(?P<name>grade_id\w+\.zip)"?', re.IGNORECASE)
+# Qualquer link de arquivo na listagem: quando não há grade_id*.zip, o erro mostra o layout real do diretório.
+OTHER_LINK = re.compile(r'href="?(?P<name>[^"\s>]+\.(?:zip|gpkg|7z|rar|tar|gz|csv|xlsx|pdf|txt))"?', re.IGNORECASE)
+BBox = tuple[float, float, float, float]
 
 
 class GradeError(RuntimeError):
@@ -40,6 +44,16 @@ def parse_listing(html: str) -> list[str]:
         if name not in names:
             names.append(name)
     return sorted(names)
+
+
+def parse_other_links(html: str) -> list[str]:
+    """Todo link de arquivo da listagem (zip, gpkg, 7z, csv, pdf…), na ordem, sem repetição."""
+    names: list[str] = []
+    for match in OTHER_LINK.finditer(html):
+        name = match.group("name").rsplit("/", 1)[-1]
+        if name not in names:
+            names.append(name)
+    return names
 
 
 def quadrant_urls(base_url: str, quadrant_ids: Iterable[str]) -> list[str]:
@@ -124,8 +138,8 @@ def load_edition(fetcher: Fetcher, *, base_url: str, quadrant_ids: Iterable[str]
     ids = list(quadrant_ids)
     if not ids:
         raise GradeError(
-            f"{label}: households_grid.quadrant_ids vazio — rode `python -m imob_pipeline discover grade` "
-            "e pine os quadrantes que cruzam o bbox no config"
+            f"{label}: nenhum quadrante para ler — pine households_grid.quadrant_ids no config (`python -m "
+            "imob_pipeline discover grade` lista os nomes) ou deixe vazio para o orquestrador resolvê-los pelo bbox"
         )
     records: list[GridCellRecord] = []
     suppressed: list[str] = []
@@ -139,6 +153,100 @@ def load_edition(fetcher: Fetcher, *, base_url: str, quadrant_ids: Iterable[str]
     return records, suppressed, retrievals
 
 
-def discover(fetcher: Fetcher, base_url: str) -> list[str]:
+def _listing_html(fetcher: Fetcher, base_url: str) -> str:
     retrieval = fetcher.fetch(base_url if base_url.endswith("/") else base_url + "/", dest_name="listing.html")
-    return parse_listing(retrieval.path.read_text("utf-8", errors="replace"))
+    return retrieval.path.read_text("utf-8", errors="replace")
+
+
+def discover(fetcher: Fetcher, base_url: str) -> list[str]:
+    return parse_listing(_listing_html(fetcher, base_url))
+
+
+def file_bounds(path: Path) -> BBox:
+    """Limites (lon_min, lat_min, lon_max, lat_max) em WGS84 de um arquivo da Grade.
+
+    GeoJSON (fixture) é puro: união dos bboxes das feições. Zip de shapefile lê SÓ o cabeçalho
+    (`pyogrio.read_info` → `total_bounds`), sem carregar as células.
+    """
+    suffix = path.suffix.lower()
+    if suffix in (".json", ".geojson"):
+        payload = json.loads(path.read_text("utf-8"))
+        bbox: BBox | None = None
+        for feature in payload.get("features") or []:
+            geometry = feature.get("geometry")
+            if geometry:
+                bbox = bbox_union(bbox, geometry_bbox(geometry))
+        if bbox is None:
+            raise GradeError(f"{path.name}: nenhuma feição com geometria para calcular os limites")
+        return bbox
+    if suffix == ".zip":
+        return _zip_bounds(path)
+    raise GradeError(f"formato de arquivo da grade não suportado: {path.name}")
+
+
+def _zip_bounds(path: Path) -> BBox:
+    try:
+        import pyogrio  # type: ignore
+    except ImportError as error:  # pragma: no cover - depende do ambiente
+        raise GradeError("ler os limites do shapefile da Grade exige pyogrio (pip install -r pipeline/requirements.txt)") from error
+    with zipfile.ZipFile(path) as archive:
+        shapefiles = [n for n in archive.namelist() if n.lower().endswith(".shp")]
+    if not shapefiles:
+        raise GradeError(f"{path.name}: nenhum .shp dentro do zip")
+    info = pyogrio.read_info(f"zip://{path}!{shapefiles[0]}")
+    bounds = info.get("total_bounds") if isinstance(info, dict) else None
+    if bounds is None:
+        raise GradeError(f"{path.name}: pyogrio não devolveu total_bounds do shapefile")
+    xmin, ymin, xmax, ymax = (float(v) for v in bounds)
+    return to_wgs84_bounds((xmin, ymin, xmax, ymax), info.get("crs"))
+
+
+def to_wgs84_bounds(bounds: BBox, crs: object) -> BBox:
+    """Limites em graus. Sem CRS ou CRS geográfico (a Grade sai em SIRGAS 2000, EPSG:4674) passam
+    direto; CRS projetado é reprojetado pelos quatro cantos com pyproj."""
+    if not crs:
+        return bounds
+    try:
+        from pyproj import CRS, Transformer  # type: ignore
+    except ImportError as error:  # pragma: no cover - depende do ambiente
+        raise GradeError("reprojetar os limites do shapefile exige pyproj (pip install -r pipeline/requirements.txt)") from error
+    source = CRS.from_user_input(crs)
+    if source.is_geographic:
+        return bounds
+    transformer = Transformer.from_crs(source, "EPSG:4326", always_xy=True)
+    xmin, ymin, xmax, ymax = bounds
+    corners = [transformer.transform(x, y) for x, y in ((xmin, ymin), (xmin, ymax), (xmax, ymin), (xmax, ymax))]
+    return (min(c[0] for c in corners), min(c[1] for c in corners), max(c[0] for c in corners), max(c[1] for c in corners))
+
+
+def resolve_quadrants(fetcher: Fetcher, base_url: str, *, bbox: BBox, label: str,
+                      margin_deg: float = 0.05) -> tuple[list[str], list[dict[str, Any]]]:
+    """Quadrantes `grade_id*` cujo arquivo cruza o bbox (com folga): lista o diretório, baixa cada
+    zip e lê só os limites. É o caminho de descoberta para `households_grid.quadrant_ids` vazio —
+    custa baixar a Grade inteira uma vez (o que fica fora do bbox sai do cache); depois da primeira
+    execução, pine os ids no config. Devolve (ids sem `.zip`, relatório por arquivo). Sem nenhum
+    `grade_id*.zip` na listagem, FALHA nomeando os outros links que encontrou (o layout real)."""
+    html = _listing_html(fetcher, base_url)
+    names = parse_listing(html)
+    if not names:
+        others = parse_other_links(html)
+        raise GradeError(
+            f"{label}: nenhum grade_id*.zip em {base_url}; links encontrados: {others[:40] if others else 'nenhum'}"
+        )
+    target: BBox = (bbox[0] - margin_deg, bbox[1] - margin_deg, bbox[2] + margin_deg, bbox[3] + margin_deg)
+    kept: list[str] = []
+    report: list[dict[str, Any]] = []
+    discard = getattr(fetcher, "discard", None)
+    for name in names:
+        url = quadrant_urls(base_url, [name])[0]
+        retrieval = fetcher.fetch(url)
+        bounds = file_bounds(retrieval.path)
+        keep = bbox_intersects(bounds, target)
+        report.append({"file": name, "bounds": [round(v, 4) for v in bounds], "bytes": retrieval.bytes, "keep": keep})
+        if keep:
+            kept.append(name[:-4] if name.lower().endswith(".zip") else name)
+        elif callable(discard):
+            discard(url)
+    if not kept:
+        raise GradeError(f"{label}: nenhum quadrante cruza o bbox {list(bbox)}; limites lidos: {report}")
+    return kept, report

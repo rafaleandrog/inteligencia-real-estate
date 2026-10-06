@@ -46,8 +46,16 @@ PYTHONPATH=pipeline python -m imob_pipeline run all --fixture-dir pipeline/tests
 
 1. Settings → Actions → General → "Allow GitHub Actions to create and approve pull requests".
 2. `workflow_dispatch` de `dados-publicos.yml` com `datasets: ra_crosswalk` → conferir a PR.
-3. `discover grade` (fase 2) para pinar `households_grid.quadrant_ids`; confirmar o `metadata.csv` do AOP.
-4. `datasets: all`; ler `summary.json` e os logs (tamanhos, tempos, contagens); ajustar orçamentos e percentis.
+3. `datasets: all`. Com `households_grid.quadrant_ids` vazio, o pipeline resolve os quadrantes da
+   Grade sozinho (lista o diretório do IBGE, baixa cada `grade_id*.zip`, lê só os limites e mantém
+   os que cruzam o bbox do projeto, por edição); os ids escolhidos ficam no log, no `summary.json`
+   (`quadrant_ids_2010`/`_2022`, `quadrant_discovery`) e nas notas do manifest. Um conjunto que
+   falha não derruba os seguintes: o erro vai para o `summary.json` e a execução termina com 1
+   sem publicar nada, para todas as falhas aparecerem numa execução só.
+4. Pinar em `pipeline/config/df.toml` os quadrantes que a descoberta escolheu (para não baixar a
+   Grade inteira de novo) e confirmar o `metadata.csv` do AOP; ler `summary.json` e os logs
+   (tamanhos, tempos, contagens); ajustar orçamentos e percentis. `discover grade` só lista os
+   nomes dos arquivos.
 
 Sem a permissão "Allow GitHub Actions to create and approve pull requests" (issue #155) a
 criação da PR falha, mas a branch `dados-publicos/atualizacao` é enviada com `data/public/`

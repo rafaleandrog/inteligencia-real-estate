@@ -7,5 +7,9 @@
   "https://www.ipea.gov.br/acessooportunidades/dados/metadata.csv": "aop_metadata.txt",
   "https://www.ipea.gov.br/acessooportunidades/dados/aop_landuse_bra_2019.txt": "aop_landuse_bra_2019.txt",
   "https://www.ipea.gov.br/acessooportunidades/dados/aop_landuse_bra_2017.txt": "aop_landuse_bra_2017.txt",
-  "https://download.geofabrik.de/south-america/brazil/centro-oeste-latest.osm.pbf": "osm_small_graph.json"
+  "https://download.geofabrik.de/south-america/brazil/centro-oeste-latest.osm.pbf": "osm_small_graph.json",
+  "https://geoftp.ibge.gov.br/recortes_para_fins_estatisticos/grade_estatistica/censo_2010/grade_id45.zip": "grade_2010.json",
+  "https://geoftp.ibge.gov.br/recortes_para_fins_estatisticos/grade_estatistica/censo_2010/grade_id46.zip": "grade_far.json",
+  "https://geoftp.ibge.gov.br/recortes_para_fins_estatisticos/grade_estatistica/censo_2022/grade_id45.zip": "grade_2022.json",
+  "https://geoftp.ibge.gov.br/recortes_para_fins_estatisticos/grade_estatistica/censo_2022/grade_id46.zip": "grade_far.json"
 }

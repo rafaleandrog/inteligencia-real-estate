@@ -113,6 +113,17 @@ class HttpFetcher:
         dest = folder / (dest_name or basename_of(url))
         return dest, dest.with_name(dest.name + ".meta.json")
 
+    def discard(self, url: str, *, dest_name: str | None = None) -> bool:
+        """Tira um download do cache (arquivo, meta e parcial). A descoberta de quadrantes da Grade
+        usa isto para não guardar o que ficou fora do bbox. Devolve se havia algo."""
+        dest, meta_path = self._paths(url, dest_name)
+        existed = False
+        for path in (dest, meta_path, dest.with_name(dest.name + ".part")):
+            if path.exists():
+                path.unlink()
+                existed = True
+        return existed
+
     def fetch(self, url: str, *, dest_name: str | None = None) -> Retrieval:
         dest, meta_path = self._paths(url, dest_name)
         dest.parent.mkdir(parents=True, exist_ok=True)
