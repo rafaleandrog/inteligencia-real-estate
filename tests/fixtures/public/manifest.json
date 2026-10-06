@@ -121,8 +121,8 @@
       ],
       "generated_at": "2026-10-06T05:11:11Z",
       "id": "households_grid",
-      "method_pt": "As mesmas células nas duas edições (join por ID_UNICO). Colunas de origem — 2010: população POP, domicílios DOM_OCU, pai nome_1KM; 2022: população POP, domicílios DOM_OCU, pai nome_1KM. households_delta = dom_ocu_2022 − dom_ocu_2010; por km² pela área nominal da célula; variação relativa é fração decimal e é nula quando 2010 é nulo ou zero. Overview de 1 km com somas estritas (filho nulo → soma nula + partial_children). Célula sem domicílio nos dois anos é omitida e contada. Valor suprimido vira nulo + flag, nunca é saturado. RA pelo centroide da célula. Célula com centroide fora do bbox do projeto é descartada e contada (0 em dropped_outside_bbox): o quadrante da Grade cobre muito mais que o DF. Célula de 1 km inteira numa edição e subdividida em 200 m na outra vira UMA feição no overview, com o valor de cada edição vindo da listagem daquela edição (flag resolution_changed; children_2010/children_2022 dizem de onde veio cada ano).",
-      "notes_pt": "A primeira classe (até 100 dom./km²) inclui perda e zero. 'Omitida' (sem domicílio nos dois anos) não é 'sem dado'.",
+      "method_pt": "As mesmas células nas duas edições (join por ID_UNICO). Colunas de origem — 2010: população POP, domicílios DOM_OCU, pai nome_1KM; 2022: população POP, domicílios DOM_OCU, pai nome_1KM. households_delta = dom_ocu_2022 − dom_ocu_2010; por km² pela área nominal da célula; variação relativa é fração decimal e é nula quando 2010 é nulo ou zero. Overview de 1 km com somas estritas (filho nulo → soma nula + partial_children). Célula sem domicílio nem população nos dois anos é omitida e contada (a de 200 m só do detalhe: segue somada no pai). Valor suprimido vira nulo + flag, nunca é saturado. RA pelo centroide da célula. Célula com centroide fora do bbox do projeto é descartada e contada (0 em dropped_outside_bbox): o quadrante da Grade cobre muito mais que o DF. Célula de 1 km inteira numa edição e subdividida em 200 m na outra vira UMA feição no overview, com o valor de cada edição vindo da listagem daquela edição (flag resolution_changed; children_2010/children_2022 dizem de onde veio cada ano).",
+      "notes_pt": "A primeira classe (até 100 dom./km²) inclui perda e zero. 'Omitida' (sem domicílio nem população nos dois anos) não é 'sem dado'; célula só com população (domicílios coletivos) é publicada com domicílios zero.",
       "quality_flags": [
         "partial_children",
         "ra_unassigned",
@@ -593,8 +593,8 @@
       ]
     }
   ],
-  "generated_at": "2026-10-06T05:11:11Z",
+  "generated_at": "2026-10-06T05:16:32Z",
   "manifest_version": 1,
-  "pipeline_commit": "2f06edb34b2a9e24b75a40830d01d9335ed84060",
+  "pipeline_commit": "2b8645ae36add57afdbcb7ab5dfccf766376a326",
   "pipeline_version": "0.1.0"
 }

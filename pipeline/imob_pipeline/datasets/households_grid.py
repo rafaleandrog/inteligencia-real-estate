@@ -55,7 +55,8 @@ def run(ctx: RunContext) -> dict:
     ]
     counts = {**result.counts, "suppressed_2010": len(sup10), "suppressed_2022": len(sup22),
               "quadrants_2010": len(ids10), "quadrants_2022": len(ids22)}
-    notes = "A primeira classe (até 100 dom./km²) inclui perda e zero. 'Omitida' (sem domicílio nos dois anos) não é 'sem dado'."
+    notes = ("A primeira classe (até 100 dom./km²) inclui perda e zero. 'Omitida' (sem domicílio nem população nos dois anos) "
+             "não é 'sem dado'; célula só com população (domicílios coletivos) é publicada com domicílios zero.")
     if cfg.notes_pt:
         notes += " " + cfg.notes_pt.strip()
     discovered = disc10 is not None or disc22 is not None
@@ -73,8 +74,9 @@ def run(ctx: RunContext) -> dict:
             f"2022: população {cfg.columns_2022['pop']}, domicílios {cfg.columns_2022['dom_ocu']}, pai {cfg.columns_2022['parent_1km']}. "
             "households_delta = dom_ocu_2022 − dom_ocu_2010; "
             "por km² pela área nominal da célula; variação relativa é fração decimal e é nula quando 2010 é nulo ou zero. "
-            "Overview de 1 km com somas estritas (filho nulo → soma nula + partial_children). Célula sem domicílio nos dois "
-            "anos é omitida e contada. Valor suprimido vira nulo + flag, nunca é saturado. RA pelo centroide da célula. "
+            "Overview de 1 km com somas estritas (filho nulo → soma nula + partial_children). Célula sem domicílio nem população "
+            "nos dois anos é omitida e contada (a de 200 m só do detalhe: segue somada no pai). Valor suprimido vira nulo + flag, "
+            "nunca é saturado. RA pelo centroide da célula. "
             f"Célula com centroide fora do bbox do projeto é descartada e contada ({result.counts.get('dropped_outside_bbox', 0)} em "
             "dropped_outside_bbox): o quadrante da Grade cobre muito mais que o DF. Célula de 1 km inteira numa edição e subdividida "
             "em 200 m na outra vira UMA feição no overview, com o valor de cada edição vindo da listagem daquela edição (flag "

@@ -193,11 +193,36 @@ class ResolutionChangeTests(unittest.TestCase):
         empty = GridCellRecord(cell_id="200ME5752N9250", parent_1km=child.parent_1km, pop=9, dom_ocu=0,
                                geometry={"type": "Polygon", "coordinates": [ring]})
         result = self.build(self.c10, list(self.c22) + [empty])
-        self.assertNotIn("200ME5752N9250", {f["id"] for f in result.detail})   # omitida do detalhe…
+        # Só com população (domicílios coletivos): PUBLICADA no detalhe com domicílios zero — omitida, a
+        # gente dela nunca chegaria ao agregado por RA (segundo achado do Codex na PR #168).
+        detail = {f["id"]: f["properties"] for f in result.detail}
+        self.assertIn("200ME5752N9250", detail)
+        self.assertEqual((detail["200ME5752N9250"]["dom_ocu_2022"], detail["200ME5752N9250"]["pop_2022"]), (0, 9))
+        self.assertEqual(detail["200ME5752N9250"]["class_households_delta_per_km2"], None)   # 2010 ausente → sem delta
         p = next(f for f in result.overview if f["id"] == "1KME575N925")["properties"]
-        self.assertEqual((p["children"], p["children_2022"]), (3, 3))        # …mas filha do pai
+        self.assertEqual((p["children"], p["children_2022"]), (3, 3))
         self.assertEqual(p["dom_ocu_2022"], 70)
-        self.assertEqual(p["pop_2022"], 100 + 130 + 9)                        # a população dela não some
+        self.assertEqual(p["pop_2022"], 100 + 130 + 9)
+        self.assertEqual(result.counts["dropped_empty_both_years"], 1)        # só a célula sem gente nem domicílio
+        # …e o agregado por RA soma a mesma população que o pai, sem contar nada duas vezes
+        from imob_pipeline.transforms.aggregate_ra import aggregate_households
+        agg = aggregate_households(result.detail, result.overview)
+        self.assertEqual(agg["RA_19"]["pop_2022"], sum(
+            f["properties"]["pop_2022"] or 0 for f in result.overview if f["properties"]["ra_geo_id"] == "RA_19"
+            and f["properties"]["children_2022"] == 0) + sum(
+            f["properties"]["pop_2022"] or 0 for f in result.detail if f["properties"]["ra_geo_id"] == "RA_19"))
+        self.assertEqual(agg["RA_19"]["pop_2022"], 150 + 100 + 70 + 100 + 130 + 9)
+
+    def test_cell_without_people_nor_households_is_omitted_and_counted(self):
+        from imob_pipeline.sources.ibge_grade import GridCellRecord
+        child = next(c for c in self.c22 if c.cell_id == "200ME5750N9250")
+        ring = [[-47.9522646, -15.856], [-47.9522646, -15.8541913], [-47.9503969, -15.8541913], [-47.9503969, -15.856], [-47.9522646, -15.856]]
+        empty = GridCellRecord(cell_id="200ME5752N9250", parent_1km=child.parent_1km, pop=0, dom_ocu=0,
+                               geometry={"type": "Polygon", "coordinates": [ring]})
+        result = self.build(self.c10, list(self.c22) + [empty])
+        self.assertNotIn("200ME5752N9250", {f["id"] for f in result.detail})
+        p = next(f for f in result.overview if f["id"] == "1KME575N925")["properties"]
+        self.assertEqual((p["children"], p["children_2022"], p["pop_2022"]), (3, 3, 230))   # segue filha do pai
         self.assertEqual(result.counts["dropped_empty_both_years"], 2)
 
     def test_parent_with_only_empty_children_is_omitted_and_counted(self):
@@ -205,6 +230,7 @@ class ResolutionChangeTests(unittest.TestCase):
         for c in c22:
             if c.cell_id == "200ME5751N9250":
                 object.__setattr__(c, "dom_ocu", 0)
+                object.__setattr__(c, "pop", 0)
         c10 = [c for c in self.c10 if c.cell_id != "1KME575N925"]
         result = self.build(c10, c22)
         self.assertNotIn("1KME575N925", {f["id"] for f in result.overview})

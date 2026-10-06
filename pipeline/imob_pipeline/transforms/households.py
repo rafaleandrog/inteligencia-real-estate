@@ -4,8 +4,10 @@ Regras que não se perdem (docs/DATA_CONTRACT.md, "households_grid"):
 - célula presente num ano e ausente no outro → `null` + flag, nunca zero;
 - valor suprimido → `null` + flag, nunca saturado (R8.59);
 - somas do overview são ESTRITAS: filho nulo → soma nula + `partial_children`;
-- célula sem domicílio nos dois anos é omitida do detalhe e CONTADA, mas continua filha do pai no
-  overview (somas, contagens e a checagem de resolução ambígua veem todas as filhas listadas);
+- célula sem domicílio NEM população nos dois anos é omitida e CONTADA (do detalhe; a de 1 km, do
+  overview); mesmo omitida do detalhe, continua filha do pai no overview (somas, contagens e a
+  checagem de resolução ambígua veem todas as filhas listadas). Célula só com população (domicílios
+  coletivos) é publicada com domicílios zero, para a gente dela chegar aos totais por RA;
 - célula com centroide fora do bbox do projeto é descartada e CONTADA — o quadrante da Grade cobre
   muito mais que o DF e a segunda execução real publicou Goiás inteiro (#167);
 - `households_delta_pct_change` é fração decimal e é `null` quando 2010 é nulo ou zero;
@@ -82,8 +84,19 @@ def _strict_sum(values: Sequence[int | None]) -> tuple[int | None, int]:
     return sum(values), 0  # type: ignore[arg-type]
 
 
+def _blank(value: int | None) -> bool:
+    return value is None or value == 0
+
+
 def _empty_both(dom10: int | None, dom22: int | None) -> bool:
-    return (dom10 is None or dom10 == 0) and (dom22 is None or dom22 == 0)
+    return _blank(dom10) and _blank(dom22)
+
+
+def _empty_cell(j: "_Joined") -> bool:
+    """Sem domicílio E sem população nas duas edições. Célula só com população (domicílios coletivos:
+    quartel, presídio, alojamento) é publicada com domicílios zero — omiti-la sumiria com gente dos
+    totais por RA (segundo achado do Codex na PR #168)."""
+    return all(_blank(v) for v in (j.dom("2010"), j.dom("2022"), j.pop("2010"), j.pop("2022")))
 
 
 def _cell_props(cell_id: str, size: str, area: float, *, pop10: int | None, pop22: int | None, dom10: int | None,
@@ -169,7 +182,7 @@ def build_households(
             singles[j.cell_id] = j
             continue
         groups[j.parent].append(j)
-        if drop_if_empty_both_years and _empty_both(j.dom("2010"), j.dom("2022")):
+        if drop_if_empty_both_years and _empty_cell(j):
             counts["dropped_empty_both_years"] += 1
             continue
         detail_cells.append(j)
@@ -220,10 +233,9 @@ def build_households(
             else:
                 values[e], pops[e], n_children[e], missing[e], origin[e] = None, None, 0, 0, None
                 flags.append(f"cell_missing_{e}")
-        # Sem domicílio nos dois anos em TODAS as listagens (célula inteira e cada filha) → omitida e
-        # contada. Pai com filhas parciais (somas nulas, mas alguma filha com domicílio) é publicado.
-        all_empty = all(_empty_both(c.dom("2010"), c.dom("2022")) for c in children) and (
-            single is None or _empty_both(single.dom("2010"), single.dom("2022")))
+        # Sem domicílio nem população nos dois anos em TODAS as listagens (célula inteira e cada filha)
+        # → omitida e contada. Pai com filhas parciais (somas nulas, mas alguma filha com gente) é publicado.
+        all_empty = all(_empty_cell(c) for c in children) and (single is None or _empty_cell(single))
         if drop_if_empty_both_years and all_empty:
             counts["dropped_empty_both_years"] += 1
             continue
