@@ -20,6 +20,7 @@ const FLAG_LABELS = Object.freeze({
   value_suppressed_2022: 'valor suprimido pelo IBGE em 2022',
   ra_unassigned: 'centroide fora de todo limite oficial de RA',
   partial_children: 'soma parcial: alguma célula filha sem dado',
+  resolution_changed: 'célula de 1 km inteira numa edição e subdividida em 200 m na outra; o valor de cada ano vem da listagem daquele ano',
   aop_population_2010_based: 'população-base do Censo 2010 (AOP)',
   betweenness_sampled: 'betweenness amostrado (fontes sorteadas, semente fixa)',
   geometry_simplified: 'geometria simplificada para publicação',

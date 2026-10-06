@@ -86,6 +86,45 @@ class CentralityTests(unittest.TestCase):
 
 
 
+class OverviewAndDetailSizeTests(unittest.TestCase):
+    """Segunda execução real (#167): o overview só carrega as classes de `overview_highways` fora do percentil, e o
+    detalhe também é simplificado (flag `geometry_simplified`) — o DF inteiro deu 58 MB sem isso."""
+
+    def setUp(self):
+        self.graph = fixture_graph()
+        self.scores, _, _ = compute_betweenness(self.graph, sample_sources=0, seed=1, engine="pure")
+        index = RaIndex(to_polygons(ra_features()), use_shapely=False)
+        self.common = dict(breaks=[50, 75, 90, 97], publish_min_percentile=0, overview_min_percentile=101,
+                           always_publish_highways=["primary", "secondary"], simplify_tolerance_deg=0.0, assign_ra=index.assign)
+
+    def test_overview_highways_restrict_what_enters_the_overview(self):
+        same = build_edges(self.graph, self.scores, **self.common)   # None = as mesmas classes de always_publish_highways
+        self.assertEqual({f["properties"]["highway"] for f in same["overview"]}, {"primary", "secondary"})
+        only_primary = build_edges(self.graph, self.scores, overview_highways=["primary"], **self.common)
+        self.assertEqual({f["properties"]["highway"] for f in only_primary["overview"]}, {"primary"})
+        self.assertLess(only_primary["counts"]["overview"], same["counts"]["overview"])
+        self.assertEqual(only_primary["counts"]["published"], same["counts"]["published"])      # o detalhe não muda
+        none = build_edges(self.graph, self.scores, overview_highways=[], **self.common)
+        self.assertEqual(none["overview"], [])                                                   # só o percentil manda
+
+    def test_detail_simplification_drops_vertices_and_flags_the_edge(self):
+        raw = build_edges(self.graph, self.scores, **self.common)
+        simplified = build_edges(self.graph, self.scores, detail_simplify_tolerance_deg=0.001, **self.common)
+        before = {f["id"]: f for f in raw["detail"]}
+        after = {f["id"]: f for f in simplified["detail"]}
+        self.assertEqual(len(before["n5-n6-0"]["geometry"]["coordinates"]), 3)
+        self.assertEqual(len(after["n5-n6-0"]["geometry"]["coordinates"]), 2)
+        self.assertIn("geometry_simplified", after["n5-n6-0"]["properties"]["quality_flags"])
+        self.assertNotIn("geometry_simplified", before["n5-n6-0"]["properties"]["quality_flags"])
+        self.assertEqual(after["n5-n6-0"]["properties"]["length_m"], before["n5-n6-0"]["properties"]["length_m"])  # comprimento é do grafo
+        self.assertEqual(simplified["counts"]["detail_simplified"], sum(
+            1 for f in simplified["detail"] if "geometry_simplified" in f["properties"]["quality_flags"]))
+        self.assertEqual(raw["counts"]["detail_simplified"], 0)
+        for fid, feature in after.items():
+            if "geometry_simplified" not in feature["properties"]["quality_flags"]:
+                self.assertEqual(feature["geometry"]["coordinates"], before[fid]["geometry"]["coordinates"])
+
+
 class PublishInsideBboxTests(unittest.TestCase):
     """O recorte do OSM mantém inteiras as vias que cruzam a borda; só arestas dentro do bbox (+ folga) são
     publicadas, e as descartadas são contadas (#164)."""

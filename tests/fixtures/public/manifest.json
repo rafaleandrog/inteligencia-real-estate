@@ -1,10 +1,10 @@
 {
   "attribution_pt": "Contém dados do IBGE, do Ipea (Projeto Acesso a Oportunidades), do GeoPortal/SEDUH-DF e © OpenStreetMap contributors (ODbL).",
-  "config_sha256": "b13e62892ecaba288092debeb17477655fdf90873a02458f5578809c9a112ddf",
+  "config_sha256": "87e4437858c03dbf8725e3296fd5df98a7bf517faa43ceb272ba6e6b895abc0a",
   "datasets": [
     {
       "bbox": [
-        -47.9475,
+        -47.956,
         -15.9,
         -47.89813,
         -15.79096
@@ -20,7 +20,7 @@
           ],
           "classes": 6,
           "method": "fixed",
-          "n": 6
+          "n": 8
         },
         "households_delta_per_km2": {
           "breaks": [
@@ -32,20 +32,22 @@
           ],
           "classes": 6,
           "method": "fixed",
-          "n": 6
+          "n": 8
         }
       },
-      "content_hash": "b3851fec8c6715caafa31d72dbac9a4fb6e7ffa8d82104245da41b358f879708",
+      "content_hash": "7cead1e68f2182a798b2e8080d9000b03826473f39a847e4916011cecb31f62b",
       "counts": {
-        "cells_2010": 8,
-        "cells_2022": 7,
+        "cells_2010": 9,
+        "cells_2022": 9,
         "dropped_empty_both_years": 1,
-        "overview_cells": 4,
+        "dropped_outside_bbox": 0,
+        "overview_cells": 5,
         "partial_children": 1,
-        "published": 6,
+        "published": 8,
         "quadrants_2010": 1,
         "quadrants_2022": 1,
         "ra_unassigned": 1,
+        "resolution_changed": 1,
         "suppressed_2010": 1,
         "suppressed_2022": 0
       },
@@ -70,17 +72,17 @@
         },
         {
           "bbox": [
-            -47.9475,
+            -47.956,
             -15.86,
             -47.94376,
-            -15.85638
+            -15.85419
           ],
           "budget_bytes": 2000000,
-          "bytes": 2223,
-          "features": 4,
+          "bytes": 3329,
+          "features": 6,
           "path": "households_grid/detail_200m/RA_19.json",
           "role": "detail_shard",
-          "sha256": "8ea921e1580cbf51e451dfbc598f2ce122c1bc6d65808208a2db6bafd8a815e2",
+          "sha256": "8afdcc2423f9db5083064978dacec36ee2079b521edf4bf247194224cc935978",
           "shard_key": "ra_geo_id",
           "shard_value": "RA_19",
           "zoom_min": 12
@@ -104,26 +106,27 @@
         },
         {
           "bbox": [
-            -47.9475,
+            -47.956,
             -15.9,
             -47.89813,
             -15.79096
           ],
           "budget_bytes": 2000000,
-          "bytes": 2141,
-          "features": 4,
+          "bytes": 2881,
+          "features": 5,
           "path": "households_grid/overview_1km.json",
           "role": "overview",
-          "sha256": "7e7134039abfa14773335b40e965958ff9b2c7ec0307246019d885cbf31546c0"
+          "sha256": "6dd47818bd76d5bb392e2a8899cac4f9b97723b097cbb9f58bb95416dcbd632d"
         }
       ],
-      "generated_at": "2026-10-05T16:47:15Z",
+      "generated_at": "2026-10-06T05:11:11Z",
       "id": "households_grid",
-      "method_pt": "As mesmas células nas duas edições (join por ID_UNICO). Colunas de origem — 2010: população POP, domicílios DOM_OCU, pai nome_1KM; 2022: população POP, domicílios DOM_OCU, pai nome_1KM. households_delta = dom_ocu_2022 − dom_ocu_2010; por km² pela área nominal da célula; variação relativa é fração decimal e é nula quando 2010 é nulo ou zero. Overview de 1 km com somas estritas (filho nulo → soma nula + partial_children). Célula sem domicílio nos dois anos é omitida e contada. Valor suprimido vira nulo + flag, nunca é saturado. RA pelo centroide da célula.",
-      "notes_pt": "A primeira classe (até 100 dom./km²) inclui perda e zero. 'Omitida' (sem domicílio nos dois anos) não é 'sem dado'.",
+      "method_pt": "As mesmas células nas duas edições (join por ID_UNICO). Colunas de origem — 2010: população POP, domicílios DOM_OCU, pai nome_1KM; 2022: população POP, domicílios DOM_OCU, pai nome_1KM. households_delta = dom_ocu_2022 − dom_ocu_2010; por km² pela área nominal da célula; variação relativa é fração decimal e é nula quando 2010 é nulo ou zero. Overview de 1 km com somas estritas (filho nulo → soma nula + partial_children). Célula sem domicílio nem população nos dois anos é omitida e contada (a de 200 m só do detalhe: segue somada no pai). Valor suprimido vira nulo + flag, nunca é saturado. RA pelo centroide da célula. Célula com centroide fora do bbox do projeto é descartada e contada (0 em dropped_outside_bbox): o quadrante da Grade cobre muito mais que o DF. Célula de 1 km inteira numa edição e subdividida em 200 m na outra vira UMA feição no overview, com o valor de cada edição vindo da listagem daquela edição (flag resolution_changed; children_2010/children_2022 dizem de onde veio cada ano).",
+      "notes_pt": "A primeira classe (até 100 dom./km²) inclui perda e zero. 'Omitida' (sem domicílio nem população nos dois anos) não é 'sem dado'; célula só com população (domicílios coletivos) é publicada com domicílios zero.",
       "quality_flags": [
         "partial_children",
-        "ra_unassigned"
+        "ra_unassigned",
+        "resolution_changed"
       ],
       "ra_assignment_method": "centroid_within_ra",
       "schema": "schemas/households_grid.properties.schema.json",
@@ -150,7 +153,7 @@
         }
       ],
       "title_pt": "Domicílios ocupados por célula da Grade Estatística, 2010→2022 (IBGE)",
-      "version": "2026-10-05",
+      "version": "2026-10-06",
       "years": [
         2010,
         2022
@@ -342,10 +345,10 @@
       ]
     },
     {
-      "content_hash": "9f24da088722e413e73d596f9e6a1d39028735bbd2060406c9422d558bd1ca4c",
+      "content_hash": "1dd20ed51d9cf6430bfa7b9516373dc8231d4b5e6270d838876ded9aad282454",
       "counts": {
         "edges_total": 7,
-        "households_2022_total": 518,
+        "households_2022_total": 588,
         "jobs_total": 6675,
         "ras": 2,
         "unassigned_edges": 1,
@@ -356,16 +359,16 @@
       "files": [
         {
           "budget_bytes": 150000,
-          "bytes": 1791,
+          "bytes": 1792,
           "features": 2,
           "path": "ra_aggregates.json",
           "role": "data",
-          "sha256": "4343c8864a7364f56544607155996ef9e131fd2dfb5f5684c7c76f9ff1034065"
+          "sha256": "43704a8b0a18d419e15919e47e28bb02731076fe78580c6d418b32afd33403ac"
         }
       ],
-      "generated_at": "2026-10-05T16:47:15Z",
+      "generated_at": "2026-10-06T04:59:43Z",
       "id": "ra_aggregates",
-      "method_pt": "Somas sobre os arquivos publicados: domicílios = células de 200 m + células de 1 km não subdivididas; empregos = hexágonos r9 publicados, população-base = overview r8 (inclui hexágonos sem emprego); centralidade = arestas publicadas. households_growth_pct = delta ÷ 2010 (fração decimal); jobs_per_1000_residents = empregos ÷ população-base × 1000; por km² pela área oficial da RA. Feição fora de toda RA vai para o balde SEM_RA, contado em counts.",
+      "method_pt": "Somas sobre os arquivos publicados: domicílios = células de 200 m + células de 1 km na edição em que não estavam subdivididas (children_<ano> = 0 no overview; célula inteira numa edição e subdividida na outra entra uma vez em cada); empregos = hexágonos r9 publicados, população-base = overview r8 (inclui hexágonos sem emprego); centralidade = arestas publicadas (percentil ≥ 50 ou arterial). households_growth_pct = delta ÷ 2010 (fração decimal); jobs_per_1000_residents = empregos ÷ população-base × 1000; por km² pela área oficial da RA. Feição fora de toda RA vai para o balde SEM_RA, contado em counts.",
       "notes_pt": "Bloco de dataset não gerado vem nulo (nunca zero) com a flag correspondente.",
       "quality_flags": [],
       "ra_assignment_method": "centroid_within_ra",
@@ -417,7 +420,7 @@
         }
       ],
       "title_pt": "Agregados por Região Administrativa (domicílios, empregos, centralidade)",
-      "version": "2026-10-05",
+      "version": "2026-10-06",
       "years": [
         2010,
         2017,
@@ -481,8 +484,9 @@
           "n": 7
         }
       },
-      "content_hash": "61efe72aa2d89baf07b29a9fc3036c67abaf1b95e9fe1379fc95d49c3296ceba",
+      "content_hash": "9442455b0cf1d9180662be9cefb790cda04ec79c8f0d867579c7572e5e549c9a",
       "counts": {
+        "detail_simplified": 1,
         "dropped_outside_bbox": 0,
         "edges_graph": 12,
         "nodes_graph": 11,
@@ -495,18 +499,54 @@
       "files": [
         {
           "bbox": [
-            -47.947,
-            -15.858,
+            -47.94,
+            -15.8,
             -47.937,
             -15.791
           ],
-          "budget_bytes": 4000000,
-          "bytes": 2750,
-          "features": 7,
-          "path": "road_centrality/detail.json",
-          "role": "detail",
-          "sha256": "f68d5a60ebca3da9929e10edd497dad512a1965c83d28831952c36bf4de900d4",
-          "zoom_min": 12
+          "budget_bytes": 2000000,
+          "bytes": 1191,
+          "features": 3,
+          "path": "road_centrality/detail/RA_11.json",
+          "role": "detail_shard",
+          "sha256": "5a4b19f09405b9041afa1d53d5ae1a856dc6d3d7b149f56fb20891eb9f8dffab",
+          "shard_key": "ra_geo_id",
+          "shard_value": "RA_11",
+          "zoom_min": 13
+        },
+        {
+          "bbox": [
+            -47.947,
+            -15.858,
+            -47.941,
+            -15.855
+          ],
+          "budget_bytes": 2000000,
+          "bytes": 1184,
+          "features": 3,
+          "path": "road_centrality/detail/RA_19.json",
+          "role": "detail_shard",
+          "sha256": "bd6715ff32083e19000586320fa34b88942e77eb7e2887136739664ddf0ea931",
+          "shard_key": "ra_geo_id",
+          "shard_value": "RA_19",
+          "zoom_min": 13
+        },
+        {
+          "bbox": [
+            -47.941,
+            -15.8565,
+            -47.94,
+            -15.8
+          ],
+          "budget_bytes": 2000000,
+          "bytes": 459,
+          "features": 1,
+          "path": "road_centrality/detail/SEM_RA.json",
+          "role": "detail_shard",
+          "sha256": "40bb56ab158ff05f3d9b70317fec86bf1f43fc9c01c57a0974746253ba7959c0",
+          "shard_key": "ra_geo_id",
+          "shard_value": "SEM_RA",
+          "zoom_min": 13
         },
         {
           "bbox": [
@@ -523,9 +563,9 @@
           "sha256": "6e709c3ee2e3cb3c4acf2e4da05210fff31020b0ecc3c24e32b109125b423d63"
         }
       ],
-      "generated_at": "2026-10-05T16:47:15Z",
+      "generated_at": "2026-10-06T04:59:43Z",
       "id": "road_centrality",
-      "method_pt": "Rede viária de automóvel (motorway, trunk, primary, secondary, tertiary, unclassified, residential, living_street, motorway_link, trunk_link, primary_link, secondary_link, tertiary_link) recortada pelo bbox; betweenness de aresta com 11 origens amostradas (semente 20260101, motor pure), pesos = comprimento, normalizado pelo máximo; percentil sobre todas as 12 arestas do grafo (empates com posição média). Publicadas: percentil ≥ 50 ou classe arterial (motorway, trunk, primary, secondary); overview: percentil ≥ 90 ou arterial, simplificado a 5e-05 grau. Aresta com vértice fora do bbox do projeto (+0.05°) não é publicada (0 descartadas): o recorte do OSM mantém inteiras as vias que cruzam a borda. RA pelo ponto médio da aresta. Extrato OSM de 2026-09-28.",
+      "method_pt": "Rede viária de automóvel (motorway, trunk, primary, secondary, tertiary, unclassified, residential, living_street, motorway_link, trunk_link, primary_link, secondary_link, tertiary_link) recortada pelo bbox; betweenness de aresta com 11 origens amostradas (semente 20260101, motor pure), pesos = comprimento, normalizado pelo máximo; percentil sobre todas as 12 arestas do grafo (empates com posição média). Detalhe (shards por RA, zoom ≥ 13): percentil ≥ 50 ou classe arterial (motorway, trunk, primary, secondary), geometria simplificada a 5e-05 grau; overview: percentil ≥ 90 ou classe (motorway, trunk, primary, secondary), simplificado a 5e-05 grau. Aresta com vértice fora do bbox do projeto (+0.05°) não é publicada (0 descartadas): o recorte do OSM mantém inteiras as vias que cruzam a borda. RA pelo ponto médio da aresta. Extrato OSM de 2026-09-28.",
       "notes_pt": "Valor amostrado: a ordem relativa é estável, o valor absoluto não é comparável entre execuções com amostra diferente.",
       "quality_flags": [
         "betweenness_sampled",
@@ -547,14 +587,14 @@
         }
       ],
       "title_pt": "Centralidade viária (betweenness de aresta, OpenStreetMap)",
-      "version": "2026-10-05",
+      "version": "2026-10-06",
       "years": [
         2026
       ]
     }
   ],
-  "generated_at": "2026-10-06T04:05:13Z",
+  "generated_at": "2026-10-06T05:16:32Z",
   "manifest_version": 1,
-  "pipeline_commit": "491ac2b145f0d02b4331b082cebaee6c713655fe",
+  "pipeline_commit": "2b8645ae36add57afdbcb7ab5dfccf766376a326",
   "pipeline_version": "0.1.0"
 }

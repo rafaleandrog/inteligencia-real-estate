@@ -2946,8 +2946,8 @@ vias.amostras.slice(0, -1).every((a, i) => a.cor === vias.tokens[i]) && vias.amo
 vias.amostras.slice(0, -1).every((a, i) => a.altura === `${VIAS.line.weight[i]}px` && a.opacidade === String(VIAS.line.opacity[i]))
   ? pass('a espessura e a opacidade de cada amostra são as do registro — a legenda desenha o que o mapa desenha')
   : fail('peso/opacidade das amostras: ' + JSON.stringify(vias.amostras.map((a) => [a.altura, a.opacidade])));
-/Centralidade \(percentil\)/.test(vias.titulo) && vias.role === 'detail' && vias.features > 0 && vias.contador === String(vias.features)
-  ? pass(`em zoom de detalhe desenha o arquivo de detalhe (${vias.features} vias) e o contador confere`)
+/Centralidade \(percentil\)/.test(vias.titulo) && vias.role === 'detail_shard' && vias.features > 0 && vias.contador === String(vias.features)
+  ? pass(`em zoom de detalhe desenha os shards de vias por RA (${vias.features} vias) e o contador confere`)
   : fail('título/papel/contador (vias): ' + JSON.stringify({ titulo: vias.titulo, role: vias.role, features: vias.features, contador: vias.contador }));
 /OpenStreetMap/.test(vias.procedencia) && /ODbL/.test(vias.procedencia)
   ? pass('a procedência das vias cita o OpenStreetMap e a licença ODbL')
@@ -3247,7 +3247,8 @@ ranking.visivel && ranking.total >= 14
 ranking.empregos && ranking.empregos.valor === '578,0' && /2ª de 2 RAs/.test(ranking.empregos.pos) && /Ipea/.test(ranking.empregos.fonte) && /÷/.test(ranking.empregos.title)
   ? pass(`empregos por mil moradores da ${ranking.ra}: ${ranking.empregos.valor}, ${ranking.empregos.pos}, fonte e fórmula no cartão`)
   : fail('cartão de empregos: ' + JSON.stringify(ranking.empregos));
-ranking.crescimento && ranking.crescimento.valor === '28,9%' && /IBGE/.test(ranking.crescimento.fonte)
+// 32,9 % = (186 − 140) ÷ 140 na fixture: a célula de 1 km inteira de 2010 conta uma vez (#167).
+ranking.crescimento && ranking.crescimento.valor === '32,9%' && /IBGE/.test(ranking.crescimento.fonte)
   ? pass('crescimento de domicílios em fração decimal formatada como percentual, com a fonte IBGE')
   : fail('cartão de crescimento: ' + JSON.stringify(ranking.crescimento));
 ranking.centralidade && /^0,\d{3}$/.test(ranking.centralidade.valor) && /OpenStreetMap/.test(ranking.centralidade.fonte)

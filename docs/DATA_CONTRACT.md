@@ -1505,12 +1505,28 @@ variação é direta. Arquivos: `households_grid/overview_1km.json` (`role: over
 | `households_delta_pct_change` | número (**fração decimal**) | `null` se 2010 nulo ou zero | `households_delta ÷ dom_ocu_2010` |
 | `ra_geo_id` | texto | `null` fora de toda RA | centroide da célula dentro do limite oficial |
 | `class_households_delta_per_km2` | inteiro 0–5 | `null` | cortes `[100, 350, 750, 1000, 2000]` |
-| `children`, `children_missing` | inteiro | só no overview | nº de células de 200 m somadas; quantas vieram nulas |
-| `quality_flags` | lista | — | `cell_missing_2010`, `cell_missing_2022`, `value_suppressed_2010`, `value_suppressed_2022`, `ra_unassigned`, `partial_children` |
+| `children`, `children_missing` | inteiro | só no overview | nº de células de 200 m listadas sob o pai (todas, inclusive as omitidas do detalhe por não terem domicílio nos dois anos); quantas vieram nulas |
+| `children_2010`, `children_2022` | inteiro | só no overview | células de 200 m somadas em cada edição; `0` = o valor daquela edição é da célula de 1 km inteira (não subdividida naquele Censo) |
+| `quality_flags` | lista | — | `cell_missing_2010`, `cell_missing_2022`, `value_suppressed_2010`, `value_suppressed_2022`, `ra_unassigned`, `partial_children`, `resolution_changed` |
 
 Overview: somas **estritas** (filho nulo → soma nula + `partial_children`), geometria = união
-dos filhos. Omitidas da publicação: células sem domicílio nos dois anos (contadas em
-`counts.dropped_empty_both_years`). A primeira classe (`até 100`) inclui perda e zero.
+dos filhos. Omitidas da publicação: células sem domicílio **nem população** nos dois anos (contadas
+em `counts.dropped_empty_both_years`) e células com centroide **fora do bbox do projeto** (contadas em
+`counts.dropped_outside_bbox` — o quadrante da Grade cobre muito mais que o DF; #167). Célula só com
+população (domicílios coletivos: quartel, presídio, alojamento) é **publicada** com domicílios zero,
+para a gente dela chegar aos totais por RA. A célula de 200 m vazia sai só do detalhe: continua filha
+do pai no overview (soma, `children_<ano>` e a checagem de resolução ambígua veem todas as filhas
+listadas — achados do Codex na PR #168); o pai só é omitido quando a célula inteira e todas as filhas
+estão vazias nos dois anos. A primeira classe (`até 100`) inclui perda e zero.
+
+**Mudança de resolução** (#167): a mesma célula de 1 km pode vir inteira numa edição e subdividida
+em 200 m na outra (área que urbanizou entre os Censos). O overview publica **uma** feição por id:
+o valor de cada edição vem da listagem daquela edição (célula inteira ou soma estrita das filhas),
+com a flag `resolution_changed` e `children_2010`/`children_2022` dizendo de onde veio cada ano;
+a geometria é a da célula de 1 km inteira. No detalhe, as filhas da edição subdividida levam
+`cell_missing_<ano>` para o ano em que a célula era inteira — o valor de 1 km nunca é rateado.
+A mesma edição com a célula inteira **e** filhas é resolução ambígua: o pipeline falha nomeando a
+célula. Contado em `counts.resolution_changed` (e flag no nível do conjunto).
 
 ### jobs_hex
 
@@ -1539,8 +1555,14 @@ não é "sem dado"**, e `notes_pt` diz isso para a tela repetir.
 
 OpenStreetMap (extrato Geofabrik centro‑oeste), rede viária de automóvel, **betweenness de
 aresta amostrado** (`sample_sources` origens, semente fixa). Arquivos:
-`road_centrality/overview.json` (`role: overview`, percentil ≥ 90 + arteriais, simplificado) e
-`road_centrality/detail.json` (`role: detail`, percentil ≥ 50 + arteriais, `zoom_min: 12`).
+`road_centrality/overview.json` (`role: overview`, percentil ≥ `overview_min_percentile` ou classe
+em `overview_highways`, simplificado a `simplify_tolerance_deg`) e `road_centrality/detail/RA_nn.json`
+(`role: detail_shard`, uma por RA + `SEM_RA.json`, `zoom_min: 13`; percentil ≥ `publish_min_percentile`
+ou classe arterial em `always_publish_highways`, simplificado a `detail_simplify_tolerance_deg`).
+Os limiares vivem em `pipeline/config/df.toml` e o manifest os repete em `method_pt`; na segunda
+execução real (#167) o detalhe do DF inteiro com percentil ≥ 50 deu 58 MB num arquivo só — por isso
+shards por RA, percentil ≥ 75 e overview só com percentil ≥ 97 + `motorway/trunk/primary`.
+`counts.published` = Σ shards (o validador confere).
 
 | Propriedade | Tipo | Ausência | Regra |
 |---|---|---|---|
@@ -1568,9 +1590,9 @@ gerado vem `null` em todos os campos dele (nunca zero), com a flag correspondent
 | Campo | Tipo | Regra |
 |---|---|---|
 | `ra_geo_id`, `ra_geo_id_roman`, `ra_name`, `ra_area_km2` | — | da ponte |
-| `households_source`, `households_2010`, `households_2022`, `households_delta`, `households_growth_pct` (**fração decimal**), `households_per_km2_2022`, `pop_2010`, `pop_2022`, `cells_2010`, `cells_2022`, `cells_partial` | — | soma das células de 200 m atribuídas; `households_growth_pct = delta ÷ households_2010` (`null` se 2010 nulo ou zero) |
+| `households_source`, `households_2010`, `households_2022`, `households_delta`, `households_growth_pct` (**fração decimal**), `households_per_km2_2022`, `pop_2010`, `pop_2022`, `cells_2010`, `cells_2022`, `cells_partial` | — | soma das células de 200 m atribuídas + células de 1 km do overview **na edição em que não estavam subdivididas** (`children_<ano> == 0`; célula com `resolution_changed` entra uma vez em cada edição, #167); `households_growth_pct = delta ÷ households_2010` (`null` se 2010 nulo ou zero) |
 | `jobs_source`, `jobs_year`, `jobs_total`, `jobs_low`, `jobs_mid`, `jobs_high`, `jobs_population_basis`, `jobs_per_1000_residents`, `jobs_per_km2`, `hexes` | — | soma dos hexágonos r9; `jobs_per_1000_residents = jobs_total ÷ jobs_population_basis × 1000` (base: `pop_total` do AOP, Censo 2010); `jobs_per_km2 = jobs_total ÷ ra_area_km2` |
-| `centrality_source`, `centrality_snapshot`, `edges_total`, `road_km_total`, `road_km_top_decile`, `centrality_mean`, `centrality_p90` | — | sobre as arestas atribuídas à RA |
+| `centrality_source`, `centrality_snapshot`, `edges_total`, `road_km_total`, `road_km_top_decile`, `centrality_mean`, `centrality_p90` | — | sobre as arestas **publicadas** atribuídas à RA (percentil ≥ `publish_min_percentile` ou arterial — o `method_pt` do agregado repete o limiar) |
 | `quality_flags` | lista | `households_missing`, `jobs_missing`, `centrality_missing`, `partial_children`, `households_growth_suppressed` (comparação entre edições suprimida por config: `households_delta` e `households_growth_pct` nulos, totais de cada edição mantidos) |
 
 No nível do conjunto (manifest), `ra_aggregates` herda as ressalvas declaradas no config do

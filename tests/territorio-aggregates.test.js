@@ -27,7 +27,7 @@ test('o ra_aggregates.json de fixture normaliza sem aviso, com fontes e anos', (
   assert.deepEqual(out.rows.map((r) => r.raGeoId), ['RA_11', 'RA_19']);
   assert.equal(out.byRa.RA_11.householdsGrowthPct, 0.1143);
   assert.equal(out.byRa.RA_11.jobsPer1000Residents, 18000);
-  assert.equal(out.byRa.RA_19.cellsPartial, 2);
+  assert.equal(out.byRa.RA_19.cellsPartial, 4);   // 2 de sempre + as duas filhas de 2022 sem 2010 (célula que mudou de resolução, #167)
   assert.deepEqual(out.byRa.RA_19.qualityFlags, ['partial_children']);
   assert.equal(out.byRa.RA_19.edgesCount, 3);
   assert.match(out.sources.households, /IBGE/);
@@ -174,14 +174,14 @@ test('raTerritoryProfile: mediana entre as RAs COM dado, n, diferença e posiç�
   const perfil = raTerritoryProfile(byRa, 'RA_19');
   assert.equal(perfil.raName, 'Candangolândia');
   const cresc = perfil.items.find((i) => i.id === 'householdsGrowth');
-  assert.equal(cresc.value, 0.2889);
+  assert.equal(cresc.value, 0.3286);
   assert.equal(cresc.reference.n, 2);
-  assert.equal(cresc.reference.median, (0.1143 + 0.2889) / 2);
+  assert.equal(cresc.reference.median, (0.1143 + 0.3286) / 2);
   assert.equal(cresc.rank.position, 1);
   assert.equal(cresc.rank.total, 2);
-  assert.equal(cresc.formatted, '28,9%');
+  assert.equal(cresc.formatted, '32,9%');
   assert.ok(cresc.formula && cresc.source);
-  assert.ok(Math.abs(cresc.delta - (0.2889 - (0.1143 + 0.2889) / 2)) < 1e-12);
+  assert.ok(Math.abs(cresc.delta - (0.3286 - (0.1143 + 0.3286) / 2)) < 1e-12);
   const semDado = raTerritoryProfile({ RA_11: { ...byRa.RA_11, centralityMean: null }, RA_19: byRa.RA_19 }, 'RA_11');
   const centr = semDado.items.find((i) => i.id === 'centrality');
   assert.equal(centr.value, null);
@@ -217,7 +217,7 @@ test('ponte esvaziada por exclusões bloqueia perfil e agregados mesmo pela chav
   const sem11 = excludeRas(CW, ['RA_11']);
   const out = attachTerritory(INDEX, byRa, sem11);
   assert.equal(out[2024].RA_11.householdsGrowthPct, null, 'RA excluída não recebe agregado');
-  assert.equal(out[2024].RA_19.householdsGrowthPct, 0.2889, 'as outras seguem');
+  assert.equal(out[2024].RA_19.householdsGrowthPct, 0.3286, 'as outras seguem');
   assert.equal(attachTerritory(INDEX, byRa)[2024].RA_11.householdsGrowthPct, 0.1143, 'sem ponte carregada, a chave igual cruza');
   // Agregados cuja RA foi excluída da ponte são descartados com aviso — mesma regra.
   const agregados = normalizeRaAggregates(ROWS, sem11);

@@ -147,7 +147,9 @@ class CentralityConfig:
     publish_min_percentile: float
     overview_min_percentile: float
     always_publish_highways: tuple[str, ...]
+    overview_highways: tuple[str, ...]
     simplify_tolerance_deg: float
+    detail_simplify_tolerance_deg: float
     min_refresh_days: int
     breaks: Mapping[str, list[float]]
     budgets: Mapping[str, int]
@@ -247,7 +249,9 @@ def parse_config(raw: Mapping[str, Any], *, path: Path, sha256: str) -> Config:
             publish_min_percentile=float(_require(cen, "road_centrality", "publish_min_percentile")),
             overview_min_percentile=float(_require(cen, "road_centrality", "overview_min_percentile")),
             always_publish_highways=tuple(str(h) for h in _require(cen, "road_centrality", "always_publish_highways")),
+            overview_highways=tuple(str(h) for h in _require(cen, "road_centrality", "overview_highways")),
             simplify_tolerance_deg=float(_require(cen, "road_centrality", "simplify_tolerance_deg")),
+            detail_simplify_tolerance_deg=float(_require(cen, "road_centrality", "detail_simplify_tolerance_deg")),
             min_refresh_days=int(_require(cen, "road_centrality", "min_refresh_days")),
             breaks=_breaks(cen, "road_centrality"),
             budgets={str(k): int(v) for k, v in _require(cen, "road_centrality", "budgets").items()},

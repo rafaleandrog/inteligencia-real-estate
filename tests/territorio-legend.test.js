@@ -47,7 +47,7 @@ test('lineLegendRows anexa peso e opacidade por classe — números, nunca cor',
 test('provenanceLine: fonte, coleta e versão do manifest; vazio sem dataset', () => {
   const dataset = datasetById(manifest, 'households_grid');
   const linha = provenanceLine(dataset);
-  assert.match(linha, /^Fonte: IBGE — Grade Estatística, Censo Demográfico 2010; IBGE — Grade Estatística, Censo Demográfico 2022 · coletado em fixture · versão 2026-10-05$/);
+  assert.match(linha, /^Fonte: IBGE — Grade Estatística, Censo Demográfico 2010; IBGE — Grade Estatística, Censo Demográfico 2022 · coletado em fixture · versão \d{4}-\d{2}-\d{2}$/);   // a versão é a data da regeneração do fixture, não um valor fixo
   assert.equal(provenanceLine(null), '');
   assert.equal(provenanceLine({ sources: [], version: null }), '');
 });

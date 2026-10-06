@@ -94,7 +94,10 @@ test('layerFilesFor: overview abaixo do zoom_min; a partir dele, só os shards q
   assert.deepEqual(soRa11.files.map((f) => f.shardValue), ['RA_11']);
   const vias = datasetById(manifest, 'road_centrality');
   assert.equal(layerFilesFor(layerById('road_centrality'), vias, { zoom: 11 }).role, 'overview');
-  assert.equal(layerFilesFor(layerById('road_centrality'), vias, { zoom: 12 }).role, 'detail');
+  // Shards de vias só a partir do zoom 13 (#167): no 12 ainda é o overview.
+  assert.equal(layerFilesFor(layerById('road_centrality'), vias, { zoom: 12 }).role, 'overview');
+  assert.equal(layerFilesFor(layerById('road_centrality'), vias, { zoom: 13 }).role, 'detail_shard');
+  assert.ok(layerFilesFor(layerById('road_centrality'), vias, { zoom: 13 }).files.every((f) => f.role === 'detail_shard'));
   assert.deepEqual(layerFilesFor(layer, null, { zoom: 12 }), { role: null, files: [] });
 });
 

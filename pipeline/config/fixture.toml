@@ -66,10 +66,12 @@ seed = 20260101
 publish_min_percentile = 50
 overview_min_percentile = 90
 always_publish_highways = ["motorway", "trunk", "primary", "secondary"]
+overview_highways = ["motorway", "trunk", "primary", "secondary"]
 simplify_tolerance_deg = 0.00005
+detail_simplify_tolerance_deg = 0.00005
 min_refresh_days = 90
 breaks = { betweenness_percentile = [50, 75, 90, 97] }
-budgets = { overview = 2000000, detail = 4000000 }
+budgets = { overview = 2000000, shard = 2000000 }
 source = { name = "OpenStreetMap (extrato Geofabrik centro-oeste)", url = "https://www.openstreetmap.org/copyright", license = "ODbL 1.0 — base de dados derivada, disponibilizada sob ODbL", license_url = "https://www.opendatacommons.org/licenses/odbl/1-0/", attribution_pt = "© OpenStreetMap contributors — https://www.openstreetmap.org/copyright. Extrato: Geofabrik." }
 
 [manifest]

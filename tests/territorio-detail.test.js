@@ -71,7 +71,8 @@ test('hexágono de empregos e aresta de centralidade têm construtores próprios
   assert.ok(tj.essencial.some((r) => /^Empregos formais/.test(r.label)));
   assert.ok(tj.essencial.length <= ESSENTIAL_MAX_ROWS);
   const vias = layerById('road_centrality');
-  const edge = read('./fixtures/public/road_centrality/detail.json').features[0];
+  const viasShard = datasetById(manifest, 'road_centrality').files.find((f) => f.role === 'detail_shard'); // shards por RA (#167)
+  const edge = read(`./fixtures/public/${viasShard.path}`).features[0];
   const tv = territoryDetailTiers(vias, edge.properties, { dataset: datasetById(manifest, 'road_centrality'), crosswalk: CW });
   assert.ok(tv.essencial.some((r) => r.label === 'Centralidade (percentil)'));
   assert.ok(tv.essencial.length <= ESSENTIAL_MAX_ROWS);

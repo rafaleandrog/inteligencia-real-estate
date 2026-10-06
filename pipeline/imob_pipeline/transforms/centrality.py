@@ -134,18 +134,24 @@ def build_edges(
     assign_ra: Callable[[Sequence[float]], str | None],
     bbox: tuple[float, float, float, float] | None = None,
     bbox_margin_deg: float = BBOX_MARGIN_DEG,
+    overview_highways: Iterable[str] | None = None,
+    detail_simplify_tolerance_deg: float = 0.0,
 ) -> dict[str, Any]:
     """`bbox`: aresta com qualquer vértice fora dele (+ folga) não é publicada e é contada em
     `dropped_outside_bbox` — o recorte do OSM (`osmium extract`) mantém inteiras as vias que cruzam
-    a borda, e o validador recusa coordenada fora do bbox do projeto (#164)."""
+    a borda, e o validador recusa coordenada fora do bbox do projeto (#164).
+    `overview_highways`: classes que entram no overview independentemente do percentil (None = as mesmas
+    de `always_publish_highways`); `detail_simplify_tolerance_deg`: simplificação da geometria do detalhe
+    (0 = geometria do grafo) — aresta que perde vértice leva `geometry_simplified` (#167)."""
     always = set(always_publish_highways)
+    overview_classes = always if overview_highways is None else set(overview_highways)
     ordered = sorted(graph.edges, key=edge_key)
     values = [float(betweenness.get(edge_key(e), 0.0)) for e in ordered]
     ranks = percentile_ranks(values)
     detail: list[dict[str, Any]] = []
     overview: list[dict[str, Any]] = []
     counts: dict[str, int] = {"edges_graph": len(ordered), "published": 0, "overview": 0, "ra_unassigned": 0,
-                              "dropped_outside_bbox": 0}
+                              "dropped_outside_bbox": 0, "detail_simplified": 0}
     for edge, value, rank in zip(ordered, values, ranks):
         arterial = edge["highway"] in always
         if rank < publish_min_percentile and not arterial:
@@ -174,12 +180,15 @@ def build_edges(
             "ra_geo_id": ra,
             "quality_flags": sorted(set(flags)),
         }
-        detail.append({"id": props["edge_id"], "geometry": {"type": "LineString", "coordinates": coords}, "properties": props})
-        if rank >= overview_min_percentile or arterial:
+        detail_coords = simplify_line(coords, detail_simplify_tolerance_deg) if detail_simplify_tolerance_deg > 0 else coords
+        if len(detail_coords) < len(coords):
+            props["quality_flags"] = sorted(set(flags) | {"geometry_simplified"})
+            counts["detail_simplified"] += 1
+        detail.append({"id": props["edge_id"], "geometry": {"type": "LineString", "coordinates": detail_coords}, "properties": props})
+        if rank >= overview_min_percentile or edge["highway"] in overview_classes:
             simplified = simplify_line(coords, simplify_tolerance_deg)
             oprops = dict(props)
-            if len(simplified) < len(coords):
-                oprops["quality_flags"] = sorted(set(flags) | {"geometry_simplified"})
+            oprops["quality_flags"] = sorted(set(flags) | ({"geometry_simplified"} if len(simplified) < len(coords) else set()))
             overview.append({"id": props["edge_id"], "geometry": {"type": "LineString", "coordinates": simplified}, "properties": oprops})
     counts["published"] = len(detail)
     counts["overview"] = len(overview)

@@ -45,7 +45,7 @@ def run(ctx: RunContext) -> dict:
     hh_overview = _features(ctx.out_dir, manifest, "households_grid", ("overview",))
     jobs_detail = _features(ctx.out_dir, manifest, "jobs_hex", ("detail_shard", "detail"))
     jobs_overview = _features(ctx.out_dir, manifest, "jobs_hex", ("overview",))
-    roads_detail = _features(ctx.out_dir, manifest, "road_centrality", ("detail",))
+    roads_detail = _features(ctx.out_dir, manifest, "road_centrality", ("detail_shard", "detail"))
 
     households = aggregate_households(hh_detail, hh_overview) if (hh_detail or hh_overview) else None
     jobs = aggregate_jobs(jobs_detail, jobs_overview) if (jobs_detail or jobs_overview) else None
@@ -107,8 +107,10 @@ def run(ctx: RunContext) -> dict:
         years=sorted({y for ds in (hh_ds, jobs_ds, roads_ds) if ds for y in ds.get("years", [])}),
         crs=ctx.config.project.crs, bbox=None,
         method_pt=(
-            "Somas sobre os arquivos publicados: domicílios = células de 200 m + células de 1 km não subdivididas; empregos = "
-            "hexágonos r9 publicados, população-base = overview r8 (inclui hexágonos sem emprego); centralidade = arestas publicadas. "
+            "Somas sobre os arquivos publicados: domicílios = células de 200 m + células de 1 km na edição em que não estavam "
+            "subdivididas (children_<ano> = 0 no overview; célula inteira numa edição e subdividida na outra entra uma vez em cada); "
+            "empregos = hexágonos r9 publicados, população-base = overview r8 (inclui hexágonos sem emprego); centralidade = arestas "
+            f"publicadas (percentil ≥ {ctx.config.centrality.publish_min_percentile:g} ou arterial). "
             "households_growth_pct = delta ÷ 2010 (fração decimal); jobs_per_1000_residents = empregos ÷ população-base × 1000; "
             "por km² pela área oficial da RA. Feição fora de toda RA vai para o balde SEM_RA, contado em counts."
         ),
