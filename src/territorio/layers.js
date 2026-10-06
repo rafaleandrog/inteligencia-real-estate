@@ -67,6 +67,40 @@ export const TERRITORY_LAYERS = Object.freeze([
 export const AREA_LAYER_IDS = Object.freeze(TERRITORY_LAYERS.filter((l) => l.kind === 'area').map((l) => l.id));
 export const LINE_LAYER_IDS = Object.freeze(TERRITORY_LAYERS.filter((l) => l.kind === 'line').map((l) => l.id));
 
+/**
+ * Estado padrão das camadas territoriais no mapa público (issue #171): a página única do
+ * app abre com a coroplética de domicílios e a centralidade viária ligadas, sem link especial.
+ * Na URL, valor ausente = padrão; `terr=0` / `vias=0` desligam; `terr=<id>` / `vias=1` ligam.
+ * O padrão só liga o que o manifest confirma (R8.64): sem arquivo publicado, nada liga e o
+ * controle continua dizendo por quê — por isso "desligado" só entra na URL quando a camada
+ * existe (`territoryParamsFromState` recebe a disponibilidade).
+ */
+export const TERRITORY_DEFAULTS = Object.freeze({ area: 'households_grid', lines: true });
+export const TERRITORY_OFF = '0';
+
+/** `{ terr, vias }` da URL → `{ area, lines }` desejados (ainda sem olhar o manifest). */
+export function territoryStateFromParams({ terr = '', vias = '' } = {}) {
+  const t = String(terr ?? '').trim();
+  const v = String(vias ?? '').trim();
+  const area = t === '' ? TERRITORY_DEFAULTS.area : (t === TERRITORY_OFF ? null : t);
+  const lines = v === '' ? TERRITORY_DEFAULTS.lines : v === '1';
+  return { area, lines };
+}
+
+/**
+ * `{ area, lines }` ligados → `{ terr, vias }` para a URL: padrão vira vazio (não entra na
+ * URL, `#mapa` continua `#mapa`), desligado vira `0` só se a camada está disponível — sem
+ * manifest, nada é "escolha" do usuário e a URL fica limpa.
+ */
+export function territoryParamsFromState({ area = null, lines = false } = {}, { areaAvailable = true, linesAvailable = true } = {}) {
+  let terr = '';
+  if (area !== TERRITORY_DEFAULTS.area) terr = area ? String(area) : (areaAvailable ? TERRITORY_OFF : '');
+  let vias = '';
+  const on = lines === true;
+  if (on !== TERRITORY_DEFAULTS.lines) vias = on ? '1' : (linesAvailable ? TERRITORY_OFF : '');
+  return { terr, vias };
+}
+
 export function layerById(id) {
   return TERRITORY_LAYERS.find((l) => l.id === id) || null;
 }

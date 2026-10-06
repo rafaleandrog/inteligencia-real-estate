@@ -76,7 +76,11 @@ page.on('pageerror', (e) => consoleErrors.push('pageerror: ' + e.message));
 // qualquer ambiente, inclusive sem acesso à Google Sheet. addInitScript executa
 // antes dos scripts da página, então o app já lê a configuração ajustada.
 await page.addInitScript(() => {
-  const apply = () => { if (window.APP_CONFIG) window.APP_CONFIG.demoMode = true; };
+  // Páginas genéricas apontam para um manifest VAZIO de fixture (R8.100, issue #171): o estado
+  // de data/public/ é transitório (vazio antes da primeira publicação, cheio depois) e, com
+  // domicílios e vias ligados por padrão, carregaria 9 MB e viraria as RAs em contorno em
+  // seções que não são sobre território. As seções de território usam ./tests/fixtures/public/.
+  const apply = () => { if (window.APP_CONFIG) { window.APP_CONFIG.demoMode = true; window.APP_CONFIG.publicDataUrl = './tests/fixtures/public-empty/'; } };
   Object.defineProperty(window, 'APP_CONFIG', {
     configurable: true,
     set(value) { delete window.APP_CONFIG; window.APP_CONFIG = value; apply(); },
@@ -278,7 +282,7 @@ const metaPage = await context.newPage();
 await metaPage.addInitScript(() => {
   Object.defineProperty(window, 'APP_CONFIG', {
     configurable: true,
-    set(value) { delete window.APP_CONFIG; window.APP_CONFIG = value; if (value) value.demoMode = true; },
+    set(value) { delete window.APP_CONFIG; window.APP_CONFIG = value; if (value) { value.demoMode = true; value.publicDataUrl = './tests/fixtures/public-empty/'; } },
     get() { return undefined; },
   });
 });
@@ -356,7 +360,7 @@ async function abrirSemColunas(porEntidade) {
   await p.addInitScript(() => {
     Object.defineProperty(window, 'APP_CONFIG', {
       configurable: true,
-      set(value) { delete window.APP_CONFIG; window.APP_CONFIG = value; if (value) value.demoMode = true; },
+      set(value) { delete window.APP_CONFIG; window.APP_CONFIG = value; if (value) { value.demoMode = true; value.publicDataUrl = './tests/fixtures/public-empty/'; } },
       get() { return undefined; },
     });
   });
@@ -419,7 +423,7 @@ const anchorPage = await context.newPage();
 await anchorPage.addInitScript(() => {
   Object.defineProperty(window, 'APP_CONFIG', {
     configurable: true,
-    set(value) { delete window.APP_CONFIG; window.APP_CONFIG = value; if (value) value.demoMode = true; },
+    set(value) { delete window.APP_CONFIG; window.APP_CONFIG = value; if (value) { value.demoMode = true; value.publicDataUrl = './tests/fixtures/public-empty/'; } },
     get() { return undefined; },
   });
 });
@@ -568,7 +572,7 @@ const classPage = await context.newPage();
 await classPage.addInitScript(() => {
   Object.defineProperty(window, 'APP_CONFIG', {
     configurable: true,
-    set(value) { delete window.APP_CONFIG; window.APP_CONFIG = value; if (value) value.demoMode = true; },
+    set(value) { delete window.APP_CONFIG; window.APP_CONFIG = value; if (value) { value.demoMode = true; value.publicDataUrl = './tests/fixtures/public-empty/'; } },
     get() { return undefined; },
   });
 });
@@ -711,7 +715,7 @@ const raPage = await context.newPage();
 await raPage.addInitScript(() => {
   Object.defineProperty(window, 'APP_CONFIG', {
     configurable: true,
-    set(value) { delete window.APP_CONFIG; window.APP_CONFIG = value; if (value) value.demoMode = true; },
+    set(value) { delete window.APP_CONFIG; window.APP_CONFIG = value; if (value) { value.demoMode = true; value.publicDataUrl = './tests/fixtures/public-empty/'; } },
     get() { return undefined; },
   });
 });
@@ -817,7 +821,7 @@ const polyPage = await context.newPage();
 await polyPage.addInitScript(() => {
   Object.defineProperty(window, 'APP_CONFIG', {
     configurable: true,
-    set(value) { delete window.APP_CONFIG; window.APP_CONFIG = value; if (value) value.demoMode = true; },
+    set(value) { delete window.APP_CONFIG; window.APP_CONFIG = value; if (value) { value.demoMode = true; value.publicDataUrl = './tests/fixtures/public-empty/'; } },
     get() { return undefined; },
   });
 });
@@ -1460,7 +1464,7 @@ viewPage.on('pageerror', (e) => viewErros.push(e.message));
 await viewPage.addInitScript(() => {
   Object.defineProperty(window, 'APP_CONFIG', {
     configurable: true,
-    set(value) { delete window.APP_CONFIG; window.APP_CONFIG = value; if (value) value.demoMode = true; },
+    set(value) { delete window.APP_CONFIG; window.APP_CONFIG = value; if (value) { value.demoMode = true; value.publicDataUrl = './tests/fixtures/public-empty/'; } },
     get() { return undefined; },
   });
 });
@@ -1849,7 +1853,7 @@ const tomPage = await context.newPage();
 await tomPage.addInitScript(() => {
   Object.defineProperty(window, 'APP_CONFIG', {
     configurable: true,
-    set(value) { delete window.APP_CONFIG; window.APP_CONFIG = value; if (value) value.demoMode = true; },
+    set(value) { delete window.APP_CONFIG; window.APP_CONFIG = value; if (value) { value.demoMode = true; value.publicDataUrl = './tests/fixtures/public-empty/'; } },
     get() { return undefined; },
   });
 });
@@ -2056,7 +2060,7 @@ const semIvv = await context.newPage();
 await semIvv.addInitScript(() => {
   Object.defineProperty(window, 'APP_CONFIG', {
     configurable: true,
-    set(value) { delete window.APP_CONFIG; window.APP_CONFIG = value; if (value) value.demoMode = true; },
+    set(value) { delete window.APP_CONFIG; window.APP_CONFIG = value; if (value) { value.demoMode = true; value.publicDataUrl = './tests/fixtures/public-empty/'; } },
     get() { return undefined; },
   });
 });
@@ -2144,7 +2148,7 @@ const sazonal = await context.newPage();
 await sazonal.addInitScript(() => {
   Object.defineProperty(window, 'APP_CONFIG', {
     configurable: true,
-    set(value) { delete window.APP_CONFIG; window.APP_CONFIG = value; if (value) value.demoMode = true; },
+    set(value) { delete window.APP_CONFIG; window.APP_CONFIG = value; if (value) { value.demoMode = true; value.publicDataUrl = './tests/fixtures/public-empty/'; } },
     get() { return undefined; },
   });
 });
@@ -2236,7 +2240,7 @@ const trafficPage = await context.newPage();
 await trafficPage.addInitScript(() => {
   Object.defineProperty(window, 'APP_CONFIG', {
     configurable: true,
-    set(value) { delete window.APP_CONFIG; window.APP_CONFIG = value; if (value) value.demoMode = true; },
+    set(value) { delete window.APP_CONFIG; window.APP_CONFIG = value; if (value) { value.demoMode = true; value.publicDataUrl = './tests/fixtures/public-empty/'; } },
     get() { return undefined; },
   });
 });
@@ -2578,7 +2582,9 @@ await terrPage.route('**/data/demo.json', async (route) => {
   }];
   await route.fulfill({ response, json: payload });
 });
-await terrPage.goto('http://localhost:8080/', { waitUntil: 'networkidle' });
+// terr=0&vias=0: esta seção prova o liga/desliga a partir do zero; o padrão (tudo ligado,
+// issue #171) é provado na página "padrao" mais abaixo.
+await terrPage.goto('http://localhost:8080/#mapa?terr=0&vias=0', { waitUntil: 'networkidle' });
 await terrPage.waitForTimeout(1200);
 
 const controles = await terrPage.evaluate(() => [...document.querySelectorAll('#territoryLayers input[name="territoryArea"]')]
@@ -2640,9 +2646,9 @@ ligada.contornosRa > 0 && ligada.preenchidos === 0
 /Fonte: IBGE/.test(ligada.procedencia) && /versão/.test(ligada.procedencia) && ligada.linkBase === '#base'
   ? pass('a procedência traz fonte, coleta e versão, com link para a Base de dados')
   : fail('procedência: ' + ligada.procedencia);
-/terr=households_grid/.test(ligada.hash)
-  ? pass('a URL do mapa carrega terr=households_grid')
-  : fail('hash sem terr: ' + ligada.hash);
+!/terr=/.test(ligada.hash)
+  ? pass('a camada padrão (domicílios) não entra na URL: #mapa continua #mapa (issue #171)')
+  : fail('hash com terr para a camada padrão: ' + ligada.hash);
 
 // Pixel do canvas: toda cor desenhada é um token da rampa (ou o traço "sem dado"), e um
 // clique numa célula pintada abre o painel. Sem DOM por feição, a prova é por amostragem.
@@ -2732,9 +2738,82 @@ const desligada = await terrPage.evaluate(() => ({
   contornos: document.querySelectorAll('.leaflet-polygons-pane path.polygon-outline-only').length,
   hash: location.hash,
 }));
-desligada.legenda && desligada.preenchidos > 0 && desligada.contornos === 0 && !/terr=/.test(desligada.hash)
-  ? pass('desligar a camada esconde a legenda, devolve o preenchimento das RAs e limpa a URL')
+desligada.legenda && desligada.preenchidos > 0 && desligada.contornos === 0 && /terr=0/.test(desligada.hash)
+  ? pass('desligar a camada esconde a legenda, devolve o preenchimento das RAs e grava terr=0 (ligada é o padrão, #171)')
   : fail('estado após desligar: ' + JSON.stringify(desligada));
+
+// Padrão (issue #171): #mapa sem parâmetros abre com domicílios e vias ligados e a URL fica #mapa;
+// #mapa?terr=0&vias=0 abre sem camada nenhuma. Bloco Território é o primeiro da seção Camadas.
+const terrPadrao = await context.newPage();
+await terrPadrao.addInitScript(() => {
+  Object.defineProperty(window, 'APP_CONFIG', {
+    configurable: true,
+    set(value) { delete window.APP_CONFIG; window.APP_CONFIG = value; if (value) { value.demoMode = true; value.publicDataUrl = './tests/fixtures/public/'; } },
+    get() { return undefined; },
+  });
+});
+await terrPadrao.goto('http://localhost:8080/#mapa', { waitUntil: 'networkidle' });
+await terrPadrao.waitForTimeout(2000);
+const aberturaPadrao = await terrPadrao.evaluate(() => ({
+  area: document.querySelector('#territoryLayers input[name="territoryArea"]:checked')?.value,
+  vias: document.querySelector('#territoryLayers input[name="territoryLines"]')?.checked,
+  legenda: !document.querySelector('#territoryLegend').hidden,
+  legendaVias: !document.querySelector('#territoryLineLegend').hidden,
+  canvas: document.querySelectorAll('.leaflet-territory-pane canvas').length,
+  hash: location.hash,
+  primeiroBloco: document.querySelector('#layersSection .layers-group-label')?.id,
+}));
+aberturaPadrao.area === 'households_grid' && aberturaPadrao.vias === true && aberturaPadrao.legenda && aberturaPadrao.legendaVias && aberturaPadrao.canvas === 1 && aberturaPadrao.hash === '#mapa'
+  ? pass('#mapa sem parâmetros abre com domicílios e vias ligados e a URL continua #mapa (issue #171)')
+  : fail('estado padrão: ' + JSON.stringify(aberturaPadrao));
+aberturaPadrao.primeiroBloco === 'territoryLayerLabel'
+  ? pass('o bloco "Território (dados públicos)" é o primeiro da seção Camadas')
+  : fail('primeiro bloco da seção Camadas: ' + aberturaPadrao.primeiroBloco);
+await terrPadrao.close();
+// Abrir noutra view e só depois ir ao mapa: o padrão vale do mesmo jeito (achado do Codex na
+// PR #172 — o `pendingParams` nascia só no #mapa e o clique em Mapa gravava terr=0&vias=0).
+const viaRanking = await context.newPage();
+await viaRanking.addInitScript(() => {
+  Object.defineProperty(window, 'APP_CONFIG', {
+    configurable: true,
+    set(value) { delete window.APP_CONFIG; window.APP_CONFIG = value; if (value) { value.demoMode = true; value.publicDataUrl = './tests/fixtures/public/'; } },
+    get() { return undefined; },
+  });
+});
+await viaRanking.goto('http://localhost:8080/#ranking', { waitUntil: 'networkidle' });
+await viaRanking.waitForTimeout(1200);
+await viaRanking.click('.view-tab[data-view="mapa"]');
+await viaRanking.waitForTimeout(2500);
+const depoisDoRanking = await viaRanking.evaluate(() => ({
+  area: document.querySelector('#territoryLayers input[name="territoryArea"]:checked')?.value,
+  vias: document.querySelector('#territoryLayers input[name="territoryLines"]')?.checked,
+  canvas: document.querySelectorAll('.leaflet-territory-pane canvas').length,
+  hash: location.hash,
+}));
+depoisDoRanking.area === 'households_grid' && depoisDoRanking.vias === true && depoisDoRanking.canvas === 1 && depoisDoRanking.hash === '#mapa'
+  ? pass('abrir em #ranking e clicar em Mapa também liga domicílios e vias, com a URL #mapa (Codex, PR #172)')
+  : fail('padrão vindo de outra view: ' + JSON.stringify(depoisDoRanking));
+await viaRanking.close();
+const desligadoPage = await context.newPage();
+await desligadoPage.addInitScript(() => {
+  Object.defineProperty(window, 'APP_CONFIG', {
+    configurable: true,
+    set(value) { delete window.APP_CONFIG; window.APP_CONFIG = value; if (value) { value.demoMode = true; value.publicDataUrl = './tests/fixtures/public/'; } },
+    get() { return undefined; },
+  });
+});
+await desligadoPage.goto('http://localhost:8080/#mapa?terr=0&vias=0', { waitUntil: 'networkidle' });
+await desligadoPage.waitForTimeout(1500);
+const tudoDesligado = await desligadoPage.evaluate(() => ({
+  area: document.querySelector('#territoryLayers input[name="territoryArea"]:checked')?.value,
+  vias: document.querySelector('#territoryLayers input[name="territoryLines"]')?.checked,
+  canvas: document.querySelectorAll('.leaflet-territory-pane canvas').length,
+  hash: location.hash,
+}));
+tudoDesligado.area === '' && tudoDesligado.vias === false && tudoDesligado.canvas === 0 && /terr=0/.test(tudoDesligado.hash) && /vias=0/.test(tudoDesligado.hash)
+  ? pass('#mapa?terr=0&vias=0 abre sem camada nenhuma e mantém terr=0&vias=0 na URL')
+  : fail('tudo desligado: ' + JSON.stringify(tudoDesligado));
+await desligadoPage.close();
 
 // Abrir pela URL: #mapa?terr=households_grid liga a camada sozinho.
 const terrUrl = await context.newPage();
@@ -2955,8 +3034,8 @@ vias.amostras.slice(0, -1).every((a, i) => a.altura === `${VIAS.line.weight[i]}p
 /Centralidade viária/.test(vias.atribuicao) && /ODbL/.test(vias.atribuicao)
   ? pass('a atribuição ODbL entra no controle do mapa enquanto a camada está ligada')
   : fail('atribuição do mapa: ' + vias.atribuicao);
-/vias=1/.test(vias.hash) && /terr=jobs_hex/.test(vias.hash)
-  ? pass('a URL carrega vias=1 junto da coroplética')
+!/vias=/.test(vias.hash) && /terr=jobs_hex/.test(vias.hash)
+  ? pass('vias ligadas são o padrão: a URL carrega só terr=jobs_hex, sem vias= (#171)')
   : fail('hash (vias): ' + vias.hash);
 
 /** Varre o canvas territorial: pixels por faixa de alfa, cores permitidas e um alvo clicável. */
@@ -3070,8 +3149,8 @@ const semVias = await terrPage.evaluate(() => ({
   areaLegenda: !document.querySelector('#territoryLegend').hidden,
   hash: location.hash,
 }));
-semVias.legenda && !/Centralidade viária/.test(semVias.atribuicao) && semVias.areaLegenda && !/vias=/.test(semVias.hash)
-  ? pass('desligar as vias depois de vários redesenhos esconde a legenda, retira a atribuição e mantém a coroplética')
+semVias.legenda && !/Centralidade viária/.test(semVias.atribuicao) && semVias.areaLegenda && /vias=0/.test(semVias.hash)
+  ? pass('desligar as vias depois de vários redesenhos esconde a legenda, retira a atribuição, mantém a coroplética e grava vias=0')
   : fail('estado após desligar as vias: ' + JSON.stringify(semVias));
 
 // Tudo desligado: o clique na RA volta a abrir o painel dela (regressão apontada na revisão).
@@ -3109,7 +3188,7 @@ await viasUrl.addInitScript(() => {
     get() { return undefined; },
   });
 });
-await viasUrl.goto('http://localhost:8080/#mapa?vias=1', { waitUntil: 'networkidle' });
+await viasUrl.goto('http://localhost:8080/#mapa?terr=0&vias=1', { waitUntil: 'networkidle' });
 await viasUrl.waitForTimeout(1800);
 const soVias = await viasUrl.evaluate(() => ({
   marcado: document.querySelector('#territoryLayers input[name="territoryLines"]')?.checked,
@@ -3119,7 +3198,7 @@ const soVias = await viasUrl.evaluate(() => ({
   titulo: document.querySelector('#territoryLineLegendTitle').textContent,
 }));
 soVias.marcado && soVias.canvas === 1 && !soVias.areaLegenda && soVias.role === 'overview' && /mais centrais/.test(soVias.titulo)
-  ? pass('#mapa?vias=1 abre só com as vias, no overview (as mais centrais), sem coroplética')
+  ? pass('#mapa?terr=0&vias=1 abre só com as vias, no overview (as mais centrais), sem coroplética')
   : fail('abertura pela URL (vias): ' + JSON.stringify(soVias));
 
 // Carga lenta: zoom durante o "Carregando…" não pode apagar a busca nem a camada da URL
@@ -3136,18 +3215,18 @@ await lenta.route('**/data/demo.json', async (route) => {
   await new Promise((resolve) => setTimeout(resolve, 1500));
   await route.continue();
 });
-await lenta.goto('http://localhost:8080/#mapa?q=casa&terr=households_grid&vias=1', { waitUntil: 'commit' });
+await lenta.goto('http://localhost:8080/#mapa?q=casa&terr=jobs_hex&vias=0', { waitUntil: 'commit' });
 await lenta.waitForSelector('.leaflet-control-zoom-in');
 await lenta.click('.leaflet-control-zoom-in').catch(() => {});
 await lenta.waitForTimeout(4000);
 const aposCargaLenta = await lenta.evaluate(() => ({
   hash: location.hash,
   busca: document.querySelector('#search').value,
-  area: document.querySelector('#territoryLayers input[value="households_grid"]')?.checked,
+  area: document.querySelector('#territoryLayers input[value="jobs_hex"]')?.checked,
   vias: document.querySelector('#territoryLayers input[name="territoryLines"]')?.checked,
 }));
-/q=casa/.test(aposCargaLenta.hash) && /terr=households_grid/.test(aposCargaLenta.hash) && /vias=1/.test(aposCargaLenta.hash) && aposCargaLenta.busca === 'casa' && aposCargaLenta.area && aposCargaLenta.vias
-  ? pass('zoom durante a carga não apaga q=, terr= nem vias= da URL')
+/q=casa/.test(aposCargaLenta.hash) && /terr=jobs_hex/.test(aposCargaLenta.hash) && /vias=0/.test(aposCargaLenta.hash) && aposCargaLenta.busca === 'casa' && aposCargaLenta.area && aposCargaLenta.vias === false
+  ? pass('zoom durante a carga não apaga q=, terr=jobs_hex nem vias=0 da URL')
   : fail('URL após zoom na carga lenta: ' + JSON.stringify(aposCargaLenta));
 
 // Só arquivos públicos (sem IVV e sem PDAD): #base abre mesmo assim.

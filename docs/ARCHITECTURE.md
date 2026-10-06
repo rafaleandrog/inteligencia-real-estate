@@ -196,9 +196,11 @@ redesenhado só como linha em `raOutline`. As vias ficam abaixo dos eixos do DER
 medido e continuam por cima. Área e linha convivem — uma via sobre uma célula ainda se lê, duas
 áreas sobrepostas não —, e por isso as áreas são um rádio e as vias, uma caixa de seleção.
 
-O estado vai na URL do mapa (`src/url-state.js`): `terr` (a camada de área), `terr_metrica` (a
-métrica, quando não é a padrão) e `vias` (`1` com a centralidade ligada).
-`#mapa?terr=households_grid` liga a camada depois que o manifest confirma que ela existe. Pan e
+O estado vai na URL do mapa (`src/url-state.js`): `terr` (a camada de área: id ou `0` = nenhuma),
+`terr_metrica` (a métrica, quando não é a padrão) e `vias` (`1`/`0`). Valor ausente é o padrão
+(domicílios e vias ligados, issue #171), que não entra na URL: `#mapa` abre com os dados visíveis,
+`#mapa?terr=jobs_hex` troca a área, `#mapa?terr=0&vias=0` desliga tudo. O padrão só liga depois
+que o manifest confirma que a camada existe; sem arquivo publicado, nada liga. Pan e
 zoom só redesenham quando a assinatura — arquivos e métrica — muda.
 
 ## Limite de segurança

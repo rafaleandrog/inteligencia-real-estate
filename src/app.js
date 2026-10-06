@@ -83,7 +83,7 @@ import { ANCHOR_ICONS, ANCHOR_FALLBACK_ICON } from './icons.js';
 import { datasetById, fileFor, formatBytes } from './territorio/manifest.js';
 import {
   TERRITORY_LAYERS, AREA_LAYER_IDS, LINE_LAYER_IDS, RAMPS, layerById, metricFor, layerAvailability, metricAvailability,
-  layerFilesFor, featureValue, classCheckMismatch,
+  layerFilesFor, featureValue, classCheckMismatch, territoryStateFromParams, territoryParamsFromState, TERRITORY_DEFAULTS,
 } from './territorio/layers.js';
 import { classIndexFor, rampIndexFor } from './territorio/classes.js';
 import { legendRows, legendTitle, lineLegendRows, provenanceLine } from './territorio/legend.js';
@@ -2990,6 +2990,13 @@ function syncHash() {
 function applyUrlParams() {
   const { view, params } = parseHash(location.hash || '');
   state.pendingUrl = { view, params };
+  // As camadas territoriais são aplicadas por `initializeTerritoryControls`, depois que o
+  // manifest disse o que existe: um `terr=` de camada indisponível é ignorado com o motivo
+  // no controle, nunca liga nada às cegas. Fica ANTES do retorno por view (achado do Codex na
+  // PR #172): quem abre em #ranking ou #base e depois clica em Mapa também recebe o padrão
+  // (domicílios + vias, #171) — só o `#mapa` carrega `terr`/`vias` explícitos, porque o
+  // vocabulário das outras views não tem essas chaves (R8.90).
+  state.territory.pendingParams = { terr: params.terr || '', terr_metrica: params.terr_metrica || '', vias: params.vias || '' };
   if (view !== 'mapa') return;
   const setIfOption = (select, value) => {
     if (!value) return;
@@ -3002,10 +3009,6 @@ function applyUrlParams() {
   if (intParam(params.price_min) !== null) dom.priceMin.value = String(intParam(params.price_min));
   if (intParam(params.price_max) !== null) dom.priceMax.value = String(intParam(params.price_max));
   if (params.q) dom.search.value = params.q;
-  // As camadas territoriais são aplicadas por `initializeTerritoryControls`, depois que o
-  // manifest disse o que existe: um `terr=` de camada indisponível é ignorado com o motivo
-  // no controle, nunca liga nada às cegas.
-  state.territory.pendingParams = { terr: params.terr || '', terr_metrica: params.terr_metrica || '', vias: params.vias || '' };
 }
 
 async function copyAnalysisLink() {
@@ -5769,12 +5772,18 @@ function territoryCheckboxRow({ value, label, available, reason, count }) {
   return li;
 }
 
-/** Aplica `terr`/`terr_metrica`/`vias` da URL depois que o manifest disse o que existe. */
+/**
+ * Aplica `terr`/`terr_metrica`/`vias` da URL depois que o manifest disse o que existe. Valor
+ * ausente é o padrão (domicílios + vias, issue #171): o mapa público abre com os dados
+ * visíveis; `terr=0`/`vias=0` desligam. O padrão só liga o que o manifest confirma — sem
+ * arquivo publicado, nada liga e o controle fica desabilitado com o motivo (R8.64).
+ */
 function initializeTerritoryControls() {
   const pending = state.territory.pendingParams;
   state.territory.pendingParams = null;
   if (!pending) return;
-  const layer = pending.terr ? layerById(pending.terr) : null;
+  const wanted = territoryStateFromParams(pending);
+  const layer = wanted.area ? layerById(wanted.area) : null;
   if (layer && layer.kind === 'area' && layerAvailability(layer, state.territory.publicData).available) {
     state.territory.area = layer.id;
     const metric = metricFor(layer, pending.terr_metrica);
@@ -5782,7 +5791,7 @@ function initializeTerritoryControls() {
     const input = dom.territoryLayers.querySelector(`input[name="territoryArea"][value="${layer.id}"]`);
     if (input) input.checked = true;
   }
-  if (pending.vias === '1' && LINE_LAYER_IDS.length > 0) {
+  if (wanted.lines && LINE_LAYER_IDS.length > 0) {
     const lines = layerById(LINE_LAYER_IDS[0]);
     if (layerAvailability(lines, state.territory.publicData).available) {
       state.territory.lines = true;
@@ -5792,15 +5801,24 @@ function initializeTerritoryControls() {
   }
 }
 
-/** O que da camada territorial entra na URL do mapa (issue #150). */
+/**
+ * O que da camada territorial entra na URL do mapa (issue #150). Padrão não entra (`#mapa`
+ * continua `#mapa`); desligado entra como `0` só quando a camada existe no manifest (#171).
+ */
 function territoryUrlParams() {
   const t = state.territory;
   const layer = t.area ? layerById(t.area) : null;
   const metric = layer ? t.metric[layer.id] : '';
+  const defaultArea = layerById(TERRITORY_DEFAULTS.area);
+  const lines = LINE_LAYER_IDS.length > 0 ? layerById(LINE_LAYER_IDS[0]) : null;
+  const { terr, vias } = territoryParamsFromState({ area: layer ? layer.id : null, lines: t.lines === true }, {
+    areaAvailable: Boolean(defaultArea) && layerAvailability(defaultArea, t.publicData).available,
+    linesAvailable: Boolean(lines) && layerAvailability(lines, t.publicData).available,
+  });
   return {
-    terr: layer ? layer.id : '',
+    terr,
     terr_metrica: layer && metric && metric !== layer.defaultMetric ? metric : '',
-    vias: t.lines ? '1' : '',
+    vias,
   };
 }
 
