@@ -1,0 +1,7 @@
+year,id_hex,abbrev_muni,name_muni,code_muni,P001,R001,R003
+2010,89a8c0a1b03ffff,bra,Brasília,5300108,820,2500.5,7
+2010,89a8c0a1b07ffff,bra,Brasília,5300108,410,1800.0,5
+2010,89a8c0a1b0bffff,bra,Brasília,5300108,950,3100.0,8
+2010,89a8c0a1b0fffff,bra,Brasília,5300108,300,4200.0,9
+2010,89a8c0a1b13ffff,bra,Brasília,5300108,120,900.0,2
+2010,89ffffffffffff1,spo,São Paulo,3550308,100,1000,5

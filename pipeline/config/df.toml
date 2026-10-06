@@ -31,7 +31,19 @@ base_url_2022 = "https://geoftp.ibge.gov.br/recortes_para_fins_estatisticos/grad
 # não baixar a Grade inteira de novo. `python -m imob_pipeline discover grade` só lista os nomes.
 quadrant_ids = []
 columns_2010 = { cell_id = "ID_UNICO", parent_1km = "nome_1KM", pop = "POP", dom_ocu = "DOM_OCU" }
-columns_2022 = { cell_id = "ID_UNICO", parent_1km = "nome_1KM", pop = "POP", dom_ocu = "DOM_OCU" }
+# Grade 2022 (layout real, primeira execução em 2026-10-06, #164): só duas variáveis, TOTAL (população) e
+# TOTAL_DOM — domicílios ocupados, PARTICULARES E COLETIVOS, conforme as notas metodológicas da Grade 2022
+# (geoftp …/censo_2022/Notas_metodologicas_grade_estatistica_2022.pdf) —, e o pai de 1 km em minúsculas
+# (nome_1km). Demais colunas: QUADRANTE, nome_5KM … nome_500KM. Em 2010, DOM_OCU é "domicílios ocupados";
+# enquanto a nota de 2010 não confirmar o mesmo universo, o conjunto leva a flag e a nota abaixo.
+columns_2022 = { cell_id = "ID_UNICO", parent_1km = "nome_1km", pop = "TOTAL", dom_ocu = "TOTAL_DOM" }
+dataset_flags = ["dwelling_universe_to_confirm"]
+# Até o universo de 2010 ser confirmado e o site mostrar a ressalva ao lado do número (#166), a comparação
+# entre edições NÃO é publicada nos agregados por RA: households_delta e households_growth_pct saem nulos
+# com a flag households_growth_suppressed (households_2010 e households_2022 continuam). O mapa de células
+# segue publicado com a flag e a nota acima no manifest.
+suppress_growth_in_aggregates = true
+notes_pt = "Domicílios: em 2010, DOM_OCU é 'domicílios ocupados' (rótulo da Grade 2010); em 2022, TOTAL_DOM são domicílios ocupados particulares e coletivos (notas metodológicas da Grade 2022). Até a nota de 2010 confirmar o mesmo universo, a variação 2010→2022 deve ser lida com essa ressalva."
 cell_area_km2 = { "200M" = 0.04, "1KM" = 1.0 }
 drop_if_empty_both_years = true
 breaks = { households_delta_per_km2 = [100, 350, 750, 1000, 2000], households_delta = [5, 10, 20, 40, 80] }
@@ -42,14 +54,36 @@ censo_2010 = { name = "IBGE — Grade Estatística, Censo Demográfico 2010", ur
 censo_2022 = { name = "IBGE — Grade Estatística, Censo Demográfico 2022", url = "https://geoftp.ibge.gov.br/recortes_para_fins_estatisticos/grade_estatistica/censo_2022/", license = "Dados abertos do IBGE — reprodução permitida com citação da fonte", attribution_pt = "Fonte: IBGE, Censo Demográfico 2022 — Grade Estatística." }
 
 [jobs_hex]
-# Candidato; confirmado na primeira execução real (o pacote aopdata resolve os arquivos por este índice).
-metadata_url = "https://www.ipea.gov.br/acessooportunidades/dados/metadata.csv"
-city = "bra"
+# O pacote aopdata resolve os arquivos por este índice, que ele baixa do asset de release `v1.0.0`
+# no GitHub (r-package/R/download_metadata.R; achado do Codex na PR #165 — a organização `ipeaGIT`
+# redireciona para `ipea`). A URL antiga do Ipea respondeu 404 na primeira execução real (2026-10-06,
+# #164) e fica como candidata: as URLs são tentadas em ordem e, se nenhuma responder, o pipeline
+# sonda as páginas de `probe_urls` e falha listando os links de dados que encontrou.
+metadata_url = "https://github.com/ipea/aopdata/releases/download/v1.0.0/metadata.csv"
+# Espelho vivo do Ipea que o próprio aopdata usa quando o GitHub falha (download_metadata.R; é o host
+# de `download_path2` no índice), e a URL antiga, que respondeu 404 em 2026-10-06.
+metadata_fallback_urls = [
+  "https://www.ipea.gov.br/geobr/aopdata/metadata/metadata.csv",
+  "https://www.ipea.gov.br/acessooportunidades/dados/metadata.csv",
+]
+probe_urls = [
+  "https://api.github.com/repos/ipea/aopdata/releases/tags/v1.0.0",
+  "https://api.github.com/repos/ipea/aopdata/releases/latest",
+  "https://www.ipea.gov.br/acessooportunidades/dados/",
+  "https://www.ipea.gov.br/acessooportunidades/",
+]
+# Código da cidade no índice do AOP: Brasília é `bsb` (conferido no metadata.csv real, 2026-10-06).
+city = "bsb"
 year = 2019
 previous_year = 2017
 h3_resolution = 9
 overview_resolution = 8
-columns = { hex = "id_hex", jobs_total = "T001", jobs_low = "T002", jobs_mid = "T003", jobs_high = "T004", pop = "P001", income_avg = "R001", income_decile = "R003" }
+# Uso do solo (`landuse_<ano>_<cidade>.csv`): só empregos T001–T004. População e renda vêm do arquivo de
+# população (`population_2010_<cidade>.csv`, base Censo 2010), juntado por hexágono — layout real do release
+# v1.0.0 do aopdata, conferido em 2026-10-06 (#164).
+columns = { hex = "id_hex", jobs_total = "T001", jobs_low = "T002", jobs_mid = "T003", jobs_high = "T004" }
+population_year = 2010
+population_columns = { hex = "id_hex", pop = "P001", income_avg = "R001", income_decile = "R003" }
 detail_min_jobs = 1
 breaks = { jobs_total = [75, 125, 250, 500, 1000, 1500, 2000, 2500, 5000], jobs_low = [25, 50, 100, 200, 400, 600, 800, 1000, 2000], jobs_mid = [25, 50, 100, 200, 400, 600, 800, 1000, 2000], jobs_high = [25, 50, 100, 200, 400, 600, 800, 1000, 2000] }
 budgets = { overview = 2000000, shard = 2000000 }

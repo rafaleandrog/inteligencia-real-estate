@@ -173,6 +173,13 @@ class ValidatorTests(unittest.TestCase):
         findings = validate_public_dir(root, bbox=BBOX, decimals=5)
         self.assertTrue(any("casas" in f.message for f in errors(findings)))
 
+    def test_five_decimal_value_with_float_noise_is_accepted(self):
+        """A checagem de casas espelha o `round()` do escritor: multiplicar por 10^casas reprovava valores
+        legítimos de 5 casas como -16.06 por erro de ponto flutuante (#164)."""
+        root = self._rebuild_with_features([make_feature("c1", square(-47.9, -16.05993), cell_props("c1", 10.0, 0))])
+        findings = validate_public_dir(root, bbox=BBOX, decimals=5)
+        self.assertFalse(any("casas" in f.message for f in errors(findings)), [f.message for f in errors(findings)])
+
     def test_class_mismatch(self):
         root = self._rebuild_with_features([make_feature("c1", square(-47.9, -15.8), cell_props("c1", 400.0, 5))])
         findings = validate_public_dir(root, bbox=BBOX)

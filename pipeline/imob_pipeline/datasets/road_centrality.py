@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from ..geo import BBOX_MARGIN_DEG
 from ..outputs.manifest import dataset_entry
 from ..sources.osm import load_graph
 from ..transforms.centrality import build_edges, compute_betweenness
@@ -23,7 +24,7 @@ def run(ctx: RunContext) -> dict:
     built = build_edges(
         graph, betweenness, breaks=cfg.breaks["betweenness_percentile"], publish_min_percentile=cfg.publish_min_percentile,
         overview_min_percentile=cfg.overview_min_percentile, always_publish_highways=cfg.always_publish_highways,
-        simplify_tolerance_deg=cfg.simplify_tolerance_deg, assign_ra=index.assign,
+        simplify_tolerance_deg=cfg.simplify_tolerance_deg, assign_ra=index.assign, bbox=ctx.config.project.bbox,
     )
     files = [
         write_layer(ctx, f"{FOLDER}/overview.json", built["overview"], role="overview", budget_bytes=cfg.budgets["overview"]),
@@ -46,7 +47,9 @@ def run(ctx: RunContext) -> dict:
             f"origens amostradas (semente {cfg.seed}, motor {engine}), pesos = comprimento, normalizado pelo máximo; percentil sobre "
             f"todas as {counts['edges_graph']} arestas do grafo (empates com posição média). Publicadas: percentil ≥ {cfg.publish_min_percentile:g} "
             f"ou classe arterial ({', '.join(cfg.always_publish_highways)}); overview: percentil ≥ {cfg.overview_min_percentile:g} ou arterial, "
-            f"simplificado a {cfg.simplify_tolerance_deg} grau. RA pelo ponto médio da aresta. Extrato OSM de {graph.snapshot or 'data não informada'}."
+            f"simplificado a {cfg.simplify_tolerance_deg} grau. Aresta com vértice fora do bbox do projeto (+{BBOX_MARGIN_DEG}°) não é "
+            f"publicada ({counts['dropped_outside_bbox']} descartadas): o recorte do OSM mantém inteiras as vias que cruzam a borda. "
+            f"RA pelo ponto médio da aresta. Extrato OSM de {graph.snapshot or 'data não informada'}."
         ),
         ra_assignment_method="midpoint_within_ra",
         class_breaks=breaks_block({"betweenness_percentile": list(cfg.breaks["betweenness_percentile"])}, n=counts["published"]),

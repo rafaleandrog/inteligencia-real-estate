@@ -45,7 +45,7 @@
           "road_km_top_decile": { "type": ["number", "null"] },
           "centrality_mean": { "type": ["number", "null"] },
           "centrality_p90": { "type": ["number", "null"] },
-          "quality_flags": { "type": "array", "items": { "enum": ["households_missing", "jobs_missing", "centrality_missing", "partial_children"] } }
+          "quality_flags": { "type": "array", "items": { "enum": ["households_missing", "jobs_missing", "centrality_missing", "partial_children", "households_growth_suppressed"] } }
         }
       }
     }

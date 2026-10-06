@@ -15,7 +15,8 @@ from imob_pipeline.sources.ibge_grade import (
     read_grid_file, records_from_geojson, resolve_quadrants, to_wgs84_bounds,
 )
 
-from .helpers import FIXTURES, fixture_context
+from .helpers import FIXTURES, FIXTURE_CONFIG, PROD_CONFIG, fixture_context
+from imob_pipeline.config import load_config
 
 COLUMNS = {"cell_id": "ID_UNICO", "parent_1km": "nome_1KM", "pop": "POP", "dom_ocu": "DOM_OCU"}
 BASE_2010 = "https://geoftp.ibge.gov.br/recortes_para_fins_estatisticos/grade_estatistica/censo_2010/"
@@ -211,6 +212,89 @@ class QuadrantDiscoveryTests(unittest.TestCase):
             dataset = next(d for d in manifest["datasets"] if d["id"] == "households_grid")
             self.assertNotIn("resolvidos pelo bbox", dataset["notes_pt"])
             self.assertNotIn(BASE_2010, ctx.fetcher.calls)  # a listagem não é baixada
+
+
+
+class DatasetCaveatsFromConfigTests(unittest.TestCase):
+    def test_config_flags_and_notes_reach_the_manifest(self):
+        """Ressalva declarada no config (ex.: universo de domicílios a confirmar) vira flag e nota do dataset (#164)."""
+        with tempfile.TemporaryDirectory() as tmp:
+            ctx = fixture_context(Path(tmp))
+            ctx.config = replace(ctx.config, households=replace(ctx.config.households, dataset_flags=("dwelling_universe_to_confirm",),
+                                                                 notes_pt="Universo de domicílios a confirmar."))
+            manifest = households_grid.run(ctx)
+            dataset = next(d for d in manifest["datasets"] if d["id"] == "households_grid")
+            self.assertIn("dwelling_universe_to_confirm", dataset["quality_flags"])
+            self.assertTrue(dataset["notes_pt"].endswith("Universo de domicílios a confirmar."))
+
+    def test_aggregates_inherit_the_households_caveat(self):
+        from imob_pipeline.datasets import ra_aggregates, ra_crosswalk
+        with tempfile.TemporaryDirectory() as tmp:
+            ctx = fixture_context(Path(tmp))
+            ctx.config = replace(ctx.config, households=replace(ctx.config.households, dataset_flags=("dwelling_universe_to_confirm",),
+                                                                 notes_pt="Universo a confirmar."))
+            ra_crosswalk.run(ctx)
+            households_grid.run(ctx)
+            agg = next(d for d in ra_aggregates.run(ctx)["datasets"] if d["id"] == "ra_aggregates")
+            self.assertIn("dwelling_universe_to_confirm", agg["quality_flags"])
+            self.assertIn("Universo a confirmar.", agg["notes_pt"])
+        with tempfile.TemporaryDirectory() as tmp:
+            ctx = fixture_context(Path(tmp))
+            ra_crosswalk.run(ctx)
+            households_grid.run(ctx)
+            agg = next(d for d in ra_aggregates.run(ctx)["datasets"] if d["id"] == "ra_aggregates")
+            self.assertNotIn("dwelling_universe_to_confirm", agg["quality_flags"])
+            self.assertNotIn("herdada", agg["notes_pt"])
+
+    def test_growth_is_suppressed_in_aggregates_when_config_says_so(self):
+        import json as _json
+        from imob_pipeline.datasets import ra_aggregates, ra_crosswalk
+        with tempfile.TemporaryDirectory() as tmp:
+            ctx = fixture_context(Path(tmp))
+            ctx.config = replace(ctx.config, households=replace(ctx.config.households, suppress_growth_in_aggregates=True))
+            ra_crosswalk.run(ctx)
+            households_grid.run(ctx)
+            manifest = ra_aggregates.run(ctx)
+            agg = next(d for d in manifest["datasets"] if d["id"] == "ra_aggregates")
+            self.assertIn("households_growth_suppressed", agg["quality_flags"])
+            self.assertIn("households_growth_suppressed", agg["notes_pt"])
+            rows = _json.loads((Path(tmp) / "ra_aggregates.json").read_text("utf-8"))["rows"]
+            with_data = [r for r in rows if r["households_source"] is not None]
+            self.assertTrue(with_data)
+            for row in with_data:
+                self.assertIsNone(row["households_delta"])
+                self.assertIsNone(row["households_growth_pct"])
+                self.assertIsNotNone(row["households_2022"])
+                self.assertIn("households_growth_suppressed", row["quality_flags"])
+        with tempfile.TemporaryDirectory() as tmp:
+            ctx = fixture_context(Path(tmp))
+            ra_crosswalk.run(ctx)
+            households_grid.run(ctx)
+            ra_aggregates.run(ctx)
+            rows = _json.loads((Path(tmp) / "ra_aggregates.json").read_text("utf-8"))["rows"]
+            self.assertTrue(any(r["households_growth_pct"] is not None for r in rows))
+
+    def test_production_config_declares_the_dwelling_universe_caveat(self):
+        cfg = load_config(PROD_CONFIG).households
+        self.assertIn("dwelling_universe_to_confirm", cfg.dataset_flags)
+        self.assertTrue(cfg.suppress_growth_in_aggregates)
+        self.assertIn("particulares e coletivos", cfg.notes_pt)
+        fixture = load_config(FIXTURE_CONFIG).households
+        self.assertEqual((fixture.dataset_flags, fixture.notes_pt), ((), ""))
+
+
+class Grade2022ColumnsTests(unittest.TestCase):
+    def test_production_config_maps_the_real_2022_columns(self):
+        """Layout real visto na primeira execução (#164): TOTAL, TOTAL_DOM, nome_1km em minúsculas."""
+        cfg = load_config(PROD_CONFIG).households
+        payload = {"features": [{"properties": {"ID_UNICO": "200ME57000N92000", "QUADRANTE": "45", "TOTAL": 120, "TOTAL_DOM": 40,
+                                                 "nome_1km": "1KME570N920", "nome_5KM": "5KME570N920", "nome_10KM": "10KME570N920",
+                                                 "nome_50KM": "x", "nome_100KM": "x", "nome_500KM": "x"},
+                                  "geometry": {"type": "Polygon", "coordinates": [[[-47.9475, -15.86], [-47.9475, -15.8582], [-47.9456, -15.8582], [-47.9456, -15.86], [-47.9475, -15.86]]]}}]}
+        records, suppressed = records_from_geojson(payload, cfg.columns_2022, "Grade 2022")
+        self.assertEqual((records[0].pop, records[0].dom_ocu, records[0].parent_1km), (120, 40, "1KME570N920"))
+        self.assertEqual(suppressed, [])
+        self.assertEqual(cfg.columns_2010["dom_ocu"], "DOM_OCU")
 
 
 if __name__ == "__main__":

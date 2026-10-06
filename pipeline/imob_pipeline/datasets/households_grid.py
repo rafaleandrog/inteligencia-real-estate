@@ -55,6 +55,8 @@ def run(ctx: RunContext) -> dict:
     counts = {**result.counts, "suppressed_2010": len(sup10), "suppressed_2022": len(sup22),
               "quadrants_2010": len(ids10), "quadrants_2022": len(ids22)}
     notes = "A primeira classe (até 100 dom./km²) inclui perda e zero. 'Omitida' (sem domicílio nos dois anos) não é 'sem dado'."
+    if cfg.notes_pt:
+        notes += " " + cfg.notes_pt.strip()
     discovered = disc10 is not None or disc22 is not None
     if discovered:
         notes += (f" Quadrantes da Grade resolvidos pelo bbox do projeto nesta execução "
@@ -65,14 +67,17 @@ def run(ctx: RunContext) -> dict:
         version=ctx.version_stamp(), generated_at=ctx.now(), files=files, sources=sources, years=[2010, 2022],
         crs=ctx.config.project.crs, bbox=bbox,
         method_pt=(
-            "As mesmas células nas duas edições (join por ID_UNICO). households_delta = dom_ocu_2022 − dom_ocu_2010; "
+            "As mesmas células nas duas edições (join por ID_UNICO). Colunas de origem — 2010: população "
+            f"{cfg.columns_2010['pop']}, domicílios {cfg.columns_2010['dom_ocu']}, pai {cfg.columns_2010['parent_1km']}; "
+            f"2022: população {cfg.columns_2022['pop']}, domicílios {cfg.columns_2022['dom_ocu']}, pai {cfg.columns_2022['parent_1km']}. "
+            "households_delta = dom_ocu_2022 − dom_ocu_2010; "
             "por km² pela área nominal da célula; variação relativa é fração decimal e é nula quando 2010 é nulo ou zero. "
             "Overview de 1 km com somas estritas (filho nulo → soma nula + partial_children). Célula sem domicílio nos dois "
             "anos é omitida e contada. Valor suprimido vira nulo + flag, nunca é saturado. RA pelo centroide da célula."
         ),
         ra_assignment_method=ctx.config.ra.assignment_method,
         class_breaks=breaks_block(dict(cfg.breaks), n=len(result.detail)),
-        counts=counts, quality_flags=sorted(result.flags),
+        counts=counts, quality_flags=sorted(set(result.flags) | set(cfg.dataset_flags)),
         notes_pt=notes,
         schema=SCHEMA,
     )

@@ -16,5 +16,6 @@
   "https://geoftp.ibge.gov.br/recortes_para_fins_estatisticos/grade_estatistica/censo_2022_dirs/grade_estatistica/": "grade_listing.html",
   "https://geoftp.ibge.gov.br/recortes_para_fins_estatisticos/grade_estatistica/censo_2022_dirs/documentacao/": "grade_listing_dirs_empty.html",
   "https://geoftp.ibge.gov.br/recortes_para_fins_estatisticos/grade_estatistica/censo_2022_dirs/grade_estatistica/grade_id45.zip": "grade_2022.json",
-  "https://geoftp.ibge.gov.br/recortes_para_fins_estatisticos/grade_estatistica/censo_2022_dirs/grade_estatistica/grade_id46.zip": "grade_far.json"
+  "https://geoftp.ibge.gov.br/recortes_para_fins_estatisticos/grade_estatistica/censo_2022_dirs/grade_estatistica/grade_id46.zip": "grade_far.json",
+  "https://www.ipea.gov.br/acessooportunidades/dados/aop_population_bra_2010.txt": "aop_population_bra_2010.txt"
 }

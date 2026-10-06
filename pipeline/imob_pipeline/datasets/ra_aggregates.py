@@ -60,6 +60,16 @@ def run(ctx: RunContext) -> dict:
         "centrality_snapshot": str(roads_ds["years"][0]) if roads_ds and roads_ds.get("years") else None,
     }
     rows = build_rows(crosswalk_rows, households=households, jobs=jobs, roads=roads, sources=sources)
+    hh_cfg = ctx.config.households
+    # Comparação entre edições suprimida por config (universo de domicílios a confirmar; #164, #166):
+    # nulo com flag, nunca um número sem ressalva ao lado — os totais de cada edição continuam.
+    growth_suppressed = bool(households) and hh_cfg.suppress_growth_in_aggregates
+    if growth_suppressed:
+        for row in rows:
+            if row.get("households_source") is not None:
+                row["households_delta"] = None
+                row["households_growth_pct"] = None
+                row["quality_flags"] = sorted(set(row.get("quality_flags") or []) | {"households_growth_suppressed"})
     write_json(ctx.out_dir / FILE_NAME, {"rows": rows}, indent=None)
     files = [file_entry(ctx.out_dir, FILE_NAME, role="data", budget_bytes=ctx.config.manifest.budgets["aggregates"])]
 
@@ -75,6 +85,18 @@ def run(ctx: RunContext) -> dict:
         counts["unassigned_edges"] = int((roads.get("SEM_RA", {}) or {}).get("edges_total") or 0)
         counts["edges_total"] = int(sum(r["edges_total"] for r in roads.values()))
     flags = [f for f, present in (("households_missing", households), ("jobs_missing", jobs), ("centrality_missing", roads)) if not present]
+    notes = "Bloco de dataset não gerado vem nulo (nunca zero) com a flag correspondente."
+    # Ressalva declarada no config do conjunto de origem acompanha o agregado: quem lê
+    # households_growth_pct aqui precisa da mesma ressalva de quem lê o mapa (#164, #166).
+    if households and hh_cfg.dataset_flags:
+        flags.extend(hh_cfg.dataset_flags)
+        if hh_cfg.notes_pt:
+            notes += " Domicílios (ressalva herdada de households_grid): " + hh_cfg.notes_pt.strip()
+    if growth_suppressed:
+        flags.append("households_growth_suppressed")
+        notes += (" households_delta e households_growth_pct saem nulos (flag households_growth_suppressed) até o universo "
+                  "de domicílios de 2010 ser confirmado e o site mostrar a ressalva ao lado do número (#164, #166); "
+                  "households_2010 e households_2022 continuam publicados.")
     all_sources = [s for ds in (hh_ds, jobs_ds, roads_ds) if ds for s in ds["sources"]]
     entry = dataset_entry(
         dataset_id=DATASET_ID,
@@ -90,8 +112,8 @@ def run(ctx: RunContext) -> dict:
             "households_growth_pct = delta ÷ 2010 (fração decimal); jobs_per_1000_residents = empregos ÷ população-base × 1000; "
             "por km² pela área oficial da RA. Feição fora de toda RA vai para o balde SEM_RA, contado em counts."
         ),
-        ra_assignment_method=ctx.config.ra.assignment_method, class_breaks=None, counts=counts, quality_flags=flags,
-        notes_pt="Bloco de dataset não gerado vem nulo (nunca zero) com a flag correspondente.",
+        ra_assignment_method=ctx.config.ra.assignment_method, class_breaks=None, counts=counts, quality_flags=sorted(set(flags)),
+        notes_pt=notes,
         schema=SCHEMA,
     )
     manifest = publish(ctx, entry)

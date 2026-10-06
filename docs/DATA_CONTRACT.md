@@ -1495,11 +1495,11 @@ variação é direta. Arquivos: `households_grid/overview_1km.json` (`role: over
 
 | Propriedade | Tipo | Ausência | Regra |
 |---|---|---|---|
-| `cell_id` | texto | — | `ID_UNICO`, chave estável 2010↔2022; no overview, `nome_1KM` |
+| `cell_id` | texto | — | `ID_UNICO`, chave estável 2010↔2022; no overview, o pai de 1 km (`nome_1KM` em 2010, `nome_1km` em 2022) |
 | `cell_size` | enum `200M` / `1KM` | — | do prefixo do id |
 | `area_km2` | número | — | da tabela por tamanho; área projetada conferida ± 3 % |
-| `pop_2010`, `pop_2022` | inteiro | `null` | `POP` |
-| `dom_ocu_2010`, `dom_ocu_2022` | inteiro | `null` | `DOM_OCU` (domicílios particulares ocupados) |
+| `pop_2010`, `pop_2022` | inteiro | `null` | 2010: `POP`; 2022: `TOTAL` |
+| `dom_ocu_2010`, `dom_ocu_2022` | inteiro | `null` | 2010: `DOM_OCU` ("domicílios ocupados", rótulo da Grade 2010); 2022: `TOTAL_DOM` (domicílios ocupados **particulares e coletivos**, notas metodológicas da Grade 2022). `households_delta` e `households_growth_pct` só são comparáveis se os dois universos coincidirem: até a nota de 2010 confirmar, o conjunto leva a flag `dwelling_universe_to_confirm` e a ressalva em `notes_pt` (#164); o manifest declara as colunas de origem em `method_pt` |
 | `households_delta` | inteiro | `null` se um lado é nulo | `dom_ocu_2022 − dom_ocu_2010` |
 | `households_delta_per_km2` | número | idem | `households_delta ÷ area_km2`, 2 casas |
 | `households_delta_pct_change` | número (**fração decimal**) | `null` se 2010 nulo ou zero | `households_delta ÷ dom_ocu_2010` |
@@ -1525,8 +1525,8 @@ Ipea — Projeto Acesso a Oportunidades (empregos formais da RAIS por hexágono 
 | `year` | inteiro | — | ano principal (2019) |
 | `jobs_total`, `jobs_low`, `jobs_mid`, `jobs_high` | inteiro | `null` | `T001`–`T004` (tercis de renda) |
 | `jobs_total_2017` | inteiro | `null` (+ `hex_missing_2017`) | mesmo hexágono no ano anterior |
-| `pop_total` | inteiro | `null` | `P001` — base Censo 2010 (flag `aop_population_2010_based` em toda feição) |
-| `income_avg_brl`, `income_decile` | número / inteiro 1–10 | `null` | `R001`, `R003` |
+| `pop_total` | inteiro | `null` | `P001` do arquivo de **população** do AOP (`population_2010_<cidade>.csv`, base Censo 2010), juntado ao uso do solo por hexágono; flag `aop_population_2010_based` em toda feição |
+| `income_avg_brl`, `income_decile` | número / inteiro 1–10 | `null` | `R001`, `R003` do mesmo arquivo de população; célula vazia é `null` |
 | `ra_geo_id` | texto | `null` | centro do hexágono dentro da RA |
 | `class_jobs_total` (e `_low/_mid/_high`) | inteiro 0–9 | `null` | cortes `[75, 125, 250, 500, 1000, 1500, 2000, 2500, 5000]`; **zero é ausente** (`zero_is_absent`) |
 | `hexes` | inteiro | só no overview | hexágonos r9 somados |
@@ -1571,7 +1571,14 @@ gerado vem `null` em todos os campos dele (nunca zero), com a flag correspondent
 | `households_source`, `households_2010`, `households_2022`, `households_delta`, `households_growth_pct` (**fração decimal**), `households_per_km2_2022`, `pop_2010`, `pop_2022`, `cells_2010`, `cells_2022`, `cells_partial` | — | soma das células de 200 m atribuídas; `households_growth_pct = delta ÷ households_2010` (`null` se 2010 nulo ou zero) |
 | `jobs_source`, `jobs_year`, `jobs_total`, `jobs_low`, `jobs_mid`, `jobs_high`, `jobs_population_basis`, `jobs_per_1000_residents`, `jobs_per_km2`, `hexes` | — | soma dos hexágonos r9; `jobs_per_1000_residents = jobs_total ÷ jobs_population_basis × 1000` (base: `pop_total` do AOP, Censo 2010); `jobs_per_km2 = jobs_total ÷ ra_area_km2` |
 | `centrality_source`, `centrality_snapshot`, `edges_total`, `road_km_total`, `road_km_top_decile`, `centrality_mean`, `centrality_p90` | — | sobre as arestas atribuídas à RA |
-| `quality_flags` | lista | `households_missing`, `jobs_missing`, `centrality_missing`, `partial_children` |
+| `quality_flags` | lista | `households_missing`, `jobs_missing`, `centrality_missing`, `partial_children`, `households_growth_suppressed` (comparação entre edições suprimida por config: `households_delta` e `households_growth_pct` nulos, totais de cada edição mantidos) |
+
+No nível do conjunto (manifest), `ra_aggregates` herda as ressalvas declaradas no config do
+`households_grid` (`dataset_flags` e `notes_pt` — hoje `dwelling_universe_to_confirm`, #164),
+porque `households_growth_pct` deriva dos mesmos valores; mostrá-las ao lado dos indicadores no
+site é a issue #166. Enquanto isso não existe, `suppress_growth_in_aggregates = true` no config
+publica `households_delta` e `households_growth_pct` nulos com a flag `households_growth_suppressed`
+(R5.7: ausência é `null`, nunca um número sem ressalva ao lado).
 
 Escalas declaradas no cliente (`DATASET_PERCENT_SCALE`): `RA_AGGREGATES` decimal;
 `PUBLIC_CENTRALITY` pontos (percentil 0–100).

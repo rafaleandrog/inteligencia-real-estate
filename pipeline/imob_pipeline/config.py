@@ -108,14 +108,27 @@ class HouseholdsConfig:
     budgets: Mapping[str, int]
     source_2010: SourceInfo
     source_2022: SourceInfo
+    # Ressalvas do conjunto declaradas no config (ex.: universo de domicílios a confirmar), publicadas
+    # em `quality_flags` e `notes_pt` do manifest (#164).
+    dataset_flags: tuple[str, ...]
+    notes_pt: str
+    # Com True, `households_delta` e `households_growth_pct` dos agregados por RA saem nulos (flag
+    # `households_growth_suppressed`): a comparação entre edições só volta quando o universo de 2010
+    # for confirmado e o site mostrar a ressalva ao lado do número (#164, #166).
+    suppress_growth_in_aggregates: bool
 
 
 @dataclass(frozen=True)
 class JobsConfig:
     metadata_url: str
+    metadata_fallback_urls: tuple[str, ...]
+    probe_urls: tuple[str, ...]
     city: str
     year: int
     previous_year: int
+    # População e renda vêm de outro arquivo do AOP (`population_<ano>_<cidade>`, base Censo 2010).
+    population_year: int
+    population_columns: Mapping[str, str]
     h3_resolution: int
     overview_resolution: int
     columns: Mapping[str, str]
@@ -204,12 +217,20 @@ def parse_config(raw: Mapping[str, Any], *, path: Path, sha256: str) -> Config:
             budgets={str(k): int(v) for k, v in _require(hh, "households_grid", "budgets").items()},
             source_2010=_source({"source": _require(hh_sources, "households_grid.sources", "censo_2010")}, "households_grid.sources.censo_2010"),
             source_2022=_source({"source": _require(hh_sources, "households_grid.sources", "censo_2022")}, "households_grid.sources.censo_2022"),
+            dataset_flags=tuple(str(f) for f in hh.get("dataset_flags", [])),
+            notes_pt=str(hh.get("notes_pt", "")),
+            suppress_growth_in_aggregates=bool(hh.get("suppress_growth_in_aggregates", False)),
         ),
         jobs=JobsConfig(
             metadata_url=str(_require(jobs, "jobs_hex", "metadata_url")),
+            # Opcionais: candidatas tentadas após `metadata_url` e páginas sondadas quando todas falham (#164).
+            metadata_fallback_urls=tuple(str(u) for u in jobs.get("metadata_fallback_urls", [])),
+            probe_urls=tuple(str(u) for u in jobs.get("probe_urls", [])),
             city=str(_require(jobs, "jobs_hex", "city")),
             year=int(_require(jobs, "jobs_hex", "year")),
             previous_year=int(_require(jobs, "jobs_hex", "previous_year")),
+            population_year=int(_require(jobs, "jobs_hex", "population_year")),
+            population_columns=dict(_require(jobs, "jobs_hex", "population_columns")),
             h3_resolution=int(_require(jobs, "jobs_hex", "h3_resolution")),
             overview_resolution=int(_require(jobs, "jobs_hex", "overview_resolution")),
             columns=dict(_require(jobs, "jobs_hex", "columns")),

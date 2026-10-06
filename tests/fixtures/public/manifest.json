@@ -1,6 +1,6 @@
 {
   "attribution_pt": "Contém dados do IBGE, do Ipea (Projeto Acesso a Oportunidades), do GeoPortal/SEDUH-DF e © OpenStreetMap contributors (ODbL).",
-  "config_sha256": "713525bbf652943d5360301a20717578185affeb7fb238841fe22a27009b5985",
+  "config_sha256": "b13e62892ecaba288092debeb17477655fdf90873a02458f5578809c9a112ddf",
   "datasets": [
     {
       "bbox": [
@@ -119,7 +119,7 @@
       ],
       "generated_at": "2026-10-05T16:47:15Z",
       "id": "households_grid",
-      "method_pt": "As mesmas células nas duas edições (join por ID_UNICO). households_delta = dom_ocu_2022 − dom_ocu_2010; por km² pela área nominal da célula; variação relativa é fração decimal e é nula quando 2010 é nulo ou zero. Overview de 1 km com somas estritas (filho nulo → soma nula + partial_children). Célula sem domicílio nos dois anos é omitida e contada. Valor suprimido vira nulo + flag, nunca é saturado. RA pelo centroide da célula.",
+      "method_pt": "As mesmas células nas duas edições (join por ID_UNICO). Colunas de origem — 2010: população POP, domicílios DOM_OCU, pai nome_1KM; 2022: população POP, domicílios DOM_OCU, pai nome_1KM. households_delta = dom_ocu_2022 − dom_ocu_2010; por km² pela área nominal da célula; variação relativa é fração decimal e é nula quando 2010 é nulo ou zero. Overview de 1 km com somas estritas (filho nulo → soma nula + partial_children). Célula sem domicílio nos dois anos é omitida e contada. Valor suprimido vira nulo + flag, nunca é saturado. RA pelo centroide da célula.",
       "notes_pt": "A primeira classe (até 100 dom./km²) inclui perda e zero. 'Omitida' (sem domicílio nos dois anos) não é 'sem dado'.",
       "quality_flags": [
         "partial_children",
@@ -311,7 +311,7 @@
       ],
       "generated_at": "2026-10-05T16:47:15Z",
       "id": "jobs_hex",
-      "method_pt": "Hexágonos H3 resolução 9 do AOP para a cidade 'bra', ano 2019; T001–T004 são empregos formais (RAIS) por tercil de renda; P001 é população com base no Censo 2010. Detalhe publica jobs_total ≥ 1; overview soma por hexágono-pai r8 com somas estritas. RA pelo centro do hexágono.",
+      "method_pt": "Hexágonos H3 resolução 9 do AOP para a cidade 'bra', ano 2019; T001–T004 são empregos formais (RAIS) por tercil de renda (arquivo de uso do solo); P001 (população), R001 (renda média) e R003 (decil) vêm do arquivo de população do AOP, ano 2010 (Censo 2010), juntado por hexágono. Detalhe publica jobs_total ≥ 1; overview soma por hexágono-pai r8 com somas estritas. RA pelo centro do hexágono.",
       "notes_pt": "Hexágono omitido (sem emprego formal) não é 'sem dado': conta em omitted_zero_jobs. População-base é do Censo 2010 (AOP).",
       "quality_flags": [
         "aop_population_2010_based",
@@ -325,6 +325,7 @@
           "files": [
             "aop_landuse_bra_2017.txt",
             "aop_landuse_bra_2019.txt",
+            "aop_population_bra_2010.txt",
             "metadata.csv"
           ],
           "license": "Citação obrigatória; termos conforme o site do projeto",
@@ -395,6 +396,7 @@
           "files": [
             "aop_landuse_bra_2017.txt",
             "aop_landuse_bra_2019.txt",
+            "aop_population_bra_2010.txt",
             "metadata.csv"
           ],
           "license": "Citação obrigatória; termos conforme o site do projeto",
@@ -481,6 +483,7 @@
       },
       "content_hash": "61efe72aa2d89baf07b29a9fc3036c67abaf1b95e9fe1379fc95d49c3296ceba",
       "counts": {
+        "dropped_outside_bbox": 0,
         "edges_graph": 12,
         "nodes_graph": 11,
         "overview": 3,
@@ -522,7 +525,7 @@
       ],
       "generated_at": "2026-10-05T16:47:15Z",
       "id": "road_centrality",
-      "method_pt": "Rede viária de automóvel (motorway, trunk, primary, secondary, tertiary, unclassified, residential, living_street, motorway_link, trunk_link, primary_link, secondary_link, tertiary_link) recortada pelo bbox; betweenness de aresta com 11 origens amostradas (semente 20260101, motor pure), pesos = comprimento, normalizado pelo máximo; percentil sobre todas as 12 arestas do grafo (empates com posição média). Publicadas: percentil ≥ 50 ou classe arterial (motorway, trunk, primary, secondary); overview: percentil ≥ 90 ou arterial, simplificado a 5e-05 grau. RA pelo ponto médio da aresta. Extrato OSM de 2026-09-28.",
+      "method_pt": "Rede viária de automóvel (motorway, trunk, primary, secondary, tertiary, unclassified, residential, living_street, motorway_link, trunk_link, primary_link, secondary_link, tertiary_link) recortada pelo bbox; betweenness de aresta com 11 origens amostradas (semente 20260101, motor pure), pesos = comprimento, normalizado pelo máximo; percentil sobre todas as 12 arestas do grafo (empates com posição média). Publicadas: percentil ≥ 50 ou classe arterial (motorway, trunk, primary, secondary); overview: percentil ≥ 90 ou arterial, simplificado a 5e-05 grau. Aresta com vértice fora do bbox do projeto (+0.05°) não é publicada (0 descartadas): o recorte do OSM mantém inteiras as vias que cruzam a borda. RA pelo ponto médio da aresta. Extrato OSM de 2026-09-28.",
       "notes_pt": "Valor amostrado: a ordem relativa é estável, o valor absoluto não é comparável entre execuções com amostra diferente.",
       "quality_flags": [
         "betweenness_sampled",
@@ -550,8 +553,8 @@
       ]
     }
   ],
-  "generated_at": "2026-10-06T02:51:20Z",
+  "generated_at": "2026-10-06T04:05:13Z",
   "manifest_version": 1,
-  "pipeline_commit": "f4718dd722c8cd15b2d61774a9f465c239529110",
+  "pipeline_commit": "491ac2b145f0d02b4331b082cebaee6c713655fe",
   "pipeline_version": "0.1.0"
 }

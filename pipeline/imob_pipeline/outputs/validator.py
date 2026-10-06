@@ -14,7 +14,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Iterable
 
-from ..geo import bbox_contains_point, iter_positions, ring_closed
+from ..geo import BBOX_MARGIN_DEG, bbox_contains_point, iter_positions, ring_closed
 from ..transforms.classify import assign_class
 from .manifest import FILE_ROLES, MANIFEST_NAME, MANIFEST_VERSION, content_hash
 
@@ -35,7 +35,6 @@ FILE_REQUIRED = ("path", "role", "bytes", "budget_bytes", "sha256", "features")
 SOURCE_REQUIRED = ("name", "url", "retrieved_at", "license", "attribution_pt")
 AREA_GEOMETRIES = ("Polygon", "MultiPolygon")
 LINE_GEOMETRIES = ("LineString", "MultiLineString")
-BBOX_MARGIN_DEG = 0.05
 
 # Os mesmos padrões da varredura de secret do CI (validate.yml), montados por concatenação
 # para que este arquivo nunca contenha um literal que a própria varredura casaria.
@@ -95,7 +94,6 @@ def _check_geojson(dataset: dict[str, Any], entry: dict[str, Any], payload: Any,
     allowed = AREA_GEOMETRIES if _is_area_dataset(dataset_id) else LINE_GEOMETRIES if _is_line_dataset(dataset_id) else AREA_GEOMETRIES + LINE_GEOMETRIES
     seen: set[str] = set()
     breaks = dataset.get("class_breaks") or {}
-    scale = 10 ** decimals
     for index, feature in enumerate(payload["features"]):
         fid = feature.get("id")
         if not isinstance(fid, str) or not fid:
@@ -120,7 +118,9 @@ def _check_geojson(dataset: dict[str, Any], entry: dict[str, Any], payload: Any,
                 break
         for position in iter_positions(geometry):
             lon, lat = float(position[0]), float(position[1])
-            if round(lon * scale) != lon * scale or round(lat * scale) != lat * scale:
+            # Espelha o escritor (`round(v, decimals)`): multiplicar por 10^decimals e comparar reprovava
+            # valores legítimos de 5 casas (ex.: -16.06) por erro de ponto flutuante (#164).
+            if round(lon, decimals) != lon or round(lat, decimals) != lat:
                 out.append(Finding("erro", "geojson", f"{path}: {fid} tem coordenada com mais de {decimals} casas"))
                 break
             if bbox and not bbox_contains_point(bbox, (lon, lat), BBOX_MARGIN_DEG):
