@@ -19,8 +19,10 @@ def run(ctx: RunContext) -> dict:
     cfg = ctx.config.jobs
     index, _ = ra_index(ctx)
     geometry = ctx.hex_geometry or H3Library()
+    pop_stats: dict = {}
     records, retrievals = load_landuse(ctx.fetcher, metadata_url=cfg.metadata_url, city=cfg.city, year=cfg.year, columns=cfg.columns,
-                                       fallback_urls=cfg.metadata_fallback_urls, probe_urls=cfg.probe_urls)
+                                       fallback_urls=cfg.metadata_fallback_urls, probe_urls=cfg.probe_urls,
+                                       population_year=cfg.population_year, population_columns=cfg.population_columns, stats=pop_stats)
     previous, prev_retrievals = load_landuse(ctx.fetcher, metadata_url=cfg.metadata_url, city=cfg.city, year=cfg.previous_year,
                                              columns=cfg.columns, fallback_urls=cfg.metadata_fallback_urls, probe_urls=cfg.probe_urls)
     result = build_jobs(
@@ -44,7 +46,8 @@ def run(ctx: RunContext) -> dict:
         years=[cfg.previous_year, cfg.year], crs=ctx.config.project.crs, bbox=bbox,
         method_pt=(
             f"Hexágonos H3 resolução {cfg.h3_resolution} do AOP para a cidade '{cfg.city}', ano {cfg.year}; T001–T004 são empregos "
-            f"formais (RAIS) por tercil de renda; P001 é população com base no Censo 2010. Detalhe publica jobs_total ≥ {cfg.detail_min_jobs}; "
+            f"formais (RAIS) por tercil de renda (arquivo de uso do solo); P001 (população), R001 (renda média) e R003 (decil) vêm "
+            f"do arquivo de população do AOP, ano {cfg.population_year} (Censo 2010), juntado por hexágono. Detalhe publica jobs_total ≥ {cfg.detail_min_jobs}; "
             f"overview soma por hexágono-pai r{cfg.overview_resolution} com somas estritas. RA pelo centro do hexágono."
         ),
         ra_assignment_method=ctx.config.ra.assignment_method,
@@ -54,6 +57,6 @@ def run(ctx: RunContext) -> dict:
         schema=SCHEMA,
     )
     manifest = publish(ctx, entry)
-    ctx.summary.dataset(DATASET_ID).update({**result.counts, "files": len(files), "bytes": sum(f["bytes"] for f in files)})
+    ctx.summary.dataset(DATASET_ID).update({**result.counts, **pop_stats, "files": len(files), "bytes": sum(f["bytes"] for f in files)})
     ctx.log.info("jobs_hex: %s hexágonos publicados, %s overview", len(result.detail), len(result.overview))
     return manifest

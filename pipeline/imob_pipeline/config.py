@@ -126,6 +126,9 @@ class JobsConfig:
     city: str
     year: int
     previous_year: int
+    # População e renda vêm de outro arquivo do AOP (`population_<ano>_<cidade>`, base Censo 2010).
+    population_year: int
+    population_columns: Mapping[str, str]
     h3_resolution: int
     overview_resolution: int
     columns: Mapping[str, str]
@@ -226,6 +229,8 @@ def parse_config(raw: Mapping[str, Any], *, path: Path, sha256: str) -> Config:
             city=str(_require(jobs, "jobs_hex", "city")),
             year=int(_require(jobs, "jobs_hex", "year")),
             previous_year=int(_require(jobs, "jobs_hex", "previous_year")),
+            population_year=int(_require(jobs, "jobs_hex", "population_year")),
+            population_columns=dict(_require(jobs, "jobs_hex", "population_columns")),
             h3_resolution=int(_require(jobs, "jobs_hex", "h3_resolution")),
             overview_resolution=int(_require(jobs, "jobs_hex", "overview_resolution")),
             columns=dict(_require(jobs, "jobs_hex", "columns")),

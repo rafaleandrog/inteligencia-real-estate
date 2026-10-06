@@ -1525,8 +1525,8 @@ Ipea — Projeto Acesso a Oportunidades (empregos formais da RAIS por hexágono 
 | `year` | inteiro | — | ano principal (2019) |
 | `jobs_total`, `jobs_low`, `jobs_mid`, `jobs_high` | inteiro | `null` | `T001`–`T004` (tercis de renda) |
 | `jobs_total_2017` | inteiro | `null` (+ `hex_missing_2017`) | mesmo hexágono no ano anterior |
-| `pop_total` | inteiro | `null` | `P001` — base Censo 2010 (flag `aop_population_2010_based` em toda feição) |
-| `income_avg_brl`, `income_decile` | número / inteiro 1–10 | `null` | `R001`, `R003` |
+| `pop_total` | inteiro | `null` | `P001` do arquivo de **população** do AOP (`population_2010_<cidade>.csv`, base Censo 2010), juntado ao uso do solo por hexágono; flag `aop_population_2010_based` em toda feição |
+| `income_avg_brl`, `income_decile` | número / inteiro 1–10 | `null` | `R001`, `R003` do mesmo arquivo de população; célula vazia é `null` |
 | `ra_geo_id` | texto | `null` | centro do hexágono dentro da RA |
 | `class_jobs_total` (e `_low/_mid/_high`) | inteiro 0–9 | `null` | cortes `[75, 125, 250, 500, 1000, 1500, 2000, 2500, 5000]`; **zero é ausente** (`zero_is_absent`) |
 | `hexes` | inteiro | só no overview | hexágonos r9 somados |

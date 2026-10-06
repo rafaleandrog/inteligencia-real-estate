@@ -1,5 +1,6 @@
-city,year,type,download_path
-bra,2017,landuse,aop_landuse_bra_2017.txt
-bra,2019,landuse,aop_landuse_bra_2019.txt
-spo,2019,landuse,aop_landuse_spo_2019.txt
-bra,2019,access,aop_access_bra_2019.txt
+type,city,year,mode,download_path,download_path2,name_muni
+land_use,bra,2017,,aop_landuse_bra_2017.txt,,brasilia
+land_use,bra,2019,,aop_landuse_bra_2019.txt,,brasilia
+land_use,spo,2019,,aop_landuse_spo_2019.txt,,sao paulo
+population,bra,2010,,aop_population_bra_2010.txt,,brasilia
+access,bra,2019,walk,aop_access_bra_2019.txt,,brasilia

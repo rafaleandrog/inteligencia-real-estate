@@ -1,6 +1,6 @@
 {
   "attribution_pt": "Contém dados do IBGE, do Ipea (Projeto Acesso a Oportunidades), do GeoPortal/SEDUH-DF e © OpenStreetMap contributors (ODbL).",
-  "config_sha256": "713525bbf652943d5360301a20717578185affeb7fb238841fe22a27009b5985",
+  "config_sha256": "b13e62892ecaba288092debeb17477655fdf90873a02458f5578809c9a112ddf",
   "datasets": [
     {
       "bbox": [
@@ -311,7 +311,7 @@
       ],
       "generated_at": "2026-10-05T16:47:15Z",
       "id": "jobs_hex",
-      "method_pt": "Hexágonos H3 resolução 9 do AOP para a cidade 'bra', ano 2019; T001–T004 são empregos formais (RAIS) por tercil de renda; P001 é população com base no Censo 2010. Detalhe publica jobs_total ≥ 1; overview soma por hexágono-pai r8 com somas estritas. RA pelo centro do hexágono.",
+      "method_pt": "Hexágonos H3 resolução 9 do AOP para a cidade 'bra', ano 2019; T001–T004 são empregos formais (RAIS) por tercil de renda (arquivo de uso do solo); P001 (população), R001 (renda média) e R003 (decil) vêm do arquivo de população do AOP, ano 2010 (Censo 2010), juntado por hexágono. Detalhe publica jobs_total ≥ 1; overview soma por hexágono-pai r8 com somas estritas. RA pelo centro do hexágono.",
       "notes_pt": "Hexágono omitido (sem emprego formal) não é 'sem dado': conta em omitted_zero_jobs. População-base é do Censo 2010 (AOP).",
       "quality_flags": [
         "aop_population_2010_based",
@@ -325,6 +325,7 @@
           "files": [
             "aop_landuse_bra_2017.txt",
             "aop_landuse_bra_2019.txt",
+            "aop_population_bra_2010.txt",
             "metadata.csv"
           ],
           "license": "Citação obrigatória; termos conforme o site do projeto",
@@ -395,6 +396,7 @@
           "files": [
             "aop_landuse_bra_2017.txt",
             "aop_landuse_bra_2019.txt",
+            "aop_population_bra_2010.txt",
             "metadata.csv"
           ],
           "license": "Citação obrigatória; termos conforme o site do projeto",
@@ -551,8 +553,8 @@
       ]
     }
   ],
-  "generated_at": "2026-10-06T03:31:37Z",
+  "generated_at": "2026-10-06T04:05:13Z",
   "manifest_version": 1,
-  "pipeline_commit": "589283938a9b16ae240cf0c6d5f333ab702a2d1f",
+  "pipeline_commit": "491ac2b145f0d02b4331b082cebaee6c713655fe",
   "pipeline_version": "0.1.0"
 }

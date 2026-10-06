@@ -1,5 +1,5 @@
-id_hex,abbrev_muni,name_muni,code_muni,year,P001,R001,R003,T001,T002,T003,T004
-89a8c0a1b03ffff,bra,Brasília,5300108,2017,800,2300.0,7,1000,350,420,230
-89a8c0a1b07ffff,bra,Brasília,5300108,2017,400,1700.0,5,55,30,15,10
-89a8c0a1b0fffff,bra,Brasília,5300108,2017,290,4000.0,9,5000,900,1900,2200
-89ffffffffffff1,spo,São Paulo,3550308,2017,100,1000,5,10,5,3,2
+year,id_hex,abbrev_muni,name_muni,code_muni,T001,T002,T003,T004
+2017,89a8c0a1b03ffff,bra,Brasília,5300108,1000,350,420,230
+2017,89a8c0a1b07ffff,bra,Brasília,5300108,55,30,15,10
+2017,89a8c0a1b0fffff,bra,Brasília,5300108,5000,900,1900,2200
+2017,89ffffffffffff1,spo,São Paulo,3550308,10,5,3,2

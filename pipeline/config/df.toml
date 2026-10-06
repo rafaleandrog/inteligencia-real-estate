@@ -71,12 +71,18 @@ probe_urls = [
   "https://www.ipea.gov.br/acessooportunidades/dados/",
   "https://www.ipea.gov.br/acessooportunidades/",
 ]
-city = "bra"
+# Código da cidade no índice do AOP: Brasília é `bsb` (conferido no metadata.csv real, 2026-10-06).
+city = "bsb"
 year = 2019
 previous_year = 2017
 h3_resolution = 9
 overview_resolution = 8
-columns = { hex = "id_hex", jobs_total = "T001", jobs_low = "T002", jobs_mid = "T003", jobs_high = "T004", pop = "P001", income_avg = "R001", income_decile = "R003" }
+# Uso do solo (`landuse_<ano>_<cidade>.csv`): só empregos T001–T004. População e renda vêm do arquivo de
+# população (`population_2010_<cidade>.csv`, base Censo 2010), juntado por hexágono — layout real do release
+# v1.0.0 do aopdata, conferido em 2026-10-06 (#164).
+columns = { hex = "id_hex", jobs_total = "T001", jobs_low = "T002", jobs_mid = "T003", jobs_high = "T004" }
+population_year = 2010
+population_columns = { hex = "id_hex", pop = "P001", income_avg = "R001", income_decile = "R003" }
 detail_min_jobs = 1
 breaks = { jobs_total = [75, 125, 250, 500, 1000, 1500, 2000, 2500, 5000], jobs_low = [25, 50, 100, 200, 400, 600, 800, 1000, 2000], jobs_mid = [25, 50, 100, 200, 400, 600, 800, 1000, 2000], jobs_high = [25, 50, 100, 200, 400, 600, 800, 1000, 2000] }
 budgets = { overview = 2000000, shard = 2000000 }
