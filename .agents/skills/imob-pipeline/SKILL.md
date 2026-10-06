@@ -34,7 +34,10 @@ site pelo `manifest.json` (R2.7–R2.9 em `docs/ENGINEERING_RULES.md`; contrato 
    `tools/smoke-test.mjs`, seção Território).
 5. Primeira execução real de um dataset novo: `workflow_dispatch` de `dados-publicos.yml` com
    `datasets: <id>`; ler `summary.json` e os logs (artefato `logs-pipeline`); conferir tamanhos
-   contra os orçamentos; pinar o que a descoberta encontrou (`quadrant_ids`, nomes de arquivo).
+   contra os orçamentos; pinar o que a descoberta encontrou (`quadrant_ids` da Grade — com a lista
+   vazia o pipeline resolve os quadrantes pelos limites de cada arquivo contra o bbox e registra os
+   ids em `summary.json` —, nomes de arquivo). `run all` segue depois de um conjunto falhar e sai
+   com 1: leia TODOS os erros do `summary.json` antes de corrigir, não só o primeiro.
 
 ## Fixtures do site e manifest vazio
 

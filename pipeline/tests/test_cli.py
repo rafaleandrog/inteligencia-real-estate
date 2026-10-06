@@ -69,6 +69,31 @@ class CrosswalkDatasetTests(unittest.TestCase):
                       "--fixture-dir", str(FIXTURES)])
 
 
+
+class RunContinuesAfterFailureTests(unittest.TestCase):
+    def test_run_all_continues_after_a_dataset_fails_and_exits_1(self):
+        from unittest import mock
+        from imob_pipeline import cli
+
+        def boom(ctx):
+            raise RuntimeError("fonte fora do ar (simulado)")
+
+        with tempfile.TemporaryDirectory() as tmp, mock.patch.dict(cli.DATASETS, {"jobs_hex": boom}):
+            out = Path(tmp) / "public"
+            cache = Path(tmp) / "cache"
+            code = main(["run", "all", "--out", str(out), "--config", str(FIXTURE_CONFIG), "--cache", str(cache),
+                         "--fixture-dir", str(FIXTURES), "--engine", "pure"])
+            self.assertEqual(code, 1)
+            summary = json.loads((cache / "runs" / "latest" / "summary.json").read_text("utf-8"))
+            self.assertIn("fonte fora do ar", summary["jobs_hex"]["error"])
+            manifest = json.loads((out / "manifest.json").read_text("utf-8"))
+            ids = [d["id"] for d in manifest["datasets"]]
+            self.assertIn("road_centrality", ids)  # o laço seguiu depois da falha
+            self.assertIn("ra_aggregates", ids)
+            self.assertNotIn("jobs_hex", ids)
+            self.assertNotIn("error", summary["road_centrality"])
+
+
 if __name__ == "__main__":
     unittest.main()
 

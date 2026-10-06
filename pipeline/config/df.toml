@@ -22,9 +22,13 @@ source = { name = "GeoPortal/SEDUH-DF — Limites das Regiões Administrativas",
 
 [households_grid]
 base_url_2010 = "https://geoftp.ibge.gov.br/recortes_para_fins_estatisticos/grade_estatistica/censo_2010/"
-base_url_2022 = "https://geoftp.ibge.gov.br/recortes_para_fins_estatisticos/grade_estatistica/censo_2022/"
-# Vazio até a primeira execução real: `python -m imob_pipeline discover grade` lista os quadrantes
-# que cruzam o bbox; os ids são pinados aqui (ex.: ["grade_id45"]).
+# No geoftp, `censo_2022/` só tem subpastas; os grade_id*.zip ficam em `censo_2022/grade_estatistica/`
+# (achado do Codex na PR #163). A descoberta ainda desce um nível de subpastas se a listagem não tiver zip.
+base_url_2022 = "https://geoftp.ibge.gov.br/recortes_para_fins_estatisticos/grade_estatistica/censo_2022/grade_estatistica/"
+# Vazio = o pipeline resolve os quadrantes sozinho: lista o diretório, baixa cada grade_id*.zip e
+# mantém os que cruzam o bbox do projeto, por edição (os ids escolhidos ficam no log, no summary.json
+# e nas notas do manifest). Depois da primeira execução real, pine-os aqui (ex.: ["grade_id45"]) para
+# não baixar a Grade inteira de novo. `python -m imob_pipeline discover grade` só lista os nomes.
 quadrant_ids = []
 columns_2010 = { cell_id = "ID_UNICO", parent_1km = "nome_1KM", pop = "POP", dom_ocu = "DOM_OCU" }
 columns_2022 = { cell_id = "ID_UNICO", parent_1km = "nome_1KM", pop = "POP", dom_ocu = "DOM_OCU" }

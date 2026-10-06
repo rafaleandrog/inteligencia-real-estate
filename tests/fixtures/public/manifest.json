@@ -1,6 +1,6 @@
 {
   "attribution_pt": "Contém dados do IBGE, do Ipea (Projeto Acesso a Oportunidades), do GeoPortal/SEDUH-DF e © OpenStreetMap contributors (ODbL).",
-  "config_sha256": "b754e9c5248917877001c234f683d7d50edbf43a2e4f9751be1cd9b9e78fb490",
+  "config_sha256": "713525bbf652943d5360301a20717578185affeb7fb238841fe22a27009b5985",
   "datasets": [
     {
       "bbox": [
@@ -43,6 +43,8 @@
         "overview_cells": 4,
         "partial_children": 1,
         "published": 6,
+        "quadrants_2010": 1,
+        "quadrants_2022": 1,
         "ra_unassigned": 1,
         "suppressed_2010": 1,
         "suppressed_2022": 0
@@ -548,8 +550,8 @@
       ]
     }
   ],
-  "generated_at": "2026-10-05T16:47:15Z",
+  "generated_at": "2026-10-06T02:51:20Z",
   "manifest_version": 1,
-  "pipeline_commit": "c00a06ddec4f664e41bf63db0e56d499dcf62d07",
+  "pipeline_commit": "f4718dd722c8cd15b2d61774a9f465c239529110",
   "pipeline_version": "0.1.0"
 }
