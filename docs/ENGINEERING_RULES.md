@@ -1046,3 +1046,11 @@ Cada uma nasce de um erro que aconteceu de verdade.
   para o estado de erro — a classe exata de defeito que a guarda existia para impedir. A guarda agora
   preserva as interpolações e tem um caso plantado com a chamada dentro de `${…}`. Regra: ao limpar
   código para uma checagem estática, trate `${…}` como código, não como string.
+- **R8.100** *(2026-10-06, issue #160)* **Teste não afirma sobre o estado transitório de um arquivo
+  versionado que o pipeline regenera.** `tests/territorio-loading.test.js` lia `data/public/manifest.json`
+  do repositório para descrever o estado "antes da primeira execução" e quebrou na primeira PR de dados;
+  na mesma PR, a paridade da ponte com o `Code.gs` rodou pela primeira vez (o arquivo real não existia
+  antes) e caiu num erro de fiação do sandbox que nenhuma execução anterior podia pegar. Regra: o
+  estado de referência de um teste é fixture inline ou em `tests/fixtures/`; só
+  `tests/public-data-integrity.test.js` afirma sobre os arquivos reais; e todo teste que fica pulado
+  até um arquivo existir ganha uma variante com fixture que roda hoje.
