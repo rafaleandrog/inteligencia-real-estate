@@ -38,6 +38,11 @@ columns_2010 = { cell_id = "ID_UNICO", parent_1km = "nome_1KM", pop = "POP", dom
 # enquanto a nota de 2010 não confirmar o mesmo universo, o conjunto leva a flag e a nota abaixo.
 columns_2022 = { cell_id = "ID_UNICO", parent_1km = "nome_1km", pop = "TOTAL", dom_ocu = "TOTAL_DOM" }
 dataset_flags = ["dwelling_universe_to_confirm"]
+# Até o universo de 2010 ser confirmado e o site mostrar a ressalva ao lado do número (#166), a comparação
+# entre edições NÃO é publicada nos agregados por RA: households_delta e households_growth_pct saem nulos
+# com a flag households_growth_suppressed (households_2010 e households_2022 continuam). O mapa de células
+# segue publicado com a flag e a nota acima no manifest.
+suppress_growth_in_aggregates = true
 notes_pt = "Domicílios: em 2010, DOM_OCU é 'domicílios ocupados' (rótulo da Grade 2010); em 2022, TOTAL_DOM são domicílios ocupados particulares e coletivos (notas metodológicas da Grade 2022). Até a nota de 2010 confirmar o mesmo universo, a variação 2010→2022 deve ser lida com essa ressalva."
 cell_area_km2 = { "200M" = 0.04, "1KM" = 1.0 }
 drop_if_empty_both_years = true

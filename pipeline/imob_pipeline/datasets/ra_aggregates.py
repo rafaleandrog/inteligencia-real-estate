@@ -60,6 +60,16 @@ def run(ctx: RunContext) -> dict:
         "centrality_snapshot": str(roads_ds["years"][0]) if roads_ds and roads_ds.get("years") else None,
     }
     rows = build_rows(crosswalk_rows, households=households, jobs=jobs, roads=roads, sources=sources)
+    hh_cfg = ctx.config.households
+    # Comparação entre edições suprimida por config (universo de domicílios a confirmar; #164, #166):
+    # nulo com flag, nunca um número sem ressalva ao lado — os totais de cada edição continuam.
+    growth_suppressed = bool(households) and hh_cfg.suppress_growth_in_aggregates
+    if growth_suppressed:
+        for row in rows:
+            if row.get("households_source") is not None:
+                row["households_delta"] = None
+                row["households_growth_pct"] = None
+                row["quality_flags"] = sorted(set(row.get("quality_flags") or []) | {"households_growth_suppressed"})
     write_json(ctx.out_dir / FILE_NAME, {"rows": rows}, indent=None)
     files = [file_entry(ctx.out_dir, FILE_NAME, role="data", budget_bytes=ctx.config.manifest.budgets["aggregates"])]
 
@@ -78,11 +88,15 @@ def run(ctx: RunContext) -> dict:
     notes = "Bloco de dataset não gerado vem nulo (nunca zero) com a flag correspondente."
     # Ressalva declarada no config do conjunto de origem acompanha o agregado: quem lê
     # households_growth_pct aqui precisa da mesma ressalva de quem lê o mapa (#164, #166).
-    hh_cfg = ctx.config.households
     if households and hh_cfg.dataset_flags:
         flags.extend(hh_cfg.dataset_flags)
         if hh_cfg.notes_pt:
             notes += " Domicílios (ressalva herdada de households_grid): " + hh_cfg.notes_pt.strip()
+    if growth_suppressed:
+        flags.append("households_growth_suppressed")
+        notes += (" households_delta e households_growth_pct saem nulos (flag households_growth_suppressed) até o universo "
+                  "de domicílios de 2010 ser confirmado e o site mostrar a ressalva ao lado do número (#164, #166); "
+                  "households_2010 e households_2022 continuam publicados.")
     all_sources = [s for ds in (hh_ds, jobs_ds, roads_ds) if ds for s in ds["sources"]]
     entry = dataset_entry(
         dataset_id=DATASET_ID,

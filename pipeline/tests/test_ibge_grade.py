@@ -246,9 +246,38 @@ class DatasetCaveatsFromConfigTests(unittest.TestCase):
             self.assertNotIn("dwelling_universe_to_confirm", agg["quality_flags"])
             self.assertNotIn("herdada", agg["notes_pt"])
 
+    def test_growth_is_suppressed_in_aggregates_when_config_says_so(self):
+        import json as _json
+        from imob_pipeline.datasets import ra_aggregates, ra_crosswalk
+        with tempfile.TemporaryDirectory() as tmp:
+            ctx = fixture_context(Path(tmp))
+            ctx.config = replace(ctx.config, households=replace(ctx.config.households, suppress_growth_in_aggregates=True))
+            ra_crosswalk.run(ctx)
+            households_grid.run(ctx)
+            manifest = ra_aggregates.run(ctx)
+            agg = next(d for d in manifest["datasets"] if d["id"] == "ra_aggregates")
+            self.assertIn("households_growth_suppressed", agg["quality_flags"])
+            self.assertIn("households_growth_suppressed", agg["notes_pt"])
+            rows = _json.loads((Path(tmp) / "ra_aggregates.json").read_text("utf-8"))["rows"]
+            with_data = [r for r in rows if r["households_source"] is not None]
+            self.assertTrue(with_data)
+            for row in with_data:
+                self.assertIsNone(row["households_delta"])
+                self.assertIsNone(row["households_growth_pct"])
+                self.assertIsNotNone(row["households_2022"])
+                self.assertIn("households_growth_suppressed", row["quality_flags"])
+        with tempfile.TemporaryDirectory() as tmp:
+            ctx = fixture_context(Path(tmp))
+            ra_crosswalk.run(ctx)
+            households_grid.run(ctx)
+            ra_aggregates.run(ctx)
+            rows = _json.loads((Path(tmp) / "ra_aggregates.json").read_text("utf-8"))["rows"]
+            self.assertTrue(any(r["households_growth_pct"] is not None for r in rows))
+
     def test_production_config_declares_the_dwelling_universe_caveat(self):
         cfg = load_config(PROD_CONFIG).households
         self.assertIn("dwelling_universe_to_confirm", cfg.dataset_flags)
+        self.assertTrue(cfg.suppress_growth_in_aggregates)
         self.assertIn("particulares e coletivos", cfg.notes_pt)
         fixture = load_config(FIXTURE_CONFIG).households
         self.assertEqual((fixture.dataset_flags, fixture.notes_pt), ((), ""))

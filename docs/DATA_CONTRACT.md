@@ -1571,12 +1571,14 @@ gerado vem `null` em todos os campos dele (nunca zero), com a flag correspondent
 | `households_source`, `households_2010`, `households_2022`, `households_delta`, `households_growth_pct` (**fração decimal**), `households_per_km2_2022`, `pop_2010`, `pop_2022`, `cells_2010`, `cells_2022`, `cells_partial` | — | soma das células de 200 m atribuídas; `households_growth_pct = delta ÷ households_2010` (`null` se 2010 nulo ou zero) |
 | `jobs_source`, `jobs_year`, `jobs_total`, `jobs_low`, `jobs_mid`, `jobs_high`, `jobs_population_basis`, `jobs_per_1000_residents`, `jobs_per_km2`, `hexes` | — | soma dos hexágonos r9; `jobs_per_1000_residents = jobs_total ÷ jobs_population_basis × 1000` (base: `pop_total` do AOP, Censo 2010); `jobs_per_km2 = jobs_total ÷ ra_area_km2` |
 | `centrality_source`, `centrality_snapshot`, `edges_total`, `road_km_total`, `road_km_top_decile`, `centrality_mean`, `centrality_p90` | — | sobre as arestas atribuídas à RA |
-| `quality_flags` | lista | `households_missing`, `jobs_missing`, `centrality_missing`, `partial_children` |
+| `quality_flags` | lista | `households_missing`, `jobs_missing`, `centrality_missing`, `partial_children`, `households_growth_suppressed` (comparação entre edições suprimida por config: `households_delta` e `households_growth_pct` nulos, totais de cada edição mantidos) |
 
 No nível do conjunto (manifest), `ra_aggregates` herda as ressalvas declaradas no config do
 `households_grid` (`dataset_flags` e `notes_pt` — hoje `dwelling_universe_to_confirm`, #164),
 porque `households_growth_pct` deriva dos mesmos valores; mostrá-las ao lado dos indicadores no
-site é a issue #166.
+site é a issue #166. Enquanto isso não existe, `suppress_growth_in_aggregates = true` no config
+publica `households_delta` e `households_growth_pct` nulos com a flag `households_growth_suppressed`
+(R5.7: ausência é `null`, nunca um número sem ressalva ao lado).
 
 Escalas declaradas no cliente (`DATASET_PERCENT_SCALE`): `RA_AGGREGATES` decimal;
 `PUBLIC_CENTRALITY` pontos (percentil 0–100).

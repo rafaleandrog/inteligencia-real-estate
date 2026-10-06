@@ -112,6 +112,10 @@ class HouseholdsConfig:
     # em `quality_flags` e `notes_pt` do manifest (#164).
     dataset_flags: tuple[str, ...]
     notes_pt: str
+    # Com True, `households_delta` e `households_growth_pct` dos agregados por RA saem nulos (flag
+    # `households_growth_suppressed`): a comparação entre edições só volta quando o universo de 2010
+    # for confirmado e o site mostrar a ressalva ao lado do número (#164, #166).
+    suppress_growth_in_aggregates: bool
 
 
 @dataclass(frozen=True)
@@ -212,6 +216,7 @@ def parse_config(raw: Mapping[str, Any], *, path: Path, sha256: str) -> Config:
             source_2022=_source({"source": _require(hh_sources, "households_grid.sources", "censo_2022")}, "households_grid.sources.censo_2022"),
             dataset_flags=tuple(str(f) for f in hh.get("dataset_flags", [])),
             notes_pt=str(hh.get("notes_pt", "")),
+            suppress_growth_in_aggregates=bool(hh.get("suppress_growth_in_aggregates", False)),
         ),
         jobs=JobsConfig(
             metadata_url=str(_require(jobs, "jobs_hex", "metadata_url")),
