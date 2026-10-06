@@ -3,19 +3,23 @@
 //
 // O pipeline COPIA `titleCaseRaName_`, `normalizeSlug_`, `numberToRoman_` e `raNumberFromCode_`
 // em Python; este teste executa o Code.gs REAL no sandbox `vm` sobre cada linha do arquivo
-// gerado. Enquanto o arquivo não existir (antes da primeira execução do pipeline), o teste
-// pula com motivo — declarar a limitação, não mascará-la (R6.6).
+// gerado. A fixture (saída do pipeline em modo fixture, tests/fixtures/public/) roda SEMPRE,
+// para a fiação do teste e a cópia Python serem provadas antes da primeira execução real; o
+// arquivo real roda quando existe e pula com motivo enquanto não existir — declarar a
+// limitação, não mascará-la (R6.6, R8.100).
 
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { existsSync, readFileSync } from 'node:fs';
 import { createAppsScriptSandbox } from './helpers/appsScriptSandbox.mjs';
 
-const CROSSWALK = new URL('../data/public/ra_crosswalk.json', import.meta.url);
+const FIXTURE = new URL('./fixtures/public/ra_crosswalk.json', import.meta.url);
+const REAL = new URL('../data/public/ra_crosswalk.json', import.meta.url);
 
-test('ra_crosswalk.json reproduz nome, slug e código romano do Code.gs', { skip: !existsSync(CROSSWALK) && 'data/public/ra_crosswalk.json ausente (pipeline ainda não rodou)' }, () => {
-  const payload = JSON.parse(readFileSync(CROSSWALK, 'utf8'));
-  const ctx = createAppsScriptSandbox();
+function assertParity(payload) {
+  // O helper devolve { context, sheets, properties, cache }: as funções de topo do Code.gs
+  // moram em `context` (#160).
+  const { context: ctx } = createAppsScriptSandbox();
   assert.equal(payload.roman_key_prefix, 'RA2026_');
   assert.ok(Array.isArray(payload.rows) && payload.rows.length > 0);
   for (const row of payload.rows) {
@@ -27,4 +31,15 @@ test('ra_crosswalk.json reproduz nome, slug e código romano do Code.gs', { skip
     assert.equal(row.ra_name, ctx.titleCaseRaName_(row.ra_name_source), `ra_name de ${row.ra_name_source}`);
     assert.equal(row.ra_slug, ctx.normalizeSlug_(row.ra_name_source), `ra_slug de ${row.ra_name_source}`);
   }
+  return payload.rows.length;
+}
+
+test('fixture da ponte (pipeline em modo fixture) reproduz nome, slug e código romano do Code.gs', () => {
+  const linhas = assertParity(JSON.parse(readFileSync(FIXTURE, 'utf8')));
+  assert.ok(linhas >= 2, 'a fixture traz mais de uma RA');
+});
+
+test('ra_crosswalk.json reproduz nome, slug e código romano do Code.gs', { skip: !existsSync(REAL) && 'data/public/ra_crosswalk.json ausente (pipeline ainda não rodou)' }, () => {
+  const linhas = assertParity(JSON.parse(readFileSync(REAL, 'utf8')));
+  assert.equal(linhas, 37, 'o DF tem 37 RAs');
 });

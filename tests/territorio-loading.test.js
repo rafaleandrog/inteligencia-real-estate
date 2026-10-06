@@ -98,7 +98,19 @@ test('404, HTTP 500, rede, timeout, JSON inválido e versão desconhecida viram 
 });
 
 test('manifest publicado com datasets vazio é o estado antes da primeira execução: indisponível, sem aviso', async () => {
-  const vazio = JSON.parse(readFileSync(new URL('../data/public/manifest.json', import.meta.url), 'utf8'));
+  // Manifest vazio INLINE, na forma que `init-manifest` escreve — e não o arquivo do
+  // repositório: depois da primeira execução real, data/public/manifest.json passa a ter
+  // conjuntos, e este teste descreve o estado ANTERIOR a ela. Só
+  // tests/public-data-integrity.test.js afirma sobre os arquivos reais (#160).
+  const vazio = {
+    manifest_version: 1,
+    generated_at: '2026-10-05T16:47:15Z',
+    pipeline_version: '0.1.0',
+    pipeline_commit: 'c00a06ddec4f664e41bf63db0e56d499dcf62d07',
+    config_sha256: 'cc8b9b6227fb3155b7c4c5f19dac50f6e45c15e7000dbfa24a2a862800cb555e',
+    attribution_pt: 'Contém dados do IBGE, do Ipea (Projeto Acesso a Oportunidades), do GeoPortal/SEDUH-DF e © OpenStreetMap contributors (ODbL).',
+    datasets: [],
+  };
   const fetchRef = fixtureFetch({ body: JSON.stringify(vazio) });
   const out = await fetchPublicManifest({ publicDataUrl: BASE }, { fetchRef });
   assert.equal(out.available, false);
