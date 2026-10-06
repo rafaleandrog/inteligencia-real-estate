@@ -80,8 +80,8 @@ class HouseholdsTests(unittest.TestCase):
         result = self.build()
         by_id = {f["id"]: f["properties"] for f in result.overview}
         parent = by_id["1KME570N920"]
-        # 4 filhos publicados + 1 descartado (vazio) — todos contam como filhos; nulos tornam a soma nula
-        self.assertEqual(parent["children"], 4)
+        # 4 filhas publicadas + 1 omitida do detalhe (vazia) — TODAS contam como filhas do pai; nulos tornam a soma nula
+        self.assertEqual(parent["children"], 5)
         self.assertIsNone(parent["dom_ocu_2010"])          # um filho suprimido em 2010
         self.assertIsNone(parent["dom_ocu_2022"])          # um filho ausente em 2022
         self.assertEqual(parent["children_missing"], 1)
@@ -97,7 +97,7 @@ class HouseholdsTests(unittest.TestCase):
         self.assertEqual((rural["children_2010"], rural["children_2022"]), (0, 0))
         self.assertEqual(rural["households_delta"], 20)
         self.assertEqual(rural["households_delta_per_km2"], 20.0)
-        self.assertEqual((parent["children_2010"], parent["children_2022"]), (4, 3))   # uma filha ausente em 2022
+        self.assertEqual((parent["children_2010"], parent["children_2022"]), (5, 4))   # uma filha ausente em 2022
         self.assertEqual(result.counts["partial_children"], 1)
         self.assertEqual(len(result.overview), 5)
         self.assertEqual(len({f["id"] for f in result.overview}), 5)   # nunca um id repetido (#167)
@@ -172,6 +172,59 @@ class ResolutionChangeTests(unittest.TestCase):
             self.build(self.c10, list(self.c22) + [whole])
         self.assertIn("1KME575N925", str(caught.exception))
         self.assertIn("2022", str(caught.exception))
+
+    def test_empty_child_still_reveals_an_ambiguous_edition(self):
+        # Achado do Codex na PR #168: a filha vazia nos dois anos era descartada ANTES da checagem e a
+        # célula inteira era publicada como se a edição não estivesse subdividida.
+        from imob_pipeline.sources.ibge_grade import GridCellRecord
+        whole = next(c for c in self.c10 if c.cell_id == "1KME575N925")
+        child = next(c for c in self.c22 if c.cell_id == "200ME5750N9250")
+        empty_child = GridCellRecord(cell_id=child.cell_id, parent_1km=child.parent_1km, pop=7, dom_ocu=0, geometry=child.geometry)
+        c10 = list(self.c10) + [empty_child]          # 2010: célula inteira E uma filha (vazia) — ambíguo
+        with self.assertRaises(HouseholdsError) as caught:
+            self.build(c10, self.c22)
+        self.assertIn("1KME575N925", str(caught.exception))
+        self.assertIn("2010", str(caught.exception))
+
+    def test_empty_child_counts_in_the_parent_and_keeps_its_population(self):
+        from imob_pipeline.sources.ibge_grade import GridCellRecord
+        child = next(c for c in self.c22 if c.cell_id == "200ME5750N9250")
+        ring = [[-47.9522646, -15.856], [-47.9522646, -15.8541913], [-47.9503969, -15.8541913], [-47.9503969, -15.856], [-47.9522646, -15.856]]
+        empty = GridCellRecord(cell_id="200ME5752N9250", parent_1km=child.parent_1km, pop=9, dom_ocu=0,
+                               geometry={"type": "Polygon", "coordinates": [ring]})
+        result = self.build(self.c10, list(self.c22) + [empty])
+        self.assertNotIn("200ME5752N9250", {f["id"] for f in result.detail})   # omitida do detalhe…
+        p = next(f for f in result.overview if f["id"] == "1KME575N925")["properties"]
+        self.assertEqual((p["children"], p["children_2022"]), (3, 3))        # …mas filha do pai
+        self.assertEqual(p["dom_ocu_2022"], 70)
+        self.assertEqual(p["pop_2022"], 100 + 130 + 9)                        # a população dela não some
+        self.assertEqual(result.counts["dropped_empty_both_years"], 2)
+
+    def test_parent_with_only_empty_children_is_omitted_and_counted(self):
+        c22 = [c for c in self.c22 if c.cell_id != "200ME5750N9250"]
+        for c in c22:
+            if c.cell_id == "200ME5751N9250":
+                object.__setattr__(c, "dom_ocu", 0)
+        c10 = [c for c in self.c10 if c.cell_id != "1KME575N925"]
+        result = self.build(c10, c22)
+        self.assertNotIn("1KME575N925", {f["id"] for f in result.overview})
+        self.assertEqual(result.counts["dropped_empty_both_years"], 3)        # filha de sempre + filha vazia + o pai vazio
+
+    def test_partial_parent_with_null_sums_is_still_published(self):
+        # Filhas A (ausente em 2010, 5 em 2022) e B (3 em 2010, ausente em 2022): somas nulas nas duas
+        # edições, mas há domicílio — publicada com partial_children, nunca tratada como vazia.
+        from imob_pipeline.sources.ibge_grade import GridCellRecord
+        a22 = next(c for c in self.c22 if c.cell_id == "200ME5750N9250")
+        b22 = next(c for c in self.c22 if c.cell_id == "200ME5751N9250")
+        b10 = GridCellRecord(cell_id=b22.cell_id, parent_1km=b22.parent_1km, pop=10, dom_ocu=3, geometry=b22.geometry)
+        c10 = [c for c in self.c10 if c.cell_id != "1KME575N925"] + [b10]
+        c22 = [c for c in self.c22 if c.cell_id != "200ME5751N9250"]
+        result = self.build(c10, c22)
+        p = next(f for f in result.overview if f["id"] == "1KME575N925")["properties"]
+        self.assertIsNone(p["dom_ocu_2010"])
+        self.assertIsNone(p["dom_ocu_2022"])
+        self.assertIn("partial_children", p["quality_flags"])
+        self.assertEqual(p["children_missing"], 1)
 
     def test_empty_whole_cell_without_children_is_dropped_and_counted(self):
         from imob_pipeline.sources.ibge_grade import GridCellRecord

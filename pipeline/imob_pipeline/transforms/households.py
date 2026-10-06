@@ -4,7 +4,8 @@ Regras que não se perdem (docs/DATA_CONTRACT.md, "households_grid"):
 - célula presente num ano e ausente no outro → `null` + flag, nunca zero;
 - valor suprimido → `null` + flag, nunca saturado (R8.59);
 - somas do overview são ESTRITAS: filho nulo → soma nula + `partial_children`;
-- célula sem domicílio nos dois anos é omitida e CONTADA;
+- célula sem domicílio nos dois anos é omitida do detalhe e CONTADA, mas continua filha do pai no
+  overview (somas, contagens e a checagem de resolução ambígua veem todas as filhas listadas);
 - célula com centroide fora do bbox do projeto é descartada e CONTADA — o quadrante da Grade cobre
   muito mais que o DF e a segunda execução real publicou Goiás inteiro (#167);
 - `households_delta_pct_change` é fração decimal e é `null` quando 2010 é nulo ou zero;
@@ -155,21 +156,26 @@ def build_households(
         joined.append(_Joined(cell_id=cell_id, size=size, area=area, geometry=base.geometry, centroid=centroid,
                               parent=(base.parent_1km or cell_id), recs=recs, flags=flags))
 
-    # Detalhe: células de 200 m; vazias nos dois anos → descartadas e contadas. Células de 1 km
-    # ficam para o overview (inteiras ou fundidas com as filhas da outra edição).
+    # Detalhe: células de 200 m. Vazia nos dois anos → omitida do DETALHE e contada, mas continua
+    # filha do pai: somas, contagens, population e a detecção de resolução ambígua precisam de
+    # TODAS as filhas listadas (achado do Codex na PR #168 — descartar antes escondia a colisão
+    # e jogava fora a população de uma filha sem domicílio). Células de 1 km ficam para o
+    # overview (inteiras ou fundidas com as filhas da outra edição).
     singles: dict[str, _Joined] = {}
     groups: dict[str, list[_Joined]] = defaultdict(list)
+    detail_cells: list[_Joined] = []
     for j in joined:
         if j.size == "1KM":
             singles[j.cell_id] = j
             continue
+        groups[j.parent].append(j)
         if drop_if_empty_both_years and _empty_both(j.dom("2010"), j.dom("2022")):
             counts["dropped_empty_both_years"] += 1
             continue
-        groups[j.parent].append(j)
+        detail_cells.append(j)
 
     detail: list[dict[str, Any]] = []
-    for j in sorted((c for group in groups.values() for c in group), key=lambda c: c.cell_id):
+    for j in sorted(detail_cells, key=lambda c: c.cell_id):
         ra = assign_ra(j.centroid)
         flags = list(j.flags)
         if ra is None:
@@ -186,11 +192,6 @@ def build_households(
     for parent_id in sorted(set(groups) | set(singles)):
         children = groups.get(parent_id, [])
         single = singles.get(parent_id)
-        if not children:
-            assert single is not None
-            if drop_if_empty_both_years and _empty_both(single.dom("2010"), single.dom("2022")):
-                counts["dropped_empty_both_years"] += 1
-                continue
         values: dict[str, int | None] = {}
         pops: dict[str, int | None] = {}
         n_children: dict[str, int] = {}
@@ -219,6 +220,13 @@ def build_households(
             else:
                 values[e], pops[e], n_children[e], missing[e], origin[e] = None, None, 0, 0, None
                 flags.append(f"cell_missing_{e}")
+        # Sem domicílio nos dois anos em TODAS as listagens (célula inteira e cada filha) → omitida e
+        # contada. Pai com filhas parciais (somas nulas, mas alguma filha com domicílio) é publicado.
+        all_empty = all(_empty_both(c.dom("2010"), c.dom("2022")) for c in children) and (
+            single is None or _empty_both(single.dom("2010"), single.dom("2022")))
+        if drop_if_empty_both_years and all_empty:
+            counts["dropped_empty_both_years"] += 1
+            continue
         if children:
             geometry = {"type": "Polygon", "coordinates": [convex_hull(
                 p for c in children for ring in c.geometry["coordinates"][:1] for p in ring

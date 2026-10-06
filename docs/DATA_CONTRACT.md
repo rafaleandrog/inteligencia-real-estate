@@ -1505,15 +1505,18 @@ variação é direta. Arquivos: `households_grid/overview_1km.json` (`role: over
 | `households_delta_pct_change` | número (**fração decimal**) | `null` se 2010 nulo ou zero | `households_delta ÷ dom_ocu_2010` |
 | `ra_geo_id` | texto | `null` fora de toda RA | centroide da célula dentro do limite oficial |
 | `class_households_delta_per_km2` | inteiro 0–5 | `null` | cortes `[100, 350, 750, 1000, 2000]` |
-| `children`, `children_missing` | inteiro | só no overview | nº de células de 200 m somadas; quantas vieram nulas |
+| `children`, `children_missing` | inteiro | só no overview | nº de células de 200 m listadas sob o pai (todas, inclusive as omitidas do detalhe por não terem domicílio nos dois anos); quantas vieram nulas |
 | `children_2010`, `children_2022` | inteiro | só no overview | células de 200 m somadas em cada edição; `0` = o valor daquela edição é da célula de 1 km inteira (não subdividida naquele Censo) |
 | `quality_flags` | lista | — | `cell_missing_2010`, `cell_missing_2022`, `value_suppressed_2010`, `value_suppressed_2022`, `ra_unassigned`, `partial_children`, `resolution_changed` |
 
 Overview: somas **estritas** (filho nulo → soma nula + `partial_children`), geometria = união
 dos filhos. Omitidas da publicação: células sem domicílio nos dois anos (contadas em
 `counts.dropped_empty_both_years`) e células com centroide **fora do bbox do projeto** (contadas em
-`counts.dropped_outside_bbox` — o quadrante da Grade cobre muito mais que o DF; #167). A primeira
-classe (`até 100`) inclui perda e zero.
+`counts.dropped_outside_bbox` — o quadrante da Grade cobre muito mais que o DF; #167). A célula de
+200 m vazia sai só do detalhe: continua filha do pai no overview (soma, `children_<ano>`, população e
+a checagem de resolução ambígua veem todas as filhas listadas — achado do Codex na PR #168); o pai só
+é omitido quando a célula inteira e todas as filhas estão vazias nos dois anos. A primeira classe
+(`até 100`) inclui perda e zero.
 
 **Mudança de resolução** (#167): a mesma célula de 1 km pode vir inteira numa edição e subdividida
 em 200 m na outra (área que urbanizou entre os Censos). O overview publica **uma** feição por id:

@@ -35,7 +35,7 @@
           "n": 8
         }
       },
-      "content_hash": "1998780cfcbb494f6cd2059fcc7079819eee3c657abc4f382626a66e2d8ebe80",
+      "content_hash": "7cead1e68f2182a798b2e8080d9000b03826473f39a847e4916011cecb31f62b",
       "counts": {
         "cells_2010": 9,
         "cells_2022": 9,
@@ -112,14 +112,14 @@
             -15.79096
           ],
           "budget_bytes": 2000000,
-          "bytes": 2859,
+          "bytes": 2881,
           "features": 5,
           "path": "households_grid/overview_1km.json",
           "role": "overview",
-          "sha256": "02850eda51a7de23d1c36ce4bc6099c151b3d6ca19a672e3c4f9fe15f2632886"
+          "sha256": "6dd47818bd76d5bb392e2a8899cac4f9b97723b097cbb9f58bb95416dcbd632d"
         }
       ],
-      "generated_at": "2026-10-06T04:59:43Z",
+      "generated_at": "2026-10-06T05:11:11Z",
       "id": "households_grid",
       "method_pt": "As mesmas células nas duas edições (join por ID_UNICO). Colunas de origem — 2010: população POP, domicílios DOM_OCU, pai nome_1KM; 2022: população POP, domicílios DOM_OCU, pai nome_1KM. households_delta = dom_ocu_2022 − dom_ocu_2010; por km² pela área nominal da célula; variação relativa é fração decimal e é nula quando 2010 é nulo ou zero. Overview de 1 km com somas estritas (filho nulo → soma nula + partial_children). Célula sem domicílio nos dois anos é omitida e contada. Valor suprimido vira nulo + flag, nunca é saturado. RA pelo centroide da célula. Célula com centroide fora do bbox do projeto é descartada e contada (0 em dropped_outside_bbox): o quadrante da Grade cobre muito mais que o DF. Célula de 1 km inteira numa edição e subdividida em 200 m na outra vira UMA feição no overview, com o valor de cada edição vindo da listagem daquela edição (flag resolution_changed; children_2010/children_2022 dizem de onde veio cada ano).",
       "notes_pt": "A primeira classe (até 100 dom./km²) inclui perda e zero. 'Omitida' (sem domicílio nos dois anos) não é 'sem dado'.",
@@ -593,8 +593,8 @@
       ]
     }
   ],
-  "generated_at": "2026-10-06T04:59:43Z",
+  "generated_at": "2026-10-06T05:11:11Z",
   "manifest_version": 1,
-  "pipeline_commit": "aba2b89cddc46948b624c5d057e6fe2e1f388c19",
+  "pipeline_commit": "2f06edb34b2a9e24b75a40830d01d9335ed84060",
   "pipeline_version": "0.1.0"
 }
