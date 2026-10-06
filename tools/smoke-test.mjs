@@ -76,7 +76,11 @@ page.on('pageerror', (e) => consoleErrors.push('pageerror: ' + e.message));
 // qualquer ambiente, inclusive sem acesso à Google Sheet. addInitScript executa
 // antes dos scripts da página, então o app já lê a configuração ajustada.
 await page.addInitScript(() => {
-  const apply = () => { if (window.APP_CONFIG) window.APP_CONFIG.demoMode = true; };
+  // Páginas genéricas apontam para um manifest VAZIO de fixture (R8.100, issue #171): o estado
+  // de data/public/ é transitório (vazio antes da primeira publicação, cheio depois) e, com
+  // domicílios e vias ligados por padrão, carregaria 9 MB e viraria as RAs em contorno em
+  // seções que não são sobre território. As seções de território usam ./tests/fixtures/public/.
+  const apply = () => { if (window.APP_CONFIG) { window.APP_CONFIG.demoMode = true; window.APP_CONFIG.publicDataUrl = './tests/fixtures/public-empty/'; } };
   Object.defineProperty(window, 'APP_CONFIG', {
     configurable: true,
     set(value) { delete window.APP_CONFIG; window.APP_CONFIG = value; apply(); },
@@ -278,7 +282,7 @@ const metaPage = await context.newPage();
 await metaPage.addInitScript(() => {
   Object.defineProperty(window, 'APP_CONFIG', {
     configurable: true,
-    set(value) { delete window.APP_CONFIG; window.APP_CONFIG = value; if (value) value.demoMode = true; },
+    set(value) { delete window.APP_CONFIG; window.APP_CONFIG = value; if (value) { value.demoMode = true; value.publicDataUrl = './tests/fixtures/public-empty/'; } },
     get() { return undefined; },
   });
 });
@@ -356,7 +360,7 @@ async function abrirSemColunas(porEntidade) {
   await p.addInitScript(() => {
     Object.defineProperty(window, 'APP_CONFIG', {
       configurable: true,
-      set(value) { delete window.APP_CONFIG; window.APP_CONFIG = value; if (value) value.demoMode = true; },
+      set(value) { delete window.APP_CONFIG; window.APP_CONFIG = value; if (value) { value.demoMode = true; value.publicDataUrl = './tests/fixtures/public-empty/'; } },
       get() { return undefined; },
     });
   });
@@ -419,7 +423,7 @@ const anchorPage = await context.newPage();
 await anchorPage.addInitScript(() => {
   Object.defineProperty(window, 'APP_CONFIG', {
     configurable: true,
-    set(value) { delete window.APP_CONFIG; window.APP_CONFIG = value; if (value) value.demoMode = true; },
+    set(value) { delete window.APP_CONFIG; window.APP_CONFIG = value; if (value) { value.demoMode = true; value.publicDataUrl = './tests/fixtures/public-empty/'; } },
     get() { return undefined; },
   });
 });
@@ -568,7 +572,7 @@ const classPage = await context.newPage();
 await classPage.addInitScript(() => {
   Object.defineProperty(window, 'APP_CONFIG', {
     configurable: true,
-    set(value) { delete window.APP_CONFIG; window.APP_CONFIG = value; if (value) value.demoMode = true; },
+    set(value) { delete window.APP_CONFIG; window.APP_CONFIG = value; if (value) { value.demoMode = true; value.publicDataUrl = './tests/fixtures/public-empty/'; } },
     get() { return undefined; },
   });
 });
@@ -711,7 +715,7 @@ const raPage = await context.newPage();
 await raPage.addInitScript(() => {
   Object.defineProperty(window, 'APP_CONFIG', {
     configurable: true,
-    set(value) { delete window.APP_CONFIG; window.APP_CONFIG = value; if (value) value.demoMode = true; },
+    set(value) { delete window.APP_CONFIG; window.APP_CONFIG = value; if (value) { value.demoMode = true; value.publicDataUrl = './tests/fixtures/public-empty/'; } },
     get() { return undefined; },
   });
 });
@@ -817,7 +821,7 @@ const polyPage = await context.newPage();
 await polyPage.addInitScript(() => {
   Object.defineProperty(window, 'APP_CONFIG', {
     configurable: true,
-    set(value) { delete window.APP_CONFIG; window.APP_CONFIG = value; if (value) value.demoMode = true; },
+    set(value) { delete window.APP_CONFIG; window.APP_CONFIG = value; if (value) { value.demoMode = true; value.publicDataUrl = './tests/fixtures/public-empty/'; } },
     get() { return undefined; },
   });
 });
@@ -1460,7 +1464,7 @@ viewPage.on('pageerror', (e) => viewErros.push(e.message));
 await viewPage.addInitScript(() => {
   Object.defineProperty(window, 'APP_CONFIG', {
     configurable: true,
-    set(value) { delete window.APP_CONFIG; window.APP_CONFIG = value; if (value) value.demoMode = true; },
+    set(value) { delete window.APP_CONFIG; window.APP_CONFIG = value; if (value) { value.demoMode = true; value.publicDataUrl = './tests/fixtures/public-empty/'; } },
     get() { return undefined; },
   });
 });
@@ -1849,7 +1853,7 @@ const tomPage = await context.newPage();
 await tomPage.addInitScript(() => {
   Object.defineProperty(window, 'APP_CONFIG', {
     configurable: true,
-    set(value) { delete window.APP_CONFIG; window.APP_CONFIG = value; if (value) value.demoMode = true; },
+    set(value) { delete window.APP_CONFIG; window.APP_CONFIG = value; if (value) { value.demoMode = true; value.publicDataUrl = './tests/fixtures/public-empty/'; } },
     get() { return undefined; },
   });
 });
@@ -2056,7 +2060,7 @@ const semIvv = await context.newPage();
 await semIvv.addInitScript(() => {
   Object.defineProperty(window, 'APP_CONFIG', {
     configurable: true,
-    set(value) { delete window.APP_CONFIG; window.APP_CONFIG = value; if (value) value.demoMode = true; },
+    set(value) { delete window.APP_CONFIG; window.APP_CONFIG = value; if (value) { value.demoMode = true; value.publicDataUrl = './tests/fixtures/public-empty/'; } },
     get() { return undefined; },
   });
 });
@@ -2144,7 +2148,7 @@ const sazonal = await context.newPage();
 await sazonal.addInitScript(() => {
   Object.defineProperty(window, 'APP_CONFIG', {
     configurable: true,
-    set(value) { delete window.APP_CONFIG; window.APP_CONFIG = value; if (value) value.demoMode = true; },
+    set(value) { delete window.APP_CONFIG; window.APP_CONFIG = value; if (value) { value.demoMode = true; value.publicDataUrl = './tests/fixtures/public-empty/'; } },
     get() { return undefined; },
   });
 });
@@ -2236,7 +2240,7 @@ const trafficPage = await context.newPage();
 await trafficPage.addInitScript(() => {
   Object.defineProperty(window, 'APP_CONFIG', {
     configurable: true,
-    set(value) { delete window.APP_CONFIG; window.APP_CONFIG = value; if (value) value.demoMode = true; },
+    set(value) { delete window.APP_CONFIG; window.APP_CONFIG = value; if (value) { value.demoMode = true; value.publicDataUrl = './tests/fixtures/public-empty/'; } },
     get() { return undefined; },
   });
 });
