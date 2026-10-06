@@ -2990,6 +2990,13 @@ function syncHash() {
 function applyUrlParams() {
   const { view, params } = parseHash(location.hash || '');
   state.pendingUrl = { view, params };
+  // As camadas territoriais são aplicadas por `initializeTerritoryControls`, depois que o
+  // manifest disse o que existe: um `terr=` de camada indisponível é ignorado com o motivo
+  // no controle, nunca liga nada às cegas. Fica ANTES do retorno por view (achado do Codex na
+  // PR #172): quem abre em #ranking ou #base e depois clica em Mapa também recebe o padrão
+  // (domicílios + vias, #171) — só o `#mapa` carrega `terr`/`vias` explícitos, porque o
+  // vocabulário das outras views não tem essas chaves (R8.90).
+  state.territory.pendingParams = { terr: params.terr || '', terr_metrica: params.terr_metrica || '', vias: params.vias || '' };
   if (view !== 'mapa') return;
   const setIfOption = (select, value) => {
     if (!value) return;
@@ -3002,10 +3009,6 @@ function applyUrlParams() {
   if (intParam(params.price_min) !== null) dom.priceMin.value = String(intParam(params.price_min));
   if (intParam(params.price_max) !== null) dom.priceMax.value = String(intParam(params.price_max));
   if (params.q) dom.search.value = params.q;
-  // As camadas territoriais são aplicadas por `initializeTerritoryControls`, depois que o
-  // manifest disse o que existe: um `terr=` de camada indisponível é ignorado com o motivo
-  // no controle, nunca liga nada às cegas.
-  state.territory.pendingParams = { terr: params.terr || '', terr_metrica: params.terr_metrica || '', vias: params.vias || '' };
 }
 
 async function copyAnalysisLink() {

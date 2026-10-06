@@ -2770,6 +2770,30 @@ aberturaPadrao.primeiroBloco === 'territoryLayerLabel'
   ? pass('o bloco "Território (dados públicos)" é o primeiro da seção Camadas')
   : fail('primeiro bloco da seção Camadas: ' + aberturaPadrao.primeiroBloco);
 await terrPadrao.close();
+// Abrir noutra view e só depois ir ao mapa: o padrão vale do mesmo jeito (achado do Codex na
+// PR #172 — o `pendingParams` nascia só no #mapa e o clique em Mapa gravava terr=0&vias=0).
+const viaRanking = await context.newPage();
+await viaRanking.addInitScript(() => {
+  Object.defineProperty(window, 'APP_CONFIG', {
+    configurable: true,
+    set(value) { delete window.APP_CONFIG; window.APP_CONFIG = value; if (value) { value.demoMode = true; value.publicDataUrl = './tests/fixtures/public/'; } },
+    get() { return undefined; },
+  });
+});
+await viaRanking.goto('http://localhost:8080/#ranking', { waitUntil: 'networkidle' });
+await viaRanking.waitForTimeout(1200);
+await viaRanking.click('.view-tab[data-view="mapa"]');
+await viaRanking.waitForTimeout(2500);
+const depoisDoRanking = await viaRanking.evaluate(() => ({
+  area: document.querySelector('#territoryLayers input[name="territoryArea"]:checked')?.value,
+  vias: document.querySelector('#territoryLayers input[name="territoryLines"]')?.checked,
+  canvas: document.querySelectorAll('.leaflet-territory-pane canvas').length,
+  hash: location.hash,
+}));
+depoisDoRanking.area === 'households_grid' && depoisDoRanking.vias === true && depoisDoRanking.canvas === 1 && depoisDoRanking.hash === '#mapa'
+  ? pass('abrir em #ranking e clicar em Mapa também liga domicílios e vias, com a URL #mapa (Codex, PR #172)')
+  : fail('padrão vindo de outra view: ' + JSON.stringify(depoisDoRanking));
+await viaRanking.close();
 const desligadoPage = await context.newPage();
 await desligadoPage.addInitScript(() => {
   Object.defineProperty(window, 'APP_CONFIG', {
