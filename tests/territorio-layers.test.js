@@ -10,6 +10,7 @@ import {
   metricAvailability, layerFilesFor, featureValue, classCheckMismatch,
 } from '../src/territorio/layers.js';
 import { normalizeManifest, datasetById } from '../src/territorio/manifest.js';
+import { territoryStateFromParams, territoryParamsFromState, TERRITORY_DEFAULTS, TERRITORY_OFF } from '../src/territorio/layers.js';
 
 const read = (p) => JSON.parse(readFileSync(new URL(p, import.meta.url), 'utf8'));
 const RAW = read('./fixtures/public/manifest.json');
@@ -115,4 +116,30 @@ test('classCheckMismatch confere a classe publicada contra os cortes do manifest
   assert.equal(featureValue(metric, { [metric.key]: '12.5' }), 12.5);
   assert.equal(featureValue(metric, {}), null);
   assert.equal(classCheckMismatch(null, metric, hh.classBreaks[metric.key], classIndexFor), 0);
+});
+
+// Estado padrão do mapa público (issue #171): domicílios e vias ligados sem parâmetro na URL.
+test('territoryStateFromParams: ausente é o padrão, 0 desliga, id/1 ligam', () => {
+  assert.deepEqual(TERRITORY_DEFAULTS, { area: 'households_grid', lines: true });
+  assert.equal(TERRITORY_OFF, '0');
+  assert.deepEqual(territoryStateFromParams({}), { area: 'households_grid', lines: true });
+  assert.deepEqual(territoryStateFromParams({ terr: '', vias: '' }), { area: 'households_grid', lines: true });
+  assert.deepEqual(territoryStateFromParams({ terr: '0', vias: '0' }), { area: null, lines: false });
+  assert.deepEqual(territoryStateFromParams({ terr: 'jobs_hex', vias: '1' }), { area: 'jobs_hex', lines: true });
+  assert.deepEqual(territoryStateFromParams({ terr: ' jobs_hex ', vias: 'x' }), { area: 'jobs_hex', lines: false });
+  assert.deepEqual(territoryStateFromParams({ terr: null, vias: undefined }), { area: 'households_grid', lines: true });
+});
+
+test('territoryParamsFromState: padrão não entra na URL; desligado vira 0 só se a camada existe', () => {
+  assert.deepEqual(territoryParamsFromState({ area: 'households_grid', lines: true }), { terr: '', vias: '' });
+  assert.deepEqual(territoryParamsFromState({ area: null, lines: false }), { terr: '0', vias: '0' });
+  assert.deepEqual(territoryParamsFromState({ area: 'jobs_hex', lines: false }), { terr: 'jobs_hex', vias: '0' });
+  // sem manifest (camada indisponível), "desligado" não é escolha do usuário: a URL fica limpa
+  assert.deepEqual(territoryParamsFromState({ area: null, lines: false }, { areaAvailable: false, linesAvailable: false }), { terr: '', vias: '' });
+  assert.deepEqual(territoryParamsFromState({ area: 'jobs_hex', lines: false }, { areaAvailable: false, linesAvailable: false }), { terr: 'jobs_hex', vias: '' });
+  assert.deepEqual(territoryParamsFromState(), { terr: '0', vias: '0' });
+  // ida e volta
+  for (const params of [{ terr: '', vias: '' }, { terr: '0', vias: '0' }, { terr: 'jobs_hex', vias: '' }, { terr: 'jobs_hex', vias: '0' }, { terr: '0', vias: '' }]) {
+    assert.deepEqual(territoryParamsFromState(territoryStateFromParams(params)), params, JSON.stringify(params));
+  }
 });

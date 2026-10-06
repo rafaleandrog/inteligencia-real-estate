@@ -80,4 +80,7 @@ test('terr, terr_metrica e vias são chaves do mapa e só do mapa', () => {
   assert.deepEqual(parseHash('#mapa?terr=households_grid&vias=1').params, { terr: 'households_grid', vias: '1' });
   assert.deepEqual(parseHash('#mercado?terr=households_grid').params, {});
   assert.equal(buildHash('mapa', { terr: '', vias: '' }), '#mapa');
+  // `0` é valor (desligado, issue #171), não vazio: entra na URL e volta na leitura
+  assert.equal(buildHash('mapa', { terr: '0', vias: '0' }), '#mapa?terr=0&vias=0');
+  assert.deepEqual(parseHash('#mapa?terr=0&vias=0').params, { terr: '0', vias: '0' });
 });

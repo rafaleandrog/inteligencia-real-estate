@@ -166,7 +166,8 @@ As seções territoriais do smoke não dependem de `data/public/` ter dado real:
   `--seq-N`; canvas no pane `territory` conferido por amostragem de pixel; RAs só contorno em
   `raOutline`; clique na célula abre o painel (essencial com no máximo 6 linhas); overview →
   shards no `zoom_min`; métrica absoluta desabilitada no overview, com o motivo; `terr` e
-  `terr_metrica` na URL; 390 px sem overflow; `terr=` sem manifest não liga nada.
+  `terr_metrica` na URL; 390 px sem overflow; `terr=` sem manifest não liga nada; `#mapa` sem
+  parâmetros abre com domicílios e vias ligados e `#mapa?terr=0&vias=0` sem nada (issue #171).
 - **"Território · empregos formais"** (issue #151) — trocar o rádio troca a coroplética no mesmo
   canvas; dez classes mais "sem dado (inclui zero)", amostras iguais a `--seq10-N`; nota do
   manifest explicando que hexágono omitido não é "sem dado"; as quatro métricas; nenhum resto da
@@ -174,7 +175,8 @@ As seções territoriais do smoke não dependem de `data/public/` ter dado real:
 - **"Território · centralidade viária"** (issue #152) — canvas próprio no pane `territoryLines`
   convivendo com a coroplética (duas legendas); amostras iguais a `--via-N`, com o peso e a
   opacidade do registro; ODbL na procedência e atribuição no controle do mapa enquanto a camada
-  está ligada; clique na via; `vias=1` na URL; desligar retira a atribuição.
+  está ligada; clique na via; ligada é o padrão (sem `vias=` na URL) e desligar grava `vias=0` e
+  retira a atribuição.
 - **"Território · indicadores cruzados com o PDAD"** (issue #153) — o Ranking com os cartões
   territoriais (valor, posição, fórmula e fonte) e a renda per capita resolvendo pela ponte; a
   leitura cruzada da dispersão; as colunas territoriais do Comparar; o bloco "Perfil territorial"

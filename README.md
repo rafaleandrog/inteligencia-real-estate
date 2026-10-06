@@ -138,8 +138,9 @@ Domicílios e empregos são coroplética em canvas, uma por vez; a centralidade 
 qualquer uma delas. Cada camada tem **legenda** (classes fixas do manifest e "sem dado"),
 **detalhe** ao clicar na célula, no hexágono ou na via (essencial, complementar e técnico) e uma
 linha de **procedência** que leva à **Base de dados**, onde cada conjunto aparece com versão,
-arquivos, fontes (link e data de coleta), licença, método e cortes de classe. O estado entra no
-link: `#mapa?terr=jobs_hex&vias=1`.
+arquivos, fontes (link e data de coleta), licença, método e cortes de classe. O mapa abre com
+domicílios e vias ligados; o estado entra no link: `#mapa?terr=jobs_hex` troca a área,
+`#mapa?terr=0&vias=0` desliga tudo.
 
 Os agregados por RA (`ra_aggregates.json`) são cruzados com o PDAD pela ponte declarada entre as
 duas grafias de RA (`ra_crosswalk.json`, R2.9), nunca por nome: crescimento de domicílios,
