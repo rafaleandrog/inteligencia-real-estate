@@ -60,10 +60,11 @@ censo_2022 = { name = "IBGE — Grade Estatística, Censo Demográfico 2022", ur
 # #164) e fica como candidata: as URLs são tentadas em ordem e, se nenhuma responder, o pipeline
 # sonda as páginas de `probe_urls` e falha listando os links de dados que encontrou.
 metadata_url = "https://github.com/ipea/aopdata/releases/download/v1.0.0/metadata.csv"
+# Espelho vivo do Ipea que o próprio aopdata usa quando o GitHub falha (download_metadata.R; é o host
+# de `download_path2` no índice), e a URL antiga, que respondeu 404 em 2026-10-06.
 metadata_fallback_urls = [
+  "https://www.ipea.gov.br/geobr/aopdata/metadata/metadata.csv",
   "https://www.ipea.gov.br/acessooportunidades/dados/metadata.csv",
-  "http://www.ipea.gov.br/acessooportunidades/dados/metadata.csv",
-  "https://raw.githubusercontent.com/ipea/aopdata/main/data-raw/metadata.csv",
 ]
 probe_urls = [
   "https://api.github.com/repos/ipea/aopdata/releases/tags/v1.0.0",
