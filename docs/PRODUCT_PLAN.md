@@ -41,6 +41,45 @@ temporal nos gráficos (período anterior, mesmo período do ano anterior, no me
 preço × liquidez por RA (IVV × preço, IVV × oferta, gap × preço); link compartilhável com view e
 filtros na URL.
 
+### Fase 3b — Território (em curso, issue #146)
+Dados públicos por pipeline reprodutível (`pipeline/` → `data/public/`, R2.7), lidos pelo site
+pelo `manifest.json`. Foco de decisão: **produto e tipologia de lançamento** — perfil de
+domicílios e renda, mix de quartos demandado, concorrência e velocidade por RA, lidos lado a lado
+com o retrato territorial.
+
+**Entregue no código**
+- **Pipeline** (`pipeline/`, issues #147 e #148): ponte entre as duas grafias de RA
+  (`ra_crosswalk.json`, R2.9), os três conjuntos e os agregados por RA, cada arquivo com `sha256`
+  e orçamento no manifest; validador em toda PR; workflow `dados-publicos.yml` que abre a PR de
+  dados.
+- **Três mapas** (issues #150 a #152), no bloco "Território (dados públicos)" do Mapa:
+  crescimento de domicílios 2010→2022 por célula da Grade Estatística (IBGE), empregos formais
+  por hexágono H3 (Ipea/RAIS) e centralidade viária (OpenStreetMap, em linhas). Cada um com
+  legenda de classes fixas, métrica selecionável onde há mais de uma, detalhe ao clicar
+  (essencial, complementar e técnico), procedência e estado na URL; controle desabilitado, com o
+  motivo, enquanto o arquivo não existe.
+- **Base de dados** (issue #149): a seção "Arquivos públicos (data/public)" lista cada conjunto do
+  manifest com versão, anos, arquivos, fontes (link, data de coleta e licença), método e cortes
+  de classe.
+- **Indicadores cruzados** (issue #153): crescimento de domicílios 2010→2022, empregos formais
+  por mil moradores e por km² e centralidade viária média, por RA, cruzados com o PDAD pela ponte
+  de RAs. Entram no Ranking (cartão com fórmula e fonte), em duas leituras da dispersão
+  (crescimento × verticalização; empregos × locação), em colunas do Comparar, no bloco "Perfil
+  territorial" do Diagnóstico (valor, diferença contra a mediana das RAs com dado, com o `n`, e
+  posição) e no bloco da RA do Mapa — sempre com fonte e ano. RA sem agregado, ou sem os arquivos
+  públicos, fica ausente, nunca zero. A renda per capita de `RA_PROFILES` cruza pela mesma ponte
+  e segue ausente enquanto a planilha não a publicar.
+
+**Pendente**
+- **Primeira execução real do pipeline.** `data/public/` tem hoje só o README, os schemas e um
+  manifest vazio. A PR automática do `dados-publicos.yml`, em etapas (a ponte de RAs primeiro), o
+  povoa depois do merge, e é nela que se confirma o que só a rede mostra — quadrantes da Grade,
+  layout do `metadata.csv` do AOP, orçamentos de tamanho (`pipeline/README.md`, "Primeira
+  execução real"). Até lá as camadas ficam desabilitadas, com o motivo.
+- **Extração BigQuery da RAIS** (fase 2 do pipeline): hoje só o esqueleto do comando `extract`,
+  que não grava nada.
+- **Modelo 2** (`warehouse/`, issue #154), descrito mais abaixo.
+
 ### Fase 4 — Decidir (adiante)
 Watchlists, alertas, relatórios e cenários — só com necessidade de usuário comprovada e sem
 score automático de oportunidade: a tela mostra números e metodologia; a leitura é de quem usa.
@@ -51,9 +90,21 @@ versionadas — quando o Google Sheets deixar de bastar (`docs/ARCHITECTURE.md`,
 
 ## O que não entra agora
 
-Score de oportunidade; recomendação gerada por IA; modelo preditivo; heatmap/hexbin
-obrigatórios; distância exata a partir de coordenada aproximada (`canUseForDistance` é a guarda);
-cruzamento automático PDAD + FipeZap + IVV + anúncios num único número.
+Score de oportunidade; recomendação gerada por IA; modelo preditivo no app (o Modelo 2, abaixo,
+só publica previsão com backtest ao lado do número); distância exata a partir de coordenada
+aproximada (`canUseForDistance` é a guarda); cruzamento de bases num único número sem fonte e
+ano ao lado — cruzar **é** permitido, mas só por chave declarada (`ra_crosswalk.json`, R2.9) e
+sempre com a fonte e o ano de cada parcela visíveis. Heatmap/hexbin deixaram de ser "não entra":
+entram quando a fonte pública os publica (Grade IBGE, hexágonos do Ipea), nunca como estética
+sobre dado aproximado.
+
+## Modelo 2 — base histórica multi‑cidade (planejado, issue #154)
+
+Segunda base, em `warehouse/`: painel histórico de São Paulo, Florianópolis e Goiânia (Brasília
+como alvo) — população, domicílios, renda, empregos (RAIS/CAGED), PIB, frota, área urbanizada
+(MapBiomas/GHSL), preço (FipeZap) — para ler como as cidades evoluem e produzir cenários 5–10
+anos com incerteza declarada. Chega ao app como view "Cidades" lendo `data/public/cidades/`,
+pelo mesmo caminho da Fase 3b. Implementação depois da Fase 3b.
 
 ## Base de dados: filas, não volume
 

@@ -1,0 +1,23 @@
+# Cidades do Modelo 2. Código IBGE de 7 dígitos; `aop` é a sigla no Projeto Acesso a Oportunidades
+# (null = fora das 20 cidades cobertas). Brasília é o alvo; as outras são comparadores.
+cities:
+  - city_id: "3550308"
+    name: São Paulo
+    uf: SP
+    aop: spo
+    is_target: false
+  - city_id: "4205407"
+    name: Florianópolis
+    uf: SC
+    aop: null
+    is_target: false
+  - city_id: "5208707"
+    name: Goiânia
+    uf: GO
+    aop: goi
+    is_target: false
+  - city_id: "5300108"
+    name: Brasília
+    uf: DF
+    aop: bra
+    is_target: true

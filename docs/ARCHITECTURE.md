@@ -3,18 +3,23 @@
 ## MVP recomendado
 
 ```text
-Editor de dados
-   |
-   v
-Google Sheets  <-- fonte de verdade
-   |
-   | Google Visualization Query
-   v
-GitHub Pages (HTML/CSS/JS)
+Editor de dados                      Fontes públicas (IBGE · Ipea · OSM · GeoPortal)
+   |                                     |
+   v                                     | pipeline/ (Python, GitHub Actions) → PR de dados
+Google Sheets  <-- dado CURADO           v
+   |                                 data/public/  <-- dado DERIVADO + manifest (R2.7)
+   | Google Visualization Query          |
+   v                                     | fetch na mesma origem
+GitHub Pages (HTML/CSS/JS)  <------------+
    |
    v
 Navegador + Leaflet
 ```
+
+Dois caminhos de dado, de naturezas diferentes: a planilha guarda o que alguém pesquisou e
+assina (anúncios, empreendimentos, IVV, FipeZap, PDAD); `data/public/` guarda o que uma fonte
+oficial publicou e um pipeline reprodutível transformou (células do Censo, hexágonos de
+empregos, rede viária). O primeiro muda sem commit; o segundo só muda por PR automática.
 
 ## Separação de responsabilidades
 
@@ -25,7 +30,7 @@ Uma linguagem por arquivo, uma responsabilidade por módulo.
 | `index.html` | Estrutura. Sem estilo inline, sem lógica |
 | `assets/styles.css` | Visual |
 | `src/config.js` | ID da planilha, origem dos dados, nomes das abas |
-| `src/data.js` | Carregamento e escolha da estratégia |
+| `src/data.js` | Carregamento e escolha da estratégia; manifest e arquivos públicos (`fetchPublicManifest`, `fetchPublicLayer`) |
 | `src/normalize.js` | Conversão e normalização — **funções puras** |
 | `src/filters.js` | Filtros, mediana, KPIs — **funções puras** |
 | `src/format.js` | Formatação e saneamento — **funções puras** |
@@ -38,7 +43,12 @@ Uma linguagem por arquivo, uma responsabilidade por módulo.
 | `src/pdad/*` | PDAD-A: normalização, agregação por RA, indicadores, gráficos e perfil imobiliário (`insights.js`) — **funções puras** |
 | `src/fipezap/*` | FipeZap: normalização (período, duplicidade, vocabulário), histórico e localidades com o mapa localidade → RA — **funções puras** |
 | `src/url-state.js` | View e filtros na URL (`parseHash`/`buildHash`), vocabulário fechado de chaves — **funções puras** |
-| `src/app.js` | Interação, mapa e DOM |
+| `src/app.js` | Interação, mapa e DOM; desenha as camadas territoriais em canvas e lê a cor dos tokens do CSS |
+| `src/territorio/*` | Arquivos públicos: manifest, ponte de RAs, agregados por RA e seu cruzamento com o índice do PDAD, registro das camadas, classes, legenda e detalhe — **funções puras**, sem DOM, sem Leaflet e sem cor |
+| `pipeline/` | Geração de `data/public/` (Python; roda no Actions — `dados-publicos.yml` — ou na máquina do dono, nunca no navegador) |
+| `data/public/` | Dado derivado de fonte pública + `manifest.json` e schemas (R2.7); editado só pelo pipeline (R2.8) |
+| `tests/fixtures/public/` | Saída do pipeline em modo fixture, lida pelos testes e pelo smoke; regerada pelo pipeline, nunca editada (R2.8) |
+| `warehouse/` | Modelo 2 (base histórica multi‑cidade): só o desenho; implementação adiada (issue #154) |
 | Google Sheet | Registros e governança |
 
 A divisão não é estética: as camadas de funções puras são as que a suíte cobre sem navegador
@@ -123,6 +133,74 @@ o que a página faz quando a cota estourar. Enquanto isso não for endereçado, 
 
 **Não commitar snapshots de dados para produção.** O navegador consulta a planilha quando a aplicação abre. O GitHub guarda código; a Google Sheet guarda dados.
 
+A exceção é nomeada e cercada (R2.7–R2.9): `data/public/` guarda **dado derivado de fonte
+pública oficial** — não um snapshot da planilha —, gerado por `pipeline/`, acompanhado de
+manifest com procedência e hash, validado em toda PR e publicado só por PR automática.
+
+## Arquivos públicos: por que estático na mesma origem
+
+- **Sem CORS, sem JSONP, sem chave**: `fetch` do `manifest.json` no próprio Pages (R1.4), em
+  `./data/public/` (`publicDataUrl` em `src/config.js`). `fetchPublicManifest` o pede ANTES da
+  estratégia de dados e independente dela — `loadDataset` devolve `publicData` nos dois
+  caminhos — e `publicFileUrl` recusa outra origem, `..` e caminho absoluto. O GViz continua
+  existindo para a planilha; os dois caminhos não se misturam.
+- **Cache por conteúdo e conferência**: cada arquivo é buscado com `?v=` (o início do `sha256`
+  do manifest) e, antes de desenhar, `fetchPublicLayer` confere `bytes` e `sha256`; arquivo que
+  não confere é recusado, nunca desenhado (R2.7). É a mesma ideia do `tools/versionar-assets.mjs`,
+  aplicada a dado. Sem `crypto.subtle` o hash não é conferido e o resultado diz "não verificada".
+- **Funciona em modo demo e offline**: arquivo local é arquivo local. Manifest inacessível (404,
+  rede, tempo esgotado), inválido ou de versão desconhecida vira aviso e controle desabilitado
+  com motivo, nunca erro (R2.5, R8.64); o manifest vazio de antes da primeira execução do
+  pipeline é o estado esperado — desabilitado com motivo, sem aviso técnico.
+- **Carga preguiçosa**: o manifest vem com a carga inicial, junto da ponte de RAs e dos agregados
+  por RA (arquivos pequenos); cada camada só é buscada no primeiro liga e fica memoizada por
+  `dataset/caminho@sha256`. Abaixo do `zoom_min` do manifest desenha-se o overview; a partir
+  dele, só os arquivos de detalhe que a viewport cruza — shards por RA nos domicílios e nos
+  empregos, arquivo único nas vias.
+- **Duas grafias de RA, uma ponte**: `RA_nn` e `RA2026_RA-<romano>` só se cruzam por
+  `ra_crosswalk.json` (R2.9). O cliente não faz aritmética de algarismos romanos: sem a ponte
+  carregada o cruzamento resolve ausente, e conflito de nome entre a ponte e a planilha bloqueia
+  o join daquela RA. O cruzamento com o PDAD acontece num ponto só, em `load()`:
+  `attachTerritory` e `attachRaProfiles` devolvem um índice novo, sem mutação, com os agregados e
+  a renda de `RA_PROFILES` anexados; sem arquivo ou sem ponte o índice fica como era, e Ranking,
+  dispersão e Comparar leem ausência.
+
+## Por que canvas para as camadas territoriais
+
+Dezenas de milhares de células como `<path>` SVG travam o pan/zoom; `L.canvas()` desenha o mesmo
+em um bitmap — e é do próprio Leaflet, sem dependência nova (R1.2). O custo é que canvas não tem
+DOM por feição: cor não pode vir de regra de classe CSS. A solução mantém a regra do projeto
+("nenhum módulo conhece cor"): os módulos de `src/territorio/` só devolvem **índice de classe**
+(pelos cortes do manifest) e, nas linhas, peso e opacidade; `app.js` lê o token da rampa por
+`getComputedStyle` no momento do desenho — `--seq-1…6` nos domicílios, `--seq10-1…10` nos
+empregos, `--via-1…5` na centralidade — e usa **a mesma função** para a marca e para a amostra da
+legenda (R8.42). Token ausente lança, em vez de pintar célula transparente. A prova de que o
+canvas mostra a cor certa é por amostragem de pixel no smoke test (R8.83), não por seletor.
+
+**Empilhamento por pane** (`initMap`). Cada camada territorial tem o seu renderizador de canvas,
+`L.canvas({ pane, padding: 0.5 })`, no pane próprio; o resto do mapa continua em SVG:
+
+| z-index | Pane | O que desenha |
+|---|---|---|
+| 350 | `polygons` | contornos; a RA tem preenchimento clicável |
+| 355 | `territory` | a coroplética ligada (domicílios ou empregos), num canvas próprio |
+| 357 | `raOutline` | as RAs só como linha, enquanto uma camada de área está ligada |
+| 358 | `territoryLines` | a centralidade viária, em outro canvas, independente da área |
+| 360 | `roadSegments` | eixos rodoviários do DER/DF |
+| 380 | `anchors` | âncoras |
+| 600 | `markerPane` | anúncios e empreendimentos (pane padrão de marcadores do Leaflet) |
+
+A coroplética fica ACIMA do contorno das RAs (350): abaixo dele, o preenchimento clicável da RA
+roubaria o clique da célula. Por isso, enquanto uma área está ligada, o limite oficial da RA é
+redesenhado só como linha em `raOutline`. As vias ficam abaixo dos eixos do DER, que são dado
+medido e continuam por cima. Área e linha convivem — uma via sobre uma célula ainda se lê, duas
+áreas sobrepostas não —, e por isso as áreas são um rádio e as vias, uma caixa de seleção.
+
+O estado vai na URL do mapa (`src/url-state.js`): `terr` (a camada de área), `terr_metrica` (a
+métrica, quando não é a padrão) e `vias` (`1` com a centralidade ligada).
+`#mapa?terr=households_grid` liga a camada depois que o manifest confirma que ela existe. Pan e
+zoom só redesenham quando a assinatura — arquivos e métrica — muda.
+
 ## Limite de segurança
 
 A planilha usada pela V1 precisa ser própria para dados públicos. Não coloque nela informações privadas, chaves ou dados pessoais sensíveis.
@@ -138,4 +216,6 @@ A planilha usada pela V1 precisa ser própria para dados públicos. Não coloque
 - autenticação por usuário;
 - writes concorrentes;
 - histórico temporal volumoso;
-- ingestão automática frequente.
+- ingestão automática frequente;
+- camadas públicas que já não cabem em overview + shards por RA (o próximo degrau é tile
+  vetorial, não planilha).

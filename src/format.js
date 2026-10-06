@@ -48,6 +48,20 @@ export function formatNumber(value) {
 }
 
 /**
+ * Número com casas decimais FIXAS (issue #149): `12.345` com `digits: 1` → "12,3"; `0.5` → "0,5".
+ *
+ * Existe porque `formatNumber` arredonda para inteiro, e os indicadores territoriais —
+ * empregos por mil moradores, domicílios novos por km², centralidade normalizada — perdem o
+ * sentido sem a fração: "0" empregos por mil moradores e "0,4" são leituras opostas. As casas
+ * são decididas por quem conhece a grandeza (a unidade declarada), nunca por heurística.
+ * Ausência vira travessão, nunca "0,0".
+ */
+export function formatDecimal(value, { digits = 1 } = {}) {
+  if (value === null || value === undefined || !Number.isFinite(value)) return '—';
+  return value.toLocaleString('pt-BR', { minimumFractionDigits: digits, maximumFractionDigits: digits });
+}
+
+/**
  * Número em forma COMPACTA, para eixo de gráfico (issue #85).
  *
  * `509.218` num rótulo de eixo obriga a contar casas para saber a ordem de grandeza, e
@@ -972,6 +986,13 @@ export const DATASET_PERCENT_SCALE = Object.freeze({
   // PDAD_A_DATA (issue #100) publica `estimate_pct` em ponto percentual (`49` = 49%),
   // mesma escala de RA_PROFILES/IVV_REGION — confirmado no dataset real.
   PDAD_A_DATA: PERCENT_SCALES.POINTS,
+  // Arquivos públicos (issue #149, R2.7). `ra_aggregates.json` publica
+  // `households_growth_pct` em fração decimal (`0.12` = +12 %) — declarado no schema e no
+  // contrato. `road_centrality` publica `betweenness_percentile` em pontos (0–100): são
+  // dois arquivos do MESMO pipeline com escalas opostas, e é por isso que cada um tem a sua
+  // entrada aqui em vez de uma escala "do pipeline" (R8.44, R8.60).
+  RA_AGGREGATES: PERCENT_SCALES.DECIMAL,
+  PUBLIC_CENTRALITY: PERCENT_SCALES.POINTS,
 });
 
 /**

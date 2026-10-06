@@ -20,6 +20,7 @@ import { normalizeIvvMonthly } from './ivv/normalize-ivv.js';
 import { normalizeIvvRegion } from './ivv/region.js';
 import { normalizeFipezapMonthly, normalizeFipezapLocality, normalizeFipezapLocalityMap } from './fipezap/normalize-fipezap.js';
 import { normalizePdadData } from './pdad/normalize-pdad.js';
+import { normalizeManifest } from './territorio/manifest.js';
 
 /** Entidades obrigatórias na V1. Ausência de qualquer uma é erro. */
 export const REQUIRED_ENTITIES = ['listings', 'developments', 'anchors'];
@@ -62,12 +63,19 @@ const FETCH_TIMEOUT_MS = 20000;
  */
 const META_FETCH_TIMEOUT_MS = 6000;
 
-/** `fetch` com timeout, para que falha de rede vire erro tratável e não espera infinita. */
-async function fetchWithTimeout(url, { timeoutMs = FETCH_TIMEOUT_MS, ...options } = {}) {
+/**
+ * `fetch` com timeout, para que falha de rede vire erro tratável e não espera infinita.
+ *
+ * `fetchRef` é injetável (issue #149): o carregador dos arquivos públicos recebe um `fetch`
+ * de teste pelo argumento, em vez de trocar `globalThis.fetch` — a troca global é o que os
+ * testes das estratégias já fazem, e dois testes disputando o mesmo global é uma corrida.
+ */
+async function fetchWithTimeout(url, { timeoutMs = FETCH_TIMEOUT_MS, fetchRef = null, ...options } = {}) {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
+  const doFetch = fetchRef || fetch;
   try {
-    return await fetch(url, { ...options, signal: controller.signal });
+    return await doFetch(url, { ...options, signal: controller.signal });
   } finally {
     clearTimeout(timer);
   }
@@ -1016,6 +1024,172 @@ async function fetchRaProfilesFromAppsScript(config) {
   }
 }
 
+// --- Arquivos públicos: data/public/ (issue #149, R2.7) --------------------------
+
+/**
+ * Teto do download de UMA camada territorial. Mais folgado que o das abas porque um shard
+ * de 2 MB numa conexão móvel leva mais que 20 s, e abortar no meio só para recomeçar no
+ * próximo zoom é pior do que esperar.
+ */
+const PUBLIC_LAYER_TIMEOUT_MS = 45000;
+
+/** Formato de `publicData` quando nada foi configurado ou carregado — nunca `undefined`. */
+export const EMPTY_PUBLIC_DATA = Object.freeze({
+  available: false,
+  reason: 'publicDataUrl não configurada',
+  baseUrl: null,
+  manifest: null,
+  warnings: [],
+});
+
+/** Camadas já baixadas e conferidas, por `${dataset}/${path}@${sha256}`. */
+const publicLayerCache = new Map();
+
+/** Esvazia a memoização — para teste e para recarga explícita. */
+export function clearPublicLayerCache() {
+  publicLayerCache.clear();
+}
+
+/**
+ * URL de um arquivo público a partir da base configurada e do caminho do manifest.
+ *
+ * Recusa com `null` tudo que sairia da MESMA ORIGEM: base absoluta em outro host, caminho
+ * com `..`, barra inicial ou esquema. O manifest é gerado por máquina, mas chega pela rede,
+ * e um caminho que escapa do diretório é exatamente o tipo de dado que não se segue (R4.6).
+ * Fora do navegador (`location` ausente) a junção é textual, para o teste de nó.
+ */
+export function publicFileUrl(baseUrl, relPath) {
+  const base = String(baseUrl || '').trim();
+  const rel = String(relPath || '').trim();
+  if (!base || !rel) return null;
+  if (/^[a-z][a-z0-9+.-]*:/i.test(rel) || rel.startsWith('/') || rel.startsWith('\\')) return null;
+  if (rel.split('/').some((part) => part === '..' || part === '')) return null;
+  const joined = `${base.endsWith('/') ? base : `${base}/`}${rel}`;
+  if (typeof location === 'undefined' || !location.origin) {
+    return /^[a-z][a-z0-9+.-]*:/i.test(base) ? null : joined;
+  }
+  let resolved;
+  try {
+    resolved = new URL(joined, location.href);
+  } catch {
+    return null;
+  }
+  if (resolved.origin !== location.origin) return null;
+  return resolved.href;
+}
+
+/**
+ * Busca e normaliza `manifest.json` (issue #149).
+ *
+ * Mesma origem do site e independente da estratégia de dados: o manifest descreve o que o
+ * GitHub Pages serve ao lado do `index.html`, não o que a planilha tem. Qualquer falha —
+ * configuração ausente, 404, rede, timeout, JSON inválido, versão desconhecida — vira
+ * `{ available: false, reason }` com aviso, nunca erro (R2.5): o site inteiro funciona sem
+ * as camadas territoriais; elas é que não funcionam sem ele.
+ */
+export async function fetchPublicManifest(config, { fetchRef = null } = {}) {
+  const baseUrl = config?.publicDataUrl;
+  if (!baseUrl) return { ...EMPTY_PUBLIC_DATA };
+  const fileName = config.publicManifestFile || 'manifest.json';
+  const url = publicFileUrl(baseUrl, fileName);
+  const warnings = [];
+  const unavailable = (reason) => ({ available: false, reason, baseUrl, manifest: null, warnings });
+  if (!url) {
+    warnings.push(`Arquivos públicos (data/public): publicDataUrl "${baseUrl}" não é um caminho da mesma origem; camadas territoriais desligadas.`);
+    return unavailable('publicDataUrl fora da mesma origem');
+  }
+  let raw;
+  try {
+    const response = await fetchWithTimeout(url, { timeoutMs: META_FETCH_TIMEOUT_MS, fetchRef, cache: 'no-cache' });
+    if (!response.ok) {
+      const reason = response.status === 404
+        ? 'manifest.json ainda não publicado (o pipeline não rodou)'
+        : `manifest.json respondeu HTTP ${response.status}`;
+      warnings.push(`Arquivos públicos (data/public): ${reason}; camadas territoriais desligadas.`);
+      return unavailable(reason);
+    }
+    raw = await response.json();
+  } catch (error) {
+    const reason = error?.name === 'AbortError'
+      ? 'manifest.json demorou mais que o limite'
+      : `manifest.json inacessível (${error?.message || error})`;
+    warnings.push(`Arquivos públicos (data/public): ${reason}; camadas territoriais desligadas.`);
+    return unavailable(reason);
+  }
+  const { manifest, warnings: manifestWarnings } = normalizeManifest(raw);
+  warnings.push(...manifestWarnings);
+  if (!manifest) return unavailable('manifest.json inválido');
+  if (manifest.datasets.length === 0) {
+    return { available: false, reason: 'manifest.json publicado sem nenhum conjunto de dados (o pipeline ainda não rodou)', baseUrl, manifest, warnings };
+  }
+  return { available: true, reason: null, baseUrl, manifest, warnings };
+}
+
+async function sha256Hex(bytes) {
+  const subtle = globalThis.crypto?.subtle;
+  if (!subtle) return null;
+  const digest = await subtle.digest('SHA-256', bytes);
+  return [...new Uint8Array(digest)].map((b) => b.toString(16).padStart(2, '0')).join('');
+}
+
+/**
+ * Baixa UM arquivo listado no manifest e confere tamanho e hash antes de entregá-lo.
+ *
+ * Lazy e memoizado por `${dataset}/${path}@${sha256}`: a camada só é buscada quando alguém a
+ * liga, e um manifest novo (hash novo) invalida a cópia antiga sozinho. A query `?v=<hash>`
+ * é cache por conteúdo — a mesma ideia do `versionar-assets` — para o navegador nunca servir
+ * o arquivo do mês passado com o manifest deste mês.
+ *
+ * Divergência de `bytes` ou de `sha256` LANÇA "não confere com o manifest" (R2.7): a tela
+ * mostra o motivo e não desenha. Sem `crypto.subtle` (contexto inseguro) o hash não é
+ * conferido e o resultado diz isso em `integrity`, em vez de fingir que conferiu.
+ */
+export async function fetchPublicLayer({ baseUrl, dataset, file }, { fetchRef = null, timeoutMs = PUBLIC_LAYER_TIMEOUT_MS } = {}) {
+  if (!dataset || !file) throw new Error('fetchPublicLayer: dataset e arquivo são obrigatórios');
+  const key = `${dataset.id}/${file.path}@${file.sha256}`;
+  if (publicLayerCache.has(key)) return publicLayerCache.get(key);
+  const url = publicFileUrl(baseUrl, file.path);
+  if (!url) throw new Error(`${dataset.id}: caminho "${file.path}" recusado (fora da mesma origem)`);
+  const versioned = `${url}${url.includes('?') ? '&' : '?'}v=${file.sha256.slice(0, 12)}`;
+  const pending = (async () => {
+    // O teto cobre o CORPO, não só os cabeçalhos: `fetchWithTimeout` limpa o timer assim que
+    // a resposta começa, e um corpo de 2 MB travado deixaria a camada "carregando…" para
+    // sempre (achado da revisão da PR #157). Aqui o `abort` vale até o último byte.
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), timeoutMs);
+    let bytes;
+    try {
+      const doFetch = fetchRef || fetch;
+      const response = await doFetch(versioned, { signal: controller.signal });
+      if (!response.ok) throw new Error(`${dataset.id}: ${file.path} respondeu HTTP ${response.status}`);
+      const buffer = await response.arrayBuffer();
+      bytes = new Uint8Array(buffer);
+    } catch (error) {
+      if (error?.name === 'AbortError') throw new Error(`${dataset.id}: ${file.path} demorou mais que ${Math.round(timeoutMs / 1000)} s`);
+      throw error;
+    } finally {
+      clearTimeout(timer);
+    }
+    if (bytes.byteLength !== file.bytes) {
+      throw new Error(`${dataset.id}: ${file.path} tem ${bytes.byteLength} bytes e o manifest diz ${file.bytes} — arquivo não confere com o manifest`);
+    }
+    const digest = await sha256Hex(bytes);
+    if (digest !== null && digest !== file.sha256) {
+      throw new Error(`${dataset.id}: ${file.path} tem sha256 diferente do manifest — arquivo não confere com o manifest`);
+    }
+    const text = new TextDecoder('utf-8').decode(bytes);
+    const payload = JSON.parse(text);
+    return { payload, integrity: digest === null ? 'não verificada' : 'sha256 conferido', bytes: bytes.byteLength, file, dataset };
+  })();
+  publicLayerCache.set(key, pending);
+  try {
+    return await pending;
+  } catch (error) {
+    publicLayerCache.delete(key);
+    throw error;
+  }
+}
+
 const STRATEGIES = {
   gviz: loadFromGviz,
   demo: loadFromDemo,
@@ -1044,15 +1218,22 @@ export function resolveStrategy(config) {
  * decidir o que mostrar. Erro que impede tudo vira estado de erro legível; registro
  * ruim isolado vira aviso. O que não pode acontecer é tela branca (R5.6).
  */
-export async function loadDataset(config) {
+export async function loadDataset(config, { fetchRef = null } = {}) {
   const strategy = resolveStrategy(config);
   const warnings = [];
   const errors = [];
+
+  // O manifest dos arquivos públicos parte ANTES da estratégia (R8.29): é mesma origem e não
+  // depende da planilha, então esperar as abas para só então pedi-lo somaria as latências.
+  // Sem `publicDataUrl` a promessa resolve na hora, sem rede (os testes das estratégias não a
+  // configuram, e não devem ganhar uma requisição a mais por isso).
+  const publicDataPromise = fetchPublicManifest(config, { fetchRef });
 
   let result;
   try {
     result = await STRATEGIES[strategy](config);
   } catch (error) {
+    const publicData = await publicDataPromise;
     return {
       entities: { listings: [], developments: [], anchors: [] },
       meta: {},
@@ -1065,12 +1246,16 @@ export async function loadDataset(config) {
       fipezapLocality: [],
       fipezapLocalityMap: [],
       pdadData: [],
+      publicData,
       source: strategy,
-      warnings,
+      warnings: [...warnings, ...publicData.warnings],
       errors: [error?.message || String(error)],
       ok: false,
     };
   }
+
+  const publicData = await publicDataPromise;
+  warnings.push(...publicData.warnings);
 
   errors.push(...(result.errors || []));
   // Avisos da própria estratégia — por exemplo, APP_META inacessível, que não impede
@@ -1110,6 +1295,7 @@ export async function loadDataset(config) {
     fipezapLocality: result.fipezapLocality || [],
     fipezapLocalityMap: result.fipezapLocalityMap || [],
     pdadData: result.pdadData || [],
+    publicData,
     source: strategy,
     warnings,
     errors,

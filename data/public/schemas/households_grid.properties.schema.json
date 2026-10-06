@@ -1,0 +1,26 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://rafaleandrog.github.io/inteligencia-real-estate/data/public/schemas/households_grid.properties.schema.json",
+  "title": "households_grid — propriedades de cada célula da Grade Estatística (2010 × 2022)",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["cell_id", "cell_size", "area_km2", "pop_2010", "pop_2022", "dom_ocu_2010", "dom_ocu_2022", "households_delta", "households_delta_per_km2", "households_delta_pct_change", "ra_geo_id", "class_households_delta_per_km2", "quality_flags"],
+  "properties": {
+    "cell_id": { "type": "string", "minLength": 1 },
+    "cell_size": { "enum": ["200M", "1KM"] },
+    "area_km2": { "type": "number", "exclusiveMinimum": 0 },
+    "pop_2010": { "type": ["integer", "null"], "minimum": 0 },
+    "pop_2022": { "type": ["integer", "null"], "minimum": 0 },
+    "dom_ocu_2010": { "type": ["integer", "null"], "minimum": 0 },
+    "dom_ocu_2022": { "type": ["integer", "null"], "minimum": 0 },
+    "households_delta": { "type": ["integer", "null"] },
+    "households_delta_per_km2": { "type": ["number", "null"] },
+    "households_delta_pct_change": { "type": ["number", "null"], "description": "fração decimal; null quando 2010 é nulo ou zero" },
+    "ra_geo_id": { "type": ["string", "null"], "pattern": "^RA_[0-9]{2}$" },
+    "class_households_delta_per_km2": { "type": ["integer", "null"], "minimum": 0, "maximum": 5 },
+    "class_households_delta": { "type": ["integer", "null"], "minimum": 0, "maximum": 5 },
+    "children": { "type": "integer", "minimum": 0, "description": "0 = célula de 1 km não subdividida (rural)" },
+    "children_missing": { "type": "integer", "minimum": 0 },
+    "quality_flags": { "type": "array", "items": { "enum": ["cell_missing_2010", "cell_missing_2022", "value_suppressed_2010", "value_suppressed_2022", "ra_unassigned", "partial_children"] } }
+  }
+}

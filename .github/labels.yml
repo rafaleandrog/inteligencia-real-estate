@@ -35,3 +35,7 @@
 - name: "logged-by-claude"
   color: "000000"
   description: "Issue registrada automaticamente pelo Claude Code"
+
+- name: "dados-publicos"
+  color: "1d76db"
+  description: "PR gerada pelo pipeline de dados públicos (só data/public/ + manifest)"

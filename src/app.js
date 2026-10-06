@@ -7,7 +7,7 @@
 // entra em innerHTML. Todo texto vai por textContent e todo elemento é criado com
 // createElement (docs/ENGINEERING_RULES.md, R4.4).
 
-import { loadDataset, flattenEntities } from './data.js';
+import { loadDataset, flattenEntities, fetchPublicLayer, EMPTY_PUBLIC_DATA } from './data.js';
 import { isApproximateLocation, canUseForDistance, appMetaRows } from './normalize.js';
 import { comparableSample, comparableStats, positionVsMedian, rulerPosition, RECENT_DAYS } from './map/comparables.js';
 import { ivvProvenance, IVV_SCOPE_NOTICE } from './ivv/scope.js';
@@ -59,7 +59,7 @@ import {
   datasetSourceLink,
   hostnameOf, anchorColor, markerIcon, anchorLegendEntries, formatAnchorCategory, formatAnchorGroup,
   formatAnchorSegment, formatSalesStage, formatRegularizationStatus, formatPercent,
-  percentFromPoints, raAgeBands, polygonStyle, sortPolygonsForDraw, raProfileEssentials,
+  percentFromPoints, percentFromDecimal, raAgeBands, polygonStyle, sortPolygonsForDraw, raProfileEssentials,
   raProfileUnavailability, polygonEssentials, polygonPropertyTiers, polygonEssentialKeys,
   polygonEntityType, polygonLayerGroup, compactNumber, polygonDuplicateKeys,
   polygonDescriptionText,
@@ -80,6 +80,18 @@ import {
   roadSegmentCodeOf, selectRoadSegmentPolygons, validateRoadSegmentLayer,
 } from './traffic/road-geometry.js';
 import { ANCHOR_ICONS, ANCHOR_FALLBACK_ICON } from './icons.js';
+import { datasetById, fileFor, formatBytes } from './territorio/manifest.js';
+import {
+  TERRITORY_LAYERS, AREA_LAYER_IDS, LINE_LAYER_IDS, RAMPS, layerById, metricFor, layerAvailability, metricAvailability,
+  layerFilesFor, featureValue, classCheckMismatch,
+} from './territorio/layers.js';
+import { classIndexFor, rampIndexFor } from './territorio/classes.js';
+import { legendRows, legendTitle, lineLegendRows, provenanceLine } from './territorio/legend.js';
+import { territoryDetailTiers, territoryTooltipText } from './territorio/detail.js';
+import { buildRaCrosswalk, EMPTY_CROSSWALK, excludeRas, raNameConflicts, toRaNn } from './territorio/ra-keys.js';
+import {
+  normalizeRaAggregates, attachTerritory, attachRaProfiles, raProfileFor, raTerritoryProfile, territoryProfileRows, formatByUnit,
+} from './territorio/aggregates.js';
 
 const CONFIG = window.APP_CONFIG || {};
 
@@ -166,6 +178,19 @@ const dom = {
 
   pdadBaseTab: el('pdadBaseTab'), pdadBaseView: el('pdadBaseView'),
   pdadBaseDescription: el('pdadBaseDescription'), pdadBaseKpis: el('pdadBaseKpis'),
+  pdadBasePdadSection: el('pdadBasePdadSection'),
+  publicDataStatus: el('publicDataStatus'), publicDataHeader: el('publicDataHeader'),
+  publicDataList: el('publicDataList'),
+
+  territoryLayerLabel: el('territoryLayerLabel'), territoryLayers: el('territoryLayers'),
+  territoryLegend: el('territoryLegend'), territoryLegendTitle: el('territoryLegendTitle'),
+  territoryMetric: el('territoryMetric'), territoryClasses: el('territoryClasses'),
+  territoryProvenance: el('territoryProvenance'), territoryStatus: el('territoryStatus'),
+  territoryNote: el('territoryNote'),
+  pdadTerritoryProfile: el('pdadTerritoryProfile'),
+  territoryLineLegend: el('territoryLineLegend'), territoryLineLegendTitle: el('territoryLineLegendTitle'),
+  territoryLineClasses: el('territoryLineClasses'), territoryLineNote: el('territoryLineNote'),
+  territoryLineProvenance: el('territoryLineProvenance'), territoryLineStatus: el('territoryLineStatus'),
 
   pdadDrillOverlay: el('pdadDrillOverlay'), pdadDrillTitle: el('pdadDrillTitle'),
   pdadDrillSub: el('pdadDrillSub'), pdadDrillClose: el('pdadDrillClose'),
@@ -258,6 +283,41 @@ const state = {
   pdadCompareState: { ras: [], inds: [], colors: {} },
   // Recorte aberto no modal de drill-down (issue #102). `null` quando o modal está fechado.
   pdadDrillState: null,
+  /**
+   * Arquivos públicos de `data/public/` (issue #149, R2.7) — separado de `filters` porque
+   * nada aqui é filtro de registro. `publicData` é o resultado do manifest (`available`
+   * falso com motivo é estado normal antes da primeira execução do pipeline); `crosswalk`
+   * é a ponte RA_nn ↔ RA2026_RA-romano (R2.9), vazia até `ra_crosswalk.json` chegar;
+   * `aggregates` são os agregados por RA já normalizados (`byRa` vazio = nenhum publicado).
+   * Os dois arquivos pequenos são buscados no carregamento; as camadas de mapa (#150–#152)
+   * só quando alguém as liga.
+   */
+  territory: {
+    publicData: EMPTY_PUBLIC_DATA,
+    crosswalk: EMPTY_CROSSWALK,
+    aggregates: { byRa: {}, rows: [], sources: {}, years: [] },
+    warnings: [],
+    // Mapa (issue #150): a camada de ÁREA ligada (rádio — uma coroplética por vez), a
+    // métrica escolhida por camada, a camada de linhas (#152), os arquivos já baixados
+    // (chave `dataset/caminho@sha256` → grupo Leaflet por métrica) e a assinatura do que
+    // está desenhado, para pan/zoom não redesenhar à toa.
+    area: null,
+    metric: {},
+    lines: false,
+    loaded: new Map(),
+    loading: new Set(),
+    errors: new Map(),
+    drawn: null,
+    drawnLines: null,
+    // Geração de cada desenho: uma chamada que termina depois de outra mais nova é
+    // descartada — resposta atrasada não desenha por cima da vista atual.
+    generation: 0,
+    lineGeneration: 0,
+    attributionOn: false,
+    pendingParams: null,
+  },
+  /** O que `showWarnings` mostrou por último — para quem adiciona um aviso depois da carga. */
+  shownWarnings: [],
 };
 
 let map = null;
@@ -271,6 +331,16 @@ let polygonLayer = null;
  * em `initMap`), não a ordem em que a planilha devolveu as linhas.
  */
 let roadLayer = null;
+/**
+ * Camadas territoriais (issue #150): um renderizador de CANVAS no pane `territory` —
+ * dezenas de milhares de células como `<path>` em SVG engasgam o navegador; em canvas são
+ * um desenho só — compartilhado pela coroplética e pelas vias (ver `initMap`), abaixo do
+ * pane `polygons`, onde o contorno das RAs é redesenhado só como linha por cima dele.
+ */
+let territoryRenderer = null;
+let territoryAreaLayer = null;
+/** Centralidade viária (issue #152): no MESMO canvas da coroplética, trazida à frente a cada desenho. */
+let territoryLineLayer = null;
 
 /** Raio do marcador por camada: anúncio é o dado principal, âncora é contexto. */
 /**
@@ -320,6 +390,26 @@ function initMap() {
   // o clique ao ponto, que é o dado.
   map.createPane('roadSegments').style.zIndex = 360;
   map.createPane('anchors').style.zIndex = 380;
+  // Camadas territoriais (issues #150–#152): UM canvas só, ABAIXO do pane `polygons` (350).
+  //
+  // Um canvas cobre a viewport inteira e engole todo evento de ponteiro de quem está
+  // embaixo dele; dois canvases empilhados fariam o de cima engolir o de baixo (achado da
+  // revisão da PR #157). Por isso células e vias dividem o MESMO renderizador — o hit-test
+  // do Leaflet resolve quem está por cima: a via, trazida à frente depois de cada desenho —
+  // e ficam sob os vetores SVG. Com uma camada ligada, o contorno das RAs vira só linha
+  // (ver `renderPolygons`) e o SVG vazio deixa o evento passar (regra `.leaflet-pane > svg`
+  // no CSS); áreas importadas, corredores e eixos do DER continuam acima e clicáveis.
+  // `tolerance` alarga o alvo das linhas finas (peso 1 px) para o toque.
+  map.createPane('territory').style.zIndex = 340;
+  territoryRenderer = L.canvas({ pane: 'territory', padding: 0.5, tolerance: 6 });
+  territoryAreaLayer = L.layerGroup().addTo(map);
+  territoryLineLayer = L.layerGroup().addTo(map);
+  // Pan/zoom só redesenham quando o CONJUNTO de arquivos muda (overview ↔ shards, shard que
+  // entra na viewport); `renderTerritory` compara a assinatura antes de tocar no mapa.
+  map.on('moveend zoomend', () => {
+    renderTerritory().catch(reportTerritoryError);
+    renderTerritoryLines().catch(reportTerritoryError);
+  });
 
   polygonLayer = L.layerGroup().addTo(map);
   roadLayer = L.layerGroup().addTo(map);
@@ -397,6 +487,11 @@ function renderPolygons() {
     if (geometry.type !== 'Polygon' && geometry.type !== 'MultiPolygon') continue;
 
     const style = polygonStyle(polygon);
+    // Com uma camada territorial ligada (issues #150–#152), a RA vira SÓ contorno: o
+    // preenchimento cobriria as células e engoliria o clique delas (o canvas fica abaixo
+    // deste pane), e o limite oficial precisa continuar visível por cima da coroplética.
+    const territorioLigado = state.territory.area !== null || state.territory.lines === true;
+    const soContorno = territorioLigado && polygonEntityType(polygon) === 'administrative_region';
     let shape = null;
     try {
       shape = L.geoJSON(geometry, {
@@ -406,10 +501,11 @@ function renderPolygons() {
         // pintar `.polygon-shape` — regra de classe vence o atributo que o Leaflet
         // escreve no SVG, que foi como todas as âncoras acabaram verdes na PR #40.
         style: {
-          className: 'polygon-shape',
+          className: soContorno ? 'polygon-shape polygon-outline-only' : 'polygon-shape',
           color: style.color,
           weight: style.weight,
           opacity: 0.9,
+          fill: !soContorno,
           fillColor: style.fillColor,
           fillOpacity: style.fillOpacity,
           // `null`/`undefined` já significa "sólido" para o Leaflet — não precisa de `if`.
@@ -583,6 +679,13 @@ function openPolygonDetail(polygon, { focus = true } = {}) {
     // Dizer de onde veio o número é o que permite conferir na planilha certa quando
     // alguém discordar do valor (R5.7).
     complementar.push({ label: 'Fonte do perfil', value: 'RA_PROFILES' });
+  }
+
+  // Agregados dos arquivos públicos da RA (issue #153), com ano e fonte no rótulo —
+  // complementares, não essenciais: o essencial do painel tem teto de 6 linhas (R8.61).
+  if (polygonEntityType(polygon) === 'administrative_region') {
+    const chave = String(polygon.ra_geo_id || '').trim() || String(polygon.entity_id || '').trim();
+    for (const row of territoryRowsForRaKey(chave)) complementar.push({ label: row.label, value: row.value });
   }
 
   // Campos do próprio registro que são informação de usuário.
@@ -1843,7 +1946,7 @@ function renderKpis(kpis) {
 }
 
 /** Uma linha "rótulo → valor" do bloco de indicadores da RA. */
-function raStatRow(label, value) {
+function raStatRow(label, value, title = '') {
   const li = document.createElement('li');
   const name = document.createElement('span');
   name.className = 'ra-stat-label';
@@ -1851,8 +1954,20 @@ function raStatRow(label, value) {
   const figure = document.createElement('span');
   figure.className = 'ra-stat-value';
   figure.textContent = value;
+  if (title) li.title = title;
   li.append(name, figure);
   return li;
+}
+
+/**
+ * Linhas territoriais da RA selecionada (issue #153): a chave do filtro é a romana
+ * (`RA2026_RA-XI`, de LISTINGS) e os agregados são por `RA_nn` — só a ponte liga as duas.
+ * Sem ponte ou sem arquivo, lista vazia: nada é adivinhado (R2.9, R8.30).
+ */
+function territoryRowsForRaKey(raKey) {
+  const nn = toRaNn(raKey, state.territory.crosswalk);
+  const row = nn ? state.territory.aggregates.byRa[nn] : null;
+  return territoryProfileRows(row);
 }
 
 /**
@@ -1949,7 +2064,10 @@ function buildRaAgeChart(profile) {
  * que os registros já carregam.
  */
 function renderRaProfile() {
-  const profile = state.filters.ra ? state.raProfiles[state.filters.ra] : null;
+  // O filtro usa a grafia romana (LISTINGS); a aba RA_PROFILES sincronizada usa `RA_nn`
+  // (achado do Codex na PR #157). `raProfileFor` tenta a chave direta e, pela ponte, a outra
+  // grafia — nunca por nome.
+  const profile = state.filters.ra ? raProfileFor(state.filters.ra, state.raProfiles, state.territory.crosswalk) : null;
   const frag = document.createDocumentFragment();
 
   const stats = document.createElement('ul');
@@ -1964,6 +2082,11 @@ function renderRaProfile() {
     if (profile.income_per_capita_brl !== null) {
       stats.append(raStatRow('Renda per capita', formatBRL(profile.income_per_capita_brl)));
     }
+  }
+  // Agregados dos arquivos públicos, com ano e fonte no rótulo (R8.26, R8.52): são de outra
+  // pesquisa e nunca se confundem com os números de RA_PROFILES acima.
+  if (state.filters.ra) {
+    for (const row of territoryRowsForRaKey(state.filters.ra)) stats.append(raStatRow(row.label, row.value, row.title));
   }
   if (stats.childElementCount > 0) frag.append(stats);
 
@@ -2680,6 +2803,7 @@ function showError(messages) {
 }
 
 function showWarnings(messages) {
+  state.shownWarnings = [...messages];
   if (messages.length === 0) {
     dom.dataWarnings.hidden = true;
     dom.dataWarnings.open = false;
@@ -2808,6 +2932,7 @@ function currentUrlParams(view) {
       price_min: f.priceMin === null ? '' : String(f.priceMin),
       price_max: f.priceMax === null ? '' : String(f.priceMax),
       locality: f.locality, q: f.search,
+      ...territoryUrlParams(),
     };
   }
   if (view === 'mercado') {
@@ -2877,6 +3002,10 @@ function applyUrlParams() {
   if (intParam(params.price_min) !== null) dom.priceMin.value = String(intParam(params.price_min));
   if (intParam(params.price_max) !== null) dom.priceMax.value = String(intParam(params.price_max));
   if (params.q) dom.search.value = params.q;
+  // As camadas territoriais são aplicadas por `initializeTerritoryControls`, depois que o
+  // manifest disse o que existe: um `terr=` de camada indisponível é ignorado com o motivo
+  // no controle, nunca liga nada às cegas.
+  state.territory.pendingParams = { terr: params.terr || '', terr_metrica: params.terr_metrica || '', vias: params.vias || '' };
 }
 
 async function copyAnalysisLink() {
@@ -2917,10 +3046,13 @@ function setView(name) {
   // As 4 telas do PDAD-A (issue #102) compartilham o mesmo dado carregado — sem ele,
   // nenhuma das quatro tem o que mostrar.
   const temDiagnostico = state.pdadData.length > 0;
-  const PDAD_VIEWS = new Set(['diagnostico', 'ranking', 'comparar', 'base']);
+  const PDAD_VIEWS = new Set(['diagnostico', 'ranking', 'comparar']);
   let view = 'mapa';
   if (name === 'mercado' && temMercado) view = 'mercado';
   else if (PDAD_VIEWS.has(name) && temDiagnostico) view = name;
+  // A Base de dados descreve DUAS origens (issue #149): a aba PDAD_A_DATA e os arquivos
+  // públicos de data/public. Basta uma delas para a tela ter o que mostrar.
+  else if (name === 'base' && (temDiagnostico || state.territory.publicData.available)) view = 'base';
 
   dom.mapView.hidden = view !== 'mapa';
   dom.marketView.hidden = view !== 'mercado';
@@ -4435,6 +4567,7 @@ function pdadIndicatorCard(indicador, raIds) {
  */
 function renderPdadProfile(raIds) {
   if (!dom.pdadProfile) return;
+  renderTerritoryProfile(raIds);
   const { year } = state.pdadFilters;
   const perfil = raIds.length === 1 ? raRealEstateProfile(state.pdadIndex, year, raIds[0]) : null;
   if (!perfil) {
@@ -4479,6 +4612,81 @@ function renderPdadProfile(raIds) {
 
   dom.pdadProfile.replaceChildren(frag);
   dom.pdadProfile.hidden = false;
+}
+
+/**
+ * Perfil territorial da RA no Diagnóstico (issue #153): os indicadores dos arquivos
+ * públicos com a referência explícita — mediana das RAs COM dado, com o `n` escrito
+ * (R8.87) — e a posição. Fórmula e fonte no `title` de cada bloco; a fonte também em
+ * texto, porque estes números não vêm da PDAD-A e a tela precisa dizer de onde vêm. Só
+ * aparece com UMA RA escolhida e com agregados carregados; ausência de arquivo esconde o
+ * bloco inteiro (R2.5).
+ */
+function renderTerritoryProfile(raIds) {
+  if (!dom.pdadTerritoryProfile) return;
+  const perfil = raIds.length === 1 ? raTerritoryProfile(state.territory.aggregates.byRa, raIds[0]) : null;
+  if (!perfil) {
+    dom.pdadTerritoryProfile.hidden = true;
+    dom.pdadTerritoryProfile.replaceChildren();
+    return;
+  }
+  const frag = document.createDocumentFragment();
+  const head = document.createElement('div');
+  head.className = 'pdad-tema-head pdad-profile-head';
+  const rotulo = document.createElement('span');
+  rotulo.textContent = `Perfil territorial · ${perfil.raName} (arquivos públicos)`;
+  head.append(rotulo);
+  frag.append(head);
+
+  const grid = document.createElement('div');
+  grid.className = 'pdad-profile-grid';
+  for (const item of perfil.items) {
+    const tile = document.createElement('article');
+    tile.className = 'pdad-profile-item';
+    tile.dataset.territoryItem = item.id;
+    tile.title = `${item.formula} · ${item.source}`;
+    const label = document.createElement('span');
+    label.className = 'pdad-profile-label';
+    label.textContent = item.label;
+    const valor = document.createElement('strong');
+    valor.className = item.value === null ? 'pdad-profile-value pdad-profile-absent' : 'pdad-profile-value';
+    valor.textContent = item.value === null ? 'não publicado' : item.formatted;
+    const ref = document.createElement('span');
+    ref.className = 'pdad-profile-ref';
+    if (item.delta !== null) {
+      const sinal = item.delta > 0 ? '+' : (item.delta < 0 ? '−' : '');
+      // A diferença é expressa na unidade do indicador: p.p. para fração decimal, a
+      // própria unidade para razões — nunca "p.p." numa contagem.
+      const diff = item.unit === 'pct_decimal'
+        ? `${formatPercent(percentFromDecimal(Math.abs(item.delta))).replace('%', ' p.p.')}`
+        : formatByUnit(item.unit, Math.abs(item.delta));
+      ref.textContent = `${sinal}${diff} vs. mediana de ${item.reference.n} RAs com dado`;
+      ref.dataset.sign = item.delta > 0 ? 'above' : (item.delta < 0 ? 'below' : 'equal');
+    } else {
+      ref.textContent = item.value === null ? '' : 'sem referência';
+    }
+    const fonte = document.createElement('span');
+    fonte.className = 'pdad-profile-ref pdad-profile-fonte';
+    fonte.textContent = item.source;
+    tile.append(label, valor, ref, fonte);
+    if (item.rank) {
+      const rank = document.createElement('span');
+      rank.className = 'pdad-profile-rank';
+      rank.textContent = `${item.rank.position}ª de ${item.rank.total} RAs com dado`;
+      tile.append(rank);
+    }
+    grid.append(tile);
+  }
+  frag.append(grid);
+
+  const nota = document.createElement('p');
+  nota.className = 'pdad-footnote pdad-profile-note';
+  nota.textContent = 'Referência: mediana das RAs com valor publicado nos arquivos públicos (data/public), não a média do DF. '
+    + 'Fontes e anos diferentes da PDAD-A — cada número leva a sua origem.';
+  frag.append(nota);
+
+  dom.pdadTerritoryProfile.replaceChildren(frag);
+  dom.pdadTerritoryProfile.hidden = false;
 }
 
 function pdadProfileTile(item, perfil) {
@@ -4590,13 +4798,20 @@ function renderPdadView() {
   const temDado = state.pdadData.length > 0;
 
   const semAba = 'A aba PDAD_A_DATA não foi carregada, então não há diagnóstico territorial para mostrar.';
-  for (const tab of [dom.pdadTab, dom.pdadRankingTab, dom.pdadCompareTab, dom.pdadBaseTab]) {
+  for (const tab of [dom.pdadTab, dom.pdadRankingTab, dom.pdadCompareTab]) {
     tab.disabled = !temDado;
     tab.title = temDado ? '' : semAba;
   }
+  // A Base abre com qualquer uma das duas origens (issue #149); desabilitada, o `title` diz
+  // o que falta nas duas — um botão apagado sem motivo é indistinguível de defeito (R8.64).
+  const temPublico = state.territory.publicData.available;
+  dom.pdadBaseTab.disabled = !(temDado || temPublico);
+  dom.pdadBaseTab.title = (temDado || temPublico) ? '' : `${semAba} ${state.territory.publicData.reason ? `Arquivos públicos: ${state.territory.publicData.reason}.` : ''}`.trim();
 
   if (!temDado) {
-    if (['diagnostico', 'ranking', 'comparar', 'base'].includes(viewFromHash())) setView('mapa');
+    const atual = viewFromHash();
+    if (['diagnostico', 'ranking', 'comparar'].includes(atual) || (atual === 'base' && !temPublico)) setView('mapa');
+    else if (atual === 'base') setView('base'); // só com arquivos públicos (achado da revisão da PR #157)
     return [];
   }
 
@@ -4671,6 +4886,7 @@ function pdadFmtTick(v) {
 }
 
 function pdadAxisFmt(spec, v) {
+  if (spec.unit) return formatByUnit(spec.unit, v);
   if (spec.attr === 'incomePerCapita') return `R$ ${Math.round(v).toLocaleString('pt-BR')}`;
   if (spec.attr === 'population' || spec.attr === 'households') return formatNumber(v);
   return formatPercent(percentFromPoints(v));
@@ -4828,6 +5044,9 @@ function pdadRankValues(item, mode) {
 }
 
 function pdadRankFormat(item, v, abs) {
+  // Indicador territorial (issue #153): a unidade declarada decide as casas e o símbolo —
+  // `formatByUnit` lança para unidade desconhecida, em vez de cair no percentual por engano.
+  if (item.unit && item.unit !== 'pct' && item.unit !== 'currency') return formatByUnit(item.unit, v);
   if (item.unit === 'currency') return `R$ ${Math.round(v).toLocaleString('pt-BR')}`;
   if (abs) return formatNumber(v);
   return formatPercent(percentFromPoints(v));
@@ -4865,6 +5084,13 @@ function pdadRankCard(item, raGeoId, mode) {
     posEl.textContent = 'sem valor publicado para esta RA';
   }
   article.append(posEl);
+  // Número cruzado de outra base leva fórmula e fonte ao lado (issue #153): no `title` do
+  // cartão e numa linha curta depois da posição — nunca só o número.
+  if (item.formula) {
+    article.title = `${item.formula} · ${item.source}`;
+    const fonteEl = document.createElement('div'); fonteEl.className = 'pdad-rank-fonte'; fonteEl.textContent = item.source;
+    article.append(fonteEl);
+  }
   if (pctil !== null) {
     const barra = document.createElement('div'); barra.className = 'pdad-rank-bar';
     const fill = document.createElement('i'); fill.style.width = `${Math.max(3, pctil)}%`;
@@ -5043,7 +5269,12 @@ function renderPdadCompareSummary(ras) {
   const tabela = document.createElement('table');
   const thead = document.createElement('thead');
   const trh = document.createElement('tr');
-  for (const texto of ['Região', 'População', 'Domicílios', 'Moradores/dom.', 'Escritura registrada']) {
+  // As colunas territoriais só existem quando os agregados públicos chegaram (R8.25):
+  // coluna vazia com travessão em toda linha afirmaria um dado que ninguém publicou.
+  const territorio = state.territory.aggregates.rows.length > 0;
+  const cabecalhos = ['Região', 'População', 'Domicílios', 'Moradores/dom.', 'Escritura registrada'];
+  if (territorio) cabecalhos.push('Dom. 2010→2022 (IBGE)', 'Empregos/mil hab. (Ipea)');
+  for (const texto of cabecalhos) {
     const th = document.createElement('th'); th.textContent = texto; trh.append(th);
   }
   thead.append(trh);
@@ -5066,6 +5297,16 @@ function renderPdadCompareSummary(ras) {
     const deed = (ra.indicators.deed?.values || []).find((v) => v.label === 'Sim');
     escrituraTd.textContent = deed && Number.isFinite(deed.pct) ? formatPercent(percentFromPoints(deed.pct)) : '—';
     tr.append(nomeTd, popTd, domTd, razaoTd, escrituraTd);
+    if (territorio) {
+      const agregado = state.territory.aggregates.byRa[ra.raGeoId] || null;
+      const crescTd = document.createElement('td');
+      crescTd.textContent = formatByUnit('pct_decimal', agregado ? agregado.householdsGrowthPct : null);
+      crescTd.title = 'IBGE · Grade Estatística 2010/2022: (domicílios 2022 − 2010) ÷ 2010';
+      const empregosTd = document.createElement('td');
+      empregosTd.textContent = formatByUnit('ratio1', agregado ? agregado.jobsPer1000Residents : null);
+      empregosTd.title = 'Ipea · Acesso a Oportunidades (RAIS): empregos formais ÷ população-base (Censo 2010) × 1.000';
+      tr.append(crescTd, empregosTd);
+    }
     tbody.append(tr);
   }
   tabela.append(thead, tbody);
@@ -5208,6 +5449,11 @@ function renderPdadCompareView() {
 
 /** Monta a tela Base de dados: como o dado chega até a tela, e a cobertura do lote atual. */
 function renderPdadBaseView() {
+  renderPublicDataSection();
+  // Sem PDAD a tela continua existindo por causa dos arquivos públicos (issue #149): a
+  // seção da planilha some com o cabeçalho dela em vez de ficar um pipeline vazio.
+  dom.pdadBasePdadSection.hidden = !state.pdadData.length;
+  dom.pdadBaseKpis.hidden = !state.pdadData.length;
   if (!state.pdadData.length) return;
   const anos = pdadYearsAvailable(state.pdadData);
   const totalRas = new Set(state.pdadData.map((item) => item.raGeoId)).size;
@@ -5224,6 +5470,740 @@ function renderPdadBaseView() {
     pdadKpiTile('Indicadores na planilha', String(totalIndicadores), `${PDAD_INDICATOR_LIST.length} exibidos na tela`, { icon: 'home', tint: 3 }),
     pdadKpiTile('Anos disponíveis', anos.join(' · '), 'PDAD-A', { icon: 'avg', tint: 4, small: true }),
   );
+}
+
+/** `<dt>`/`<dd>` de uma linha de procedência — texto puro, nunca markup (R4.4). */
+function publicDataRow(label, value) {
+  const dt = document.createElement('dt');
+  dt.textContent = label;
+  const dd = document.createElement('dd');
+  if (value instanceof Node) dd.append(value);
+  else dd.textContent = value;
+  return [dt, dd];
+}
+
+/** Link externo validado (http/https) com `rel="noopener noreferrer"`; texto puro sem URL. */
+function publicDataLink(url, text) {
+  const href = safeExternalUrl(url);
+  if (!href) return document.createTextNode(text);
+  const link = document.createElement('a');
+  link.href = href;
+  link.target = '_blank';
+  link.rel = 'noopener noreferrer';
+  link.textContent = text;
+  return link;
+}
+
+/**
+ * Seção "Arquivos públicos (data/public)" da Base de dados (issue #149).
+ *
+ * Um cartão por conjunto do manifest: versão, anos, arquivos (tamanho e feições), fontes com
+ * link validado e data de coleta, licença, método, flags e notas — tudo por `textContent`,
+ * porque o manifest chega pela rede como qualquer dado (R4.4). Sem manifest a seção não
+ * some: diz POR QUE não há arquivos (pipeline ainda não rodou, 404, hash, versão), que é a
+ * informação que quem opera precisa (R2.5, R8.64).
+ */
+function renderPublicDataSection() {
+  const { publicData } = state.territory;
+  dom.publicDataList.replaceChildren();
+  dom.publicDataHeader.replaceChildren();
+  if (!publicData.available) {
+    dom.publicDataStatus.textContent = `Nenhum arquivo público carregado: ${publicData.reason || 'motivo não informado'}.`;
+    dom.publicDataStatus.hidden = false;
+    return;
+  }
+  const { manifest } = publicData;
+  dom.publicDataStatus.hidden = true;
+  const cabecalho = document.createDocumentFragment();
+  cabecalho.append(...publicDataRow('Gerado em', manifest.generatedAt ? formatDateTimeIso(manifest.generatedAt) : '—'));
+  cabecalho.append(...publicDataRow('Pipeline', `${manifest.pipelineVersion || '—'}${manifest.pipelineCommit ? ` · commit ${manifest.pipelineCommit.slice(0, 7)}` : ''}`));
+  if (manifest.attributionPt) cabecalho.append(...publicDataRow('Atribuição', manifest.attributionPt));
+  dom.publicDataHeader.append(cabecalho);
+
+  for (const dataset of manifest.datasets) {
+    const card = document.createElement('article');
+    card.className = 'pdad-card publico-card';
+    card.dataset.datasetId = dataset.id;
+    const titulo = document.createElement('h3');
+    titulo.className = 'pdad-card-titulo';
+    titulo.textContent = dataset.titlePt;
+    const codigo = document.createElement('p');
+    codigo.className = 'mono';
+    codigo.textContent = `${dataset.id} · versão ${dataset.version || '—'}${dataset.years.length ? ` · ${dataset.years.join(', ')}` : ''}`;
+    card.append(titulo, codigo);
+
+    const dl = document.createElement('dl');
+    dl.className = 'publico-dl';
+    const arquivos = document.createElement('ul');
+    arquivos.className = 'publico-arquivos';
+    for (const file of dataset.files) {
+      const li = document.createElement('li');
+      const tabular = dataset.id === 'ra_crosswalk' || dataset.id === 'ra_aggregates';
+      const unidade = file.features === 1 ? (tabular ? 'linha' : 'feição') : (tabular ? 'linhas' : 'feições');
+      li.textContent = `${file.path} · ${formatBytes(file.bytes)} · ${formatNumber(file.features)} ${unidade}`;
+      arquivos.append(li);
+    }
+    dl.append(...publicDataRow(`Arquivos (${dataset.files.length})`, arquivos));
+    for (const source of dataset.sources) {
+      const frag = document.createDocumentFragment();
+      frag.append(publicDataLink(source.url, source.name || hostnameOf(source.url) || 'fonte'));
+      const detalhes = [];
+      if (source.retrievedAt) detalhes.push(`coletado em ${source.retrievedAt}`);
+      if (source.license) detalhes.push(source.license);
+      if (detalhes.length) frag.append(document.createTextNode(` · ${detalhes.join(' · ')}`));
+      dl.append(...publicDataRow('Fonte', frag));
+    }
+    if (dataset.methodPt) dl.append(...publicDataRow('Método', dataset.methodPt));
+    const cortes = Object.entries(dataset.classBreaks);
+    if (cortes.length) {
+      dl.append(...publicDataRow('Cortes de classe', cortes.map(([metric, spec]) => `${metric}: ${spec.breaks.map((b) => formatNumber(b)).join(' · ')}${spec.zeroIsAbsent ? ' (zero = sem dado)' : ''}`).join(' | ')));
+    }
+    if (dataset.qualityFlags.length) dl.append(...publicDataRow('Flags', dataset.qualityFlags.join(', ')));
+    if (dataset.notesPt) dl.append(...publicDataRow('Notas', dataset.notesPt));
+    card.append(dl);
+    dom.publicDataList.append(card);
+  }
+}
+
+/** `2026-11-01T06:21:00Z` → "01/11/2026 06:21 UTC"; só a data quando não há hora. */
+function formatDateTimeIso(value) {
+  const m = String(value).match(/^(\d{4})-(\d{2})-(\d{2})(?:T(\d{2}):(\d{2}))?/);
+  if (!m) return String(value);
+  return m[4] ? `${m[3]}/${m[2]}/${m[1]} ${m[4]}:${m[5]} UTC` : `${m[3]}/${m[2]}/${m[1]}`;
+}
+
+/**
+ * Busca a ponte de RAs e os agregados por RA assim que o manifest confirma que existem
+ * (issue #149). São os dois arquivos pequenos (dezenas de kB) que o Ranking, o Comparar e o
+ * perfil da RA leem; as camadas de mapa continuam lazy. Falha de qualquer um é aviso com o
+ * nome do arquivo, nunca erro (R2.5) — e nunca silêncio: um agregado que não chegou deixa a
+ * coluna ausente com motivo, não zerada.
+ */
+async function loadTerritorySmallFiles() {
+  const { publicData } = state.territory;
+  const warnings = [];
+  let crosswalk = EMPTY_CROSSWALK;
+  let aggregates = { byRa: {}, rows: [], sources: {}, years: [] };
+  if (!publicData.available) {
+    state.territory.crosswalk = crosswalk;
+    state.territory.aggregates = aggregates;
+    state.territory.warnings = warnings;
+    return warnings;
+  }
+  const fetchData = async (id) => {
+    const dataset = datasetById(publicData.manifest, id);
+    if (!dataset) return null;
+    const file = fileFor(dataset, { role: 'data' }) || dataset.files[0];
+    const { payload } = await fetchPublicLayer({ baseUrl: publicData.baseUrl, dataset, file });
+    return payload;
+  };
+  // Os dois arquivos em paralelo: a normalização dos agregados precisa da ponte, o download não.
+  const [pontePromise, agregadosPromise] = [fetchData('ra_crosswalk'), fetchData('ra_aggregates')];
+  try {
+    const payload = await pontePromise;
+    if (payload) {
+      crosswalk = buildRaCrosswalk(payload.rows);
+      warnings.push(...crosswalk.warnings);
+      // Nome diferente entre a ponte e a planilha é sinal de que o NÚMERO aponta para outra RA
+      // em alguma das fontes; o join daquela RA fica bloqueado, não "provavelmente certo"
+      // (R8.16, R8.51).
+      const pdadRas = state.pdadData.length ? rasForYear(state.pdadIndex, pdadPrimaryYear()) : [];
+      const conflitos = raNameConflicts(crosswalk, { raProfiles: state.raProfiles, pdadRas });
+      for (const conflict of conflitos) {
+        warnings.push(`Território (ponte de RAs): ${conflict.raGeoId} chama-se "${conflict.crosswalk}" na ponte e "${conflict.raProfiles || conflict.pdad}" na planilha; o cruzamento desta RA fica bloqueado até a divergência ser resolvida.`);
+      }
+      crosswalk = excludeRas(crosswalk, conflitos.map((c) => c.raGeoId));
+    }
+  } catch (error) {
+    warnings.push(`Território (ponte de RAs): ra_crosswalk.json não carregou — ${error?.message || error}.`);
+  }
+  try {
+    const payload = await agregadosPromise;
+    if (payload) {
+      aggregates = normalizeRaAggregates(payload.rows, crosswalk);
+      warnings.push(...aggregates.warnings);
+    }
+  } catch (error) {
+    warnings.push(`Território (agregados por RA): ra_aggregates.json não carregou — ${error?.message || error}.`);
+  }
+  state.territory.crosswalk = crosswalk;
+  state.territory.aggregates = aggregates;
+  state.territory.warnings = warnings;
+  return warnings;
+}
+
+// --- Território: camadas públicas no mapa (issues #150–#152) ------------------------
+
+/**
+ * Paleta de uma rampa: os tokens `--<rampa>-1..N` lidos do CSS no momento do desenho.
+ *
+ * Lidos aqui, e não digitados num módulo, porque módulo puro não conhece cor (R8.31) e o
+ * canvas não tem DOM por feição para uma regra de classe pintar. Token ausente LANÇA — a
+ * alternativa, uma célula transparente sem erro nenhum, é a falha silenciosa que o teste de
+ * tokens existe para impedir (família da R8.70).
+ */
+function rampPalette(ramp) {
+  const size = RAMPS[ramp];
+  if (!size) throw new Error(`rampa desconhecida: ${ramp}`);
+  const styles = getComputedStyle(document.documentElement);
+  const palette = [];
+  for (let i = 1; i <= size; i += 1) {
+    const value = styles.getPropertyValue(`--${ramp}-${i}`).trim();
+    if (!value) throw new Error(`token --${ramp}-${i} ausente no CSS`);
+    palette.push(value);
+  }
+  return palette;
+}
+
+/**
+ * Cor de uma classe: a MESMA função pinta a célula no mapa e a amostra da legenda (R8.42).
+ * Com menos classes que degraus, as classes se espalham pela rampa inteira (a mais alta é
+ * sempre o degrau mais escuro); `null` (sem dado) não tem cor — quem chama desenha vazado.
+ */
+function territoryColor(palette, classIndex, classes) {
+  const index = rampIndexFor(classIndex, classes, palette.length);
+  return index === null ? null : palette[index];
+}
+
+function territoryToken(name) {
+  const value = getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+  if (!value) throw new Error(`token ${name} ausente no CSS`);
+  return value;
+}
+
+/** Aviso de camada que não carregou: na legenda (status) e no canal técnico, uma vez cada. */
+function reportTerritoryError(error) {
+  const message = `Território (mapa): ${error?.message || error}`;
+  console.warn('[imob]', message);
+  setTerritoryStatus(message, 'erro');
+  if (!state.shownWarnings.includes(message)) showWarnings([...state.shownWarnings, message]);
+}
+
+function setTerritoryStatus(text, tone = '') {
+  dom.territoryStatus.textContent = text || '';
+  dom.territoryStatus.hidden = !text;
+  if (tone) dom.territoryStatus.dataset.tone = tone;
+  else delete dom.territoryStatus.dataset.tone;
+}
+
+/** Uma linha de rádio do bloco "Território": nasce desabilitada com o motivo (R8.64). */
+function territoryRadioRow({ value, label, available, reason, count }) {
+  const li = document.createElement('li');
+  const labelEl = document.createElement('label');
+  const input = document.createElement('input');
+  input.type = 'radio';
+  input.name = 'territoryArea';
+  input.value = value;
+  input.setAttribute('data-territory-area', value);
+  input.disabled = !available;
+  input.checked = value === (state.territory.area || '');
+  if (!available) {
+    labelEl.title = reason || 'indisponível';
+    labelEl.setAttribute('aria-disabled', 'true');
+  }
+  const text = document.createElement('span');
+  text.className = 'polygon-legend-label';
+  text.textContent = label;
+  labelEl.append(input, text);
+  if (value) {
+    const countEl = document.createElement('span');
+    countEl.className = 'count';
+    countEl.setAttribute('data-territory-count', value);
+    countEl.textContent = count === null || count === undefined ? '' : formatNumber(count);
+    labelEl.append(countEl);
+  }
+  li.append(labelEl);
+  return li;
+}
+
+/**
+ * Monta os rádios a partir do registro fechado (`TERRITORY_LAYERS`), uma vez por carga.
+ * Disponibilidade e motivo vêm de `layerAvailability`: manifest ausente, conjunto não
+ * publicado, cortes que não cabem na rampa — cada caso com a frase certa no `title`.
+ */
+function renderTerritoryControls() {
+  const { publicData } = state.territory;
+  const frag = document.createDocumentFragment();
+  frag.append(territoryRadioRow({ value: '', label: 'Nenhuma camada de área', available: true, reason: '', count: null }));
+  for (const id of AREA_LAYER_IDS) {
+    const layer = layerById(id);
+    const a = layerAvailability(layer, publicData);
+    const overview = a.dataset ? fileFor(a.dataset, { role: 'overview' }) : null;
+    frag.append(territoryRadioRow({ value: id, label: layer.short, available: a.available, reason: a.reason, count: overview ? overview.features : null }));
+  }
+  // Linhas (issue #152): caixa de seleção, porque convivem com a coroplética — uma via
+  // sobre uma célula ainda se lê, duas áreas sobrepostas não.
+  for (const id of LINE_LAYER_IDS) {
+    const layer = layerById(id);
+    const a = layerAvailability(layer, publicData);
+    const overview = a.dataset ? fileFor(a.dataset, { role: 'overview' }) : null;
+    frag.append(territoryCheckboxRow({ value: id, label: layer.short, available: a.available, reason: a.reason, count: overview ? overview.features : null }));
+  }
+  dom.territoryLayers.replaceChildren(frag);
+}
+
+/** A linha da camada de LINHAS: caixa de seleção, desabilitada com motivo até o manifest confirmar. */
+function territoryCheckboxRow({ value, label, available, reason, count }) {
+  const li = document.createElement('li');
+  const labelEl = document.createElement('label');
+  const input = document.createElement('input');
+  input.type = 'checkbox';
+  input.name = 'territoryLines';
+  input.value = value;
+  input.setAttribute('data-territory-lines', value);
+  input.disabled = !available;
+  input.checked = state.territory.lines === true;
+  if (!available) {
+    labelEl.title = reason || 'indisponível';
+    labelEl.setAttribute('aria-disabled', 'true');
+  }
+  const text = document.createElement('span');
+  text.className = 'polygon-legend-label';
+  text.textContent = label;
+  const countEl = document.createElement('span');
+  countEl.className = 'count';
+  countEl.setAttribute('data-territory-count', value);
+  countEl.textContent = count === null || count === undefined ? '' : formatNumber(count);
+  labelEl.append(input, text, countEl);
+  li.append(labelEl);
+  return li;
+}
+
+/** Aplica `terr`/`terr_metrica`/`vias` da URL depois que o manifest disse o que existe. */
+function initializeTerritoryControls() {
+  const pending = state.territory.pendingParams;
+  state.territory.pendingParams = null;
+  if (!pending) return;
+  const layer = pending.terr ? layerById(pending.terr) : null;
+  if (layer && layer.kind === 'area' && layerAvailability(layer, state.territory.publicData).available) {
+    state.territory.area = layer.id;
+    const metric = metricFor(layer, pending.terr_metrica);
+    if (pending.terr_metrica && metric) state.territory.metric[layer.id] = metric.key;
+    const input = dom.territoryLayers.querySelector(`input[name="territoryArea"][value="${layer.id}"]`);
+    if (input) input.checked = true;
+  }
+  if (pending.vias === '1' && LINE_LAYER_IDS.length > 0) {
+    const lines = layerById(LINE_LAYER_IDS[0]);
+    if (layerAvailability(lines, state.territory.publicData).available) {
+      state.territory.lines = true;
+      const input = dom.territoryLayers.querySelector('input[name="territoryLines"]');
+      if (input) input.checked = true;
+    }
+  }
+}
+
+/** O que da camada territorial entra na URL do mapa (issue #150). */
+function territoryUrlParams() {
+  const t = state.territory;
+  const layer = t.area ? layerById(t.area) : null;
+  const metric = layer ? t.metric[layer.id] : '';
+  return {
+    terr: layer ? layer.id : '',
+    terr_metrica: layer && metric && metric !== layer.defaultMetric ? metric : '',
+    vias: t.lines ? '1' : '',
+  };
+}
+
+function updateTerritoryCount(layerId, text) {
+  const el = dom.territoryLayers.querySelector(`[data-territory-count="${layerId}"]`);
+  if (el) el.textContent = text;
+}
+
+function mapBbox() {
+  const b = map.getBounds();
+  return [b.getWest(), b.getSouth(), b.getEast(), b.getNorth()];
+}
+
+/**
+ * Baixa (uma vez) e constrói (uma vez por métrica) o grupo Leaflet de um arquivo.
+ *
+ * O arquivo vem de `fetchPublicLayer`, que confere bytes e sha256 contra o manifest e
+ * recusa o que não bate (R2.7). O grupo é construído por MÉTRICA — a cor depende dela — e
+ * guardado: trocar de métrica ou voltar a um zoom já visto não refaz geometria.
+ */
+async function territoryGroupFor({ layer, dataset, file, metric, breaks, palette }) {
+  const t = state.territory;
+  const key = `${dataset.id}/${file.path}@${file.sha256}`;
+  let entry = t.loaded.get(key);
+  if (!entry) {
+    t.loading.add(key);
+    try {
+      const { payload, integrity } = await fetchPublicLayer({ baseUrl: t.publicData.baseUrl, dataset, file });
+      if (!payload || payload.type !== 'FeatureCollection' || !Array.isArray(payload.features)) {
+        throw new Error(`${file.path} não é uma FeatureCollection`);
+      }
+      entry = { payload, integrity, groups: new Map() };
+      t.loaded.set(key, entry);
+      t.errors.delete(key);
+    } catch (error) {
+      t.errors.set(key, error?.message || String(error));
+      throw error;
+    } finally {
+      t.loading.delete(key);
+    }
+  }
+  if (!entry.groups.has(metric.key)) {
+    const semDado = territoryToken('--terr-sem-dado-borda');
+    const zeroIsAbsent = metric.zeroIsAbsent === true;
+    const isLine = layer.kind === 'line';
+    const group = L.geoJSON(entry.payload, {
+      renderer: territoryRenderer,
+      pane: 'territory',
+      style: (feature) => {
+        const classIndex = classIndexFor(featureValue(metric, feature.properties), breaks.breaks, { zeroIsAbsent });
+        const color = territoryColor(palette, classIndex, breaks.classes);
+        if (isLine) {
+          // Peso e opacidade por classe vêm do registro (números, R8.71); a cor do token.
+          // `fill: false` explícito: uma LineString com fill ganharia uma área que a fonte
+          // nunca publicou.
+          const step = classIndex === null ? null : Math.min(classIndex, layer.line.weight.length - 1);
+          return color
+            ? { stroke: true, color, weight: layer.line.weight[step], opacity: layer.line.opacity[step], fill: false, lineCap: 'round' }
+            : { stroke: true, color: semDado, weight: 1, opacity: 0.6, dashArray: '3 3', fill: false };
+        }
+        // Célula sem dado: vazada e tracejada, mas presente e clicável — ausência tem
+        // presença na tela (R5.7); um buraco seria lido como "aqui não há célula".
+        return color
+          ? { stroke: false, fill: true, fillColor: color, fillOpacity: layer.fillOpacity }
+          : { stroke: true, color: semDado, weight: 0.8, opacity: 0.7, dashArray: '2 3', fill: true, fillOpacity: 0 };
+      },
+    });
+    // Balão com FUNÇÃO que devolve um nó (R8.17): o texto tem nome de RA vindo da ponte e
+    // nunca passa por innerHTML.
+    group.bindTooltip((child) => {
+      const span = document.createElement('span');
+      span.textContent = territoryTooltipText(layer, metric, child?.feature?.properties, { crosswalk: t.crosswalk });
+      return span;
+    }, { sticky: true });
+    group.on('click', (event) => {
+      const feature = event.propagatedFrom?.feature || event.layer?.feature;
+      if (feature) openTerritoryDetail(layer, { dataset, file, integrity: entry.integrity, feature, metric });
+    });
+    entry.groups.set(metric.key, group);
+  }
+  return entry.groups.get(metric.key);
+}
+
+/**
+ * Desenha a camada de área ligada para o zoom e a viewport atuais (issue #150).
+ *
+ * Fora do `render()` por tecla, de propósito: roda no toggle, na troca de métrica, no
+ * `moveend`/`zoomend` e uma vez após o carregamento. Abaixo do `zoom_min` do detalhe desenha
+ * o overview; a partir dele, só os shards cuja caixa cruza a viewport. A assinatura
+ * (arquivos + métrica) é comparada antes de tocar no mapa, então um pan dentro dos shards já
+ * desenhados não refaz nada. Legenda e contador saem da MESMA passada que o desenho.
+ */
+async function renderTerritory() {
+  if (!map || !territoryAreaLayer) return;
+  const t = state.territory;
+  const gen = ++t.generation;
+  const layer = t.area ? layerById(t.area) : null;
+  if (!layer) {
+    if (t.drawn !== null) { territoryAreaLayer.clearLayers(); t.drawn = null; }
+    renderTerritoryLegend(null);
+    return;
+  }
+  const availability = layerAvailability(layer, t.publicData);
+  if (!availability.available) {
+    territoryAreaLayer.clearLayers();
+    t.drawn = null;
+    renderTerritoryLegend(null);
+    setTerritoryStatus(availability.reason, 'erro');
+    return;
+  }
+  const dataset = availability.dataset;
+  const { role, files } = layerFilesFor(layer, dataset, { zoom: map.getZoom(), bounds: mapBbox() });
+  // Métrica pedida indisponível neste papel (ex.: absoluto no overview, R8.15): cai na
+  // padrão e a legenda diz por quê no `select`.
+  let metric = metricFor(layer, t.metric[layer.id]) || metricFor(layer);
+  if (!metricAvailability(layer, metric, dataset, { role }).available) metric = metricFor(layer);
+  const breaks = dataset.classBreaks[metric.key];
+  const signature = `${role}|${metric.key}|${files.map((f) => f.sha256).join(',')}`;
+  renderTerritoryLegend(layer, metric, dataset, { role });
+  if (t.drawn === signature) return;
+
+  const palette = rampPalette(layer.ramp);
+  updateTerritoryCount(layer.id, files.length === 0 ? '0' : 'carregando…');
+  setTerritoryStatus('carregando…');
+  // Shards em paralelo; cada falha é registrada por arquivo, nunca derruba os outros.
+  const resultados = await Promise.allSettled(files.map((file) => territoryGroupFor({ layer, dataset, file, metric, breaks, palette })));
+  // Uma chamada mais nova (zoom, pan, troca de camada ou de métrica) já passou por aqui:
+  // esta resposta é a atrasada e não desenha por cima da vista atual (achado da revisão da
+  // PR #157).
+  if (gen !== t.generation) return;
+
+  const groups = [];
+  let features = 0;
+  let mismatches = 0;
+  const falhas = [];
+  resultados.forEach((resultado, i) => {
+    const file = files[i];
+    if (resultado.status === 'rejected') {
+      falhas.push(`${file.path}: ${resultado.reason?.message || resultado.reason}`);
+      return;
+    }
+    const entry = t.loaded.get(`${dataset.id}/${file.path}@${file.sha256}`);
+    groups.push(resultado.value);
+    features += entry.payload.features.length;
+    mismatches += classCheckMismatch(entry.payload.features, metric, breaks, classIndexFor);
+  });
+
+  territoryAreaLayer.clearLayers();
+  for (const group of groups) territoryAreaLayer.addLayer(group);
+  bringTerritoryLinesToFront();
+  // Falha de arquivo não grava a assinatura: o próximo pan/zoom tenta de novo em vez de
+  // ficar com o buraco "grudado".
+  t.drawn = falhas.length > 0 ? null : signature;
+  updateTerritoryCount(layer.id, formatNumber(features));
+  const avisos = [];
+  if (files.length === 0) avisos.push('Nenhum arquivo desta camada cruza a área visível do mapa.');
+  if (mismatches > 0) avisos.push(`${formatNumber(mismatches)} feição(ões) com classe publicada diferente da que os cortes publicados no manifest dão — legenda e mapa seguem os cortes (R8.42); confira o pipeline.`);
+  if (falhas.length > 0) {
+    avisos.push(`${falhas.length} arquivo(s) não carregaram: ${falhas.join('; ')}`);
+    reportTerritoryError(new Error(falhas.join('; ')));
+  }
+  setTerritoryStatus(avisos.join(' '), falhas.length > 0 ? 'erro' : '');
+  dom.territoryLegend.dataset.territoryRole = role || '';
+  dom.territoryLegend.dataset.territoryFeatures = String(features);
+  if (viewFromHash() === 'mapa') syncHash();
+}
+
+/** As vias ficam por cima das células no canvas compartilhado — depois de cada desenho. */
+function bringTerritoryLinesToFront() {
+  if (!territoryLineLayer) return;
+  territoryLineLayer.eachLayer((group) => {
+    if (typeof group.eachLayer === 'function') group.eachLayer((path) => { if (typeof path.bringToFront === 'function') path.bringToFront(); });
+  });
+}
+const OSM_LINES_ATTRIBUTION = 'Centralidade viária: © colaboradores do OpenStreetMap (ODbL)';
+
+/**
+ * Desenha a centralidade viária (issue #152) — a camada de LINHAS, independente da área.
+ *
+ * Mesmo contrato de `renderTerritory`: overview abaixo do `zoom_min`, detalhe a partir
+ * dele, arquivo baixado uma vez e conferido contra o manifest, assinatura comparada antes
+ * de tocar no mapa. A atribuição ODbL entra no controle do Leaflet enquanto a camada está
+ * ligada — é base derivada do OpenStreetMap e a licença pede o crédito onde o dado aparece.
+ */
+async function renderTerritoryLines() {
+  if (!map || !territoryLineLayer) return;
+  const t = state.territory;
+  const gen = ++t.lineGeneration;
+  const layer = t.lines && LINE_LAYER_IDS.length > 0 ? layerById(LINE_LAYER_IDS[0]) : null;
+  if (!layer) {
+    if (t.drawnLines !== null) { territoryLineLayer.clearLayers(); t.drawnLines = null; }
+    // A atribuição sai na transição ligada→desligada, uma vez: `removeAttribution` decrementa
+    // um contador por texto, e um `add` por redesenho a deixaria presa (achado da revisão da
+    // PR #157).
+    if (t.attributionOn && map.attributionControl) { map.attributionControl.removeAttribution(OSM_LINES_ATTRIBUTION); t.attributionOn = false; }
+    renderTerritoryLineLegend(null);
+    return;
+  }
+  const availability = layerAvailability(layer, t.publicData);
+  if (!availability.available) {
+    territoryLineLayer.clearLayers();
+    t.drawnLines = null;
+    renderTerritoryLineLegend(null);
+    setTerritoryLineStatus(availability.reason, 'erro');
+    return;
+  }
+  const dataset = availability.dataset;
+  const { role, files } = layerFilesFor(layer, dataset, { zoom: map.getZoom(), bounds: mapBbox() });
+  const metric = metricFor(layer);
+  const breaks = dataset.classBreaks[metric.key];
+  const signature = `${role}|${metric.key}|${files.map((f) => f.sha256).join(',')}`;
+  renderTerritoryLineLegend(layer, metric, dataset, { role });
+  if (t.drawnLines === signature) return;
+
+  const palette = rampPalette(layer.ramp);
+  updateTerritoryCount(layer.id, files.length === 0 ? '0' : 'carregando…');
+  setTerritoryLineStatus('carregando…');
+  const resultados = await Promise.allSettled(files.map((file) => territoryGroupFor({ layer, dataset, file, metric, breaks, palette })));
+  if (gen !== t.lineGeneration) return; // resposta atrasada não desenha
+
+  const groups = [];
+  let features = 0;
+  let mismatches = 0;
+  const falhas = [];
+  resultados.forEach((resultado, i) => {
+    const file = files[i];
+    if (resultado.status === 'rejected') {
+      falhas.push(`${file.path}: ${resultado.reason?.message || resultado.reason}`);
+      return;
+    }
+    const entry = t.loaded.get(`${dataset.id}/${file.path}@${file.sha256}`);
+    groups.push(resultado.value);
+    features += entry.payload.features.length;
+    mismatches += classCheckMismatch(entry.payload.features, metric, breaks, classIndexFor);
+  });
+
+  territoryLineLayer.clearLayers();
+  for (const group of groups) territoryLineLayer.addLayer(group);
+  bringTerritoryLinesToFront();
+  t.drawnLines = falhas.length > 0 ? null : signature;
+  if (!t.attributionOn && map.attributionControl) { map.attributionControl.addAttribution(OSM_LINES_ATTRIBUTION); t.attributionOn = true; }
+  updateTerritoryCount(layer.id, formatNumber(features));
+  const avisos = [];
+  if (files.length === 0) avisos.push('Nenhum arquivo desta camada cruza a área visível do mapa.');
+  if (mismatches > 0) avisos.push(`${formatNumber(mismatches)} via(s) com classe publicada diferente da que os cortes publicados no manifest dão — legenda e mapa seguem os cortes (R8.42); confira o pipeline.`);
+  if (falhas.length > 0) {
+    avisos.push(`${falhas.length} arquivo(s) não carregaram: ${falhas.join('; ')}`);
+    reportTerritoryError(new Error(falhas.join('; ')));
+  }
+  setTerritoryLineStatus(avisos.join(' '), falhas.length > 0 ? 'erro' : '');
+  dom.territoryLineLegend.dataset.territoryRole = role || '';
+  dom.territoryLineLegend.dataset.territoryFeatures = String(features);
+  if (viewFromHash() === 'mapa') syncHash();
+}
+function setTerritoryLineStatus(text, tone = '') {
+  dom.territoryLineStatus.textContent = text || '';
+  dom.territoryLineStatus.hidden = !text;
+  if (tone) dom.territoryLineStatus.dataset.tone = tone;
+  else delete dom.territoryLineStatus.dataset.tone;
+}
+
+/**
+ * Legenda das linhas: uma amostra por classe com a espessura, a opacidade e a cor que o
+ * mapa usa — a forma (traço) diz que o mapa desenha linha, não área (R8.45).
+ */
+function renderTerritoryLineLegend(layer, metric = null, dataset = null, { role = null } = {}) {
+  if (!layer || !metric || !dataset) {
+    dom.territoryLineLegend.hidden = true;
+    dom.territoryLineClasses.replaceChildren();
+    delete dom.territoryLineLegend.dataset.territoryRole;
+    delete dom.territoryLineLegend.dataset.territoryFeatures;
+    setTerritoryLineStatus('');
+    return;
+  }
+  dom.territoryLineLegend.hidden = false;
+  dom.territoryLineLegendTitle.textContent = `${legendTitle(layer, metric, dataset)}${role === 'overview' ? ' · só as vias mais centrais neste zoom' : ''}`;
+  const breaks = dataset.classBreaks[metric.key];
+  const palette = rampPalette(layer.ramp);
+  const frag = document.createDocumentFragment();
+  for (const row of lineLegendRows(breaks.breaks, layer.line)) {
+    const li = document.createElement('li');
+    const sample = document.createElement('span');
+    const color = territoryColor(palette, row.classIndex, breaks.classes);
+    sample.className = color ? 'dot dot-via-sample' : 'dot dot-via-sample dot-territorio-vazio';
+    if (color) {
+      sample.style.background = color;
+      sample.style.height = `${row.weight}px`;
+      sample.style.opacity = String(row.opacity);
+    }
+    sample.setAttribute('data-territory-class', row.classIndex === null ? 'null' : String(row.classIndex));
+    const text = document.createElement('span');
+    text.textContent = row.classIndex === null ? row.label : `${row.label}${metric.unit ? ` (${metric.unit})` : ''}`;
+    li.append(sample, text);
+    frag.append(li);
+  }
+  dom.territoryLineClasses.replaceChildren(frag);
+  dom.territoryLineNote.textContent = dataset.notesPt || '';
+  dom.territoryLineNote.hidden = !dataset.notesPt;
+  dom.territoryLineProvenance.replaceChildren();
+  const procedencia = provenanceLine(dataset);
+  const licenca = (dataset.sources || []).map((s) => s.license).filter(Boolean)[0];
+  dom.territoryLineProvenance.append(document.createTextNode(`${procedencia}${licenca ? ` · ${licenca}` : ''} · `));
+  const link = document.createElement('a');
+  link.href = '#base';
+  link.textContent = 'Sobre estes dados';
+  dom.territoryLineProvenance.append(link);
+}
+
+/**
+ * Legenda da camada ligada: título com métrica e período, `select` de métrica (opção
+ * indisponível fica desabilitada com o motivo), uma amostra por classe pintada pela mesma
+ * função do mapa, a linha "sem dado", e a procedência com link para a Base de dados.
+ */
+function renderTerritoryLegend(layer, metric = null, dataset = null, { role = null } = {}) {
+  if (!layer || !metric || !dataset) {
+    dom.territoryLegend.hidden = true;
+    dom.territoryClasses.replaceChildren();
+    dom.territoryMetric.replaceChildren();
+    delete dom.territoryLegend.dataset.territoryRole;
+    delete dom.territoryLegend.dataset.territoryFeatures;
+    setTerritoryStatus('');
+    return;
+  }
+  dom.territoryLegend.hidden = false;
+  dom.territoryLegendTitle.textContent = legendTitle(layer, metric, dataset);
+
+  const select = dom.territoryMetric;
+  select.replaceChildren();
+  for (const m of layer.metrics) {
+    const option = document.createElement('option');
+    option.value = m.key;
+    option.textContent = m.label;
+    const a = metricAvailability(layer, m, dataset, { role });
+    option.disabled = !a.available;
+    if (!a.available) option.title = a.reason;
+    select.append(option);
+  }
+  select.value = metric.key;
+  select.hidden = layer.metrics.length < 2;
+
+  const breaks = dataset.classBreaks[metric.key];
+  const palette = rampPalette(layer.ramp);
+  const frag = document.createDocumentFragment();
+  for (const row of legendRows(breaks.breaks, { zeroIsAbsent: metric.zeroIsAbsent === true })) {
+    const li = document.createElement('li');
+    const sample = document.createElement('span');
+    const color = territoryColor(palette, row.classIndex, breaks.classes);
+    sample.className = color ? 'dot dot-territorio-sample' : 'dot dot-territorio-sample dot-territorio-vazio';
+    if (color) {
+      sample.style.background = color;
+      // A opacidade da amostra é a da célula no mapa: o tom na legenda é o tom no mapa.
+      sample.style.opacity = String(layer.fillOpacity ?? 1);
+    }
+    sample.setAttribute('data-territory-class', row.classIndex === null ? 'null' : String(row.classIndex));
+    const text = document.createElement('span');
+    text.textContent = `${row.label}${row.classIndex !== null && metric.unit ? ` ${metric.unit}` : ''}`;
+    li.append(sample, text);
+    frag.append(li);
+  }
+  dom.territoryClasses.replaceChildren(frag);
+
+  // A nota do conjunto vem do manifest e diz o que a legenda sozinha não diz — nos empregos,
+  // que hexágono OMITIDO (zero empregos) não é "sem dado" (issue #151).
+  dom.territoryNote.textContent = dataset.notesPt || '';
+  dom.territoryNote.hidden = !dataset.notesPt;
+
+  dom.territoryProvenance.replaceChildren();
+  const procedencia = provenanceLine(dataset);
+  if (procedencia) dom.territoryProvenance.append(document.createTextNode(`${procedencia} · `));
+  const link = document.createElement('a');
+  link.href = '#base';
+  link.textContent = 'Sobre estes dados';
+  dom.territoryProvenance.append(link);
+}
+
+/**
+ * Painel de detalhe de uma feição territorial: três níveis via `appendTiers` (essencial ≤ 6
+ * linhas, R8.61) e, no fim, o link de cada fonte do conjunto. Tudo por `textContent`.
+ */
+function openTerritoryDetail(layer, { dataset, file, integrity, feature, metric = null }) {
+  // A classe do painel é a da métrica ATIVA, a mesma que pintou a célula (R8.42).
+  const tiers = territoryDetailTiers(layer, feature.properties, { dataset, file, integrity, metric, crosswalk: state.territory.crosswalk });
+  const frag = document.createDocumentFragment();
+  appendTiers(frag, tiers);
+  for (const source of dataset.sources || []) {
+    const href = safeExternalUrl(source.url);
+    if (!href) continue;
+    const p = document.createElement('p');
+    p.className = 'detail-source';
+    const link = document.createElement('a');
+    link.href = href;
+    link.target = '_blank';
+    link.rel = 'noopener noreferrer';
+    link.textContent = `Fonte: ${source.name || hostnameOf(href) || 'abrir'}`;
+    p.append(link);
+    frag.append(p);
+  }
+  state.selectedId = null;
+  state.detailPolygonId = null;
+  dom.detailTitle.textContent = tiers.title;
+  dom.detailBody.replaceChildren(frag);
+  dom.detail.hidden = false;
+  dom.closeDetail.focus();
 }
 
 // --- Diagnóstico Territorial PDAD-A: drill-down (issue #102) ----------------------
@@ -5431,6 +6411,14 @@ async function load() {
     { trafficSegmentIds: segmentIdsWithTraffic(state.trafficAll.bySegmentId) },
   ).warnings;
   state.baseWarnings = [...state.baseWarnings, ...avisosRodoviarios];
+  // Arquivos públicos (issue #149): o manifest já veio com o dataset; a ponte de RAs e os
+  // agregados por RA começam a baixar AGORA, mas ninguém espera por eles para desenhar o
+  // mapa — recurso opcional não entra no caminho crítico (R8.29, achado da revisão da PR
+  // #157): o `await` fica depois do primeiro `render()`, e o que os lê é redesenhado quando
+  // eles chegam. Avisos entram no mesmo canal das abas opcionais — nunca erro (R2.5).
+  state.territory.publicData = result.publicData || EMPTY_PUBLIC_DATA;
+  const arquivosPequenos = loadTerritorySmallFiles();
+  renderTerritoryControls();
   renderPolygonLegend();
   renderTrafficPanel();
 
@@ -5452,6 +6440,7 @@ async function load() {
   renderAnchorLegend(state.records);
 
   applyUrlParams();
+  initializeTerritoryControls();
   refreshMarketView();
   refreshPdadView();
   render();
@@ -5468,6 +6457,25 @@ async function load() {
   ];
   if (pontos.length > 0) {
     map.fitBounds(pontos, { padding: [40, 40] });
+  }
+  // Depois do enquadramento: a escolha overview × shards depende do zoom final.
+  renderTerritory().catch(reportTerritoryError);
+  renderTerritoryLines().catch(reportTerritoryError);
+
+  // Ponte de RAs e agregados (issue #153): chegaram depois do primeiro desenho. Ranking,
+  // dispersão e Comparar leem `ra[attr]`, então o índice do PDAD é cruzado aqui — sem ponte
+  // ou sem arquivo, fica como era e os indicadores resolvem ausentes (R2.5) — e o que os
+  // mostra é redesenhado uma vez.
+  const avisosTerritorio = await arquivosPequenos;
+  state.baseWarnings = [...state.baseWarnings, ...avisosTerritorio];
+  state.pdadIndex = attachRaProfiles(
+    attachTerritory(state.pdadIndex, state.territory.aggregates.byRa, state.territory.crosswalk),
+    state.raProfiles,
+    state.territory.crosswalk,
+  );
+  if (state.territory.aggregates.rows.length > 0 || avisosTerritorio.length > 0) {
+    refreshPdadView();
+    renderRaProfile();
   }
 }
 
@@ -5489,6 +6497,29 @@ function bindEvents() {
   });
   dom.layers.addEventListener('change', render);
   renderLayerSamples();
+  // Camadas territoriais (issue #150): rádio de área e métrica. Fora de `readFilters()` de
+  // propósito — não são filtro de registro, e `render()` não precisa rodar por elas.
+  dom.territoryLayers.addEventListener('change', (event) => {
+    const input = event.target.closest('input[name="territoryArea"]');
+    if (!input) return;
+    state.territory.area = input.value || null;
+    renderPolygons();
+    if (viewFromHash() === 'mapa') syncHash();
+    renderTerritory().catch(reportTerritoryError);
+  });
+  dom.territoryMetric.addEventListener('change', () => {
+    if (!state.territory.area) return;
+    state.territory.metric[state.territory.area] = dom.territoryMetric.value;
+    renderTerritory().catch(reportTerritoryError);
+  });
+  dom.territoryLayers.addEventListener('change', (event) => {
+    const input = event.target.closest('input[name="territoryLines"]');
+    if (!input) return;
+    state.territory.lines = input.checked;
+    renderPolygons();
+    if (viewFromHash() === 'mapa') syncHash();
+    renderTerritoryLines().catch(reportTerritoryError);
+  });
   dom.clearFilters.addEventListener('click', clearFilters);
   for (const node of trafficFilterInputs()) {
     node.addEventListener('change', () => {

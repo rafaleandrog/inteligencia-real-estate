@@ -33,17 +33,29 @@ function importedFrom(appSource, path) {
   return new Set(match[1].split(',').map((n) => n.trim().split(/\s+as\s+/)[0]).filter(Boolean));
 }
 
-/** Corpo do arquivo sem comentários nem strings — só o que o motor vai executar. */
+/**
+ * Corpo do arquivo sem comentários nem strings — só o que o motor vai executar.
+ *
+ * Template literal NÃO é descartado inteiro: o que está dentro de `${…}` é código, e foi
+ * exatamente por ali que `percentFromDecimal(...)` entrou em `src/app.js` sem import e a
+ * guarda ficou verde (issue #153) — o erro só apareceu no navegador, como estado de erro da
+ * página inteira. As interpolações ficam; o texto ao redor delas sai.
+ */
 function executableSource(source) {
   return source
     .replace(/\/\*[\s\S]*?\*\//g, ' ')
     .replace(/(^|[^:])\/\/[^\n]*/g, '$1 ')
     .replace(/'(?:[^'\\\n]|\\.)*'/g, "''")
     .replace(/"(?:[^"\\\n]|\\.)*"/g, '""')
-    .replace(/`(?:[^`\\]|\\.)*`/g, '``');
+    .replace(/`(?:[^`\\]|\\.)*`/g, (tpl) => [...tpl.matchAll(/\$\{([^}]*)\}/g)].map((m) => ` (${m[1]}) `).join('') || '``');
 }
 
-const MODULOS = ['./format.js', './filters.js', './normalize.js'];
+const MODULOS = [
+  './format.js', './filters.js', './normalize.js', './data.js',
+  // Arquivos públicos (issue #149): mesmo defeito possível, mesma guarda.
+  './territorio/manifest.js', './territorio/ra-keys.js', './territorio/aggregates.js', './territorio/layers.js',
+  './territorio/classes.js', './territorio/legend.js', './territorio/detail.js', './url-state.js',
+];
 
 test('todo export chamado em src/app.js está na lista de imports dele', () => {
   const app = read('../src/app.js');
@@ -76,6 +88,13 @@ test('a guarda acima é capaz de falhar', () => {
   assert.equal(importados.has('polygonStyle'), false);
   assert.equal(exportedNames(formatReal).has('polygonStyle'), true);
   assert.match(executableSource(appFalso), /(^|[^\w$.])polygonStyle\s*\(/m);
+});
+
+test('chamada dentro de uma interpolação de template literal CONTA como uso', () => {
+  // O caso real da issue #153: `${formatPercent(percentFromDecimal(x))}` dentro de crases.
+  const fonte = "const t = `${formatPercent(percentFromDecimal(x))} vs. mediana`;\n";
+  assert.match(executableSource(fonte), /(^|[^\w$.])percentFromDecimal\s*\(/m);
+  assert.equal(/mediana/.test(executableSource(fonte)), false, 'o texto do template sai; só a interpolação fica');
 });
 
 test('nome dentro de comentário ou string não conta como uso', () => {

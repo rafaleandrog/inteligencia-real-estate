@@ -20,3 +20,17 @@ meta.png
 # conceder permissão é decisão de quem opera a máquina, não do repositório.
 .claude/
 *.local.mjs
+
+# Pipeline de dados públicos (pipeline/): downloads brutos, logs de execução e ambiente
+# virtual nunca entram no repositório — só a saída validada em data/public/ (R2.7).
+pipeline/.cache/
+pipeline/.venv/
+__pycache__/
+*.pyc
+*.egg-info/
+# Credencial que google-github-actions/auth materializa no workspace (R4.10).
+gha-creds-*.json
+# Modelo 2 (warehouse/): bruto, staging e o banco DuckDB ficam fora; só marts pequenos entram.
+warehouse/raw/
+warehouse/staging/
+warehouse/*.duckdb

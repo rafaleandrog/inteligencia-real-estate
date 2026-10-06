@@ -1,0 +1,11 @@
+{
+  "https://www.geoservicos.ide.df.gov.br/arcgis/rest/services/Publico/LIMITES/FeatureServer/1/query?where=1%3D1&outFields=objectid%2Cra_cira%2Cra_codigo%2Cra_nome%2Cra_path%2Cra_areakm2&returnGeometry=true&returnTrueCurves=false&outSR=4326&geometryPrecision=6&f=geojson&resultOffset=0&resultRecordCount=1000": "../../../tests/fixtures/geoportal-ras-cruzeiro-candangolandia.geojson",
+  "https://geoftp.ibge.gov.br/recortes_para_fins_estatisticos/grade_estatistica/censo_2010/grade_fixture.zip": "grade_2010.json",
+  "https://geoftp.ibge.gov.br/recortes_para_fins_estatisticos/grade_estatistica/censo_2022/grade_fixture.zip": "grade_2022.json",
+  "https://geoftp.ibge.gov.br/recortes_para_fins_estatisticos/grade_estatistica/censo_2010/": "grade_listing.html",
+  "https://geoftp.ibge.gov.br/recortes_para_fins_estatisticos/grade_estatistica/censo_2022/": "grade_listing.html",
+  "https://www.ipea.gov.br/acessooportunidades/dados/metadata.csv": "aop_metadata.txt",
+  "https://www.ipea.gov.br/acessooportunidades/dados/aop_landuse_bra_2019.txt": "aop_landuse_bra_2019.txt",
+  "https://www.ipea.gov.br/acessooportunidades/dados/aop_landuse_bra_2017.txt": "aop_landuse_bra_2017.txt",
+  "https://download.geofabrik.de/south-america/brazil/centro-oeste-latest.osm.pbf": "osm_small_graph.json"
+}

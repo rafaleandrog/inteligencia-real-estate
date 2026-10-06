@@ -1,0 +1,29 @@
+# Portão de data/public/ em toda PR (docs/ENGINEERING_RULES.md, R2.8): manifest, hashes,
+# orçamentos, schemas. Só stdlib + jsonschema — ~20 s. Diretório vazio (antes da primeira
+# execução do pipeline) é ok.
+name: validate-dados-publicos
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  validar:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: pip
+          cache-dependency-path: pipeline/requirements-validate.txt
+      - run: pip install -r pipeline/requirements-validate.txt
+      - name: Validar data/public
+        run: PYTHONPATH=pipeline python -m imob_pipeline validate data/public --config pipeline/config/df.toml
+      - name: Testes do núcleo (geo pula com motivo)
+        run: python -m unittest discover -s pipeline/tests -t pipeline -v

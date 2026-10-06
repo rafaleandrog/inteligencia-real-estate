@@ -13,7 +13,10 @@ export const URL_VIEWS = Object.freeze(['mapa', 'mercado', 'diagnostico', 'ranki
 
 /** Chaves aceitas por view. Qualquer outra é ignorada na leitura e na escrita. */
 export const URL_KEYS = Object.freeze({
-  mapa: Object.freeze(['ra', 'type', 'beds', 'price_min', 'price_max', 'locality', 'q']),
+  // `terr` (camada de área ligada), `terr_metrica` (métrica quando não é a padrão) e `vias`
+  // (centralidade viária, `1`) são as camadas territoriais (issue #150) — estado do mapa,
+  // não filtro de registro.
+  mapa: Object.freeze(['ra', 'type', 'beds', 'price_min', 'price_max', 'locality', 'q', 'terr', 'terr_metrica', 'vias']),
   mercado: Object.freeze(['periodo', 'ano', 'mes', 'de', 'ate', 'serie', 'compare', 'faixa', 'regiao_modo']),
   diagnostico: Object.freeze(['ra', 'ano', 'tema']),
   ranking: Object.freeze(['ra']),

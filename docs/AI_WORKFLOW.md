@@ -25,6 +25,7 @@ Ferramenta que exige arquivo próprio (`CLAUDE.md`, `.cursorrules`, `.github/cop
 | [`imob-data-contract`](../.agents/skills/imob-data-contract/SKILL.md) | Qualquer coisa que toque schema, cabeçalho, ID, coordenada, preço, data |
 | [`imob-appscript`](../.agents/skills/imob-appscript/SKILL.md) | Qualquer mudança no `Code.gs` |
 | [`imob-release`](../.agents/skills/imob-release/SKILL.md) | Antes de publicar uma versão |
+| [`imob-pipeline`](../.agents/skills/imob-pipeline/SKILL.md) | Qualquer mudança em `pipeline/`, `data/public/`, manifest ou schemas; site passando a ler arquivo público novo |
 
 Escolha uma. Se a tarefa é construir, é `imob-implementer`; se é descobrir por que quebrou, é
 `imob-debugger`. Confundir as duas leva a "consertar" sintoma.
@@ -61,6 +62,9 @@ Detalhes que importam:
 - **Achado do Codex que revele uma classe de erro vira regra numerada** na seção 8 de
   [`ENGINEERING_RULES.md`](ENGINEERING_RULES.md), na mesma PR que corrige. É assim que o
   aprendizado fica no repositório em vez de se perder no histórico de conversa.
+- **Exceção declarada na R7.2:** a PR automática do `dados-publicos.yml` — só `data/public/`, com
+  `validate-dados-publicos.yml` verde — dispensa o review do Codex: o portão dela é o validador.
+  Qualquer linha fora de `data/public/` na mesma PR devolve a exigência.
 
 ### Ativação (uma vez, por um humano)
 
@@ -145,6 +149,39 @@ npm run smoke      # roda o roteiro completo em navegador
 Se o ambiente tiver um Chromium pré-instalado com build diferente da que o Playwright baixaria,
 aponte para ele: `CHROMIUM_PATH=/caminho/para/chrome npm run smoke`.
 
+As seções territoriais do smoke não dependem de `data/public/` ter dado real: elas apontam
+`APP_CONFIG.publicDataUrl` para `tests/fixtures/public/` (saída do pipeline em modo fixture) por
+`addInitScript`. Mudou o manifest, um schema ou um conjunto? Regenere a fixture pelo pipeline
+(comando em [`pipeline/README.md`](../pipeline/README.md), "Fixtures do site"), nunca à mão
+(R2.8), e só então rode o smoke. As seções, ao fim do roteiro:
+
+- **"Base de dados · arquivos públicos"** (issue #149) — três páginas. Com o manifest de fixture:
+  um cartão por conjunto, toda fonte como link `http(s)` com `rel="noopener noreferrer"`,
+  cabeçalho com a versão do pipeline e a atribuição, nenhum aviso. Com o manifest abortado: a aba
+  Base desabilitada com o motivo no `title`, `#base` voltando ao mapa, aviso técnico com motivo e
+  nenhum estado de erro (R2.5). Com o manifest vazio de `data/public/`: a aba diz que o pipeline
+  ainda não rodou, sem aviso técnico.
+- **"Território · mapa de domicílios"** (issue #150) — controles habilitados só com o manifest;
+  legenda com uma linha por classe (`cortes + 1`) mais "sem dado", cada amostra igual ao token
+  `--seq-N`; canvas no pane `territory` conferido por amostragem de pixel; RAs só contorno em
+  `raOutline`; clique na célula abre o painel (essencial com no máximo 6 linhas); overview →
+  shards no `zoom_min`; métrica absoluta desabilitada no overview, com o motivo; `terr` e
+  `terr_metrica` na URL; 390 px sem overflow; `terr=` sem manifest não liga nada.
+- **"Território · empregos formais"** (issue #151) — trocar o rádio troca a coroplética no mesmo
+  canvas; dez classes mais "sem dado (inclui zero)", amostras iguais a `--seq10-N`; nota do
+  manifest explicando que hexágono omitido não é "sem dado"; as quatro métricas; nenhum resto da
+  camada anterior nos pixels; clique no hexágono.
+- **"Território · centralidade viária"** (issue #152) — canvas próprio no pane `territoryLines`
+  convivendo com a coroplética (duas legendas); amostras iguais a `--via-N`, com o peso e a
+  opacidade do registro; ODbL na procedência e atribuição no controle do mapa enquanto a camada
+  está ligada; clique na via; `vias=1` na URL; desligar retira a atribuição.
+- **"Território · indicadores cruzados com o PDAD"** (issue #153) — o Ranking com os cartões
+  territoriais (valor, posição, fórmula e fonte) e a renda per capita resolvendo pela ponte; a
+  leitura cruzada da dispersão; as colunas territoriais do Comparar; o bloco "Perfil territorial"
+  do Diagnóstico (diferença contra a mediana das RAs com dado, posição, fonte); o bloco da RA no
+  Mapa, com ano e fonte no rótulo e depois dos números de `RA_PROFILES`; e, com o manifest
+  abortado, tudo ausente — nenhum join adivinhado.
+
 Ele já pegou dois bugs que nenhum teste unitário pegaria: `leaflet.js` ausente do HTML (R8.13) e
 marcadores SVG estilizados com `background` em vez de `fill` (R8.14).
 
@@ -173,6 +210,9 @@ python3 -m http.server 8080
 10. Largura mobile (390 px) utilizável
 11. Modo demo (`demoMode: true`)
 12. Google Sheets real, se a configuração estiver disponível
+13. Com `data/public/` publicado (depois da primeira PR de dados): ligar cada camada de
+    Território, conferir a legenda, clicar numa célula, num hexágono e numa via, e abrir a Base
+    de dados
 
 **Item não verificado não é marcado.** Se uma limitação de ambiente impediu o teste, declare qual
 item ficou de fora e por quê (R6.6).

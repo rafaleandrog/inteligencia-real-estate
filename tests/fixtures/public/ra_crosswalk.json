@@ -1,0 +1,36 @@
+{
+  "roman_key_prefix": "RA2026_",
+  "rows": [
+    {
+      "geometry_sha256": "3a7630c361804aee110ea3339fded899e24badca7d380d3c7001ccd354df8fe9",
+      "geoportal_objectid": 72,
+      "ra_area_km2": 3.19116356,
+      "ra_code": "RA-XI",
+      "ra_geo_id": "RA_11",
+      "ra_geo_id_roman": "RA2026_RA-XI",
+      "ra_name": "Cruzeiro",
+      "ra_name_source": "CRUZEIRO",
+      "ra_number": 11,
+      "ra_slug": "cruzeiro"
+    },
+    {
+      "geometry_sha256": "e5d5ad7a08891b2115cc14d1f13facfafe62e5809c8617ef1eb171c826152263",
+      "geoportal_objectid": 74,
+      "ra_area_km2": 6.6018644,
+      "ra_code": "RA-XIX",
+      "ra_geo_id": "RA_19",
+      "ra_geo_id_roman": "RA2026_RA-XIX",
+      "ra_name": "Candangolândia",
+      "ra_name_source": "CANDANGOLÂNDIA",
+      "ra_number": 19,
+      "ra_slug": "candangolandia"
+    }
+  ],
+  "source": {
+    "attribution_pt": "Fonte: GeoPortal/SEDUH-DF (IDE/DF), camada Limites das Regiões Administrativas.",
+    "license": "Dado aberto do GDF — citar a fonte",
+    "name": "GeoPortal/SEDUH-DF — Limites das Regiões Administrativas",
+    "retrieved_at": "fixture",
+    "url": "https://www.geoportal.seduh.df.gov.br/mapa/"
+  }
+}

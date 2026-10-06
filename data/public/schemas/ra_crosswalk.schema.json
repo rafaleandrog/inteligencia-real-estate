@@ -1,0 +1,33 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://rafaleandrog.github.io/inteligencia-real-estate/data/public/schemas/ra_crosswalk.schema.json",
+  "title": "ra_crosswalk.json — ponte declarada entre RA_nn e RA2026_RA-romano",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["source", "roman_key_prefix", "rows"],
+  "properties": {
+    "source": { "type": "object", "required": ["name", "url", "retrieved_at"] },
+    "roman_key_prefix": { "const": "RA2026_" },
+    "rows": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["ra_number", "ra_geo_id", "ra_code", "ra_geo_id_roman", "ra_name", "ra_name_source", "ra_slug", "ra_area_km2", "geoportal_objectid", "geometry_sha256"],
+        "properties": {
+          "ra_number": { "type": "integer", "minimum": 1 },
+          "ra_geo_id": { "type": "string", "pattern": "^RA_[0-9]{2}$" },
+          "ra_code": { "type": "string", "pattern": "^RA-[IVXLC]+$" },
+          "ra_geo_id_roman": { "type": "string", "pattern": "^RA2026_RA-[IVXLC]+$" },
+          "ra_name": { "type": "string", "minLength": 1 },
+          "ra_name_source": { "type": "string", "minLength": 1 },
+          "ra_slug": { "type": "string", "pattern": "^[a-z0-9_]+$" },
+          "ra_area_km2": { "type": ["number", "null"] },
+          "geoportal_objectid": { "type": "integer" },
+          "geometry_sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" }
+        }
+      }
+    }
+  }
+}

@@ -1,3 +1,4 @@
+import { TERRITORY_INDICATORS } from '../territorio/aggregates.js';
 // Registro de indicadores do PDAD_A_DATA lidos pela tela Diagnóstico (issue #100/#102).
 //
 // `PDAD_A_DATA` publica 39 `indicator_code` distintos (extração longa do PDAD-A). Este
@@ -246,6 +247,10 @@ export const AGE_BUCKET_BY_CATEGORY = Object.freeze({
  * domicílios, renda); os demais leem uma categoria específica de um indicador.
  */
 export const PDAD_RANK_SET = Object.freeze([
+  // `incomePerCapita` é anexado por `attachRaProfiles` (src/territorio/aggregates.js) a
+  // partir de `RA_PROFILES.income_per_capita_brl`, cruzando pela ponte `ra_crosswalk.json`
+  // (R2.9). Enquanto a planilha não publicar a coluna (0/35 hoje) ou a ponte não carregar, o
+  // valor é ausente — pelo motivo certo, nunca por um join adivinhado (issue #153).
   { id: 'income', label: 'Renda per capita', tema: 'Cadastro territorial', attr: 'incomePerCapita', unit: 'currency' },
   { id: 'deed', label: 'Escritura registrada', tema: 'Domicílios', key: 'deed', category: 'Sim', unit: 'pct', absUnit: 'imóveis próprios' },
   { id: 'water', label: 'Água · rede geral', tema: 'Infraestrutura', key: 'water', category: 'Rede Geral · Sim', unit: 'pct', absUnit: 'domicílios' },
@@ -256,6 +261,12 @@ export const PDAD_RANK_SET = Object.freeze([
   { id: 'pea', label: 'População ocupada', tema: 'Trabalho', key: 'peaSituation', category: 'Ocupado', unit: 'pct', absUnit: 'pessoas' },
   { id: 'workTime', label: 'Até 15 min do trabalho', tema: 'Trabalho', key: 'workTime', category: 'Até 15 min', unit: 'pct', absUnit: 'trabalhadores' },
   { id: 'health', label: 'Plano de saúde', tema: 'Saúde', key: 'healthPlan', category: 'Sim', unit: 'pct', absUnit: 'pessoas' },
+  // Indicadores territoriais dos arquivos públicos (issue #153): `attr` anexado por
+  // `attachTerritory`; `unit` resolvida por `formatByUnit`; fórmula e fonte ficam ao lado do
+  // número no cartão — número cruzado de outra base nunca viaja sem a origem (PRODUCT_PLAN).
+  ...TERRITORY_INDICATORS.map((ind) => ({
+    id: ind.id, label: ind.label, tema: ind.tema, attr: ind.attr, unit: ind.unit, formula: ind.formula, source: ind.source,
+  })),
 ]);
 
 /** Kits prontos da tela Comparar RAs (issue #102) — mesmo recorte do protótipo. */
@@ -269,9 +280,11 @@ export const PDAD_COMPARE_KITS = Object.freeze({
  * As 7 leituras cruzadas de dispersão (scatter) do protótipo de referência (issue #102):
  * cada eixo é lido do jeito que `rankScalar()` (`aggregate.js`) já sabe ler — `attr` para
  * um campo pronto da RA, ou `key`+`category` para uma categoria de indicador. `income`
- * (`incomePerCapita`) não existe no `PDAD_A_DATA` — resolve sempre ausente, mesma decisão
- * do Ranking, em vez de tentar cruzar com a convenção de `ra_geo_id` de `RA_PROFILES`
- * (`RA2026_RA-I`), que não é a mesma de `PDAD_A_DATA` (`RA_01..RA_35`).
+ * (`incomePerCapita`) não existe no `PDAD_A_DATA`: chega por `attachRaProfiles`, cruzando
+ * `RA_PROFILES` (`RA2026_RA-I`) com o PDAD (`RA_01..RA_35`) pela ponte `ra_crosswalk.json`
+ * (R2.9) — e segue ausente enquanto a planilha não publicar a coluna ou a ponte não
+ * carregar. As duas últimas leituras cruzam o PDAD com os arquivos públicos (issue #153);
+ * `unit` no eixo diz como formatar o valor anexado.
  */
 export const PDAD_SCATTER_VIEWS = Object.freeze([
   {
@@ -315,5 +328,17 @@ export const PDAD_SCATTER_VIEWS = Object.freeze([
     x: { attr: 'incomePerCapita', label: 'Renda per capita (R$)' },
     y: { key: 'deed', category: 'Sim', label: '% escritura registrada' },
     insight: 'Leitura parcial: a renda per capita não consta em PDAD_A_DATA nesta base — RAs ficam listadas fora do gráfico. Use como referência qualitativa, não como ranking.',
+  },
+  {
+    id: 'cresc_vert', label: 'Crescimento de domicílios × Verticalização',
+    x: { attr: 'householdsGrowthPct', label: 'Crescimento de domicílios 2010→2022 (IBGE)', unit: 'pct_decimal' },
+    y: { key: 'dwelling', category: 'Apartamento', label: '% em apartamento' },
+    insight: 'Onde olhar: RAs que cresceram muito em domicílios e ainda são pouco verticais são o espaço do próximo adensamento; as que cresceram pouco e já são verticais estão consolidadas. Crescimento vem da Grade Estatística do IBGE (2010→2022); verticalização, da PDAD-A.',
+  },
+  {
+    id: 'emprego_loc', label: 'Empregos formais × Locação',
+    x: { attr: 'jobsPer1000Residents', label: 'Empregos formais por mil moradores (Ipea/RAIS)', unit: 'ratio1' },
+    y: { key: 'tenure', category: 'Alugado', label: '% em imóvel alugado' },
+    insight: 'Onde olhar: muito emprego por morador com locação forte é o mercado do aluguel perto do trabalho; muito emprego com pouca locação sugere demanda de moradia reprimida no entorno. Empregos vêm do Projeto Acesso a Oportunidades (Ipea, RAIS 2019, população do Censo 2010); locação, da PDAD-A.',
   },
 ]);

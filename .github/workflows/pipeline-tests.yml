@@ -1,0 +1,36 @@
+# Suíte completa do pipeline com a stack geoespacial (shapely, pyogrio, h3, osmnx, igraph).
+# Só quando o pipeline muda — PR de frontend não paga este custo. Não é check obrigatório.
+name: pipeline-tests
+
+on:
+  pull_request:
+    paths:
+      - 'pipeline/**'
+      - 'data/public/schemas/**'
+      - '.github/workflows/pipeline-tests.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  testar:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: pip
+          cache-dependency-path: pipeline/requirements.txt
+      - run: sudo apt-get update && sudo apt-get install -y --no-install-recommends osmium-tool
+      - run: pip install -r pipeline/requirements.txt
+      - run: python -m unittest discover -s pipeline/tests -t pipeline -v
+      - name: Fixture ponta a ponta valida
+        run: |
+          mkdir -p "$RUNNER_TEMP/public/schemas"
+          cp data/public/README.md "$RUNNER_TEMP/public/"
+          cp data/public/schemas/*.json "$RUNNER_TEMP/public/schemas/"
+          PYTHONPATH=pipeline python -m imob_pipeline run all --out "$RUNNER_TEMP/public" --config pipeline/config/fixture.toml --cache "$RUNNER_TEMP/cache" --fixture-dir pipeline/tests/fixtures
+          PYTHONPATH=pipeline python -m imob_pipeline validate "$RUNNER_TEMP/public" --config pipeline/config/fixture.toml

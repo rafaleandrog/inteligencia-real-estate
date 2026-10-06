@@ -1,0 +1,89 @@
+import json
+import unittest
+
+from imob_pipeline.sources.geoportal_ra import to_polygons
+from imob_pipeline.sources.osm import graph_from_json
+from imob_pipeline.transforms.assign_ra import RaIndex
+from imob_pipeline.transforms.centrality import (
+    betweenness_pure, build_edges, compute_betweenness, edge_key, pick_sources, ra_road_summary,
+)
+
+from .helpers import FIXTURES, ra_features
+
+
+def fixture_graph():
+    return graph_from_json(json.loads((FIXTURES / "osm_small_graph.json").read_text("utf-8")))
+
+
+class CentralityTests(unittest.TestCase):
+    def test_bridge_has_max_betweenness_and_isolated_zero(self):
+        graph = fixture_graph()
+        scores = betweenness_pure(graph, sources=sorted(graph.nodes))
+        bridge = scores[("n5", "n6", 0)]
+        self.assertEqual(bridge, max(scores.values()))
+        self.assertEqual(scores.get(("n10", "n11", 0), 0.0) > 0, True)  # 2 nós, 1 caminho: valor baixo mas > 0
+        self.assertLess(scores[("n10", "n11", 0)], bridge)
+
+    def test_sampling_is_deterministic_and_normalized(self):
+        graph = fixture_graph()
+        a, engine_a, n_a = compute_betweenness(graph, sample_sources=5, seed=7, engine="pure")
+        b, engine_b, n_b = compute_betweenness(graph, sample_sources=5, seed=7, engine="pure")
+        self.assertEqual(a, b)
+        self.assertEqual((engine_a, n_a), ("pure", 5))
+        self.assertEqual(max(a.values()), 1.0)
+        self.assertEqual(len(a), len(graph.edges))
+        c, _, _ = compute_betweenness(graph, sample_sources=5, seed=8, engine="pure")
+        self.assertEqual(set(c), set(a))
+
+    def test_pick_sources(self):
+        self.assertEqual(pick_sources(["b", "a", "c"], 0, 1), ["a", "b", "c"])
+        self.assertEqual(pick_sources(["b", "a", "c"], 10, 1), ["a", "b", "c"])
+        self.assertEqual(len(pick_sources([str(i) for i in range(50)], 5, 1)), 5)
+
+    def test_pure_engine_refuses_large_graph(self):
+        graph = fixture_graph()
+        graph.edges = graph.edges * 2000
+        with self.assertRaises(RuntimeError):
+            compute_betweenness(graph, sample_sources=10, seed=1, engine="pure")
+
+    def test_build_edges_filters_and_overview(self):
+        graph = fixture_graph()
+        scores, _, _ = compute_betweenness(graph, sample_sources=0, seed=1, engine="pure")
+        index = RaIndex(to_polygons(ra_features()), use_shapely=False)
+        built = build_edges(graph, scores, breaks=[50, 75, 90, 97], publish_min_percentile=50, overview_min_percentile=90,
+                            always_publish_highways=["primary", "secondary"], simplify_tolerance_deg=0.001, assign_ra=index.assign)
+        detail = {f["id"]: f["properties"] for f in built["detail"]}
+        overview = {f["id"]: f for f in built["overview"]}
+        self.assertEqual(built["counts"]["edges_graph"], 12)
+        self.assertIn("n5-n6-0", detail)
+        self.assertEqual(detail["n5-n6-0"]["betweenness"], 1.0)
+        self.assertEqual(detail["n5-n6-0"]["betweenness_percentile"], 100.0)
+        self.assertEqual(detail["n5-n6-0"]["class_betweenness_percentile"], 4)
+        self.assertIn("betweenness_sampled", detail["n5-n6-0"]["quality_flags"])
+        self.assertNotIn("n10-n11-0", detail)   # rua isolada de baixo percentil, não arterial
+        self.assertIn("n6-n7-0", detail)        # secondary: sempre publicada
+        self.assertIn("n5-n6-0", overview)
+        self.assertEqual(len(overview["n5-n6-0"]["geometry"]["coordinates"]), 2)
+        self.assertIn("geometry_simplified", overview["n5-n6-0"]["properties"]["quality_flags"])
+        self.assertEqual(len(next(f for f in built["detail"] if f["id"] == "n5-n6-0")["geometry"]["coordinates"]), 3)
+        self.assertTrue(all(p["betweenness_percentile"] >= 50 or p["highway"] in ("primary", "secondary") for p in detail.values()))
+        self.assertEqual(detail["n1-n2-0"]["osmid"], [101]) if "n1-n2-0" in detail else None
+        self.assertEqual(built["counts"]["published"], len(detail))
+
+    def test_ra_road_summary(self):
+        graph = fixture_graph()
+        scores, _, _ = compute_betweenness(graph, sample_sources=0, seed=1, engine="pure")
+        index = RaIndex(to_polygons(ra_features()), use_shapely=False)
+        built = build_edges(graph, scores, breaks=[50, 75, 90, 97], publish_min_percentile=0, overview_min_percentile=90,
+                            always_publish_highways=[], simplify_tolerance_deg=0.0, assign_ra=index.assign)
+        summary = ra_road_summary(built["detail"])
+        self.assertIn("SEM_RA", summary)
+        self.assertEqual(summary["SEM_RA"]["edges_total"], 2)   # ponte (ponto médio fora) e rua isolada
+        self.assertEqual(sum(s["edges_total"] for s in summary.values()), 12)
+        for s in summary.values():
+            self.assertGreaterEqual(s["road_km_total"], s["road_km_top_decile"])
+            self.assertIsNotNone(s["centrality_p90"])
+
+
+if __name__ == "__main__":
+    unittest.main()

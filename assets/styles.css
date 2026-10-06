@@ -355,6 +355,52 @@
   --ano-3: #4fb07b;
   --ano-4: #8fd6ac;
 
+  /* Rampas SEQUENCIAIS das camadas territoriais (issue #150). Desenhadas sobre o tile
+     claro do OSM (#f2efe9), não sobre a superfície escura da interface: claro → escuro,
+     um matiz por família — quente para domicílios (`--seq`, 6 degraus), frio para
+     empregos (`--seq10`, 10 degraus), roxo monocromático para a centralidade viária
+     (`--via`, 5 degraus).
+
+     Conferido com o mesmo critério da rampa ordinal acima, registrado aqui (R8.75):
+     luminância monotônica em todos os degraus; ΔL mínimo 0,108 (seq), 0,030 (seq10 — dez
+     degraus não cabem a 0,06 dentro de uma faixa de luminância só; o passo é o maior que
+     o número de classes permite) e 0,055 (via); contraste do degrau mais escuro sobre o
+     tile 8,6:1 (seq), 12,8:1 (seq10) e 11,9:1 (via); o mais claro fica a ≈1,05:1 do tile
+     de propósito — "quase nada" é a classe mais baixa, e a legenda a nomeia.
+
+     A CONTAGEM de degraus é a de `RAMPS` em src/territorio/layers.js, conferida nos dois
+     sentidos por tests/ui-tokens.test.js. Nenhum módulo puro conhece estes valores: o
+     renderizador os lê por getComputedStyle no desenho, e a legenda pinta a amostra pela
+     mesma função que pinta o mapa (R8.42). */
+  --seq-1: #fff3dc;
+  --seq-2: #fdd9a5;
+  --seq-3: #fdb46d;
+  --seq-4: #f0821f;
+  --seq-5: #c4480c;
+  --seq-6: #7a2704;
+
+  --seq10-1: #f2f6fc;
+  --seq10-2: #dbe7f6;
+  --seq10-3: #c0d4ee;
+  --seq10-4: #a2bfe4;
+  --seq10-5: #7fa5d8;
+  --seq10-6: #5f8acb;
+  --seq10-7: #4670b8;
+  --seq10-8: #33569e;
+  --seq10-9: #213d7e;
+  --seq10-10: #12245c;
+
+  --via-1: #dccae9;
+  --via-2: #b995d2;
+  --via-3: #9263b9;
+  --via-4: #6b369c;
+  --via-5: #420a75;
+
+  /* Borda das amostras da legenda territorial (sobre a superfície escura) e traço da
+     feição SEM DADO no mapa (sobre o tile claro): um cinza que não é degrau de rampa. */
+  --terr-amostra-borda: rgba(255, 255, 255, .35);
+  --terr-sem-dado-borda: #8d97a1;
+
   /* Manrope e DM Mono vêm de `assets/fonts/` (bloco `@font-face` no topo). A pilha de
      sistema que era o valor inteiro destes dois tokens até a #95 continua aqui como
      FALLBACK: se o `.woff2` faltar, a página perde o acabamento e não a legibilidade. */
@@ -1143,6 +1189,86 @@ select:focus, input[type="number"]:focus {
    moldura. Em 390 px a coluna da legenda tem ~300 px úteis: 16 px de recuo é o
    suficiente para ler a hierarquia sem empurrar a contagem para fora. */
 .polygon-type-row { margin-left: 16px; }
+
+/* Camadas territoriais dos arquivos públicos (issue #150). Só tokens — o guard de
+   tests/ui-tokens.test.js cobre `.territorio-*` e `.dot-territorio-*`.
+
+   A COR da amostra não é definida aqui: vem inline, do mesmo `territoryColor()` que pinta
+   a célula no canvas (R8.42) — a legenda mostra exatamente a cor que está no mapa. O que
+   mora aqui é forma, borda e tipografia. */
+.territorio-camadas label[aria-disabled='true'] { cursor: not-allowed; color: var(--texto-fraco); }
+.territorio-legenda {
+  margin: var(--esp-2) 0 0;
+  padding: var(--esp-2) 0 0;
+  border-top: 1px solid var(--line);
+}
+.territorio-legenda[hidden] { display: none; }
+.territorio-legenda-titulo {
+  margin: 0 0 var(--esp-1);
+  font-size: var(--tipo-sm);
+  font-weight: 600;
+  color: var(--texto-base);
+}
+.territorio-metrica {
+  width: 100%;
+  margin: 0 0 var(--esp-2);
+  font-size: var(--tipo-sm);
+}
+.territorio-classes {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: var(--esp-1);
+}
+.territorio-classes li {
+  display: flex;
+  align-items: center;
+  gap: var(--esp-2);
+  font-size: var(--tipo-xs);
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+.dot-territorio-sample {
+  width: 14px;
+  height: 10px;
+  border-radius: var(--raio-xs);
+  border: 1px solid var(--terr-amostra-borda);
+  box-sizing: border-box;
+  flex: none;
+}
+/* "Sem dado": vazado e tracejado, como a feição no mapa — ausência tem presença (R5.7). */
+.dot-territorio-vazio { background: none; border-style: dashed; border-color: var(--terr-sem-dado-borda); }
+/* Amostra de LINHA (centralidade viária, issue #152): um traço, cuja altura é o peso da
+   classe no mapa (definida inline, em px, pelo mesmo registro que o renderizador lê) e cuja
+   cor é o token `--via-N` — inline, pela mesma função que pinta o canvas (R8.42). */
+.dot-via-sample {
+  width: 22px;
+  height: 2px;
+  border: 0;
+  border-radius: var(--raio-xs);
+  flex: none;
+}
+.dot-via-sample.dot-territorio-vazio { height: 0; border-top: 1px dashed var(--terr-sem-dado-borda); }
+.territorio-nota,
+.territorio-procedencia,
+.territorio-status {
+  margin: var(--esp-2) 0 0;
+  font-size: var(--tipo-2xs);
+  line-height: 1.45;
+  color: var(--texto-fraco);
+}
+.territorio-status[hidden],
+.territorio-nota[hidden] { display: none; }
+.territorio-nota { color: var(--texto-sec); }
+/* Fonte do indicador territorial no Ranking e no perfil (issue #153): o mesmo tom miúdo da
+   linha de posição — é procedência, não valor. */
+.pdad-rank-fonte,
+.pdad-profile-fonte { color: var(--texto-fraco); }
+.pdad-rank-fonte { margin-top: var(--esp-1); font-size: var(--tipo-2xs); line-height: 1.4; }
+.territorio-status[data-tone='erro'] { color: var(--texto-sec); }
+.territorio-procedencia a { color: var(--accent-text); text-decoration: none; }
+.territorio-procedencia a:hover { text-decoration: underline; }
 .polygon-type-row label { font-size: 12px; color: var(--muted); }
 
 /* Gaveta de filtros secundários (issue #124). O resumo tem a mesma anatomia de rótulo
@@ -1593,6 +1719,12 @@ p.precision.precision-exact {
 .marker-icon-legend.marker-icon-listing svg { width: 10px; height: 10px; }
 
 .leaflet-container { font: inherit; background: var(--superficie-hover); }
+/* O canvas das camadas territoriais fica ABAIXO dos panes SVG (issues #150–#152). O elemento
+   <svg> raiz de cada pane cobre a viewport inteira e, por padrão, recebe o clique nas áreas
+   vazias — o que impediria o evento de chegar ao canvas. Aqui ele deixa passar; os <path>
+   interativos continuam clicáveis pela regra própria do Leaflet (`path.leaflet-interactive`
+   com `pointer-events: auto`, mais específica que esta). */
+.leaflet-pane > svg { pointer-events: none; }
 
 /* Mobile ---------------------------------------------------------------- */
 
@@ -2530,6 +2662,28 @@ p.precision.precision-exact {
 
 .pdad-card-wide { grid-column: 1 / -1; }
 
+/* Base de dados — arquivos públicos de data/public (issue #149). Só tokens: tipo, espaço,
+   raio, superfície e texto; nenhuma cor literal. */
+.publico-lista { display: grid; gap: var(--esp-3); margin-top: var(--esp-4); }
+.publico-card { padding: var(--esp-4); background: var(--superficie-elevada); }
+.publico-card .pdad-card-titulo { font-size: var(--tipo-md); }
+.publico-card .mono { margin: var(--esp-1) 0 0; }
+.publico-dl {
+  display: grid;
+  grid-template-columns: minmax(96px, 160px) minmax(0, 1fr);
+  gap: var(--esp-1) var(--esp-3);
+  margin: var(--esp-3) 0 0;
+  font-size: var(--tipo-sm);
+  line-height: 1.5;
+  color: var(--texto-sec);
+}
+.publico-dl dt { margin: 0; color: var(--texto-fraco); }
+.publico-dl dd { margin: 0; min-width: 0; overflow-wrap: anywhere; }
+.publico-dl a { color: var(--accent-text); text-decoration: none; }
+.publico-dl a:hover { text-decoration: underline; }
+.publico-cabecalho:empty { display: none; }
+.publico-arquivos { margin: 0; padding: 0; list-style: none; font-family: var(--font-mono); font-size: var(--tipo-xs); }
+
 /* Gráfico de colunas (`age`) e colunas+linha acumulada (`ordline`). */
 .pdad-cols-svg, .pdad-ord-svg { display: block; width: 100%; height: auto; }
 .pdad-col-val, .pdad-ord-val {
@@ -3071,6 +3225,9 @@ p.precision.precision-exact {
 }
 
 @media (max-width: 640px) {
+  /* Arquivos públicos (issue #149): rótulo e valor empilhados, uma coluna só. */
+  .publico-dl { grid-template-columns: minmax(0, 1fr); }
+
   /* O trilho vira faixa horizontal no topo. Aqui o rótulo VOLTA: numa faixa que rola na
      horizontal cabe texto, e dois ícones sozinhos numa barra larga não dizem o que são. */
   .app { grid-template-columns: minmax(0, 1fr); }

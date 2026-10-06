@@ -1,0 +1,28 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://rafaleandrog.github.io/inteligencia-real-estate/data/public/schemas/jobs_hex.properties.schema.json",
+  "title": "jobs_hex — propriedades de cada hexágono H3 (Ipea AOP)",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["h3_index", "year", "jobs_total", "jobs_low", "jobs_mid", "jobs_high", "pop_total", "ra_geo_id", "class_jobs_total", "quality_flags"],
+  "properties": {
+    "h3_index": { "type": "string", "pattern": "^[0-9a-f]{15}$" },
+    "h3_parent_r8": { "type": "string", "pattern": "^[0-9a-f]{15}$" },
+    "year": { "type": "integer" },
+    "jobs_total": { "type": ["integer", "null"], "minimum": 0 },
+    "jobs_low": { "type": ["integer", "null"], "minimum": 0 },
+    "jobs_mid": { "type": ["integer", "null"], "minimum": 0 },
+    "jobs_high": { "type": ["integer", "null"], "minimum": 0 },
+    "jobs_total_2017": { "type": ["integer", "null"], "minimum": 0 },
+    "pop_total": { "type": ["integer", "null"], "minimum": 0 },
+    "income_avg_brl": { "type": ["number", "null"] },
+    "income_decile": { "type": ["integer", "null"], "minimum": 1, "maximum": 10 },
+    "ra_geo_id": { "type": ["string", "null"], "pattern": "^RA_[0-9]{2}$" },
+    "class_jobs_total": { "type": ["integer", "null"], "minimum": 0, "maximum": 9 },
+    "class_jobs_low": { "type": ["integer", "null"], "minimum": 0, "maximum": 9 },
+    "class_jobs_mid": { "type": ["integer", "null"], "minimum": 0, "maximum": 9 },
+    "class_jobs_high": { "type": ["integer", "null"], "minimum": 0, "maximum": 9 },
+    "hexes": { "type": "integer", "minimum": 1 },
+    "quality_flags": { "type": "array", "items": { "enum": ["aop_population_2010_based", "ra_unassigned", "hex_missing_2017", "partial_children"] } }
+  }
+}

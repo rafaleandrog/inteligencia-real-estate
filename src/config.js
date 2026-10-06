@@ -44,6 +44,17 @@ window.APP_CONFIG = {
   /** Caminho do dataset de demonstração. Relativo, para funcionar no GitHub Pages. */
   demoUrl: './data/demo.json',
 
+  /**
+   * Arquivos públicos derivados (issue #149, R2.7): a pasta `data/public/` que o pipeline
+   * (`pipeline/`) regenera e o GitHub Pages serve ao lado desta página. Relativo, como
+   * `demoUrl`, e da MESMA origem por construção — o carregador recusa outra origem. O site
+   * lê `manifest.json` primeiro e só baixa uma camada quando alguém a liga. Ausência da pasta
+   * ou do manifest é aviso, nunca erro (R2.5): as camadas territoriais ficam desligadas com o
+   * motivo escrito, e o resto do site não muda.
+   */
+  publicDataUrl: './data/public/',
+  publicManifestFile: 'manifest.json',
+
   /** Abas obrigatórias. Ausência de qualquer uma é erro (R2.5). */
   sheets: {
     listings: 'LISTINGS',
