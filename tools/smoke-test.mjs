@@ -3247,7 +3247,8 @@ ranking.visivel && ranking.total >= 14
 ranking.empregos && ranking.empregos.valor === '578,0' && /2ª de 2 RAs/.test(ranking.empregos.pos) && /Ipea/.test(ranking.empregos.fonte) && /÷/.test(ranking.empregos.title)
   ? pass(`empregos por mil moradores da ${ranking.ra}: ${ranking.empregos.valor}, ${ranking.empregos.pos}, fonte e fórmula no cartão`)
   : fail('cartão de empregos: ' + JSON.stringify(ranking.empregos));
-ranking.crescimento && ranking.crescimento.valor === '28,9%' && /IBGE/.test(ranking.crescimento.fonte)
+// 32,9 % = (186 − 140) ÷ 140 na fixture: a célula de 1 km inteira de 2010 conta uma vez (#167).
+ranking.crescimento && ranking.crescimento.valor === '32,9%' && /IBGE/.test(ranking.crescimento.fonte)
   ? pass('crescimento de domicílios em fração decimal formatada como percentual, com a fonte IBGE')
   : fail('cartão de crescimento: ' + JSON.stringify(ranking.crescimento));
 ranking.centralidade && /^0,\d{3}$/.test(ranking.centralidade.valor) && /OpenStreetMap/.test(ranking.centralidade.fonte)
