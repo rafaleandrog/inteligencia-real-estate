@@ -54,20 +54,22 @@ censo_2010 = { name = "IBGE — Grade Estatística, Censo Demográfico 2010", ur
 censo_2022 = { name = "IBGE — Grade Estatística, Censo Demográfico 2022", url = "https://geoftp.ibge.gov.br/recortes_para_fins_estatisticos/grade_estatistica/censo_2022/", license = "Dados abertos do IBGE — reprodução permitida com citação da fonte", attribution_pt = "Fonte: IBGE, Censo Demográfico 2022 — Grade Estatística." }
 
 [jobs_hex]
-# O pacote aopdata resolve os arquivos por este índice. Na primeira execução real (2026-10-06) a URL
-# respondeu 404 (#164): as candidatas abaixo são tentadas em ordem e, se nenhuma responder, o pipeline
-# sonda as páginas de `probe_urls` e falha listando os links de dados que encontrou — o layout real
-# aparece no log para a próxima correção.
-metadata_url = "https://www.ipea.gov.br/acessooportunidades/dados/metadata.csv"
+# O pacote aopdata resolve os arquivos por este índice, que ele baixa do asset de release `v1.0.0`
+# no GitHub (r-package/R/download_metadata.R; achado do Codex na PR #165 — a organização `ipeaGIT`
+# redireciona para `ipea`). A URL antiga do Ipea respondeu 404 na primeira execução real (2026-10-06,
+# #164) e fica como candidata: as URLs são tentadas em ordem e, se nenhuma responder, o pipeline
+# sonda as páginas de `probe_urls` e falha listando os links de dados que encontrou.
+metadata_url = "https://github.com/ipea/aopdata/releases/download/v1.0.0/metadata.csv"
 metadata_fallback_urls = [
+  "https://www.ipea.gov.br/acessooportunidades/dados/metadata.csv",
   "http://www.ipea.gov.br/acessooportunidades/dados/metadata.csv",
-  "https://github.com/ipeaGIT/aopdata/releases/download/v1.1.0/metadata.csv",
-  "https://raw.githubusercontent.com/ipeaGIT/aopdata/master/data-raw/metadata.csv",
+  "https://raw.githubusercontent.com/ipea/aopdata/main/data-raw/metadata.csv",
 ]
 probe_urls = [
+  "https://api.github.com/repos/ipea/aopdata/releases/tags/v1.0.0",
+  "https://api.github.com/repos/ipea/aopdata/releases/latest",
   "https://www.ipea.gov.br/acessooportunidades/dados/",
   "https://www.ipea.gov.br/acessooportunidades/",
-  "https://api.github.com/repos/ipeaGIT/aopdata/releases/latest",
 ]
 city = "bra"
 year = 2019
