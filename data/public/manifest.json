@@ -1,9 +1,2387 @@
 {
   "attribution_pt": "Contém dados do IBGE, do Ipea (Projeto Acesso a Oportunidades), do GeoPortal/SEDUH-DF e © OpenStreetMap contributors (ODbL).",
-  "config_sha256": "cc8b9b6227fb3155b7c4c5f19dac50f6e45c15e7000dbfa24a2a862800cb555e",
-  "datasets": [],
-  "generated_at": "2026-10-05T16:47:15Z",
+  "config_sha256": "c30dee95a7979c015adb2ce95e5955bcb1f52552b6fe6d22cbe2dd2264c267d7",
+  "datasets": [
+    {
+      "bbox": [
+        -48.30469,
+        -16.06275,
+        -47.29955,
+        -15.47647
+      ],
+      "class_breaks": {
+        "households_delta": {
+          "breaks": [
+            5.0,
+            10.0,
+            20.0,
+            40.0,
+            80.0
+          ],
+          "classes": 6,
+          "method": "fixed",
+          "n": 23587
+        },
+        "households_delta_per_km2": {
+          "breaks": [
+            100.0,
+            350.0,
+            750.0,
+            1000.0,
+            2000.0
+          ],
+          "classes": 6,
+          "method": "fixed",
+          "n": 23587
+        }
+      },
+      "content_hash": "ac3e4c761e9260b7d005c65d9e818ff61967d3d57f849a4988321230d6759009",
+      "counts": {
+        "cells_2010": 430672,
+        "cells_2022": 489160,
+        "dropped_empty_both_years": 28810,
+        "dropped_outside_bbox": 436229,
+        "overview_cells": 4813,
+        "published": 23587,
+        "quadrants_2010": 1,
+        "quadrants_2022": 1,
+        "ra_unassigned": 3794,
+        "resolution_changed": 192,
+        "suppressed_2010": 0,
+        "suppressed_2022": 0
+      },
+      "crs": "EPSG:4326",
+      "files": [
+        {
+          "bbox": [
+            -48.08914,
+            -15.85981,
+            -47.79926,
+            -15.68475
+          ],
+          "budget_bytes": 6000000,
+          "bytes": 558091,
+          "features": 1041,
+          "path": "households_grid/detail_200m/RA_01.json",
+          "role": "detail_shard",
+          "sha256": "4ae58f2a10f025d163619a89d579c8a6069a7ff8a825297ad2c442e87c270b2d",
+          "shard_key": "ra_geo_id",
+          "shard_value": "RA_01",
+          "zoom_min": 12
+        },
+        {
+          "bbox": [
+            -48.26885,
+            -16.05097,
+            -48.02146,
+            -15.9459
+          ],
+          "budget_bytes": 6000000,
+          "bytes": 330677,
+          "features": 613,
+          "path": "households_grid/detail_200m/RA_02.json",
+          "role": "detail_shard",
+          "sha256": "b8e40794d7804796335992b4f7b18a6a7011e76a8ca335e934d6b6d50fe94446",
+          "shard_key": "ra_geo_id",
+          "shard_value": "RA_02",
+          "zoom_min": 12
+        },
+        {
+          "bbox": [
+            -48.11137,
+            -15.87553,
+            -48.02642,
+            -15.7545
+          ],
+          "budget_bytes": 6000000,
+          "bytes": 398259,
+          "features": 741,
+          "path": "households_grid/detail_200m/RA_03.json",
+          "role": "detail_shard",
+          "sha256": "8c8544c1190dbaf3dce488428ecfd93433990dbce36a53473845189f1daf2d18",
+          "shard_key": "ra_geo_id",
+          "shard_value": "RA_03",
+          "zoom_min": 12
+        },
+        {
+          "bbox": [
+            -48.24052,
+            -15.76321,
+            -48.0889,
+            -15.5916
+          ],
+          "budget_bytes": 6000000,
+          "bytes": 364144,
+          "features": 665,
+          "path": "households_grid/detail_200m/RA_04.json",
+          "role": "detail_shard",
+          "sha256": "51ba7e8adee4738b48f961730db36fbffa96621b410c62cf75f9c2f54e04efe4",
+          "shard_key": "ra_geo_id",
+          "shard_value": "RA_04",
+          "zoom_min": 12
+        },
+        {
+          "bbox": [
+            -47.8584,
+            -15.72414,
+            -47.73469,
+            -15.57544
+          ],
+          "budget_bytes": 6000000,
+          "bytes": 368638,
+          "features": 690,
+          "path": "households_grid/detail_200m/RA_05.json",
+          "role": "detail_shard",
+          "sha256": "0945d1a1cf5d4400a47c76c8b0cc076b5ec255b13bb806174ab02b1b91ffe596",
+          "shard_key": "ra_geo_id",
+          "shard_value": "RA_05",
+          "zoom_min": 12
+        },
+        {
+          "bbox": [
+            -47.76562,
+            -15.76235,
+            -47.35412,
+            -15.50191
+          ],
+          "budget_bytes": 6000000,
+          "bytes": 561176,
+          "features": 1047,
+          "path": "households_grid/detail_200m/RA_06.json",
+          "role": "detail_shard",
+          "sha256": "9f1b9b944f0cac85a7f1481772057452e0dcca87d470d9bf619ed8e47ebff7b2",
+          "shard_key": "ra_geo_id",
+          "shard_value": "RA_06",
+          "zoom_min": 12
+        },
+        {
+          "bbox": [
+            -47.8133,
+            -16.05076,
+            -47.53369,
+            -15.74204
+          ],
+          "budget_bytes": 6000000,
+          "bytes": 336724,
+          "features": 634,
+          "path": "households_grid/detail_200m/RA_07.json",
+          "role": "detail_shard",
+          "sha256": "a5205c633a2d99aade7574a5f8115e3b637cbf0531ca8df347fc46e816ed6b49",
+          "shard_key": "ra_geo_id",
+          "shard_value": "RA_07",
+          "zoom_min": 12
+        },
+        {
+          "bbox": [
+            -47.99974,
+            -15.88334,
+            -47.95643,
+            -15.86152
+          ],
+          "budget_bytes": 6000000,
+          "bytes": 54686,
+          "features": 102,
+          "path": "households_grid/detail_200m/RA_08.json",
+          "role": "detail_shard",
+          "sha256": "b2e140cc118d8ef49f0b0b0364731e23b47501f8ec949e675982561794ab2a59",
+          "shard_key": "ra_geo_id",
+          "shard_value": "RA_08",
+          "zoom_min": 12
+        },
+        {
+          "bbox": [
+            -48.27677,
+            -15.9321,
+            -48.08771,
+            -15.77206
+          ],
+          "budget_bytes": 6000000,
+          "bytes": 550769,
+          "features": 1015,
+          "path": "households_grid/detail_200m/RA_09.json",
+          "role": "detail_shard",
+          "sha256": "10225469ff02f209f9f9c442e6fc05669788bd708dc2ae745e1f053db9885b96",
+          "shard_key": "ra_geo_id",
+          "shard_value": "RA_09",
+          "zoom_min": 12
+        },
+        {
+          "bbox": [
+            -48.00494,
+            -15.86346,
+            -47.95162,
+            -15.79956
+          ],
+          "budget_bytes": 6000000,
+          "bytes": 233912,
+          "features": 436,
+          "path": "households_grid/detail_200m/RA_10.json",
+          "role": "detail_shard",
+          "sha256": "8a5e422c6635a5e14e35da441eff6957c8d222a99f840827e01b631849de4c4c",
+          "shard_key": "ra_geo_id",
+          "shard_value": "RA_10",
+          "zoom_min": 12
+        },
+        {
+          "bbox": [
+            -47.94664,
+            -15.80585,
+            -47.92995,
+            -15.77891
+          ],
+          "budget_bytes": 6000000,
+          "bytes": 39892,
+          "features": 74,
+          "path": "households_grid/detail_200m/RA_11.json",
+          "role": "detail_shard",
+          "sha256": "c5ce5a5af51a45c76b05c81435febfa27b0367805b5b6a787cb33fc8e7d1e34c",
+          "shard_key": "ra_geo_id",
+          "shard_value": "RA_11",
+          "zoom_min": 12
+        },
+        {
+          "bbox": [
+            -48.25588,
+            -15.93642,
+            -48.03781,
+            -15.84431
+          ],
+          "budget_bytes": 6000000,
+          "bytes": 449305,
+          "features": 838,
+          "path": "households_grid/detail_200m/RA_12.json",
+          "role": "detail_shard",
+          "sha256": "db6de8ddcab40c019ad9517f001b54fcb9704aa6c0cb2ab7ae718ffbd294077d",
+          "shard_key": "ra_geo_id",
+          "shard_value": "RA_12",
+          "zoom_min": 12
+        },
+        {
+          "bbox": [
+            -48.05299,
+            -16.05108,
+            -47.87676,
+            -15.96903
+          ],
+          "budget_bytes": 6000000,
+          "bytes": 326685,
+          "features": 610,
+          "path": "households_grid/detail_200m/RA_13.json",
+          "role": "detail_shard",
+          "sha256": "e7e044217c8ce0674136e9f88b729469f829243de7e0974e7289057ab69ae9b1",
+          "shard_key": "ra_geo_id",
+          "shard_value": "RA_13",
+          "zoom_min": 12
+        },
+        {
+          "bbox": [
+            -47.80722,
+            -16.03037,
+            -47.72637,
+            -15.87588
+          ],
+          "budget_bytes": 6000000,
+          "bytes": 398862,
+          "features": 736,
+          "path": "households_grid/detail_200m/RA_14.json",
+          "role": "detail_shard",
+          "sha256": "3627277c016439b512367955fcb2a9792a2c7a3947e52502bf583f9599aa86ab",
+          "shard_key": "ra_geo_id",
+          "shard_value": "RA_14",
+          "zoom_min": 12
+        },
+        {
+          "bbox": [
+            -48.26086,
+            -15.96748,
+            -48.03789,
+            -15.88324
+          ],
+          "budget_bytes": 6000000,
+          "bytes": 345470,
+          "features": 644,
+          "path": "households_grid/detail_200m/RA_15.json",
+          "role": "detail_shard",
+          "sha256": "738afcba62fa4998725a4357c386f1e6b4d989fc86e4fbbb35f443c66a3c8c16",
+          "shard_key": "ra_geo_id",
+          "shard_value": "RA_15",
+          "zoom_min": 12
+        },
+        {
+          "bbox": [
+            -47.95611,
+            -15.89983,
+            -47.78746,
+            -15.79765
+          ],
+          "budget_bytes": 6000000,
+          "bytes": 501573,
+          "features": 942,
+          "path": "households_grid/detail_200m/RA_16.json",
+          "role": "detail_shard",
+          "sha256": "54e4065792e36082cc247a6fc8a24eea98322c804f437bb3184a142cc9b66843",
+          "shard_key": "ra_geo_id",
+          "shard_value": "RA_16",
+          "zoom_min": 12
+        },
+        {
+          "bbox": [
+            -48.0395,
+            -15.92095,
+            -47.9807,
+            -15.87383
+          ],
+          "budget_bytes": 6000000,
+          "bytes": 104461,
+          "features": 194,
+          "path": "households_grid/detail_200m/RA_17.json",
+          "role": "detail_shard",
+          "sha256": "cb76e2d49371775fbc1f6e8d4958b2686a00fd7edd8bf357b426b9896ca0c903",
+          "shard_key": "ra_geo_id",
+          "shard_value": "RA_17",
+          "zoom_min": 12
+        },
+        {
+          "bbox": [
+            -47.91844,
+            -15.79048,
+            -47.78481,
+            -15.68328
+          ],
+          "budget_bytes": 6000000,
+          "bytes": 703665,
+          "features": 1324,
+          "path": "households_grid/detail_200m/RA_18.json",
+          "role": "detail_shard",
+          "sha256": "7435ca1fd24618e8a9c945815b907083ff3e32ab37ba061521dd01c086f5aa32",
+          "shard_key": "ra_geo_id",
+          "shard_value": "RA_18",
+          "zoom_min": 12
+        },
+        {
+          "bbox": [
+            -47.95833,
+            -15.87404,
+            -47.93386,
+            -15.84528
+          ],
+          "budget_bytes": 6000000,
+          "bytes": 51332,
+          "features": 96,
+          "path": "households_grid/detail_200m/RA_19.json",
+          "role": "detail_shard",
+          "sha256": "31e5277268836e96763bd3503fa4a70083098602b236f593b0fa71501301422e",
+          "shard_key": "ra_geo_id",
+          "shard_value": "RA_19",
+          "zoom_min": 12
+        },
+        {
+          "bbox": [
+            -48.04804,
+            -15.85064,
+            -48.00293,
+            -15.81433
+          ],
+          "budget_bytes": 6000000,
+          "bytes": 90435,
+          "features": 168,
+          "path": "households_grid/detail_200m/RA_20.json",
+          "role": "detail_shard",
+          "sha256": "f0f36116ade0e5dc56004ec14dfe849617bc42ea50e8383794932fcef233ef42",
+          "shard_key": "ra_geo_id",
+          "shard_value": "RA_20",
+          "zoom_min": 12
+        },
+        {
+          "bbox": [
+            -48.05826,
+            -15.96456,
+            -47.98342,
+            -15.87394
+          ],
+          "budget_bytes": 6000000,
+          "bytes": 220118,
+          "features": 412,
+          "path": "households_grid/detail_200m/RA_21.json",
+          "role": "detail_shard",
+          "sha256": "d4acd2a3decbaf500f9e58152b344a0b937de2f7be541f023d66d6180a2fb13b",
+          "shard_key": "ra_geo_id",
+          "shard_value": "RA_21",
+          "zoom_min": 12
+        },
+        {
+          "bbox": [
+            -47.94841,
+            -15.81132,
+            -47.90894,
+            -15.7824
+          ],
+          "budget_bytes": 6000000,
+          "bytes": 63704,
+          "features": 118,
+          "path": "households_grid/detail_200m/RA_22.json",
+          "role": "detail_shard",
+          "sha256": "1970c2be25484f6c12643984330a62cc267bcb959f353620ce28b690d434fccc",
+          "shard_key": "ra_geo_id",
+          "shard_value": "RA_22",
+          "zoom_min": 12
+        },
+        {
+          "bbox": [
+            -47.88643,
+            -15.71882,
+            -47.86904,
+            -15.70301
+          ],
+          "budget_bytes": 6000000,
+          "bytes": 16644,
+          "features": 31,
+          "path": "households_grid/detail_200m/RA_23.json",
+          "role": "detail_shard",
+          "sha256": "55b2a52b0e3c814e71205a30e3ea61fc852e88f5c383d6ae79cd9ec30090e5ed",
+          "shard_key": "ra_geo_id",
+          "shard_value": "RA_23",
+          "zoom_min": 12
+        },
+        {
+          "bbox": [
+            -48.01675,
+            -15.97764,
+            -47.90491,
+            -15.81782
+          ],
+          "budget_bytes": 6000000,
+          "bytes": 616603,
+          "features": 1160,
+          "path": "households_grid/detail_200m/RA_24.json",
+          "role": "detail_shard",
+          "sha256": "48462f96af2a29fe3a79acfec107c90b11b4fed726725bf14023432b4fcdd41e",
+          "shard_key": "ra_geo_id",
+          "shard_value": "RA_24",
+          "zoom_min": 12
+        },
+        {
+          "bbox": [
+            -48.00616,
+            -15.79232,
+            -47.96761,
+            -15.75541
+          ],
+          "budget_bytes": 6000000,
+          "bytes": 59508,
+          "features": 111,
+          "path": "households_grid/detail_200m/RA_25.json",
+          "role": "detail_shard",
+          "sha256": "02a9b2bb4bc68bc1aa033ae5faa328bc154d2ee0b6e3f38cd94b154bfabf5ed4",
+          "shard_key": "ra_geo_id",
+          "shard_value": "RA_25",
+          "zoom_min": 12
+        },
+        {
+          "bbox": [
+            -47.89453,
+            -15.68479,
+            -47.81165,
+            -15.59246
+          ],
+          "budget_bytes": 6000000,
+          "bytes": 295449,
+          "features": 551,
+          "path": "households_grid/detail_200m/RA_26.json",
+          "role": "detail_shard",
+          "sha256": "7742d0e2b35d31ac89e68cc6324308a17b9ef3ccc04dea8d2601c00ee619ca66",
+          "shard_key": "ra_geo_id",
+          "shard_value": "RA_26",
+          "zoom_min": 12
+        },
+        {
+          "bbox": [
+            -47.88968,
+            -16.04994,
+            -47.7418,
+            -15.79888
+          ],
+          "budget_bytes": 6000000,
+          "bytes": 794711,
+          "features": 1497,
+          "path": "households_grid/detail_200m/RA_27.json",
+          "role": "detail_shard",
+          "sha256": "053a80614b58cb20ab8b6680913e5ac5ccb54d4dac0e6162821dafbbb1fa7c49",
+          "shard_key": "ra_geo_id",
+          "shard_value": "RA_27",
+          "zoom_min": 12
+        },
+        {
+          "bbox": [
+            -47.79082,
+            -15.76246,
+            -47.70389,
+            -15.71994
+          ],
+          "budget_bytes": 6000000,
+          "bytes": 212957,
+          "features": 395,
+          "path": "households_grid/detail_200m/RA_28.json",
+          "role": "detail_shard",
+          "sha256": "043b1043c57f7909fe9bd045312f809d5524e45d64318837ef01a2413553de62",
+          "shard_key": "ra_geo_id",
+          "shard_value": "RA_28",
+          "zoom_min": 12
+        },
+        {
+          "bbox": [
+            -47.99203,
+            -15.80973,
+            -47.92132,
+            -15.74483
+          ],
+          "budget_bytes": 6000000,
+          "bytes": 72791,
+          "features": 137,
+          "path": "households_grid/detail_200m/RA_29.json",
+          "role": "detail_shard",
+          "sha256": "6783c52b09712bb81170b9d7efd95efb876819b7284f112cfb5227400be7b05b",
+          "shard_key": "ra_geo_id",
+          "shard_value": "RA_29",
+          "zoom_min": 12
+        },
+        {
+          "bbox": [
+            -48.05628,
+            -15.83125,
+            -47.99376,
+            -15.77222
+          ],
+          "budget_bytes": 6000000,
+          "bytes": 310933,
+          "features": 580,
+          "path": "households_grid/detail_200m/RA_30.json",
+          "role": "detail_shard",
+          "sha256": "aa1b731f848ff15268a58422bf603e6e1543f8001f1c042691ed5494e44e412b",
+          "shard_key": "ra_geo_id",
+          "shard_value": "RA_30",
+          "zoom_min": 12
+        },
+        {
+          "bbox": [
+            -47.88903,
+            -15.61374,
+            -47.84036,
+            -15.56835
+          ],
+          "budget_bytes": 6000000,
+          "bytes": 103232,
+          "features": 194,
+          "path": "households_grid/detail_200m/RA_31.json",
+          "role": "detail_shard",
+          "sha256": "730390594a9dd691865f71b1a900a972c110a8888b10eff70cdf7d932f06739c",
+          "shard_key": "ra_geo_id",
+          "shard_value": "RA_31",
+          "zoom_min": 12
+        },
+        {
+          "bbox": [
+            -48.18299,
+            -15.86668,
+            -48.10796,
+            -15.79606
+          ],
+          "budget_bytes": 6000000,
+          "bytes": 242201,
+          "features": 451,
+          "path": "households_grid/detail_200m/RA_32.json",
+          "role": "detail_shard",
+          "sha256": "bc0323f2d0e0ea512687d7ec40dbaa8558736efd915fadb62504af038b8d2dd2",
+          "shard_key": "ra_geo_id",
+          "shard_value": "RA_32",
+          "zoom_min": 12
+        },
+        {
+          "bbox": [
+            -48.03061,
+            -15.87876,
+            -47.98674,
+            -15.84119
+          ],
+          "budget_bytes": 6000000,
+          "bytes": 167859,
+          "features": 313,
+          "path": "households_grid/detail_200m/RA_33.json",
+          "role": "detail_shard",
+          "sha256": "60f135a1b5283729d7252ac2b68d520ec00808a445fbcf68c096040b0fd613af",
+          "shard_key": "ra_geo_id",
+          "shard_value": "RA_33",
+          "zoom_min": 12
+        },
+        {
+          "bbox": [
+            -47.67049,
+            -15.67336,
+            -47.59898,
+            -15.6221
+          ],
+          "budget_bytes": 6000000,
+          "bytes": 204380,
+          "features": 383,
+          "path": "households_grid/detail_200m/RA_34.json",
+          "role": "detail_shard",
+          "sha256": "c580612be21f18d1a11e401a32f5ad4a512b2c950c1aa5ab67fe68a9275f8222",
+          "shard_key": "ra_geo_id",
+          "shard_value": "RA_34",
+          "zoom_min": 12
+        },
+        {
+          "bbox": [
+            -48.25379,
+            -15.95474,
+            -48.21777,
+            -15.93133
+          ],
+          "budget_bytes": 6000000,
+          "bytes": 67286,
+          "features": 126,
+          "path": "households_grid/detail_200m/RA_35.json",
+          "role": "detail_shard",
+          "sha256": "3a1394f73c0d81d326a08f37ec34fd725662b6999312f3146f585ef0f1830c4e",
+          "shard_key": "ra_geo_id",
+          "shard_value": "RA_35",
+          "zoom_min": 12
+        },
+        {
+          "bbox": [
+            -48.04602,
+            -15.78769,
+            -48.0037,
+            -15.75199
+          ],
+          "budget_bytes": 6000000,
+          "bytes": 172205,
+          "features": 311,
+          "path": "households_grid/detail_200m/RA_36.json",
+          "role": "detail_shard",
+          "sha256": "d24230d81f96469cd4268cfea5e6875406664cd35a4e2a74b8f7fa7bdae099cd",
+          "shard_key": "ra_geo_id",
+          "shard_value": "RA_36",
+          "zoom_min": 12
+        },
+        {
+          "bbox": [
+            -48.09679,
+            -16.00702,
+            -48.02416,
+            -15.93746
+          ],
+          "budget_bytes": 6000000,
+          "bytes": 348564,
+          "features": 644,
+          "path": "households_grid/detail_200m/RA_37.json",
+          "role": "detail_shard",
+          "sha256": "10bbc0a2151fa4dbea1711ec113ad15beda5439ba340d39c468a499f9b1fb43f",
+          "shard_key": "ra_geo_id",
+          "shard_value": "RA_37",
+          "zoom_min": 12
+        },
+        {
+          "bbox": [
+            -48.30094,
+            -16.06087,
+            -47.29991,
+            -15.47911
+          ],
+          "budget_bytes": 6000000,
+          "bytes": 1961376,
+          "features": 3563,
+          "path": "households_grid/detail_200m/SEM_RA.json",
+          "role": "detail_shard",
+          "sha256": "c970a6e0718ffc59fe6a8f13bbb65dd30a6bd1508e35d0224f3e6346c5dac713",
+          "shard_key": "ra_geo_id",
+          "shard_value": "SEM_RA",
+          "zoom_min": 12
+        },
+        {
+          "bbox": [
+            -48.30469,
+            -16.06275,
+            -47.29955,
+            -15.47647
+          ],
+          "budget_bytes": 5000000,
+          "bytes": 2957601,
+          "features": 4813,
+          "path": "households_grid/overview_1km.json",
+          "role": "overview",
+          "sha256": "b8ac515db8ab2a0d2dd310ac2b0486d00ef9d2c81f4678e841b9acdacb69332e"
+        }
+      ],
+      "generated_at": "2026-10-06T05:28:52Z",
+      "id": "households_grid",
+      "method_pt": "As mesmas células nas duas edições (join por ID_UNICO). Colunas de origem — 2010: população POP, domicílios DOM_OCU, pai nome_1KM; 2022: população TOTAL, domicílios TOTAL_DOM, pai nome_1km. households_delta = dom_ocu_2022 − dom_ocu_2010; por km² pela área nominal da célula; variação relativa é fração decimal e é nula quando 2010 é nulo ou zero. Overview de 1 km com somas estritas (filho nulo → soma nula + partial_children). Célula sem domicílio nem população nos dois anos é omitida e contada (a de 200 m só do detalhe: segue somada no pai). Valor suprimido vira nulo + flag, nunca é saturado. RA pelo centroide da célula. Célula com centroide fora do bbox do projeto é descartada e contada (436229 em dropped_outside_bbox): o quadrante da Grade cobre muito mais que o DF. Célula de 1 km inteira numa edição e subdividida em 200 m na outra vira UMA feição no overview, com o valor de cada edição vindo da listagem daquela edição (flag resolution_changed; children_2010/children_2022 dizem de onde veio cada ano).",
+      "notes_pt": "A primeira classe (até 100 dom./km²) inclui perda e zero. 'Omitida' (sem domicílio nem população nos dois anos) não é 'sem dado'; célula só com população (domicílios coletivos) é publicada com domicílios zero. Domicílios: em 2010, DOM_OCU é 'domicílios ocupados' (rótulo da Grade 2010); em 2022, TOTAL_DOM são domicílios ocupados particulares e coletivos (notas metodológicas da Grade 2022). Até a nota de 2010 confirmar o mesmo universo, a variação 2010→2022 deve ser lida com essa ressalva. Quadrantes da Grade resolvidos pelo bbox do projeto nesta execução (2010: grade_id45; 2022: grade_id45).",
+      "quality_flags": [
+        "dwelling_universe_to_confirm",
+        "ra_unassigned",
+        "resolution_changed"
+      ],
+      "ra_assignment_method": "centroid_within_ra",
+      "schema": "schemas/households_grid.properties.schema.json",
+      "sources": [
+        {
+          "attribution_pt": "Fonte: IBGE, Censo Demográfico 2010 — Grade Estatística.",
+          "files": [
+            "grade_id45.zip"
+          ],
+          "license": "Dados abertos do IBGE — reprodução permitida com citação da fonte",
+          "name": "IBGE — Grade Estatística, Censo Demográfico 2010",
+          "retrieved_at": "2026-10-06T05:22:54Z",
+          "url": "https://geoftp.ibge.gov.br/recortes_para_fins_estatisticos/grade_estatistica/censo_2010/"
+        },
+        {
+          "attribution_pt": "Fonte: IBGE, Censo Demográfico 2022 — Grade Estatística.",
+          "files": [
+            "grade_id45.zip"
+          ],
+          "license": "Dados abertos do IBGE — reprodução permitida com citação da fonte",
+          "name": "IBGE — Grade Estatística, Censo Demográfico 2022",
+          "retrieved_at": "2026-10-06T05:26:13Z",
+          "url": "https://geoftp.ibge.gov.br/recortes_para_fins_estatisticos/grade_estatistica/censo_2022/"
+        }
+      ],
+      "title_pt": "Domicílios ocupados por célula da Grade Estatística, 2010→2022 (IBGE)",
+      "version": "2026-10-06",
+      "years": [
+        2010,
+        2022
+      ]
+    },
+    {
+      "bbox": [
+        -48.28656,
+        -16.05873,
+        -47.30811,
+        -15.4918
+      ],
+      "class_breaks": {
+        "jobs_high": {
+          "breaks": [
+            25.0,
+            50.0,
+            100.0,
+            200.0,
+            400.0,
+            600.0,
+            800.0,
+            1000.0,
+            2000.0
+          ],
+          "classes": 10,
+          "method": "fixed",
+          "n": 3649,
+          "zero_is_absent": true
+        },
+        "jobs_low": {
+          "breaks": [
+            25.0,
+            50.0,
+            100.0,
+            200.0,
+            400.0,
+            600.0,
+            800.0,
+            1000.0,
+            2000.0
+          ],
+          "classes": 10,
+          "method": "fixed",
+          "n": 3649,
+          "zero_is_absent": true
+        },
+        "jobs_mid": {
+          "breaks": [
+            25.0,
+            50.0,
+            100.0,
+            200.0,
+            400.0,
+            600.0,
+            800.0,
+            1000.0,
+            2000.0
+          ],
+          "classes": 10,
+          "method": "fixed",
+          "n": 3649,
+          "zero_is_absent": true
+        },
+        "jobs_total": {
+          "breaks": [
+            75.0,
+            125.0,
+            250.0,
+            500.0,
+            1000.0,
+            1500.0,
+            2000.0,
+            2500.0,
+            5000.0
+          ],
+          "classes": 10,
+          "method": "fixed",
+          "n": 3649,
+          "zero_is_absent": true
+        }
+      },
+      "content_hash": "5ef5dcdbf7ba1e49854743ad6f7204b5030a462d183f5335e035739d9586f72d",
+      "counts": {
+        "hexes_source": 49991,
+        "omitted_zero_jobs": 46342,
+        "overview_hexes": 4104,
+        "published": 3649,
+        "ra_unassigned": 5
+      },
+      "crs": "EPSG:4326",
+      "files": [
+        {
+          "bbox": [
+            -48.09151,
+            -15.8583,
+            -47.8045,
+            -15.67679
+          ],
+          "budget_bytes": 2000000,
+          "bytes": 272340,
+          "features": 442,
+          "path": "jobs_hex/detail_r9/RA_01.json",
+          "role": "detail_shard",
+          "sha256": "5a7ccbeeac9f810bd0ed9f44106ccb2989eff2a40ec20859d83738d3e23c00e5",
+          "shard_key": "ra_geo_id",
+          "shard_value": "RA_01",
+          "zoom_min": 12
+        },
+        {
+          "bbox": [
+            -48.17793,
+            -16.05083,
+            -48.02463,
+            -15.94668
+          ],
+          "budget_bytes": 2000000,
+          "bytes": 87885,
+          "features": 143,
+          "path": "jobs_hex/detail_r9/RA_02.json",
+          "role": "detail_shard",
+          "sha256": "265b9d8716c66b5a0dc0725841b018bbb542966005a743f812af2cab5989c6c3",
+          "shard_key": "ra_geo_id",
+          "shard_value": "RA_02",
+          "zoom_min": 12
+        },
+        {
+          "bbox": [
+            -48.113,
+            -15.87573,
+            -48.02376,
+            -15.78894
+          ],
+          "budget_bytes": 2000000,
+          "bytes": 138047,
+          "features": 224,
+          "path": "jobs_hex/detail_r9/RA_03.json",
+          "role": "detail_shard",
+          "sha256": "a15682ff07c0f89a7ffaa48a408bf86031da4d6b9be46e89363e6e636c3618cf",
+          "shard_key": "ra_geo_id",
+          "shard_value": "RA_03",
+          "zoom_min": 12
+        },
+        {
+          "bbox": [
+            -48.21839,
+            -15.75412,
+            -48.06478,
+            -15.53445
+          ],
+          "budget_bytes": 2000000,
+          "bytes": 49152,
+          "features": 80,
+          "path": "jobs_hex/detail_r9/RA_04.json",
+          "role": "detail_shard",
+          "sha256": "e7ad9fb7b310476b424dc9c08d287d6112231896c84a2f44ec4a3d923c6ec045",
+          "shard_key": "ra_geo_id",
+          "shard_value": "RA_04",
+          "zoom_min": 12
+        },
+        {
+          "bbox": [
+            -47.83881,
+            -15.70821,
+            -47.74673,
+            -15.52439
+          ],
+          "budget_bytes": 2000000,
+          "bytes": 82900,
+          "features": 135,
+          "path": "jobs_hex/detail_r9/RA_05.json",
+          "role": "detail_shard",
+          "sha256": "53144be6179a1df2964b0c91407bfdaefecaef0c57b2c49433c37815e1ede5f8",
+          "shard_key": "ra_geo_id",
+          "shard_value": "RA_05",
+          "zoom_min": 12
+        },
+        {
+          "bbox": [
+            -47.75891,
+            -15.87248,
+            -47.3496,
+            -15.5167
+          ],
+          "budget_bytes": 2000000,
+          "bytes": 111643,
+          "features": 182,
+          "path": "jobs_hex/detail_r9/RA_06.json",
+          "role": "detail_shard",
+          "sha256": "cf178acbfee94a2fa56ab97cf271606f249620fe0ac929f34bca7e1e92911abc",
+          "shard_key": "ra_geo_id",
+          "shard_value": "RA_06",
+          "zoom_min": 12
+        },
+        {
+          "bbox": [
+            -47.81377,
+            -16.0009,
+            -47.39132,
+            -15.73226
+          ],
+          "budget_bytes": 2000000,
+          "bytes": 37467,
+          "features": 61,
+          "path": "jobs_hex/detail_r9/RA_07.json",
+          "role": "detail_shard",
+          "sha256": "60bbbf122973243a7c641c44af6375b318c7badb0ed3e41c7167ad99895f25bf",
+          "shard_key": "ra_geo_id",
+          "shard_value": "RA_07",
+          "zoom_min": 12
+        },
+        {
+          "bbox": [
+            -48.00094,
+            -15.88534,
+            -47.95406,
+            -15.8511
+          ],
+          "budget_bytes": 2000000,
+          "bytes": 20358,
+          "features": 33,
+          "path": "jobs_hex/detail_r9/RA_08.json",
+          "role": "detail_shard",
+          "sha256": "f3ef29b1d06961adb0fdf763f530a5f8bba8de8666fbd693dbd69121c2609e9e",
+          "shard_key": "ra_geo_id",
+          "shard_value": "RA_08",
+          "zoom_min": 12
+        },
+        {
+          "bbox": [
+            -48.24934,
+            -15.89228,
+            -48.08886,
+            -15.77422
+          ],
+          "budget_bytes": 2000000,
+          "bytes": 157420,
+          "features": 256,
+          "path": "jobs_hex/detail_r9/RA_09.json",
+          "role": "detail_shard",
+          "sha256": "8bd228ad0d822e9fff40730bf000982c3a62c57ad45559d124b9e81fb999fd72",
+          "shard_key": "ra_geo_id",
+          "shard_value": "RA_09",
+          "zoom_min": 12
+        },
+        {
+          "bbox": [
+            -48.00209,
+            -15.86408,
+            -47.94995,
+            -15.79883
+          ],
+          "budget_bytes": 2000000,
+          "bytes": 84967,
+          "features": 138,
+          "path": "jobs_hex/detail_r9/RA_10.json",
+          "role": "detail_shard",
+          "sha256": "c5303d129a0d12d402943ee2dd2a0ceb3f506a88338865db4474933c2fff9983",
+          "shard_key": "ra_geo_id",
+          "shard_value": "RA_10",
+          "zoom_min": 12
+        },
+        {
+          "bbox": [
+            -47.94747,
+            -15.8044,
+            -47.9279,
+            -15.77796
+          ],
+          "budget_bytes": 2000000,
+          "bytes": 16074,
+          "features": 26,
+          "path": "jobs_hex/detail_r9/RA_11.json",
+          "role": "detail_shard",
+          "sha256": "7edaf8bd4019e2fe5059ce3acd3ff19d919492bd218a6f1d6ad4015c014ba564",
+          "shard_key": "ra_geo_id",
+          "shard_value": "RA_11",
+          "zoom_min": 12
+        },
+        {
+          "bbox": [
+            -48.21323,
+            -15.93165,
+            -48.04171,
+            -15.84737
+          ],
+          "budget_bytes": 2000000,
+          "bytes": 132689,
+          "features": 216,
+          "path": "jobs_hex/detail_r9/RA_12.json",
+          "role": "detail_shard",
+          "sha256": "fab3310b8d4b17b0b6b8189eb146644ac4454397c11db3afff6ffc05f2a31cb2",
+          "shard_key": "ra_geo_id",
+          "shard_value": "RA_12",
+          "zoom_min": 12
+        },
+        {
+          "bbox": [
+            -48.04812,
+            -16.05172,
+            -47.87189,
+            -15.97806
+          ],
+          "budget_bytes": 2000000,
+          "bytes": 82288,
+          "features": 134,
+          "path": "jobs_hex/detail_r9/RA_13.json",
+          "role": "detail_shard",
+          "sha256": "11ae9a4de52eff7cc050838fd544d0bab1e47036ab7024124b7cc4e78fdca284",
+          "shard_key": "ra_geo_id",
+          "shard_value": "RA_13",
+          "zoom_min": 12
+        },
+        {
+          "bbox": [
+            -47.79786,
+            -16.05089,
+            -47.60688,
+            -15.87998
+          ],
+          "budget_bytes": 2000000,
+          "bytes": 46075,
+          "features": 75,
+          "path": "jobs_hex/detail_r9/RA_14.json",
+          "role": "detail_shard",
+          "sha256": "93c6f99fbf04888267b7a7e478d7f1992b42b2050dd7b4973398aa4add38c2b0",
+          "shard_key": "ra_geo_id",
+          "shard_value": "RA_14",
+          "zoom_min": 12
+        },
+        {
+          "bbox": [
+            -48.1679,
+            -15.95263,
+            -48.04124,
+            -15.88234
+          ],
+          "budget_bytes": 2000000,
+          "bytes": 66971,
+          "features": 109,
+          "path": "jobs_hex/detail_r9/RA_15.json",
+          "role": "detail_shard",
+          "sha256": "3b5a54c8a8b5cc9cef5316ba3d09f40f0da806db74627f0d958dd24f0052ddb5",
+          "shard_key": "ra_geo_id",
+          "shard_value": "RA_15",
+          "zoom_min": 12
+        },
+        {
+          "bbox": [
+            -47.94422,
+            -15.89631,
+            -47.7871,
+            -15.79834
+          ],
+          "budget_bytes": 2000000,
+          "bytes": 129059,
+          "features": 210,
+          "path": "jobs_hex/detail_r9/RA_16.json",
+          "role": "detail_shard",
+          "sha256": "00e9e041994c2f431971278e9f81667900b6eb604a6a50d00faf69dca19a5be8",
+          "shard_key": "ra_geo_id",
+          "shard_value": "RA_16",
+          "zoom_min": 12
+        },
+        {
+          "bbox": [
+            -48.04009,
+            -15.90577,
+            -47.9849,
+            -15.87385
+          ],
+          "budget_bytes": 2000000,
+          "bytes": 22800,
+          "features": 37,
+          "path": "jobs_hex/detail_r9/RA_17.json",
+          "role": "detail_shard",
+          "sha256": "d5d8e873e52c5507e55d4446cc9047634b8428675224c5f391c761ddabf40ca6",
+          "shard_key": "ra_geo_id",
+          "shard_value": "RA_17",
+          "zoom_min": 12
+        },
+        {
+          "bbox": [
+            -47.91778,
+            -15.78936,
+            -47.7894,
+            -15.69473
+          ],
+          "budget_bytes": 2000000,
+          "bytes": 68250,
+          "features": 111,
+          "path": "jobs_hex/detail_r9/RA_18.json",
+          "role": "detail_shard",
+          "sha256": "c14cd47b572b485ba9d2233a8d2ba61c4df2bc482d79bea3b538f4a0a1854b05",
+          "shard_key": "ra_geo_id",
+          "shard_value": "RA_18",
+          "zoom_min": 12
+        },
+        {
+          "bbox": [
+            -47.95845,
+            -15.86765,
+            -47.93935,
+            -15.84479
+          ],
+          "budget_bytes": 2000000,
+          "bytes": 8649,
+          "features": 14,
+          "path": "jobs_hex/detail_r9/RA_19.json",
+          "role": "detail_shard",
+          "sha256": "4d094ee391634f8c90954c3c1dfde29f1529d3763d388efad26d2d8f4f5247c2",
+          "shard_key": "ra_geo_id",
+          "shard_value": "RA_19",
+          "zoom_min": 12
+        },
+        {
+          "bbox": [
+            -48.05087,
+            -15.8509,
+            -48.00123,
+            -15.81598
+          ],
+          "budget_bytes": 2000000,
+          "bytes": 36408,
+          "features": 59,
+          "path": "jobs_hex/detail_r9/RA_20.json",
+          "role": "detail_shard",
+          "sha256": "b058e520a9553c7a9877f1b11cf4db0127110cfc29bfd0cc86ccf91168050661",
+          "shard_key": "ra_geo_id",
+          "shard_value": "RA_20",
+          "zoom_min": 12
+        },
+        {
+          "bbox": [
+            -48.05851,
+            -15.95826,
+            -48.00782,
+            -15.88111
+          ],
+          "budget_bytes": 2000000,
+          "bytes": 29506,
+          "features": 48,
+          "path": "jobs_hex/detail_r9/RA_21.json",
+          "role": "detail_shard",
+          "sha256": "28f3bbb53ea064e0c2cca9634a2fc7bbcee7e1593c35926b7afcbd94e6933040",
+          "shard_key": "ra_geo_id",
+          "shard_value": "RA_21",
+          "zoom_min": 12
+        },
+        {
+          "bbox": [
+            -47.94776,
+            -15.81222,
+            -47.91004,
+            -15.78153
+          ],
+          "budget_bytes": 2000000,
+          "bytes": 27199,
+          "features": 44,
+          "path": "jobs_hex/detail_r9/RA_22.json",
+          "role": "detail_shard",
+          "sha256": "99ab3024907e1c99e2adf9a9ec741ec7a2cd4110769b98893d6a1d3dd907f781",
+          "shard_key": "ra_geo_id",
+          "shard_value": "RA_22",
+          "zoom_min": 12
+        },
+        {
+          "bbox": [
+            -47.88751,
+            -15.7146,
+            -47.87462,
+            -15.70257
+          ],
+          "budget_bytes": 2000000,
+          "bytes": 3112,
+          "features": 5,
+          "path": "jobs_hex/detail_r9/RA_23.json",
+          "role": "detail_shard",
+          "sha256": "1fbb8267f2fc9f9c40aaec26e30c1d27989d4e2a7aa0221461f396b3f304d753",
+          "shard_key": "ra_geo_id",
+          "shard_value": "RA_23",
+          "zoom_min": 12
+        },
+        {
+          "bbox": [
+            -48.01871,
+            -15.98337,
+            -47.91012,
+            -15.81927
+          ],
+          "budget_bytes": 2000000,
+          "bytes": 82305,
+          "features": 134,
+          "path": "jobs_hex/detail_r9/RA_24.json",
+          "role": "detail_shard",
+          "sha256": "d14a583a8363a0351dc1e6534988762f6f4fe88932ca028fd5f26a6314e44ae4",
+          "shard_key": "ra_geo_id",
+          "shard_value": "RA_24",
+          "zoom_min": 12
+        },
+        {
+          "bbox": [
+            -48.00419,
+            -15.79617,
+            -47.96733,
+            -15.77371
+          ],
+          "budget_bytes": 2000000,
+          "bytes": 17871,
+          "features": 29,
+          "path": "jobs_hex/detail_r9/RA_25.json",
+          "role": "detail_shard",
+          "sha256": "f9b821ba7c14c8de5972438c436120b2254703fa57cb4eac35a685d131256cee",
+          "shard_key": "ra_geo_id",
+          "shard_value": "RA_25",
+          "zoom_min": 12
+        },
+        {
+          "bbox": [
+            -48.01945,
+            -15.68904,
+            -47.81322,
+            -15.56881
+          ],
+          "budget_bytes": 2000000,
+          "bytes": 71238,
+          "features": 116,
+          "path": "jobs_hex/detail_r9/RA_26.json",
+          "role": "detail_shard",
+          "sha256": "9b89653ac399059a3ce66178a9f934c527cb6451824689d6cb83a487a06ad64f",
+          "shard_key": "ra_geo_id",
+          "shard_value": "RA_26",
+          "zoom_min": 12
+        },
+        {
+          "bbox": [
+            -47.83751,
+            -16.05036,
+            -47.7501,
+            -15.80806
+          ],
+          "budget_bytes": 2000000,
+          "bytes": 62618,
+          "features": 102,
+          "path": "jobs_hex/detail_r9/RA_27.json",
+          "role": "detail_shard",
+          "sha256": "015226b0014e8056565623d4284b99c6f26a93a7b8e55b48f71928175b3dba11",
+          "shard_key": "ra_geo_id",
+          "shard_value": "RA_27",
+          "zoom_min": 12
+        },
+        {
+          "bbox": [
+            -47.78339,
+            -15.76185,
+            -47.73419,
+            -15.72675
+          ],
+          "budget_bytes": 2000000,
+          "bytes": 27046,
+          "features": 44,
+          "path": "jobs_hex/detail_r9/RA_28.json",
+          "role": "detail_shard",
+          "sha256": "7d1478a94ded5106780c560aa24ba71b79f1fa1142cec71b9740cfb6b8a95307",
+          "shard_key": "ra_geo_id",
+          "shard_value": "RA_28",
+          "zoom_min": 12
+        },
+        {
+          "bbox": [
+            -47.99273,
+            -15.81017,
+            -47.91778,
+            -15.74199
+          ],
+          "budget_bytes": 2000000,
+          "bytes": 49310,
+          "features": 80,
+          "path": "jobs_hex/detail_r9/RA_29.json",
+          "role": "detail_shard",
+          "sha256": "f07895f8c0dbda37d03c958bae5761ddadfd8dd0f4ca9d7bc80e9a0431976bf7",
+          "shard_key": "ra_geo_id",
+          "shard_value": "RA_29",
+          "zoom_min": 12
+        },
+        {
+          "bbox": [
+            -48.05612,
+            -15.83238,
+            -47.98834,
+            -15.77124
+          ],
+          "budget_bytes": 2000000,
+          "bytes": 95171,
+          "features": 155,
+          "path": "jobs_hex/detail_r9/RA_30.json",
+          "role": "detail_shard",
+          "sha256": "efa4fce2c38322dec8557c7f0b51b2b9eaa365a4fb660241266108d18061e77a",
+          "shard_key": "ra_geo_id",
+          "shard_value": "RA_30",
+          "zoom_min": 12
+        },
+        {
+          "bbox": [
+            -47.94395,
+            -15.6139,
+            -47.84171,
+            -15.50628
+          ],
+          "budget_bytes": 2000000,
+          "bytes": 10430,
+          "features": 17,
+          "path": "jobs_hex/detail_r9/RA_31.json",
+          "role": "detail_shard",
+          "sha256": "790d354fa72f2a724d6d6ccfe7745981cf12e10d60cb2745ae452793c57829fb",
+          "shard_key": "ra_geo_id",
+          "shard_value": "RA_31",
+          "zoom_min": 12
+        },
+        {
+          "bbox": [
+            -48.18638,
+            -15.86169,
+            -48.11062,
+            -15.79504
+          ],
+          "budget_bytes": 2000000,
+          "bytes": 24602,
+          "features": 40,
+          "path": "jobs_hex/detail_r9/RA_32.json",
+          "role": "detail_shard",
+          "sha256": "a66f89a4269eae0f2b3e01330436774e57a4eea95471bc2579862f0b222e3fd7",
+          "shard_key": "ra_geo_id",
+          "shard_value": "RA_32",
+          "zoom_min": 12
+        },
+        {
+          "bbox": [
+            -48.03331,
+            -15.87862,
+            -47.99044,
+            -15.84204
+          ],
+          "budget_bytes": 2000000,
+          "bytes": 36889,
+          "features": 60,
+          "path": "jobs_hex/detail_r9/RA_33.json",
+          "role": "detail_shard",
+          "sha256": "fe60aa559d294c0b326b28599251d391b026f7048a5631a0b7b91408b83c16b3",
+          "shard_key": "ra_geo_id",
+          "shard_value": "RA_33",
+          "zoom_min": 12
+        },
+        {
+          "bbox": [
+            -47.66581,
+            -15.65908,
+            -47.60493,
+            -15.62197
+          ],
+          "budget_bytes": 2000000,
+          "bytes": 27645,
+          "features": 45,
+          "path": "jobs_hex/detail_r9/RA_34.json",
+          "role": "detail_shard",
+          "sha256": "6db74b45df37f5f49637adfff62c41969a6b0d245bc38495101f862e1993b056",
+          "shard_key": "ra_geo_id",
+          "shard_value": "RA_34",
+          "zoom_min": 12
+        },
+        {
+          "bbox": [
+            -48.24367,
+            -15.94696,
+            -48.22449,
+            -15.9355
+          ],
+          "budget_bytes": 2000000,
+          "bytes": 3715,
+          "features": 6,
+          "path": "jobs_hex/detail_r9/RA_35.json",
+          "role": "detail_shard",
+          "sha256": "27cafab60c632a1f986af4800dba30494c596c99628aa04ead482ad0f1e079b5",
+          "shard_key": "ra_geo_id",
+          "shard_value": "RA_35",
+          "zoom_min": 12
+        },
+        {
+          "bbox": [
+            -48.04599,
+            -15.7841,
+            -48.00867,
+            -15.75079
+          ],
+          "budget_bytes": 2000000,
+          "bytes": 2494,
+          "features": 4,
+          "path": "jobs_hex/detail_r9/RA_36.json",
+          "role": "detail_shard",
+          "sha256": "badff6cc7511d1a0d09f0616fa66960bdb7bc5f5526b99717776471407ced9cb",
+          "shard_key": "ra_geo_id",
+          "shard_value": "RA_36",
+          "zoom_min": 12
+        },
+        {
+          "bbox": [
+            -48.12066,
+            -16.00575,
+            -48.02367,
+            -15.94774
+          ],
+          "budget_bytes": 2000000,
+          "bytes": 18424,
+          "features": 30,
+          "path": "jobs_hex/detail_r9/RA_37.json",
+          "role": "detail_shard",
+          "sha256": "0fc7575bd0714150d752fba5f720ba0d178930f3ad24a8fae054b51f070e1655",
+          "shard_key": "ra_geo_id",
+          "shard_value": "RA_37",
+          "zoom_min": 12
+        },
+        {
+          "bbox": [
+            -48.25598,
+            -16.05282,
+            -47.61553,
+            -15.49806
+          ],
+          "budget_bytes": 2000000,
+          "bytes": 3175,
+          "features": 5,
+          "path": "jobs_hex/detail_r9/SEM_RA.json",
+          "role": "detail_shard",
+          "sha256": "a343f7c52afa1732f12a2da0afcf9eccdb059e26897b7fac46a01e1e7cfeafa0",
+          "shard_key": "ra_geo_id",
+          "shard_value": "SEM_RA",
+          "zoom_min": 12
+        },
+        {
+          "bbox": [
+            -48.28656,
+            -16.05873,
+            -47.30811,
+            -15.4918
+          ],
+          "budget_bytes": 3000000,
+          "bytes": 2273975,
+          "features": 4104,
+          "path": "jobs_hex/overview_r8.json",
+          "role": "overview",
+          "sha256": "4987ab43ec9f1e5425d38d7b604169f3f488a6638913bf84a29b706a25607310"
+        }
+      ],
+      "generated_at": "2026-10-06T05:29:25Z",
+      "id": "jobs_hex",
+      "method_pt": "Hexágonos H3 resolução 9 do AOP para a cidade 'bsb', ano 2019; T001–T004 são empregos formais (RAIS) por tercil de renda (arquivo de uso do solo); P001 (população), R001 (renda média) e R003 (decil) vêm do arquivo de população do AOP, ano 2010 (Censo 2010), juntado por hexágono. Detalhe publica jobs_total ≥ 1; overview soma por hexágono-pai r8 com somas estritas. RA pelo centro do hexágono.",
+      "notes_pt": "Hexágono omitido (sem emprego formal) não é 'sem dado': conta em omitted_zero_jobs. População-base é do Censo 2010 (AOP).",
+      "quality_flags": [
+        "aop_population_2010_based",
+        "ra_unassigned"
+      ],
+      "ra_assignment_method": "centroid_within_ra",
+      "schema": "schemas/jobs_hex.properties.schema.json",
+      "sources": [
+        {
+          "attribution_pt": "Fonte: Ipea, Projeto Acesso a Oportunidades (Pereira, R. H. M. et al.). Empregos formais da RAIS/MTE.",
+          "files": [
+            "landuse_2017_bsb.csv",
+            "landuse_2019_bsb.csv",
+            "metadata.csv",
+            "population_2010_bsb.csv"
+          ],
+          "license": "Citação obrigatória; termos conforme o site do projeto",
+          "name": "Ipea — Projeto Acesso a Oportunidades (AOP), uso do solo e empregos (RAIS)",
+          "retrieved_at": "2026-10-06T05:28:56Z",
+          "url": "https://www.ipea.gov.br/acessooportunidades/"
+        }
+      ],
+      "title_pt": "Empregos formais por hexágono H3 (Ipea Acesso a Oportunidades / RAIS, 2019)",
+      "version": "2026-10-06",
+      "years": [
+        2017,
+        2019
+      ]
+    },
+    {
+      "content_hash": "d846a23b88de49fb38dafc710d72edcd6d62dd9f9ea94897f9d3fd1d7e64e6c6",
+      "counts": {
+        "edges_total": 65444,
+        "households_2022_total": 1152409,
+        "jobs_total": 560624,
+        "ras": 37,
+        "unassigned_edges": 7879,
+        "unassigned_households_2022": 161227,
+        "unassigned_jobs": 278
+      },
+      "crs": "EPSG:4326",
+      "files": [
+        {
+          "budget_bytes": 150000,
+          "bytes": 35221,
+          "features": 37,
+          "path": "ra_aggregates.json",
+          "role": "data",
+          "sha256": "e02444e536a74eab321db1190bcf368e24dc0e768298a6faf9ca0d7fb549d442"
+        }
+      ],
+      "generated_at": "2026-10-06T05:32:07Z",
+      "id": "ra_aggregates",
+      "method_pt": "Somas sobre os arquivos publicados: domicílios = células de 200 m + células de 1 km na edição em que não estavam subdivididas (children_<ano> = 0 no overview; célula inteira numa edição e subdividida na outra entra uma vez em cada); empregos = hexágonos r9 publicados, população-base = overview r8 (inclui hexágonos sem emprego); centralidade = arestas publicadas (percentil ≥ 75 ou arterial). households_growth_pct = delta ÷ 2010 (fração decimal); jobs_per_1000_residents = empregos ÷ população-base × 1000; por km² pela área oficial da RA. Feição fora de toda RA vai para o balde SEM_RA, contado em counts.",
+      "notes_pt": "Bloco de dataset não gerado vem nulo (nunca zero) com a flag correspondente. Domicílios (ressalva herdada de households_grid): Domicílios: em 2010, DOM_OCU é 'domicílios ocupados' (rótulo da Grade 2010); em 2022, TOTAL_DOM são domicílios ocupados particulares e coletivos (notas metodológicas da Grade 2022). Até a nota de 2010 confirmar o mesmo universo, a variação 2010→2022 deve ser lida com essa ressalva. households_delta e households_growth_pct saem nulos (flag households_growth_suppressed) até o universo de domicílios de 2010 ser confirmado e o site mostrar a ressalva ao lado do número (#164, #166); households_2010 e households_2022 continuam publicados.",
+      "quality_flags": [
+        "dwelling_universe_to_confirm",
+        "households_growth_suppressed"
+      ],
+      "ra_assignment_method": "centroid_within_ra",
+      "schema": "schemas/ra_aggregates.schema.json",
+      "sources": [
+        {
+          "attribution_pt": "Fonte: IBGE, Censo Demográfico 2010 — Grade Estatística.",
+          "files": [
+            "grade_id45.zip"
+          ],
+          "license": "Dados abertos do IBGE — reprodução permitida com citação da fonte",
+          "name": "IBGE — Grade Estatística, Censo Demográfico 2010",
+          "retrieved_at": "2026-10-06T05:22:54Z",
+          "url": "https://geoftp.ibge.gov.br/recortes_para_fins_estatisticos/grade_estatistica/censo_2010/"
+        },
+        {
+          "attribution_pt": "Fonte: IBGE, Censo Demográfico 2022 — Grade Estatística.",
+          "files": [
+            "grade_id45.zip"
+          ],
+          "license": "Dados abertos do IBGE — reprodução permitida com citação da fonte",
+          "name": "IBGE — Grade Estatística, Censo Demográfico 2022",
+          "retrieved_at": "2026-10-06T05:26:13Z",
+          "url": "https://geoftp.ibge.gov.br/recortes_para_fins_estatisticos/grade_estatistica/censo_2022/"
+        },
+        {
+          "attribution_pt": "Fonte: Ipea, Projeto Acesso a Oportunidades (Pereira, R. H. M. et al.). Empregos formais da RAIS/MTE.",
+          "files": [
+            "landuse_2017_bsb.csv",
+            "landuse_2019_bsb.csv",
+            "metadata.csv",
+            "population_2010_bsb.csv"
+          ],
+          "license": "Citação obrigatória; termos conforme o site do projeto",
+          "name": "Ipea — Projeto Acesso a Oportunidades (AOP), uso do solo e empregos (RAIS)",
+          "retrieved_at": "2026-10-06T05:28:56Z",
+          "url": "https://www.ipea.gov.br/acessooportunidades/"
+        },
+        {
+          "attribution_pt": "© OpenStreetMap contributors — https://www.openstreetmap.org/copyright. Extrato: Geofabrik.",
+          "files": [
+            "centro-oeste-latest.osm.pbf"
+          ],
+          "license": "ODbL 1.0 — base de dados derivada, disponibilizada sob ODbL",
+          "license_url": "https://www.opendatacommons.org/licenses/odbl/1-0/",
+          "name": "OpenStreetMap (extrato Geofabrik centro-oeste)",
+          "retrieved_at": "2026-10-06T05:30:10Z",
+          "url": "https://www.openstreetmap.org/copyright"
+        }
+      ],
+      "title_pt": "Agregados por Região Administrativa (domicílios, empregos, centralidade)",
+      "version": "2026-10-06",
+      "years": [
+        2010,
+        2017,
+        2019,
+        2022,
+        2026
+      ]
+    },
+    {
+      "content_hash": "c28cf314fc40199a5d81c428a622960360607f9203fb5397c3a676c911a7a48c",
+      "counts": {
+        "ras": 37
+      },
+      "crs": "EPSG:4326",
+      "files": [
+        {
+          "budget_bytes": 40000,
+          "bytes": 15054,
+          "features": 37,
+          "path": "ra_crosswalk.json",
+          "role": "data",
+          "sha256": "8d232efd2c4cf5b2288edf9d0095a14686cd9d578f16bb6b3d0dab49df8d9725"
+        }
+      ],
+      "generated_at": "2026-10-06T05:21:54Z",
+      "id": "ra_crosswalk",
+      "method_pt": "Derivada só dos atributos oficiais do GeoPortal/SEDUH (ra_cira, ra_codigo, ra_nome, ra_areakm2); o código romano é validado por ida-e-volta contra o número; nome e slug seguem as mesmas funções do Code.gs.",
+      "notes_pt": "RA 36 e 37 existem no limite oficial e podem não ter perfil PDAD; a ausência de perfil é decidida pelo cliente, não aqui.",
+      "quality_flags": [],
+      "schema": "schemas/ra_crosswalk.schema.json",
+      "sources": [
+        {
+          "attribution_pt": "Fonte: GeoPortal/SEDUH-DF (IDE/DF), camada Limites das Regiões Administrativas.",
+          "license": "Dado aberto do GDF — citar a fonte",
+          "name": "GeoPortal/SEDUH-DF — Limites das Regiões Administrativas",
+          "retrieved_at": "2026-10-06T02:35:46Z",
+          "url": "https://www.geoportal.seduh.df.gov.br/mapa/"
+        }
+      ],
+      "title_pt": "Ponte entre as grafias de Região Administrativa (RA_nn ↔ RA2026_RA-romano)",
+      "version": "2026-10-06",
+      "years": []
+    },
+    {
+      "bbox": [
+        -48.33775,
+        -16.09414,
+        -47.26989,
+        -15.45623
+      ],
+      "class_breaks": {
+        "betweenness_percentile": {
+          "breaks": [
+            50.0,
+            75.0,
+            90.0,
+            97.0
+          ],
+          "classes": 5,
+          "method": "fixed",
+          "n": 65444
+        }
+      },
+      "content_hash": "85940d299e82933af3eb5fd20a3e757d970631d6e688ceb503692549989fdef5",
+      "counts": {
+        "detail_simplified": 27095,
+        "dropped_outside_bbox": 4,
+        "edges_graph": 250902,
+        "nodes_graph": 104624,
+        "overview": 12294,
+        "published": 65444,
+        "ra_unassigned": 7879,
+        "sample_sources": 2000
+      },
+      "crs": "EPSG:4326",
+      "files": [
+        {
+          "bbox": [
+            -48.08971,
+            -15.85093,
+            -47.78365,
+            -15.57795
+          ],
+          "budget_bytes": 8000000,
+          "bytes": 2537732,
+          "features": 5627,
+          "path": "road_centrality/detail/RA_01.json",
+          "role": "detail_shard",
+          "sha256": "e27162cc55432cda0c5d50f8986c3d5a7c5a37026239bec2380126fb528f0db1",
+          "shard_key": "ra_geo_id",
+          "shard_value": "RA_01",
+          "zoom_min": 13
+        },
+        {
+          "bbox": [
+            -48.2578,
+            -16.05117,
+            -48.00075,
+            -15.92781
+          ],
+          "budget_bytes": 8000000,
+          "bytes": 1085002,
+          "features": 2436,
+          "path": "road_centrality/detail/RA_02.json",
+          "role": "detail_shard",
+          "sha256": "77fa5e667b28ad4326a31b621c1e9f02bafeaf4a6cb386639784e91b2849b0de",
+          "shard_key": "ra_geo_id",
+          "shard_value": "RA_02",
+          "zoom_min": 13
+        },
+        {
+          "bbox": [
+            -48.11229,
+            -15.87578,
+            -48.02663,
+            -15.73592
+          ],
+          "budget_bytes": 8000000,
+          "bytes": 1316419,
+          "features": 2930,
+          "path": "road_centrality/detail/RA_03.json",
+          "role": "detail_shard",
+          "sha256": "bf8ee40b66ea17c6e056063fd2e31ea2eec9f745899e22367e09a6148a10a675",
+          "shard_key": "ra_geo_id",
+          "shard_value": "RA_03",
+          "zoom_min": 13
+        },
+        {
+          "bbox": [
+            -48.23686,
+            -15.76866,
+            -48.01689,
+            -15.50284
+          ],
+          "budget_bytes": 8000000,
+          "bytes": 616202,
+          "features": 1378,
+          "path": "road_centrality/detail/RA_04.json",
+          "role": "detail_shard",
+          "sha256": "62dd21a5d68afa03d479dcac7ea087d7beebf76dcfaea0b82ede5a6473ec9783",
+          "shard_key": "ra_geo_id",
+          "shard_value": "RA_04",
+          "zoom_min": 13
+        },
+        {
+          "bbox": [
+            -47.86211,
+            -15.72968,
+            -47.70139,
+            -15.52338
+          ],
+          "budget_bytes": 8000000,
+          "bytes": 886015,
+          "features": 1979,
+          "path": "road_centrality/detail/RA_05.json",
+          "role": "detail_shard",
+          "sha256": "71f832ca48e0c84b6897b7370deeef482b6811ac5b4b06e9136ad60c687a3481",
+          "shard_key": "ra_geo_id",
+          "shard_value": "RA_05",
+          "zoom_min": 13
+        },
+        {
+          "bbox": [
+            -47.78113,
+            -15.86282,
+            -47.34238,
+            -15.50059
+          ],
+          "budget_bytes": 8000000,
+          "bytes": 1366318,
+          "features": 3023,
+          "path": "road_centrality/detail/RA_06.json",
+          "role": "detail_shard",
+          "sha256": "cd5dcc409f07ae0185fa565f6e8fff28c9d875701fecbcf22023146d4d8bf55e",
+          "shard_key": "ra_geo_id",
+          "shard_value": "RA_06",
+          "zoom_min": 13
+        },
+        {
+          "bbox": [
+            -47.81319,
+            -16.05071,
+            -47.3332,
+            -15.72702
+          ],
+          "budget_bytes": 8000000,
+          "bytes": 758141,
+          "features": 1667,
+          "path": "road_centrality/detail/RA_07.json",
+          "role": "detail_shard",
+          "sha256": "f59e7d7ac4da2ec5401e1c705680d6d875d84ca44de2a949f806e351d853f273",
+          "shard_key": "ra_geo_id",
+          "shard_value": "RA_07",
+          "zoom_min": 13
+        },
+        {
+          "bbox": [
+            -48.00114,
+            -15.88256,
+            -47.95485,
+            -15.84821
+          ],
+          "budget_bytes": 8000000,
+          "bytes": 210181,
+          "features": 469,
+          "path": "road_centrality/detail/RA_08.json",
+          "role": "detail_shard",
+          "sha256": "f90e9a1ef38a89059a3a26d70c50313e35aef74487771c4c79efade629f75b53",
+          "shard_key": "ra_geo_id",
+          "shard_value": "RA_08",
+          "zoom_min": 13
+        },
+        {
+          "bbox": [
+            -48.24966,
+            -15.90656,
+            -48.08844,
+            -15.75789
+          ],
+          "budget_bytes": 8000000,
+          "bytes": 1560988,
+          "features": 3514,
+          "path": "road_centrality/detail/RA_09.json",
+          "role": "detail_shard",
+          "sha256": "69fb5155cb89fb4c1749e2d69881b9c1a7195102f9b70a5ac91a0084f37cedbe",
+          "shard_key": "ra_geo_id",
+          "shard_value": "RA_09",
+          "zoom_min": 13
+        },
+        {
+          "bbox": [
+            -48.0075,
+            -15.86333,
+            -47.94647,
+            -15.80494
+          ],
+          "budget_bytes": 8000000,
+          "bytes": 839632,
+          "features": 1891,
+          "path": "road_centrality/detail/RA_10.json",
+          "role": "detail_shard",
+          "sha256": "f94cc0215abfc96b5ecf7c9a33da3d1904fcf478cf9df4a271c5a46c828c63a4",
+          "shard_key": "ra_geo_id",
+          "shard_value": "RA_10",
+          "zoom_min": 13
+        },
+        {
+          "bbox": [
+            -47.94606,
+            -15.8062,
+            -47.92953,
+            -15.77759
+          ],
+          "budget_bytes": 8000000,
+          "bytes": 203822,
+          "features": 459,
+          "path": "road_centrality/detail/RA_11.json",
+          "role": "detail_shard",
+          "sha256": "9ef7c2ecf418c1ceed6360e55c10ed60efa27b5964217411aeda5903a84e8c80",
+          "shard_key": "ra_geo_id",
+          "shard_value": "RA_11",
+          "zoom_min": 13
+        },
+        {
+          "bbox": [
+            -48.24966,
+            -15.93626,
+            -48.04698,
+            -15.84616
+          ],
+          "budget_bytes": 8000000,
+          "bytes": 1584899,
+          "features": 3573,
+          "path": "road_centrality/detail/RA_12.json",
+          "role": "detail_shard",
+          "sha256": "3fda2239f03ca591949b400c203dcc305d62fdd63ef65169966236e1901c0a48",
+          "shard_key": "ra_geo_id",
+          "shard_value": "RA_12",
+          "zoom_min": 13
+        },
+        {
+          "bbox": [
+            -48.05464,
+            -16.05126,
+            -47.88222,
+            -15.96935
+          ],
+          "budget_bytes": 8000000,
+          "bytes": 977795,
+          "features": 2217,
+          "path": "road_centrality/detail/RA_13.json",
+          "role": "detail_shard",
+          "sha256": "a3b5961e82e27a5b578e6270707036a89e0393907920433be54842d3c4b98c54",
+          "shard_key": "ra_geo_id",
+          "shard_value": "RA_13",
+          "zoom_min": 13
+        },
+        {
+          "bbox": [
+            -47.80758,
+            -16.05071,
+            -47.58721,
+            -15.87622
+          ],
+          "budget_bytes": 8000000,
+          "bytes": 971151,
+          "features": 2164,
+          "path": "road_centrality/detail/RA_14.json",
+          "role": "detail_shard",
+          "sha256": "7dc2e65aed98593514c21457be260002cf1e572a0d99b8c7a75b7e8e06a5cb6d",
+          "shard_key": "ra_geo_id",
+          "shard_value": "RA_14",
+          "zoom_min": 13
+        },
+        {
+          "bbox": [
+            -48.21399,
+            -15.9579,
+            -48.03835,
+            -15.88176
+          ],
+          "budget_bytes": 8000000,
+          "bytes": 1029386,
+          "features": 2329,
+          "path": "road_centrality/detail/RA_15.json",
+          "role": "detail_shard",
+          "sha256": "1eac28a928a1ebc6d8caa9c2067d9a917c3f74b153f4940670b9ae98962331ca",
+          "shard_key": "ra_geo_id",
+          "shard_value": "RA_15",
+          "zoom_min": 13
+        },
+        {
+          "bbox": [
+            -47.94377,
+            -15.89577,
+            -47.78789,
+            -15.80061
+          ],
+          "budget_bytes": 8000000,
+          "bytes": 636490,
+          "features": 1403,
+          "path": "road_centrality/detail/RA_16.json",
+          "role": "detail_shard",
+          "sha256": "deee8da7b00e8b0399f24e17368a20866b6aa151ed7425a55d631c3b68c85d45",
+          "shard_key": "ra_geo_id",
+          "shard_value": "RA_16",
+          "zoom_min": 13
+        },
+        {
+          "bbox": [
+            -48.03918,
+            -15.92252,
+            -47.98111,
+            -15.87307
+          ],
+          "budget_bytes": 8000000,
+          "bytes": 163374,
+          "features": 360,
+          "path": "road_centrality/detail/RA_17.json",
+          "role": "detail_shard",
+          "sha256": "4e000a350bdcbfcbc74feab96db6cc7fc4e420ebb96077a8d97e5af8f1af3f49",
+          "shard_key": "ra_geo_id",
+          "shard_value": "RA_17",
+          "zoom_min": 13
+        },
+        {
+          "bbox": [
+            -47.91494,
+            -15.7877,
+            -47.78177,
+            -15.68862
+          ],
+          "budget_bytes": 8000000,
+          "bytes": 662187,
+          "features": 1450,
+          "path": "road_centrality/detail/RA_18.json",
+          "role": "detail_shard",
+          "sha256": "54e393090691a38b5b7e4dd5e9db9bf34ea78f4677d54504bbc6e10738c444f5",
+          "shard_key": "ra_geo_id",
+          "shard_value": "RA_18",
+          "zoom_min": 13
+        },
+        {
+          "bbox": [
+            -47.95856,
+            -15.87457,
+            -47.92963,
+            -15.83958
+          ],
+          "budget_bytes": 8000000,
+          "bytes": 88672,
+          "features": 195,
+          "path": "road_centrality/detail/RA_19.json",
+          "role": "detail_shard",
+          "sha256": "b154299cfee7ae0bb4723abd6988ad28d47d23992fb959fd8c13521e9ad75efd",
+          "shard_key": "ra_geo_id",
+          "shard_value": "RA_19",
+          "zoom_min": 13
+        },
+        {
+          "bbox": [
+            -48.05075,
+            -15.8494,
+            -48.00369,
+            -15.81551
+          ],
+          "budget_bytes": 8000000,
+          "bytes": 270811,
+          "features": 591,
+          "path": "road_centrality/detail/RA_20.json",
+          "role": "detail_shard",
+          "sha256": "05d7d1e7f010089b178db8bfdb90f8b86bb803bc37b1b3751050d58d70d5e1c4",
+          "shard_key": "ra_geo_id",
+          "shard_value": "RA_20",
+          "zoom_min": 13
+        },
+        {
+          "bbox": [
+            -48.06485,
+            -15.96633,
+            -47.99235,
+            -15.87381
+          ],
+          "budget_bytes": 8000000,
+          "bytes": 463703,
+          "features": 1029,
+          "path": "road_centrality/detail/RA_21.json",
+          "role": "detail_shard",
+          "sha256": "2e106e588b167e523c18a8a56be6695c3837bd12c3341bd442a8274341d60818",
+          "shard_key": "ra_geo_id",
+          "shard_value": "RA_21",
+          "zoom_min": 13
+        },
+        {
+          "bbox": [
+            -47.95032,
+            -15.81386,
+            -47.90736,
+            -15.78032
+          ],
+          "budget_bytes": 8000000,
+          "bytes": 278036,
+          "features": 613,
+          "path": "road_centrality/detail/RA_22.json",
+          "role": "detail_shard",
+          "sha256": "c935ce20449c782ff6b8f04a0635ea8870cebae96450415b6ac4b3447a8900d3",
+          "shard_key": "ra_geo_id",
+          "shard_value": "RA_22",
+          "zoom_min": 13
+        },
+        {
+          "bbox": [
+            -47.88744,
+            -15.7166,
+            -47.86816,
+            -15.70196
+          ],
+          "budget_bytes": 8000000,
+          "bytes": 23689,
+          "features": 52,
+          "path": "road_centrality/detail/RA_23.json",
+          "role": "detail_shard",
+          "sha256": "63eb63beb65e9817e5dd29454911fb37d87dd43290ed69baeee851659a274e28",
+          "shard_key": "ra_geo_id",
+          "shard_value": "RA_23",
+          "zoom_min": 13
+        },
+        {
+          "bbox": [
+            -48.02102,
+            -15.9781,
+            -47.89592,
+            -15.82109
+          ],
+          "budget_bytes": 8000000,
+          "bytes": 1188931,
+          "features": 2654,
+          "path": "road_centrality/detail/RA_24.json",
+          "role": "detail_shard",
+          "sha256": "7d177217fc4bbd5854ad5d12a409c496ef5faa8e9286dc46f0682f949c72f65b",
+          "shard_key": "ra_geo_id",
+          "shard_value": "RA_24",
+          "zoom_min": 13
+        },
+        {
+          "bbox": [
+            -48.00814,
+            -15.79517,
+            -47.9695,
+            -15.75422
+          ],
+          "budget_bytes": 8000000,
+          "bytes": 451452,
+          "features": 1013,
+          "path": "road_centrality/detail/RA_25.json",
+          "role": "detail_shard",
+          "sha256": "fc1fa8291d77b9f99b3df949a678955b4676c679356999c2925a8ac23081c8ca",
+          "shard_key": "ra_geo_id",
+          "shard_value": "RA_25",
+          "zoom_min": 13
+        },
+        {
+          "bbox": [
+            -48.04391,
+            -15.69008,
+            -47.81014,
+            -15.4997
+          ],
+          "budget_bytes": 8000000,
+          "bytes": 666531,
+          "features": 1492,
+          "path": "road_centrality/detail/RA_26.json",
+          "role": "detail_shard",
+          "sha256": "3b0e3a76606286acc3895983f76706b3037af7357a3785a3677dfb9be616affd",
+          "shard_key": "ra_geo_id",
+          "shard_value": "RA_26",
+          "zoom_min": 13
+        },
+        {
+          "bbox": [
+            -47.89233,
+            -16.05065,
+            -47.74037,
+            -15.81141
+          ],
+          "budget_bytes": 8000000,
+          "bytes": 948571,
+          "features": 2076,
+          "path": "road_centrality/detail/RA_27.json",
+          "role": "detail_shard",
+          "sha256": "7af45d8bceb2fed54a480f3a5eaca02eefddbbdc5869000015e7b1f18683fb9a",
+          "shard_key": "ra_geo_id",
+          "shard_value": "RA_27",
+          "zoom_min": 13
+        },
+        {
+          "bbox": [
+            -47.79191,
+            -15.76146,
+            -47.67819,
+            -15.71812
+          ],
+          "budget_bytes": 8000000,
+          "bytes": 461914,
+          "features": 1047,
+          "path": "road_centrality/detail/RA_28.json",
+          "role": "detail_shard",
+          "sha256": "cffae1ad7423402e0af78393cda89a68002dd2c6af32effa396370cf11c1e166",
+          "shard_key": "ra_geo_id",
+          "shard_value": "RA_28",
+          "zoom_min": 13
+        },
+        {
+          "bbox": [
+            -47.99184,
+            -15.81076,
+            -47.91848,
+            -15.74219
+          ],
+          "budget_bytes": 8000000,
+          "bytes": 317903,
+          "features": 697,
+          "path": "road_centrality/detail/RA_29.json",
+          "role": "detail_shard",
+          "sha256": "6e3967302a349252522cf84d56b608bbd8f3be46da3a2512406d276f8e4a243d",
+          "shard_key": "ra_geo_id",
+          "shard_value": "RA_29",
+          "zoom_min": 13
+        },
+        {
+          "bbox": [
+            -48.05638,
+            -15.83176,
+            -47.98968,
+            -15.77159
+          ],
+          "budget_bytes": 8000000,
+          "bytes": 658501,
+          "features": 1460,
+          "path": "road_centrality/detail/RA_30.json",
+          "role": "detail_shard",
+          "sha256": "e848b4cfdbacf45e11000ab689ab5146bf86579792cef08e9f3aa3defa44f6a6",
+          "shard_key": "ra_geo_id",
+          "shard_value": "RA_30",
+          "zoom_min": 13
+        },
+        {
+          "bbox": [
+            -47.96596,
+            -15.62013,
+            -47.79148,
+            -15.50732
+          ],
+          "budget_bytes": 8000000,
+          "bytes": 95739,
+          "features": 205,
+          "path": "road_centrality/detail/RA_31.json",
+          "role": "detail_shard",
+          "sha256": "38e2857d37057d1dc58f233a0e28cd41e7f44b2b671e142496c81380929ee618",
+          "shard_key": "ra_geo_id",
+          "shard_value": "RA_31",
+          "zoom_min": 13
+        },
+        {
+          "bbox": [
+            -48.19304,
+            -15.85895,
+            -48.11337,
+            -15.79334
+          ],
+          "budget_bytes": 8000000,
+          "bytes": 716690,
+          "features": 1608,
+          "path": "road_centrality/detail/RA_32.json",
+          "role": "detail_shard",
+          "sha256": "5e0eef1e622edd30e41378d44f0cbeaf97427c9295a32e8135dcffece1aba5d9",
+          "shard_key": "ra_geo_id",
+          "shard_value": "RA_32",
+          "zoom_min": 13
+        },
+        {
+          "bbox": [
+            -48.03303,
+            -15.87841,
+            -47.99136,
+            -15.84125
+          ],
+          "budget_bytes": 8000000,
+          "bytes": 502516,
+          "features": 1130,
+          "path": "road_centrality/detail/RA_33.json",
+          "role": "detail_shard",
+          "sha256": "d3b0460c093bde074088865522e6bfa51fe656a57144b3637cee53d20727e445",
+          "shard_key": "ra_geo_id",
+          "shard_value": "RA_33",
+          "zoom_min": 13
+        },
+        {
+          "bbox": [
+            -47.6769,
+            -15.67291,
+            -47.58873,
+            -15.62384
+          ],
+          "budget_bytes": 8000000,
+          "bytes": 342292,
+          "features": 769,
+          "path": "road_centrality/detail/RA_34.json",
+          "role": "detail_shard",
+          "sha256": "80f5c90e66a7743d27873f2279e81878ae596ec0267e4b8302b1a5a126f80bb1",
+          "shard_key": "ra_geo_id",
+          "shard_value": "RA_34",
+          "zoom_min": 13
+        },
+        {
+          "bbox": [
+            -48.25316,
+            -15.95829,
+            -48.21399,
+            -15.93071
+          ],
+          "budget_bytes": 8000000,
+          "bytes": 101059,
+          "features": 228,
+          "path": "road_centrality/detail/RA_35.json",
+          "role": "detail_shard",
+          "sha256": "56fb7571df67b1e78ba16b1a7ece17de228e6bf5df0fcb0f79a4086d62fcfeb2",
+          "shard_key": "ra_geo_id",
+          "shard_value": "RA_35",
+          "zoom_min": 13
+        },
+        {
+          "bbox": [
+            -48.0475,
+            -15.7874,
+            -48.00203,
+            -15.75175
+          ],
+          "budget_bytes": 8000000,
+          "bytes": 326256,
+          "features": 745,
+          "path": "road_centrality/detail/RA_36.json",
+          "role": "detail_shard",
+          "sha256": "90a67d82e46954f85314dd75dd8cd52c1cdb33356cf31ef841c4122094b742c0",
+          "shard_key": "ra_geo_id",
+          "shard_value": "RA_36",
+          "zoom_min": 13
+        },
+        {
+          "bbox": [
+            -48.12094,
+            -15.99933,
+            -48.02105,
+            -15.93898
+          ],
+          "budget_bytes": 8000000,
+          "bytes": 490680,
+          "features": 1092,
+          "path": "road_centrality/detail/RA_37.json",
+          "role": "detail_shard",
+          "sha256": "5de23ba1330ae5e904644b9ce7a37c06fffb9cf7d2035ee249f4482710ee29e0",
+          "shard_key": "ra_geo_id",
+          "shard_value": "RA_37",
+          "zoom_min": 13
+        },
+        {
+          "bbox": [
+            -48.33775,
+            -16.09414,
+            -47.26989,
+            -15.45623
+          ],
+          "budget_bytes": 8000000,
+          "bytes": 3610765,
+          "features": 7879,
+          "path": "road_centrality/detail/SEM_RA.json",
+          "role": "detail_shard",
+          "sha256": "92bd4add81b1dff06e8782635303b56faa446d17c2498339e93d0ddd4075858c",
+          "shard_key": "ra_geo_id",
+          "shard_value": "SEM_RA",
+          "zoom_min": 13
+        },
+        {
+          "bbox": [
+            -48.33775,
+            -16.09275,
+            -47.29997,
+            -15.45623
+          ],
+          "budget_bytes": 6000000,
+          "bytes": 5566002,
+          "features": 12294,
+          "path": "road_centrality/overview.json",
+          "role": "overview",
+          "sha256": "851eebf6e5369ff1d3435cd28003c5c7f12d01691037be37d0ca0b3197174ad2"
+        }
+      ],
+      "generated_at": "2026-10-06T05:32:05Z",
+      "id": "road_centrality",
+      "method_pt": "Rede viária de automóvel (motorway, trunk, primary, secondary, tertiary, unclassified, residential, living_street, motorway_link, trunk_link, primary_link, secondary_link, tertiary_link) recortada pelo bbox; betweenness de aresta com 2000 origens amostradas (semente 20260101, motor igraph), pesos = comprimento, normalizado pelo máximo; percentil sobre todas as 250902 arestas do grafo (empates com posição média). Detalhe (shards por RA, zoom ≥ 13): percentil ≥ 75 ou classe arterial (motorway, trunk, primary, secondary), geometria simplificada a 5e-05 grau; overview: percentil ≥ 97 ou classe (motorway, trunk, primary), simplificado a 0.0001 grau. Aresta com vértice fora do bbox do projeto (+0.05°) não é publicada (4 descartadas): o recorte do OSM mantém inteiras as vias que cruzam a borda. RA pelo ponto médio da aresta. Extrato OSM de 2026-10-04.",
+      "notes_pt": "Valor amostrado: a ordem relativa é estável, o valor absoluto não é comparável entre execuções com amostra diferente.",
+      "quality_flags": [
+        "betweenness_sampled",
+        "ra_unassigned"
+      ],
+      "ra_assignment_method": "midpoint_within_ra",
+      "schema": "schemas/road_centrality.properties.schema.json",
+      "sources": [
+        {
+          "attribution_pt": "© OpenStreetMap contributors — https://www.openstreetmap.org/copyright. Extrato: Geofabrik.",
+          "files": [
+            "centro-oeste-latest.osm.pbf"
+          ],
+          "license": "ODbL 1.0 — base de dados derivada, disponibilizada sob ODbL",
+          "license_url": "https://www.opendatacommons.org/licenses/odbl/1-0/",
+          "name": "OpenStreetMap (extrato Geofabrik centro-oeste)",
+          "retrieved_at": "2026-10-06T05:30:10Z",
+          "url": "https://www.openstreetmap.org/copyright"
+        }
+      ],
+      "title_pt": "Centralidade viária (betweenness de aresta, OpenStreetMap)",
+      "version": "2026-10-06",
+      "years": [
+        2026
+      ]
+    }
+  ],
+  "generated_at": "2026-10-06T05:32:07Z",
   "manifest_version": 1,
-  "pipeline_commit": "c00a06ddec4f664e41bf63db0e56d499dcf62d07",
+  "pipeline_commit": "9ff54eca3b627ce14ee860941045805fb21797ba",
   "pipeline_version": "0.1.0"
 }
