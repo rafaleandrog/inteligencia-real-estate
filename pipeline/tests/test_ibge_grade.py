@@ -15,7 +15,8 @@ from imob_pipeline.sources.ibge_grade import (
     read_grid_file, records_from_geojson, resolve_quadrants, to_wgs84_bounds,
 )
 
-from .helpers import FIXTURES, fixture_context
+from .helpers import FIXTURES, PROD_CONFIG, fixture_context
+from imob_pipeline.config import load_config
 
 COLUMNS = {"cell_id": "ID_UNICO", "parent_1km": "nome_1KM", "pop": "POP", "dom_ocu": "DOM_OCU"}
 BASE_2010 = "https://geoftp.ibge.gov.br/recortes_para_fins_estatisticos/grade_estatistica/censo_2010/"
@@ -211,6 +212,21 @@ class QuadrantDiscoveryTests(unittest.TestCase):
             dataset = next(d for d in manifest["datasets"] if d["id"] == "households_grid")
             self.assertNotIn("resolvidos pelo bbox", dataset["notes_pt"])
             self.assertNotIn(BASE_2010, ctx.fetcher.calls)  # a listagem não é baixada
+
+
+
+class Grade2022ColumnsTests(unittest.TestCase):
+    def test_production_config_maps_the_real_2022_columns(self):
+        """Layout real visto na primeira execução (#164): TOTAL, TOTAL_DOM, nome_1km em minúsculas."""
+        cfg = load_config(PROD_CONFIG).households
+        payload = {"features": [{"properties": {"ID_UNICO": "200ME57000N92000", "QUADRANTE": "45", "TOTAL": 120, "TOTAL_DOM": 40,
+                                                 "nome_1km": "1KME570N920", "nome_5KM": "5KME570N920", "nome_10KM": "10KME570N920",
+                                                 "nome_50KM": "x", "nome_100KM": "x", "nome_500KM": "x"},
+                                  "geometry": {"type": "Polygon", "coordinates": [[[-47.9475, -15.86], [-47.9475, -15.8582], [-47.9456, -15.8582], [-47.9456, -15.86], [-47.9475, -15.86]]]}}]}
+        records, suppressed = records_from_geojson(payload, cfg.columns_2022, "Grade 2022")
+        self.assertEqual((records[0].pop, records[0].dom_ocu, records[0].parent_1km), (120, 40, "1KME570N920"))
+        self.assertEqual(suppressed, [])
+        self.assertEqual(cfg.columns_2010["dom_ocu"], "DOM_OCU")
 
 
 if __name__ == "__main__":

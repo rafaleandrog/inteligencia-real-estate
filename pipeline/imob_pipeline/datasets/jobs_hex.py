@@ -19,8 +19,10 @@ def run(ctx: RunContext) -> dict:
     cfg = ctx.config.jobs
     index, _ = ra_index(ctx)
     geometry = ctx.hex_geometry or H3Library()
-    records, retrievals = load_landuse(ctx.fetcher, metadata_url=cfg.metadata_url, city=cfg.city, year=cfg.year, columns=cfg.columns)
-    previous, prev_retrievals = load_landuse(ctx.fetcher, metadata_url=cfg.metadata_url, city=cfg.city, year=cfg.previous_year, columns=cfg.columns)
+    records, retrievals = load_landuse(ctx.fetcher, metadata_url=cfg.metadata_url, city=cfg.city, year=cfg.year, columns=cfg.columns,
+                                       fallback_urls=cfg.metadata_fallback_urls, probe_urls=cfg.probe_urls)
+    previous, prev_retrievals = load_landuse(ctx.fetcher, metadata_url=cfg.metadata_url, city=cfg.city, year=cfg.previous_year,
+                                             columns=cfg.columns, fallback_urls=cfg.metadata_fallback_urls, probe_urls=cfg.probe_urls)
     result = build_jobs(
         records, previous, geometry=geometry, overview_resolution=cfg.overview_resolution,
         detail_min_jobs=cfg.detail_min_jobs, breaks=cfg.breaks, assign_ra=index.assign,

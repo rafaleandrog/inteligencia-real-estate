@@ -21,7 +21,8 @@ from typing import Callable, Mapping, Protocol
 
 from . import __version__
 
-USER_AGENT = f"imob-pipeline/{__version__} (+https://github.com/rafaleandrog/inteligencia-real-estate)"
+# Prefixo "Mozilla/5.0 (compatible; …)": servidores públicos às vezes respondem 403/404 a cliente desconhecido (#164).
+USER_AGENT = f"Mozilla/5.0 (compatible; imob-pipeline/{__version__}; +https://github.com/rafaleandrog/inteligencia-real-estate)"
 RETRY_STATUSES = frozenset({429, 500, 502, 503, 504})
 
 

@@ -113,6 +113,8 @@ class HouseholdsConfig:
 @dataclass(frozen=True)
 class JobsConfig:
     metadata_url: str
+    metadata_fallback_urls: tuple[str, ...]
+    probe_urls: tuple[str, ...]
     city: str
     year: int
     previous_year: int
@@ -207,6 +209,9 @@ def parse_config(raw: Mapping[str, Any], *, path: Path, sha256: str) -> Config:
         ),
         jobs=JobsConfig(
             metadata_url=str(_require(jobs, "jobs_hex", "metadata_url")),
+            # Opcionais: candidatas tentadas após `metadata_url` e páginas sondadas quando todas falham (#164).
+            metadata_fallback_urls=tuple(str(u) for u in jobs.get("metadata_fallback_urls", [])),
+            probe_urls=tuple(str(u) for u in jobs.get("probe_urls", [])),
             city=str(_require(jobs, "jobs_hex", "city")),
             year=int(_require(jobs, "jobs_hex", "year")),
             previous_year=int(_require(jobs, "jobs_hex", "previous_year")),

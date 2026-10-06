@@ -1495,11 +1495,11 @@ variação é direta. Arquivos: `households_grid/overview_1km.json` (`role: over
 
 | Propriedade | Tipo | Ausência | Regra |
 |---|---|---|---|
-| `cell_id` | texto | — | `ID_UNICO`, chave estável 2010↔2022; no overview, `nome_1KM` |
+| `cell_id` | texto | — | `ID_UNICO`, chave estável 2010↔2022; no overview, o pai de 1 km (`nome_1KM` em 2010, `nome_1km` em 2022) |
 | `cell_size` | enum `200M` / `1KM` | — | do prefixo do id |
 | `area_km2` | número | — | da tabela por tamanho; área projetada conferida ± 3 % |
-| `pop_2010`, `pop_2022` | inteiro | `null` | `POP` |
-| `dom_ocu_2010`, `dom_ocu_2022` | inteiro | `null` | `DOM_OCU` (domicílios particulares ocupados) |
+| `pop_2010`, `pop_2022` | inteiro | `null` | 2010: `POP`; 2022: `TOTAL` |
+| `dom_ocu_2010`, `dom_ocu_2022` | inteiro | `null` | 2010: `DOM_OCU`; 2022: `TOTAL_DOM` (lido como domicílios particulares permanentes ocupados — correspondência registrada na primeira execução real, #164; o manifest declara as colunas em `method_pt`) |
 | `households_delta` | inteiro | `null` se um lado é nulo | `dom_ocu_2022 − dom_ocu_2010` |
 | `households_delta_per_km2` | número | idem | `households_delta ÷ area_km2`, 2 casas |
 | `households_delta_pct_change` | número (**fração decimal**) | `null` se 2010 nulo ou zero | `households_delta ÷ dom_ocu_2010` |

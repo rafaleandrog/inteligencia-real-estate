@@ -13,7 +13,7 @@ import random
 from collections import defaultdict, deque
 from typing import Any, Callable, Iterable, Mapping, Sequence
 
-from ..geo import linestring_midpoint, simplify_line
+from ..geo import BBOX_MARGIN_DEG, bbox_contains_point, linestring_midpoint, simplify_line
 from ..sources.osm import RoadGraph
 from .classify import assign_class, percentile, percentile_ranks
 
@@ -132,19 +132,28 @@ def build_edges(
     always_publish_highways: Iterable[str],
     simplify_tolerance_deg: float,
     assign_ra: Callable[[Sequence[float]], str | None],
+    bbox: tuple[float, float, float, float] | None = None,
+    bbox_margin_deg: float = BBOX_MARGIN_DEG,
 ) -> dict[str, Any]:
+    """`bbox`: aresta com qualquer vértice fora dele (+ folga) não é publicada e é contada em
+    `dropped_outside_bbox` — o recorte do OSM (`osmium extract`) mantém inteiras as vias que cruzam
+    a borda, e o validador recusa coordenada fora do bbox do projeto (#164)."""
     always = set(always_publish_highways)
     ordered = sorted(graph.edges, key=edge_key)
     values = [float(betweenness.get(edge_key(e), 0.0)) for e in ordered]
     ranks = percentile_ranks(values)
     detail: list[dict[str, Any]] = []
     overview: list[dict[str, Any]] = []
-    counts: dict[str, int] = {"edges_graph": len(ordered), "published": 0, "overview": 0, "ra_unassigned": 0}
+    counts: dict[str, int] = {"edges_graph": len(ordered), "published": 0, "overview": 0, "ra_unassigned": 0,
+                              "dropped_outside_bbox": 0}
     for edge, value, rank in zip(ordered, values, ranks):
         arterial = edge["highway"] in always
         if rank < publish_min_percentile and not arterial:
             continue
         coords = edge["coords"]
+        if bbox is not None and not all(bbox_contains_point(bbox, (p[0], p[1]), bbox_margin_deg) for p in coords):
+            counts["dropped_outside_bbox"] += 1
+            continue
         midpoint = linestring_midpoint(coords)
         ra = assign_ra(midpoint)
         flags = ["betweenness_sampled"]

@@ -31,7 +31,10 @@ base_url_2022 = "https://geoftp.ibge.gov.br/recortes_para_fins_estatisticos/grad
 # não baixar a Grade inteira de novo. `python -m imob_pipeline discover grade` só lista os nomes.
 quadrant_ids = []
 columns_2010 = { cell_id = "ID_UNICO", parent_1km = "nome_1KM", pop = "POP", dom_ocu = "DOM_OCU" }
-columns_2022 = { cell_id = "ID_UNICO", parent_1km = "nome_1KM", pop = "POP", dom_ocu = "DOM_OCU" }
+# Grade 2022 (layout real, primeira execução em 2026-10-06, #164): só duas variáveis, TOTAL (população) e
+# TOTAL_DOM (lido como domicílios particulares permanentes ocupados — conferir na nota técnica do IBGE),
+# e o pai de 1 km em minúsculas (nome_1km). Demais colunas: QUADRANTE, nome_5KM … nome_500KM.
+columns_2022 = { cell_id = "ID_UNICO", parent_1km = "nome_1km", pop = "TOTAL", dom_ocu = "TOTAL_DOM" }
 cell_area_km2 = { "200M" = 0.04, "1KM" = 1.0 }
 drop_if_empty_both_years = true
 breaks = { households_delta_per_km2 = [100, 350, 750, 1000, 2000], households_delta = [5, 10, 20, 40, 80] }
@@ -42,8 +45,21 @@ censo_2010 = { name = "IBGE — Grade Estatística, Censo Demográfico 2010", ur
 censo_2022 = { name = "IBGE — Grade Estatística, Censo Demográfico 2022", url = "https://geoftp.ibge.gov.br/recortes_para_fins_estatisticos/grade_estatistica/censo_2022/", license = "Dados abertos do IBGE — reprodução permitida com citação da fonte", attribution_pt = "Fonte: IBGE, Censo Demográfico 2022 — Grade Estatística." }
 
 [jobs_hex]
-# Candidato; confirmado na primeira execução real (o pacote aopdata resolve os arquivos por este índice).
+# O pacote aopdata resolve os arquivos por este índice. Na primeira execução real (2026-10-06) a URL
+# respondeu 404 (#164): as candidatas abaixo são tentadas em ordem e, se nenhuma responder, o pipeline
+# sonda as páginas de `probe_urls` e falha listando os links de dados que encontrou — o layout real
+# aparece no log para a próxima correção.
 metadata_url = "https://www.ipea.gov.br/acessooportunidades/dados/metadata.csv"
+metadata_fallback_urls = [
+  "http://www.ipea.gov.br/acessooportunidades/dados/metadata.csv",
+  "https://github.com/ipeaGIT/aopdata/releases/download/v1.1.0/metadata.csv",
+  "https://raw.githubusercontent.com/ipeaGIT/aopdata/master/data-raw/metadata.csv",
+]
+probe_urls = [
+  "https://www.ipea.gov.br/acessooportunidades/dados/",
+  "https://www.ipea.gov.br/acessooportunidades/",
+  "https://api.github.com/repos/ipeaGIT/aopdata/releases/latest",
+]
 city = "bra"
 year = 2019
 previous_year = 2017

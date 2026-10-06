@@ -1,7 +1,9 @@
+import tempfile
 import unittest
+from pathlib import Path
 
 from imob_pipeline.fetch import FixtureFetcher
-from imob_pipeline.sources.aop import AopError, FixtureHexGeometry, load_landuse, parse_landuse, resolve_landuse_url
+from imob_pipeline.sources.aop import AopError, FixtureHexGeometry, extract_links, load_landuse, load_metadata, parse_landuse, resolve_landuse_url
 from imob_pipeline.sources.geoportal_ra import to_polygons
 from imob_pipeline.transforms.assign_ra import RaIndex
 from imob_pipeline.transforms.jobs import build_jobs, class_or_absent
@@ -75,6 +77,40 @@ class AopTests(unittest.TestCase):
         self.assertNotIn("partial_children", parent["quality_flags"])
         self.assertEqual(parent["ra_geo_id"], "RA_19")
         self.assertEqual(parent["class_jobs_total"], 5)
+
+
+
+class MetadataFallbackTests(unittest.TestCase):
+    """`metadata.csv` do AOP: primeira URL que responde vence; sem nenhuma, o erro traz as tentativas e os
+    links de dados das páginas sondadas (#164)."""
+
+    def test_fallback_url_is_used_when_the_first_fails(self):
+        fetcher = FixtureFetcher.from_dir(FIXTURES)
+        records, retrievals = load_landuse(fetcher, metadata_url="https://exemplo.invalido/dados/metadata.csv",
+                                           fallback_urls=[META_URL], city="bra", year=2017, columns=COLUMNS)
+        self.assertEqual(len(records), 3)
+        self.assertEqual(retrievals[0]["url"], META_URL)
+
+    def test_extract_links_keeps_only_data_like_links_from_html_and_json(self):
+        text = ('<a href="aop_landuse_2019_v2.csv">x</a> <a href="/outra/coisa.pdf">y</a> <a href="/sobre/">z</a> '
+                '{"browser_download_url": "https://github.com/ipeaGIT/aopdata/releases/download/v1/metadata.csv"}')
+        self.assertEqual(extract_links(text), ["aop_landuse_2019_v2.csv", "https://github.com/ipeaGIT/aopdata/releases/download/v1/metadata.csv"])
+
+    def test_all_urls_failing_names_attempts_and_probe_links(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            page = Path(tmp) / "dados.html"
+            page.write_text('<a href="aop_landuse_2019_v2.csv">x</a> <a href="leia.pdf">y</a>', "utf-8")
+            fetcher = FixtureFetcher({"https://exemplo.invalido/dados/": page})
+            with self.assertRaises(AopError) as caught:
+                load_metadata(fetcher, metadata_url="https://exemplo.invalido/dados/metadata.csv",
+                              fallback_urls=["https://exemplo.invalido/b/metadata.csv"],
+                              probe_urls=["https://exemplo.invalido/dados/", "https://exemplo.invalido/sem-pagina/"])
+        message = str(caught.exception)
+        self.assertIn("exemplo.invalido/dados/metadata.csv", message)
+        self.assertIn("exemplo.invalido/b/metadata.csv", message)
+        self.assertIn("aop_landuse_2019_v2.csv", message)
+        self.assertNotIn("leia.pdf", message)
+        self.assertIn("sem-pagina", message)
 
 
 if __name__ == "__main__":

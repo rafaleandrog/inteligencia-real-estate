@@ -13,6 +13,8 @@ from typing import Iterable, Sequence
 
 Position = Sequence[float]
 BBox = tuple[float, float, float, float]
+# Folga, em graus, tolerada em torno do bbox do projeto: o validador aceita e o pipeline publica até aqui.
+BBOX_MARGIN_DEG = 0.05
 
 _CELL_SIZE = re.compile(r"^(\d+)(KM|M)E", re.IGNORECASE)
 EARTH_RADIUS_M = 6_371_008.8

@@ -53,7 +53,8 @@ PYTHONPATH=pipeline python -m imob_pipeline run all --fixture-dir pipeline/tests
    falha não derruba os seguintes: o erro vai para o `summary.json` e a execução termina com 1
    sem publicar nada, para todas as falhas aparecerem numa execução só.
 4. Pinar em `pipeline/config/df.toml` os quadrantes que a descoberta escolheu (para não baixar a
-   Grade inteira de novo) e confirmar o `metadata.csv` do AOP; ler `summary.json` e os logs
+   Grade inteira de novo) e confirmar o `metadata.csv` do AOP (candidatas em `metadata_fallback_urls`; sem
+   resposta, o log lista os links de dados das páginas em `probe_urls`); ler `summary.json` e os logs
    (tamanhos, tempos, contagens); ajustar orçamentos e percentis. `discover grade` só lista os
    nomes dos arquivos.
 

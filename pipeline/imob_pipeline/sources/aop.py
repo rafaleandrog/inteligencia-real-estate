@@ -9,14 +9,16 @@ fixtures (teste) pelo mesmo seam `HexGeometry`.
 
 from __future__ import annotations
 
+import re
+
 import csv
 import io
 import json
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Iterable, Mapping, Protocol
+from typing import Any, Iterable, Mapping, Protocol, Sequence
 
-from ..fetch import Fetcher
+from ..fetch import FetchError, Fetcher
 
 
 class AopError(RuntimeError):
@@ -173,10 +175,55 @@ def parse_landuse(text: str, *, city: str, year: int, columns: Mapping[str, str]
     return out
 
 
-def load_landuse(fetcher: Fetcher, *, metadata_url: str, city: str, year: int, columns: Mapping[str, str]) -> tuple[list[HexRecord], list[dict[str, Any]]]:
-    base_url = metadata_url.rsplit("/", 1)[0] + "/"
-    meta = fetcher.fetch(metadata_url, dest_name="metadata.csv")
-    url = resolve_landuse_url(meta.path.read_text("utf-8", errors="replace"), city=city, year=year, base_url=base_url)
+_DATA_LINK_HINTS = ("aop", "landuse", "land_use", "metadata", ".csv", ".gpkg", ".zip", ".gz", ".parquet")
+_HREF = re.compile(r'href="?(?P<name>[^"\s>]+)"?', re.IGNORECASE)
+_BARE_URL = re.compile(r'https?://[^\s"\'<>\\]+')
+
+
+def extract_links(text: str) -> list[str]:
+    """Links que parecem dado do AOP numa página HTML ou num JSON (ex.: assets de release no GitHub)."""
+    found: list[str] = []
+    for match in list(_HREF.finditer(text)) + list(_BARE_URL.finditer(text)):
+        name = match.group("name") if "name" in match.groupdict() else match.group(0)
+        lowered = name.lower()
+        if any(hint in lowered for hint in _DATA_LINK_HINTS) and name not in found:
+            found.append(name)
+    return found
+
+
+def load_metadata(fetcher: Fetcher, *, metadata_url: str, fallback_urls: Sequence[str] = (),
+                  probe_urls: Sequence[str] = ()) -> tuple[str, Any]:
+    """`metadata.csv` pela primeira URL que responder. Quando nenhuma responde, sonda `probe_urls`
+    e FALHA nomeando cada tentativa e os links de dados encontrados — o layout real da fonte vai
+    para o log em vez de exigir um palpite por ciclo (#164)."""
+    errors: list[str] = []
+    for url in (metadata_url, *fallback_urls):
+        try:
+            retrieval = fetcher.fetch(url, dest_name="metadata.csv")
+        except FetchError as error:
+            errors.append(f"{url} → {error}")
+            continue
+        return retrieval.path.read_text("utf-8", errors="replace"), retrieval
+    probed: list[str] = []
+    for page in probe_urls:
+        try:
+            body = fetcher.fetch(page, dest_name="sondagem.html").path.read_text("utf-8", errors="replace")
+        except FetchError as error:
+            probed.append(f"{page} → {error}")
+            continue
+        links = extract_links(body)
+        probed.append(f"{page} → {links[:40] if links else 'nenhum link de dados'}")
+    raise AopError(
+        "metadata.csv do AOP indisponível em todas as URLs:\n  " + "\n  ".join(errors)
+        + "\nLinks de dados nas páginas sondadas:\n  " + ("\n  ".join(probed) if probed else "(nenhuma página sondada)")
+    )
+
+
+def load_landuse(fetcher: Fetcher, *, metadata_url: str, city: str, year: int, columns: Mapping[str, str],
+                 fallback_urls: Sequence[str] = (), probe_urls: Sequence[str] = ()) -> tuple[list[HexRecord], list[dict[str, Any]]]:
+    metadata_text, meta = load_metadata(fetcher, metadata_url=metadata_url, fallback_urls=fallback_urls, probe_urls=probe_urls)
+    base_url = meta.url.rsplit("/", 1)[0] + "/"
+    url = resolve_landuse_url(metadata_text, city=city, year=year, base_url=base_url)
     data = fetcher.fetch(url)
     text = _read_text(data.path)
     return parse_landuse(text, city=city, year=year, columns=columns), [meta.as_dict(), data.as_dict()]

@@ -85,5 +85,34 @@ class CentralityTests(unittest.TestCase):
             self.assertIsNotNone(s["centrality_p90"])
 
 
+
+class PublishInsideBboxTests(unittest.TestCase):
+    """O recorte do OSM mantém inteiras as vias que cruzam a borda; só arestas dentro do bbox (+ folga) são
+    publicadas, e as descartadas são contadas (#164)."""
+
+    def test_edges_outside_bbox_are_dropped_and_counted(self):
+        graph = graph_from_json(json.loads((FIXTURES / "osm_small_graph.json").read_text("utf-8")))
+        scores, _, _ = compute_betweenness(graph, sample_sources=0, seed=1, engine="pure")
+        index = RaIndex(to_polygons(ra_features()), use_shapely=False)
+        common = dict(breaks=[50, 75, 90, 97], publish_min_percentile=0, overview_min_percentile=90,
+                      always_publish_highways=[], simplify_tolerance_deg=0.0, assign_ra=index.assign)
+        everything = build_edges(graph, scores, **common)
+        lons = [p[0] for e in graph.edges for p in e["coords"]]
+        lats = [p[1] for e in graph.edges for p in e["coords"]]
+        # bbox que corta o vértice mais a leste: toda aresta que o toca sai, sem folga
+        tight = (min(lons), min(lats), max(lons) - 1e-9, max(lats))
+        built = build_edges(graph, scores, bbox=tight, bbox_margin_deg=0.0, **common)
+        dropped = built["counts"]["dropped_outside_bbox"]
+        self.assertGreater(dropped, 0)
+        self.assertEqual(built["counts"]["published"] + dropped, everything["counts"]["published"])
+        east = max(lons)
+        for feature in built["detail"]:
+            self.assertTrue(all(p[0] < east for p in feature["geometry"]["coordinates"]), feature["id"])
+        # com o bbox inteiro (e folga), nada é descartado
+        loose = build_edges(graph, scores, bbox=(min(lons), min(lats), max(lons), max(lats)), **common)
+        self.assertEqual(loose["counts"]["dropped_outside_bbox"], 0)
+        self.assertEqual(loose["counts"]["published"], everything["counts"]["published"])
+
+
 if __name__ == "__main__":
     unittest.main()
