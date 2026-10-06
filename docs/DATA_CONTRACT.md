@@ -1573,6 +1573,11 @@ gerado vem `null` em todos os campos dele (nunca zero), com a flag correspondent
 | `centrality_source`, `centrality_snapshot`, `edges_total`, `road_km_total`, `road_km_top_decile`, `centrality_mean`, `centrality_p90` | — | sobre as arestas atribuídas à RA |
 | `quality_flags` | lista | `households_missing`, `jobs_missing`, `centrality_missing`, `partial_children` |
 
+No nível do conjunto (manifest), `ra_aggregates` herda as ressalvas declaradas no config do
+`households_grid` (`dataset_flags` e `notes_pt` — hoje `dwelling_universe_to_confirm`, #164),
+porque `households_growth_pct` deriva dos mesmos valores; mostrá-las ao lado dos indicadores no
+site é a issue #166.
+
 Escalas declaradas no cliente (`DATASET_PERCENT_SCALE`): `RA_AGGREGATES` decimal;
 `PUBLIC_CENTRALITY` pontos (percentil 0–100).
 

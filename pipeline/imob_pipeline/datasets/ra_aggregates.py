@@ -75,6 +75,14 @@ def run(ctx: RunContext) -> dict:
         counts["unassigned_edges"] = int((roads.get("SEM_RA", {}) or {}).get("edges_total") or 0)
         counts["edges_total"] = int(sum(r["edges_total"] for r in roads.values()))
     flags = [f for f, present in (("households_missing", households), ("jobs_missing", jobs), ("centrality_missing", roads)) if not present]
+    notes = "Bloco de dataset não gerado vem nulo (nunca zero) com a flag correspondente."
+    # Ressalva declarada no config do conjunto de origem acompanha o agregado: quem lê
+    # households_growth_pct aqui precisa da mesma ressalva de quem lê o mapa (#164, #166).
+    hh_cfg = ctx.config.households
+    if households and hh_cfg.dataset_flags:
+        flags.extend(hh_cfg.dataset_flags)
+        if hh_cfg.notes_pt:
+            notes += " Domicílios (ressalva herdada de households_grid): " + hh_cfg.notes_pt.strip()
     all_sources = [s for ds in (hh_ds, jobs_ds, roads_ds) if ds for s in ds["sources"]]
     entry = dataset_entry(
         dataset_id=DATASET_ID,
@@ -90,8 +98,8 @@ def run(ctx: RunContext) -> dict:
             "households_growth_pct = delta ÷ 2010 (fração decimal); jobs_per_1000_residents = empregos ÷ população-base × 1000; "
             "por km² pela área oficial da RA. Feição fora de toda RA vai para o balde SEM_RA, contado em counts."
         ),
-        ra_assignment_method=ctx.config.ra.assignment_method, class_breaks=None, counts=counts, quality_flags=flags,
-        notes_pt="Bloco de dataset não gerado vem nulo (nunca zero) com a flag correspondente.",
+        ra_assignment_method=ctx.config.ra.assignment_method, class_breaks=None, counts=counts, quality_flags=sorted(set(flags)),
+        notes_pt=notes,
         schema=SCHEMA,
     )
     manifest = publish(ctx, entry)

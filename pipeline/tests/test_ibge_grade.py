@@ -227,6 +227,25 @@ class DatasetCaveatsFromConfigTests(unittest.TestCase):
             self.assertIn("dwelling_universe_to_confirm", dataset["quality_flags"])
             self.assertTrue(dataset["notes_pt"].endswith("Universo de domicílios a confirmar."))
 
+    def test_aggregates_inherit_the_households_caveat(self):
+        from imob_pipeline.datasets import ra_aggregates, ra_crosswalk
+        with tempfile.TemporaryDirectory() as tmp:
+            ctx = fixture_context(Path(tmp))
+            ctx.config = replace(ctx.config, households=replace(ctx.config.households, dataset_flags=("dwelling_universe_to_confirm",),
+                                                                 notes_pt="Universo a confirmar."))
+            ra_crosswalk.run(ctx)
+            households_grid.run(ctx)
+            agg = next(d for d in ra_aggregates.run(ctx)["datasets"] if d["id"] == "ra_aggregates")
+            self.assertIn("dwelling_universe_to_confirm", agg["quality_flags"])
+            self.assertIn("Universo a confirmar.", agg["notes_pt"])
+        with tempfile.TemporaryDirectory() as tmp:
+            ctx = fixture_context(Path(tmp))
+            ra_crosswalk.run(ctx)
+            households_grid.run(ctx)
+            agg = next(d for d in ra_aggregates.run(ctx)["datasets"] if d["id"] == "ra_aggregates")
+            self.assertNotIn("dwelling_universe_to_confirm", agg["quality_flags"])
+            self.assertNotIn("herdada", agg["notes_pt"])
+
     def test_production_config_declares_the_dwelling_universe_caveat(self):
         cfg = load_config(PROD_CONFIG).households
         self.assertIn("dwelling_universe_to_confirm", cfg.dataset_flags)
