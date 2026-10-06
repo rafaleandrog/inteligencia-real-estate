@@ -47,7 +47,9 @@ notes_pt = "Domicílios: em 2010, DOM_OCU é 'domicílios ocupados' (rótulo da 
 cell_area_km2 = { "200M" = 0.04, "1KM" = 1.0 }
 drop_if_empty_both_years = true
 breaks = { households_delta_per_km2 = [100, 350, 750, 1000, 2000], households_delta = [5, 10, 20, 40, 80] }
-budgets = { overview = 2000000, shard = 2000000 }
+# Segunda execução real (#167): overview de 1 km a ~535 bytes/célula para o bbox inteiro (DF + Entorno) e o
+# balde SEM_RA do detalhe com as cidades goianas dentro do bbox (Águas Lindas, Santo Antônio do Descoberto…).
+budgets = { overview = 5000000, shard = 6000000 }
 
 [households_grid.sources]
 censo_2010 = { name = "IBGE — Grade Estatística, Censo Demográfico 2010", url = "https://geoftp.ibge.gov.br/recortes_para_fins_estatisticos/grade_estatistica/censo_2010/", license = "Dados abertos do IBGE — reprodução permitida com citação da fonte", attribution_pt = "Fonte: IBGE, Censo Demográfico 2010 — Grade Estatística." }
@@ -86,7 +88,9 @@ population_year = 2010
 population_columns = { hex = "id_hex", pop = "P001", income_avg = "R001", income_decile = "R003" }
 detail_min_jobs = 1
 breaks = { jobs_total = [75, 125, 250, 500, 1000, 1500, 2000, 2500, 5000], jobs_low = [25, 50, 100, 200, 400, 600, 800, 1000, 2000], jobs_mid = [25, 50, 100, 200, 400, 600, 800, 1000, 2000], jobs_high = [25, 50, 100, 200, 400, 600, 800, 1000, 2000] }
-budgets = { overview = 2000000, shard = 2000000 }
+# O overview r8 carrega a população de TODOS os hexágonos (base do jobs_per_1000_residents nos agregados), não só
+# dos que têm emprego: deu 2 273 975 bytes na segunda execução real (#167).
+budgets = { overview = 3000000, shard = 2000000 }
 source = { name = "Ipea — Projeto Acesso a Oportunidades (AOP), uso do solo e empregos (RAIS)", url = "https://www.ipea.gov.br/acessooportunidades/", license = "Citação obrigatória; termos conforme o site do projeto", attribution_pt = "Fonte: Ipea, Projeto Acesso a Oportunidades (Pereira, R. H. M. et al.). Empregos formais da RAIS/MTE." }
 
 [road_centrality]
@@ -94,13 +98,21 @@ pbf_url = "https://download.geofabrik.de/south-america/brazil/centro-oeste-lates
 highway_filter = ["motorway", "trunk", "primary", "secondary", "tertiary", "unclassified", "residential", "living_street", "motorway_link", "trunk_link", "primary_link", "secondary_link", "tertiary_link"]
 sample_sources = 2000
 seed = 20260101
-publish_min_percentile = 50
-overview_min_percentile = 90
+# Limiares e orçamentos vêm da segunda execução real (#167): com percentil ≥ 50 + arteriais o detalhe do DF inteiro
+# deu 58 452 013 bytes num arquivo só e o overview (≥ 90 + arteriais) 14 375 352 — ~475 bytes por aresta, ~120 mil
+# arestas publicadas. Agora o detalhe sai em shards por RA (zoom ≥ 13) com percentil ≥ 75, e o overview só com o
+# percentil ≥ 97 e as classes de `overview_highways`. Leia os bytes reais em summary.json/manifest e reajuste aqui.
+publish_min_percentile = 75
+overview_min_percentile = 97
 always_publish_highways = ["motorway", "trunk", "primary", "secondary"]
-simplify_tolerance_deg = 0.00005
+# Classes arteriais que entram no overview independentemente do percentil (as demais só pelo percentil).
+overview_highways = ["motorway", "trunk", "primary"]
+# Simplificação Douglas-Peucker em graus: ~10 m no overview, ~5 m no detalhe (flag geometry_simplified por aresta).
+simplify_tolerance_deg = 0.0001
+detail_simplify_tolerance_deg = 0.00005
 min_refresh_days = 90
 breaks = { betweenness_percentile = [50, 75, 90, 97] }
-budgets = { overview = 2000000, detail = 4000000 }
+budgets = { overview = 6000000, shard = 8000000 }
 source = { name = "OpenStreetMap (extrato Geofabrik centro-oeste)", url = "https://www.openstreetmap.org/copyright", license = "ODbL 1.0 — base de dados derivada, disponibilizada sob ODbL", license_url = "https://www.opendatacommons.org/licenses/odbl/1-0/", attribution_pt = "© OpenStreetMap contributors — https://www.openstreetmap.org/copyright. Extrato: Geofabrik." }
 
 [manifest]

@@ -2946,8 +2946,8 @@ vias.amostras.slice(0, -1).every((a, i) => a.cor === vias.tokens[i]) && vias.amo
 vias.amostras.slice(0, -1).every((a, i) => a.altura === `${VIAS.line.weight[i]}px` && a.opacidade === String(VIAS.line.opacity[i]))
   ? pass('a espessura e a opacidade de cada amostra são as do registro — a legenda desenha o que o mapa desenha')
   : fail('peso/opacidade das amostras: ' + JSON.stringify(vias.amostras.map((a) => [a.altura, a.opacidade])));
-/Centralidade \(percentil\)/.test(vias.titulo) && vias.role === 'detail' && vias.features > 0 && vias.contador === String(vias.features)
-  ? pass(`em zoom de detalhe desenha o arquivo de detalhe (${vias.features} vias) e o contador confere`)
+/Centralidade \(percentil\)/.test(vias.titulo) && vias.role === 'detail_shard' && vias.features > 0 && vias.contador === String(vias.features)
+  ? pass(`em zoom de detalhe desenha os shards de vias por RA (${vias.features} vias) e o contador confere`)
   : fail('título/papel/contador (vias): ' + JSON.stringify({ titulo: vias.titulo, role: vias.role, features: vias.features, contador: vias.contador }));
 /OpenStreetMap/.test(vias.procedencia) && /ODbL/.test(vias.procedencia)
   ? pass('a procedência das vias cita o OpenStreetMap e a licença ODbL')

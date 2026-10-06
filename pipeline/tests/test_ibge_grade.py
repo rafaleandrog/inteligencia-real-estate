@@ -58,7 +58,7 @@ class GradeSourceTests(unittest.TestCase):
         self.assertIn("discover grade", str(caught.exception))
         self.assertIn("resolvê-los pelo bbox", str(caught.exception))
         records, suppressed, retrievals = load_edition(fetcher, base_url=BASE_2010, quadrant_ids=["grade_fixture"], columns=COLUMNS, label="Grade 2010")
-        self.assertEqual(len(records), 8)
+        self.assertEqual(len(records), 9)
         self.assertEqual(len(retrievals), 1)
 
     def test_discover_lists_zip_names(self):

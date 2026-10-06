@@ -1,9 +1,12 @@
 """Agregados por RA a partir dos arquivos PUBLICADOS — o que o site mostra é o que se soma.
 
-Domicílios: células de 200 m publicadas (detalhe) + células de 1 km não subdivididas
-(`children == 0` no overview). Empregos: hexágonos r9 publicados; população-base: overview r8
-(inclui hexágonos sem emprego). Centralidade: arestas publicadas no detalhe. Invariante:
-Σ RAs + balde SEM_RA = total publicado (contado em `counts`, nunca escondido).
+Domicílios: células de 200 m publicadas (detalhe) + células de 1 km do overview na edição em que
+NÃO estavam subdivididas (`children_<ano> == 0`; sem a chave por edição vale `children`). Uma
+célula de 1 km inteira em 2010 e subdividida em 2022 (`resolution_changed`) entra uma vez em cada
+edição: 2010 pelo overview, 2022 pelas filhas do detalhe (#167). Empregos: hexágonos r9
+publicados; população-base: overview r8 (inclui hexágonos sem emprego). Centralidade: arestas
+publicadas no detalhe (shards por RA). Invariante: Σ RAs + balde SEM_RA = total publicado
+(contado em `counts`, nunca escondido).
 """
 
 from __future__ import annotations
@@ -17,30 +20,46 @@ def _sum_or_none(values: list[int | None]) -> int | None:
     return sum(present) if present else None
 
 
+EDITIONS = ("2010", "2022")
+
+
+def _children_in(props: Mapping[str, Any], edition: str) -> int:
+    value = props.get(f"children_{edition}")
+    if value is None:
+        value = props.get("children", 0)
+    return int(value or 0)
+
+
 def aggregate_households(detail: Iterable[dict[str, Any]], overview: Iterable[dict[str, Any]]) -> dict[str, dict[str, Any]]:
     by_ra: dict[str, dict[str, list]] = defaultdict(lambda: defaultdict(list))
-    cells = list(detail) + [f for f in overview if f["properties"].get("children", 0) == 0]
-    for feature in cells:
-        p = feature["properties"]
-        ra = p.get("ra_geo_id") or "SEM_RA"
-        by_ra[ra]["dom10"].append(p.get("dom_ocu_2010"))
-        by_ra[ra]["dom22"].append(p.get("dom_ocu_2022"))
-        by_ra[ra]["pop10"].append(p.get("pop_2010"))
-        by_ra[ra]["pop22"].append(p.get("pop_2022"))
-        # Soma com buraco é soma parcial (R8.55): célula sem valor num dos anos entra na contagem de parciais.
-        partial = p.get("dom_ocu_2010") is None or p.get("dom_ocu_2022") is None or "partial_children" in (p.get("quality_flags") or [])
+
+    def add(props: Mapping[str, Any], editions: tuple[str, ...]) -> None:
+        ra = props.get("ra_geo_id") or "SEM_RA"
+        for e in editions:
+            by_ra[ra][f"dom{e}"].append(props.get(f"dom_ocu_{e}"))
+            by_ra[ra][f"pop{e}"].append(props.get(f"pop_{e}"))
+        # Soma com buraco é soma parcial (R8.55): célula sem valor numa edição que entra na soma conta como parcial.
+        partial = any(props.get(f"dom_ocu_{e}") is None for e in editions) or "partial_children" in (props.get("quality_flags") or [])
         by_ra[ra]["partial"].append(1 if partial else 0)
+
+    for feature in detail:
+        add(feature["properties"], EDITIONS)
+    for feature in overview:
+        props = feature["properties"]
+        editions = tuple(e for e in EDITIONS if _children_in(props, e) == 0)
+        if editions:
+            add(props, editions)
     out: dict[str, dict[str, Any]] = {}
     for ra, cols in by_ra.items():
-        h10 = _sum_or_none(cols["dom10"])
-        h22 = _sum_or_none(cols["dom22"])
+        h10 = _sum_or_none(cols["dom2010"])
+        h22 = _sum_or_none(cols["dom2022"])
         delta = (h22 - h10) if (h10 is not None and h22 is not None) else None
         growth = round(delta / h10, 4) if (delta is not None and h10) else None
         out[ra] = {
             "households_2010": h10, "households_2022": h22, "households_delta": delta, "households_growth_pct": growth,
-            "pop_2010": _sum_or_none(cols["pop10"]), "pop_2022": _sum_or_none(cols["pop22"]),
-            "cells_2010": sum(1 for v in cols["dom10"] if v is not None),
-            "cells_2022": sum(1 for v in cols["dom22"] if v is not None),
+            "pop_2010": _sum_or_none(cols["pop2010"]), "pop_2022": _sum_or_none(cols["pop2022"]),
+            "cells_2010": sum(1 for v in cols["dom2010"] if v is not None),
+            "cells_2022": sum(1 for v in cols["dom2022"] if v is not None),
             "cells_partial": sum(cols["partial"]),
         }
     return out

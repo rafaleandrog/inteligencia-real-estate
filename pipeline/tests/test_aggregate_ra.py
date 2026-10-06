@@ -32,6 +32,28 @@ class AggregateTests(unittest.TestCase):
         self.assertEqual(out["RA_19"]["cells_partial"], 1)
         self.assertEqual(out["RA_11"]["cells_partial"], 0)
 
+    def test_resolution_changed_cell_counts_each_edition_once(self):
+        # Célula de 1 km inteira em 2010 (50) e subdividida em 2022 (30 + 40): 2010 vem do overview, 2022 das filhas (#167).
+        detail = [cell("RA_19", None, 30, p10=None, p22=100, flags=("cell_missing_2010",)),
+                  cell("RA_19", None, 40, p10=None, p22=130, flags=("cell_missing_2010",))]
+        overview = [{"properties": {"ra_geo_id": "RA_19", "children": 2, "children_2010": 0, "children_2022": 2,
+                                    "dom_ocu_2010": 50, "dom_ocu_2022": 70, "pop_2010": 160, "pop_2022": 230,
+                                    "quality_flags": ["resolution_changed"]}}]
+        out = aggregate_households(detail, overview)
+        self.assertEqual(out["RA_19"]["households_2010"], 50)
+        self.assertEqual(out["RA_19"]["households_2022"], 70)      # não 140: as filhas já contam o 2022
+        self.assertEqual(out["RA_19"]["pop_2010"], 160)
+        self.assertEqual(out["RA_19"]["pop_2022"], 230)
+        self.assertEqual(out["RA_19"]["households_delta"], 20)
+        self.assertEqual(out["RA_19"]["cells_2010"], 1)
+        self.assertEqual(out["RA_19"]["cells_2022"], 2)
+        # a célula inteira entrou só em 2010 e tinha valor: não é parcial; as filhas sem 2010 são
+        self.assertEqual(out["RA_19"]["cells_partial"], 2)
+        # overview subdividido nas duas edições continua fora da soma (as filhas já contam)
+        both = [{"properties": {"ra_geo_id": "RA_19", "children": 2, "children_2010": 2, "children_2022": 2,
+                                "dom_ocu_2010": 1000, "dom_ocu_2022": 1000, "pop_2010": 1, "pop_2022": 1, "quality_flags": []}}]
+        self.assertEqual(aggregate_households(detail, both)["RA_19"]["households_2022"], 70)
+
     def test_jobs_sum_and_basis(self):
         detail = [{"properties": {"ra_geo_id": "RA_19", "jobs_total": 1200, "jobs_low": 400, "jobs_mid": 500, "jobs_high": 300}},
                   {"properties": {"ra_geo_id": "RA_19", "jobs_total": 60, "jobs_low": 30, "jobs_mid": 20, "jobs_high": 10}},

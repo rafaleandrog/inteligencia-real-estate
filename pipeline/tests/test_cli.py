@@ -114,10 +114,12 @@ class AllDatasetsFixtureTests(unittest.TestCase):
             self.assertTrue((out / "households_grid" / "overview_1km.json").exists())
             self.assertTrue((out / "households_grid" / "detail_200m" / "SEM_RA.json").exists())
             self.assertTrue((out / "jobs_hex" / "detail_r9" / "RA_19.json").exists())
-            self.assertTrue((out / "road_centrality" / "detail.json").exists())
+            self.assertTrue((out / "road_centrality" / "detail" / "RA_19.json").exists())   # shards por RA (#167)
+            self.assertFalse((out / "road_centrality" / "detail.json").exists())
             agg = json.loads((out / "ra_aggregates.json").read_text("utf-8"))
             rows = {r["ra_geo_id"]: r for r in agg["rows"]}
-            self.assertEqual(rows["RA_19"]["households_2022"], 55 + 36 + 25)
+            self.assertEqual(rows["RA_19"]["households_2022"], 55 + 36 + 25 + 30 + 40)   # + filhas de 2022 da célula que mudou de resolução
+            self.assertEqual(rows["RA_19"]["households_2010"], 40 + 30 + 20 + 50)        # + a célula de 1 km inteira de 2010, uma vez só (#167)
             self.assertEqual(rows["RA_11"]["households_2022"], 120 + 270)
             self.assertEqual(rows["RA_11"]["jobs_total"], 5400)
             self.assertEqual(rows["RA_19"]["jobs_total"], 1260)

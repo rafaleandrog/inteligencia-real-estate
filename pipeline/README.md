@@ -56,7 +56,10 @@ PYTHONPATH=pipeline python -m imob_pipeline run all --fixture-dir pipeline/tests
    Grade inteira de novo) e confirmar o `metadata.csv` do AOP (candidatas em `metadata_fallback_urls`; sem
    resposta, o log lista os links de dados das páginas em `probe_urls`); ler `summary.json` e os logs
    (tamanhos, tempos, contagens); ajustar orçamentos e percentis. `discover grade` só lista os
-   nomes dos arquivos.
+   nomes dos arquivos. Os orçamentos e limiares atuais do `df.toml` vêm da segunda execução real
+   (#167: ~535 bytes por célula da Grade, ~475 por aresta; detalhe das vias em shards por RA a partir
+   do zoom 13) — o log do job só mostra as últimas 5 000 linhas pela API, então leia os bytes no
+   `manifest.json` da branch de dados ou no `summary.json` do artefato.
 
 Sem a permissão "Allow GitHub Actions to create and approve pull requests" (issue #155) a
 criação da PR falha, mas a branch `dados-publicos/atualizacao` é enviada com `data/public/`

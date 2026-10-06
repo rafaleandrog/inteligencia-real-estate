@@ -1056,3 +1056,14 @@ Cada uma nasce de um erro que aconteceu de verdade.
   motivo e não substituem a fixture (hoje `tests/public-data-integrity.test.js` e a variante real da
   paridade da ponte); e todo teste que fica pulado até um arquivo existir ganha uma variante com fixture
   que roda hoje.
+- **R8.101** *(2026-10-06, issue #167)* **Recorte pelo bbox do projeto é da transformação, não do
+  validador; orçamento se calibra com bytes reais.** A segunda execução real publicou Goiás inteiro no
+  overview da Grade (o quadrante do IBGE cobre muito mais que o DF), a mesma célula de 1 km duas vezes
+  (inteira em 2010, subdividida em 2022) e 58 MB de vias num arquivo só — tudo reprovado só no fim, pelo
+  validador, com 137 mil linhas de log. Regra: toda camada descarta na transformação o que cai fora do
+  bbox do projeto e CONTA o descarte (`dropped_outside_bbox`), como as arestas já faziam (#164); uma
+  chave estável publicada em dois níveis de resolução vira UMA feição com a origem de cada valor
+  declarada (`children_<ano>`, `resolution_changed`), nunca duas feições com o mesmo id; e orçamento
+  de arquivo é número lido de bytes reais (manifest/summary da execução anterior × bytes por feição),
+  com shards por RA e `zoom_min` como primeira resposta a um arquivo grande — nunca um palpite
+  redondo que a execução de 15 minutos vai reprovar.

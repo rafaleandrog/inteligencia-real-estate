@@ -55,7 +55,8 @@ export const TERRITORY_LAYERS = Object.freeze([
     ramp: 'via',
     idProperty: 'edge_id',
     metrics: Object.freeze([
-      Object.freeze({ key: 'betweenness_percentile', label: 'Centralidade (percentil)', unit: 'percentil', format: 'decimal1', roles: ['overview', 'detail'] }),
+      // Detalhe em shards por RA desde a segunda execução real (#167); 'detail' fica aceito para um arquivo único.
+      Object.freeze({ key: 'betweenness_percentile', label: 'Centralidade (percentil)', unit: 'percentil', format: 'decimal1', roles: ['overview', 'detail', 'detail_shard'] }),
     ]),
     defaultMetric: 'betweenness_percentile',
     // Peso e opacidade por classe — números, não cor (R8.71). Progressão suave como `flowWeight`.

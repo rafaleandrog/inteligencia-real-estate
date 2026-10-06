@@ -39,6 +39,7 @@ def run(ctx: RunContext) -> dict:
     result = build_households(
         cells10, cells22, suppressed_2010=sup10, suppressed_2022=sup22, cell_area_km2=cfg.cell_area_km2,
         breaks=cfg.breaks, drop_if_empty_both_years=cfg.drop_if_empty_both_years, assign_ra=index.assign,
+        bbox=ctx.config.project.bbox,
     )
     clear_folder(ctx, DETAIL_FOLDER)
     files = [write_layer(ctx, f"{FOLDER}/overview_1km.json", result.overview, role="overview", budget_bytes=cfg.budgets["overview"])]
@@ -73,7 +74,11 @@ def run(ctx: RunContext) -> dict:
             "households_delta = dom_ocu_2022 − dom_ocu_2010; "
             "por km² pela área nominal da célula; variação relativa é fração decimal e é nula quando 2010 é nulo ou zero. "
             "Overview de 1 km com somas estritas (filho nulo → soma nula + partial_children). Célula sem domicílio nos dois "
-            "anos é omitida e contada. Valor suprimido vira nulo + flag, nunca é saturado. RA pelo centroide da célula."
+            "anos é omitida e contada. Valor suprimido vira nulo + flag, nunca é saturado. RA pelo centroide da célula. "
+            f"Célula com centroide fora do bbox do projeto é descartada e contada ({result.counts.get('dropped_outside_bbox', 0)} em "
+            "dropped_outside_bbox): o quadrante da Grade cobre muito mais que o DF. Célula de 1 km inteira numa edição e subdividida "
+            "em 200 m na outra vira UMA feição no overview, com o valor de cada edição vindo da listagem daquela edição (flag "
+            "resolution_changed; children_2010/children_2022 dizem de onde veio cada ano)."
         ),
         ra_assignment_method=ctx.config.ra.assignment_method,
         class_breaks=breaks_block(dict(cfg.breaks), n=len(result.detail)),
