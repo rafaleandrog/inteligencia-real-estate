@@ -1041,7 +1041,7 @@ if (aberto) {
     ? pass(`o painel mostra o TMD oficial do DER (${tmd})`)
     : fail(`TMD ${tmd} ausente do painel do trecho`);
 
-  /Fluxo diário \(DER\/DF\)/.test(trechoDetail) && trechoDetail.includes(props.road_segment_id)
+  /Fluxo medido \(DER\/DF\)/.test(trechoDetail) && /Média\/dia/.test(trechoDetail) && trechoDetail.includes(props.road_segment_id)
     ? pass('o bloco de fluxo aparece, identificado pelo road_segment_id')
     : fail('bloco de fluxo ausente do painel do trecho: ' + trechoDetail.slice(-500));
 

@@ -216,7 +216,7 @@ function picoDoPeriodo(records) {
  * dependem dela, e endurecê-la aqui mudaria o comportamento de quatro datasets numa
  * mudança sobre o painel do trecho.
  */
-function mesDe(date) {
+export function mesDe(date) {
   return isRealCalendarDate(date) ? date.slice(0, 7) : null;
 }
 
@@ -227,7 +227,7 @@ function mesDe(date) {
  * ninguém tocar no código, e o dia 0 do mês seguinte em UTC é a definição que não depende
  * do fuso de quem abre a página.
  */
-function diasNoMes(mes) {
+export function diasNoMes(mes) {
   const ano = Number(mes.slice(0, 4));
   const indice = Number(mes.slice(5, 7));
   return new Date(Date.UTC(ano, indice, 0)).getUTCDate();
@@ -236,7 +236,7 @@ function diasNoMes(mes) {
 const NOME_DO_MES = new Intl.DateTimeFormat('pt-BR', { month: 'long', timeZone: 'UTC' });
 
 /** `2026-04` -> `Abril/2026`. */
-function rotuloDoMes(mes) {
+export function rotuloDoMes(mes) {
   const nome = NOME_DO_MES.format(new Date(`${mes}-01T00:00:00Z`));
   return `${nome.charAt(0).toUpperCase()}${nome.slice(1)}/${mes.slice(0, 4)}`;
 }
