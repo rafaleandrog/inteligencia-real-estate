@@ -12,7 +12,7 @@
 // nos dias em que os dois foram medidos. Somar pontos de medição diferentes nunca acontece
 // aqui: cada resumo é de UM trecho. E nada aqui é "veículos únicos" — são passagens.
 import { classifyDayCoverage } from './coverage.js';
-import { classTotals, VEHICLE_CLASSES } from './panel.js';
+import { classTotals, VEHICLE_CLASSES, mesDe, diasNoMes, rotuloDoMes } from './panel.js';
 import { corridorSumMismatch } from './direction.js';
 import { toNumber } from '../normalize.js';
 
@@ -152,6 +152,70 @@ export function segmentPeriodSummary(linked, directionCtx) {
     coverage: cobertura(todos),
     qualityFlags: bandeiras(todos),
   };
+}
+
+/**
+ * Tabela compacta do painel do trecho (issue #173): crescente, decrescente e total, com
+ * total e média por dia — para o recorte inteiro e para cada mês de calendário.
+ *
+ * Por sentido, a média é sobre os dias em que AQUELE sentido tem fluxo. O total do trecho
+ * soma, dia a dia, os sentidos medidos naquele dia (mesma regra de `segmentPeriodSummary`),
+ * e a média dele é sobre os dias com algum fluxo; `singleDirectionDays` diz em quantos
+ * desses dias só um sentido existia — é o que puxa a média do total para baixo.
+ * Nada é projetado para o mês cheio: `days` de `daysInMonth` fica ao lado.
+ *
+ * @returns {null|{ period: object, months: object[] }}
+ */
+export function segmentFlowTable(linked) {
+  if (!linked) return null;
+  const t = linked.traffic || { crescente: [], decrescente: [], semSentido: [] };
+  const todos = [...t.crescente, ...t.decrescente, ...t.semSentido];
+  if (todos.length === 0) return null;
+
+  const novoBalde = () => ({ dias: new Map() });
+  const baldes = new Map([['', novoBalde()]]);
+  for (const r of todos) {
+    if (typeof r.date !== 'string' || !Number.isFinite(r.flow)) continue;
+    const chaves = [''];
+    const mes = mesDe(r.date);
+    if (mes) chaves.push(mes);
+    for (const chave of chaves) {
+      if (!baldes.has(chave)) baldes.set(chave, novoBalde());
+      const dias = baldes.get(chave).dias;
+      if (!dias.has(r.date)) dias.set(r.date, { crescente: null, decrescente: null, semSentido: null });
+      const dia = dias.get(r.date);
+      const lado = r.direction === 'crescente' || r.direction === 'decrescente' ? r.direction : 'semSentido';
+      dia[lado] = (dia[lado] ?? 0) + r.flow;
+    }
+  }
+
+  const linha = (valores) => {
+    const lista = valores.filter(Number.isFinite);
+    const total = lista.length > 0 ? lista.reduce((a, b) => a + b, 0) : null;
+    return { total, days: lista.length, average: total === null ? null : total / lista.length };
+  };
+  const resumir = (dias) => {
+    const lista = [...dias.values()];
+    const totais = lista.map((d) => {
+      const partes = [d.crescente, d.decrescente, d.semSentido].filter(Number.isFinite);
+      return partes.length > 0 ? partes.reduce((a, b) => a + b, 0) : null;
+    });
+    return {
+      crescente: linha(lista.map((d) => d.crescente)),
+      decrescente: linha(lista.map((d) => d.decrescente)),
+      semSentido: linha(lista.map((d) => d.semSentido)),
+      total: linha(totais),
+      singleDirectionDays: lista.filter((d) => !(Number.isFinite(d.crescente) && Number.isFinite(d.decrescente))).length,
+    };
+  };
+
+  const months = [...baldes.keys()].filter(Boolean).sort().map((mes) => ({
+    month: mes,
+    label: rotuloDoMes(mes),
+    daysInMonth: diasNoMes(mes),
+    ...resumir(baldes.get(mes).dias),
+  }));
+  return { period: resumir(baldes.get('').dias), months };
 }
 
 // --- TRAFFIC_CORRIDOR_DAILY ----------------------------------------------------------

@@ -3325,3 +3325,47 @@ p.precision.precision-exact {
   :root[data-rail="collapsed"] .rail-foot { padding-left: 0; padding-right: 0; }
   :root[data-rail="collapsed"] .rail-toggle { justify-content: center; margin-bottom: 0; padding: var(--esp-2) 0; }
 }
+
+/* Tabela de fluxo do trecho (issue #173): crescente, decrescente e total com média/dia e
+   total — o que se quer ler ao clicar na rodovia. O resto fica em "Detalhes da medição". */
+.detail-flow-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+  margin: 4px 0 10px;
+  font-variant-numeric: tabular-nums;
+}
+.detail-flow-table caption {
+  text-align: left;
+  font-size: 11px;
+  color: var(--muted);
+  padding-bottom: 4px;
+}
+.detail-flow-table th,
+.detail-flow-table td {
+  padding: 5px 4px;
+  border-bottom: 1px solid var(--line);
+  vertical-align: top;
+}
+.detail-flow-table thead th {
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--muted);
+  text-align: right;
+}
+.detail-flow-table thead th:first-child,
+.detail-flow-table tbody th { text-align: left; }
+.detail-flow-table tbody th { font-weight: 500; color: var(--ink); }
+.detail-flow-table td { text-align: right; color: var(--ink); white-space: nowrap; }
+.detail-flow-table tr.is-total th,
+.detail-flow-table tr.is-total td { font-weight: 700; border-bottom: none; }
+.detail-flow-sub {
+  display: block;
+  font-size: 10.5px;
+  font-weight: 400;
+  color: var(--muted);
+  margin-top: 1px;
+}
+.detail-flow-months td { font-size: 11.5px; }
+.detail-traffic-more { margin-top: 6px; }
+.detail-traffic-more > .detail-traffic-cut { margin-top: 8px; }
