@@ -954,13 +954,21 @@ function flowPeriodTable(code, period) {
       period[sentido], { title: `Média sobre ${period[sentido].days} dia(s) com medição neste sentido.` });
   }
   linha('Sem sentido declarado', '', period.semSentido);
-  linha('Total (dois sentidos)', '', period.total, {
-    total: true,
-    title: period.singleDirectionDays > 0
-      ? `Média sobre ${period.total.days} dia(s); em ${period.singleDirectionDays} deles só um sentido foi medido, `
-        + 'o que puxa a média do total para baixo.'
-      : `Média sobre ${period.total.days} dia(s), com os dois sentidos medidos. São passagens, não veículos únicos.`,
-  });
+  // Com filtro de sentido o outro lado foi tirado DE PROPÓSITO: o total é do recorte, não
+  // "dois sentidos com dado faltando" (achado P1 do Codex na PR #174).
+  const filtroSentido = Boolean(state.trafficFilters.officialDirection || state.trafficFilters.projectDirection);
+  const ambos = period.crescente.total !== null && period.decrescente.total !== null;
+  const subTotal = filtroSentido ? 'só o sentido do filtro' : ambos ? 'dois sentidos' : 'só um sentido medido';
+  let tituloTotal;
+  if (filtroSentido) {
+    tituloTotal = `Média sobre ${period.total.days} dia(s), só no sentido escolhido no filtro.`;
+  } else if (period.singleDirectionDays > 0) {
+    tituloTotal = `Média sobre ${period.total.days} dia(s); em ${period.singleDirectionDays} deles só um sentido foi medido, `
+      + 'o que puxa a média do total para baixo.';
+  } else {
+    tituloTotal = `Média sobre ${period.total.days} dia(s), com os dois sentidos medidos. São passagens, não veículos únicos.`;
+  }
+  linha('Total', subTotal, period.total, { total: true, title: tituloTotal });
   const nota = document.createElement('caption');
   nota.textContent = 'veículos (passagens)';
   tabela.prepend(nota);
