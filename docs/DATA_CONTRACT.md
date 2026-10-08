@@ -94,7 +94,10 @@ desde a v2.6.0 também `ra_centroid_deterministic_jitter`, usado por anúncio pr
 quando a localidade não tem ponto de referência e a RA tem.
 **`confidence_flag`:** `low_spatial_high_attribute` — atributos confiáveis, localização aproximada.
 **`quality_flag`:** desde a v2.6.0 também `automated_item_page_verified`: anúncio que entrou pela busca
-automática (issue #179), com a página do próprio anúncio lida e reconhecida no momento da promoção.
+automática (issue #179), com a página do próprio anúncio lida e reconhecida no momento da promoção. E
+`manual_review_page_not_read`: candidato aprovado à mão depois de 5 leituras bloqueadas, com o dado
+digitado pelo revisor. A rotina nunca leu essa página, então ele nasce com `last_seen_at` e
+`source_page_verified_at` vazios até a verificação confirmá-lo no portal.
 
 `asking_price_brl_m2` é **derivado**: calculado por `asking_price_brl / area_m2` quando vazio.
 Valor já preenchido não é sobrescrito; divergência grande vira alerta em `DATA_QUALITY` (§17).
@@ -1878,7 +1881,12 @@ campos viram o contexto de todo anúncio que a busca encontrar. O resto é escri
 - `source_id` aponta para `LISTING_SOURCES.source_id`; vazio é resolvido pelo host da URL contra os
   portais que LISTINGS já tem.
 - `active` vazio conta como `true`.
-- `frequency` ∈ `daily` (padrão), `weekly` e `manual`. `manual` roda só quando `last_run_at` está vazio.
+- `frequency` ∈ `daily` (padrão), `weekly` e `manual`. `manual` roda só quando `last_run_at` está vazio
+  ou por pedido explícito.
+- Pedido explícito (menu **Anúncios: buscar novos agora** ou `listings_job` com `job = discovery`): toda
+  busca ativa cujo `last_run_at` é anterior ao pedido roda, qualquer que seja a frequência. O pedido fica
+  na propriedade `LISTINGS_DISCOVERY_FORCE_AFTER`, sobrevive à continuação e se apaga quando a busca
+  termina sem pendência.
 - `{page}` na URL é trocado por 1…`max_pages` (teto 5). Sem `{page}`, só a primeira página é lida.
 - `ra_geo_id` aceita `RA2026_RA-XX`, `RA-XX` ou a chave de RA_PROFILES (`RA_20`).
 - `last_status` ∈ `ok`, `blocked`, `error`. `last_found_count` são os links de anúncio reconhecidos na
@@ -1931,10 +1939,24 @@ A promoção grava em LISTINGS, além do que veio da página:
 
 - `coordinate_precision = locality_centroid_deterministic_jitter` (ou `ra_centroid_…`), com jitter
   determinístico de até 0,004° a partir do hash do `listing_id`;
-- `confidence_flag = low_spatial_high_attribute` e `quality_flag = automated_item_page_verified`;
+- `confidence_flag = low_spatial_high_attribute`;
 - `title` no formato da base (`Apartamento à venda · Águas Claras`);
-- `last_check_status = ok`;
 - um evento `created` em LISTING_EVENTS.
+
+A procedência depende de a rotina ter lido a página do candidato (`raw_json.read_status = ok`):
+
+| | página lida | aprovado à mão sem leitura |
+|---|---|---|
+| `quality_flag` | `automated_item_page_verified` | `manual_review_page_not_read` |
+| `last_seen_at`, `source_page_verified_at`, `last_checked_at` | data da leitura (`raw_json.last_read_at`) | vazios |
+| `last_check_status`, `last_check_http_code` | `ok`, `200` | vazios |
+
+A data da leitura é a da promoção no caminho automático. Num candidato que esperou a aprovação de um
+preço implausível, ela fica dias antes, e é ela que vale.
+
+Sem leitura, o anúncio não conta no frescor (`listings_verified_7d_count`) nem como confirmado no
+fechamento do mês. Ele vence na verificação seguinte como nunca conferido, e só a leitura dela o
+confirma.
 
 #### LISTINGS_HISTORY_MONTHLY
 `history_id | reference_month | listing_id | portal | external_id | status_at_month_end | asking_price_brl | area_m2 | asking_price_brl_m2 | bedrooms | suites | parking_spaces | property_type | transaction_type | address | locality | ra_geo_id | latitude | longitude | first_seen_at | last_seen_at | last_price_change_at | content_hash | capture_run_id | captured_at`

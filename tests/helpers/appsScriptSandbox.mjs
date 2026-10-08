@@ -178,6 +178,7 @@ export function createAppsScriptSandbox({
       getScriptProperties: () => ({
         getProperty: (key) => (key in properties ? properties[key] : null),
         setProperty: (key, value) => { properties[key] = value; },
+        deleteProperty: (key) => { delete properties[key]; },
       }),
     },
     LockService: {

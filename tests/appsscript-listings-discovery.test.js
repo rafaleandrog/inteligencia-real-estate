@@ -569,3 +569,130 @@ test('anúncio criado por outro escritor durante o run não é anexado de novo',
   assert.equal(table(sandbox, 'LISTING_EVENTS').length, 0);
   assert.equal(lastRun(sandbox).new_listings, 0);
 });
+
+// --- revisão do PR #182 -------------------------------------------------------------------------
+
+test('aprovado à mão sem leitura da página entra sem procedência automática e sem confirmação no portal', () => {
+  // Cinco leituras bloqueadas, a pessoa digita preço e área e aprova. A rotina nunca viu a
+  // página: nada de `automated_item_page_verified`, `last_seen_at` ou `last_check_status = ok`.
+  const sandbox = createAppsScriptSandbox({ sheets: sheets() });
+  network(sandbox.context, { [SEARCH_URL]: response(200, searchPage([NEW_2])), [NEW_2]: response(429) });
+  for (let d = 0; d < 5; d++) sandbox.context.runListingsDiscovery_({ now: day(d) });
+  const header = sandbox.sheets.LISTING_CANDIDATES._rows[0];
+  const row = sandbox.sheets.LISTING_CANDIDATES._rows[1];
+  row[header.indexOf('asking_price_brl')] = 700000;
+  row[header.indexOf('area_m2')] = 70;
+  row[header.indexOf('status')] = 'approved';
+  sandbox.context.runListingsDiscovery_({ now: day(5) });
+
+  assert.equal(table(sandbox, 'LISTING_CANDIDATES')[0].status, 'promoted');
+  const created = listingsById(sandbox).LIST_WEB_DFIMOVEIS_1400002;
+  assert.equal(created.quality_flag, 'manual_review_page_not_read');
+  assert.equal(created.last_seen_at, '', 'sem confirmação no portal');
+  assert.equal(created.source_page_verified_at, '');
+  assert.equal(created.last_checked_at, '', 'a verificação o confere primeiro');
+  assert.equal(created.last_check_status, '');
+  assert.equal(created.last_check_http_code, '');
+  assert.match(created.last_check_message, /sem leitura da página/);
+  assert.equal(created.asking_price_brl, 700000);
+  assert.match(table(sandbox, 'LISTING_EVENTS')[0].details, /aprovado à mão, sem leitura da página/);
+
+  // Nunca conferido, ele vence na verificação seguinte, e só a leitura dela o confirma.
+  const calls = [];
+  sandbox.context.UrlFetchApp.fetchAll = (requests) => requests.map((r) => {
+    calls.push(r.url);
+    return r.url === NEW_2 ? response(200, listingPage({ price: 700000, area: 70, url: NEW_2, rooms: 3 })) : response(429);
+  });
+  sandbox.context.runListingsVerify_({ now: day(5), noContinuation: true });
+  assert.ok(calls.includes(NEW_2));
+  const verified = listingsById(sandbox).LIST_WEB_DFIMOVEIS_1400002;
+  assert.deepEqual(verified.last_seen_at, day(5));
+  assert.equal(verified.last_check_status, 'ok');
+});
+
+test('aprovado à mão depois de lido: a confirmação no portal é a data da leitura, não a da aprovação', () => {
+  const sandbox = createAppsScriptSandbox({ sheets: sheets() });
+  network(sandbox.context, {
+    [SEARCH_URL]: response(200, searchPage([NEW_1])),
+    [NEW_1]: response(200, listingPage({ price: 6200000, url: NEW_1 })), // implausível: fica pendente
+  });
+  sandbox.context.runListingsDiscovery_({ now: day(0) });
+  const statusCol = sandbox.sheets.LISTING_CANDIDATES._rows[0].indexOf('status');
+  sandbox.sheets.LISTING_CANDIDATES._rows[1][statusCol] = 'approved';
+  sandbox.context.runListingsDiscovery_({ now: day(3) });
+
+  const created = listingsById(sandbox).LIST_WEB_DFIMOVEIS_1400001;
+  assert.equal(created.quality_flag, 'automated_item_page_verified');
+  for (const field of ['last_seen_at', 'source_page_verified_at', 'last_checked_at']) {
+    assert.equal(new Date(created[field]).getTime(), day(0).getTime(), `${field} é o da leitura`);
+  }
+  assert.equal(created.last_check_status, 'ok');
+});
+
+test('pedido explícito força busca manual, semanal e diária já feita, sobrevive à continuação e não repete', () => {
+  const url = (s) => `${SEARCH_URL}?s=${s}`;
+  const sandbox = createAppsScriptSandbox({ sheets: sheets({ searches: [
+    searchRow({ search_id: 'DAY', search_url: url('day'), last_run_at: new Date(day(0).getTime() - 3600000) }),
+    searchRow({ search_id: 'MAN', search_url: url('man'), frequency: 'manual', last_run_at: day(-1) }),
+    searchRow({ search_id: 'WEEK', search_url: url('week'), frequency: 'weekly', last_run_at: day(-3) }),
+    searchRow({ search_id: 'OFF', search_url: url('off'), active: false }),
+  ] }) });
+  const calls = network(sandbox.context, Object.fromEntries(['day', 'man', 'week', 'off'].map((s) => [url(s), response(200, searchPage([]))])));
+
+  sandbox.context.runListingsDiscovery_({ now: day(0) });
+  assert.deepEqual(calls, [], 'sem pedido, nada vence');
+
+  sandbox.context.requestForcedDiscovery_(day(0));
+  // Sem tempo para nenhuma busca: o pedido fica para a continuação.
+  sandbox.context.runListingsDiscovery_({ now: day(0), budgetMs: -1, noContinuation: true });
+  assert.deepEqual(calls, []);
+  assert.ok(sandbox.properties.LISTINGS_DISCOVERY_FORCE_AFTER, 'pedido sobrevive ao run inacabado');
+
+  const later = new Date(day(0).getTime() + 60000);
+  sandbox.context.runListingsDiscovery_({ trigger: 'continuation', now: later });
+  assert.deepEqual(calls.sort(), [url('day'), url('man'), url('week')]);
+  assert.equal(sandbox.properties.LISTINGS_DISCOVERY_FORCE_AFTER, undefined, 'pedido atendido se apaga');
+
+  calls.length = 0;
+  sandbox.context.runListingsDiscovery_({ now: new Date(later.getTime() + 60000) });
+  assert.deepEqual(calls, [], 'atendido uma vez só');
+});
+
+test('menu "buscar novos agora" e listings_job discovery registram o pedido explícito; verify não', () => {
+  const sandbox = createAppsScriptSandbox({ sheets: sheets(), scriptProperties: { ADMIN_TOKEN: 't', DATASET_VERSION: '1' } });
+  const seen = [];
+  sandbox.context.runListingsDiscovery_ = (options) => {
+    seen.push({ options, request: sandbox.properties.LISTINGS_DISCOVERY_FORCE_AFTER });
+    return 'ok';
+  };
+  sandbox.context.listingsDiscoverNow_UI();
+  assert.equal(seen.length, 1);
+  assert.match(seen[0].request, /^\d{4}-\d{2}-\d{2}T/);
+
+  delete sandbox.properties.LISTINGS_DISCOVERY_FORCE_AFTER;
+  post(sandbox.context, { token: 't', action: 'listings_job', job: 'verify' });
+  assert.equal(sandbox.properties.LISTINGS_DISCOVERY_FORCE_AFTER, undefined);
+  post(sandbox.context, { token: 't', action: 'listings_job', job: 'discovery' });
+  assert.match(sandbox.properties.LISTINGS_DISCOVERY_FORCE_AFTER, /^\d{4}-\d{2}-\d{2}T/);
+});
+
+test('falha ao criar gatilho: listings_job responde SCHEDULE_FAILED; review_candidate grava a decisão e avisa', () => {
+  const sandbox = createAppsScriptSandbox({ sheets: sheets(), scriptProperties: { ADMIN_TOKEN: 't', DATASET_VERSION: '1' } });
+  network(sandbox.context, {
+    [SEARCH_URL]: response(200, searchPage([NEW_2])),
+    [NEW_2]: response(403),
+  });
+  sandbox.context.runListingsDiscovery_({ now: day(0), noContinuation: true });
+  sandbox.context.ScriptApp.newTrigger = () => { throw new Error('Esta conta atingiu a cota de gatilhos'); };
+
+  const job = post(sandbox.context, { token: 't', action: 'listings_job', job: 'discovery' });
+  assert.equal(job.ok, false);
+  assert.equal(job.error.code, 'SCHEDULE_FAILED');
+  assert.match(job.error.message, /cota de gatilhos/);
+
+  const review = post(sandbox.context, { token: 't', action: 'review_candidate', candidate_id: 'CAND_DFIMOVEIS_1400002', decision: 'approved' });
+  assert.equal(review.ok, true);
+  assert.equal(review.record.discovery_scheduled, false);
+  assert.match(review.record.discovery_schedule_error, /cota de gatilhos/);
+  assert.equal(table(sandbox, 'LISTING_CANDIDATES')[0].status, 'approved');
+});

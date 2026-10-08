@@ -7436,6 +7436,10 @@ var LISTINGS_JITTER_MAX_DEG = 0.004;
 var LISTINGS_PRICE_M2_OUTLIER_FACTOR = 3;
 var LISTINGS_PRICE_M2_MIN_REFERENCES = 3;
 var LISTINGS_AUTOMATED_QUALITY_FLAG = 'automated_item_page_verified';
+/** Instante do último pedido explícito de busca (ver requestForcedDiscovery_). */
+var LISTINGS_DISCOVERY_FORCE_PROP = 'LISTINGS_DISCOVERY_FORCE_AFTER';
+/** Aprovado à mão sem que a rotina tenha lido a página (ver listingFromCandidate_). */
+var LISTINGS_MANUAL_QUALITY_FLAG = 'manual_review_page_not_read';
 var LISTING_CANDIDATE_STATUSES = ['pending', 'approved', 'rejected', 'promoted'];
 
 /** Tipo pela URL ou título. A ordem importa: casa em condomínio antes de casa. */
@@ -7468,9 +7472,24 @@ function listingsDiscoveryContinue(e) {
 
 /** Menu: Anúncios: buscar novos agora. */
 function listingsDiscoverNow_UI() {
+  requestForcedDiscovery_();
   var message = runListingsDiscovery_({ trigger: 'manual' });
   notify_('Anúncios: busca', message);
   return message;
+}
+
+/**
+ * Pedido explícito de busca (menu, `listings_job`): toda busca ativa cujo último run é
+ * ANTERIOR ao pedido roda, qualquer que seja a frequência (`manual` e `weekly` inclusive).
+ * Fica em propriedade porque a continuação é um gatilho e não recebe argumento; uma busca
+ * que já rodou depois do pedido não roda de novo, e a propriedade se apaga quando a busca
+ * termina sem pendência.
+ */
+function requestForcedDiscovery_(now) {
+  // Truncado ao segundo: a planilha pode guardar `last_run_at` sem milissegundo, e a busca
+  // que rodou logo depois do pedido não pode parecer anterior a ele.
+  var at = Math.floor((now || new Date()).getTime() / 1000) * 1000;
+  props_().setProperty(LISTINGS_DISCOVERY_FORCE_PROP, new Date(at).toISOString());
 }
 
 /** Mesmo lock de script da verificação: as duas escrevem em LISTINGS. */
@@ -7491,13 +7510,19 @@ function runListingsDiscovery_(options) {
   }
 }
 
-/** Agenda um gatilho único sem deixar a falha de agendamento derrubar quem pediu. */
+/**
+ * Agenda um gatilho único sem deixar a falha de agendamento derrubar quem pediu. Devolve
+ * `{ scheduled, error }`: `scheduled = false` com `error` vazio é o debounce (já havia um
+ * pendente); `error` preenchido é falha de agendamento (autorização, cota de gatilhos), e
+ * nada vai rodar até o gatilho diário.
+ */
 function scheduleListingsJobQuietly_(handler) {
   try {
-    return scheduleOneOffTrigger_(handler, LISTINGS_CONTINUATION_DELAY_MS);
+    return { scheduled: scheduleOneOffTrigger_(handler, LISTINGS_CONTINUATION_DELAY_MS), error: '' };
   } catch (err) {
-    Logger.log('não foi possível agendar %s: %s', handler, err && err.message);
-    return false;
+    var message = toText_((err && err.message) || err) || 'erro desconhecido';
+    Logger.log('não foi possível agendar %s: %s', handler, message);
+    return { scheduled: false, error: message };
   }
 }
 
@@ -7551,8 +7576,13 @@ function listingsJobFromApi_(params) {
   var handler = job === 'verify' ? LISTINGS_CONTINUE_HANDLER
     : (job === 'discovery' ? LISTINGS_DISCOVERY_CONTINUE_HANDLER : '');
   if (!handler) return errorResponse_('INVALID_PAYLOAD', 'job deve ser verify ou discovery.', params.correlation_id);
-  var scheduled = scheduleListingsJobQuietly_(handler);
-  return successResponse_({ job: job, scheduled: scheduled, already_pending: !scheduled },
+  if (job === 'discovery') requestForcedDiscovery_();
+  var result = scheduleListingsJobQuietly_(handler);
+  if (result.error) {
+    return errorResponse_('SCHEDULE_FAILED', 'Não foi possível agendar a execução (' + result.error +
+      '). Rode pelo menu ou espere o gatilho diário.', params.correlation_id);
+  }
+  return successResponse_({ job: job, scheduled: result.scheduled, already_pending: !result.scheduled },
     props_().getProperty('DATASET_VERSION') || '1', params.correlation_id);
 }
 
@@ -7589,9 +7619,13 @@ function reviewCandidateFromApi_(params) {
   });
   if (!result) return errorResponse_('INTERNAL_ERROR', 'Não foi possível obter lock; tente novamente.', correlationId);
   if (result.error) return errorResponse_(result.error, result.message, correlationId);
-  var scheduled = decision === 'approved' ? scheduleListingsJobQuietly_(LISTINGS_DISCOVERY_CONTINUE_HANDLER) : false;
-  return successResponse_({ candidate_id: id, status: decision, discovery_scheduled: scheduled },
-    props_().getProperty('DATASET_VERSION') || '1', correlationId, id);
+  // A decisão já está gravada; falha de agendamento só atrasa a promoção até a busca diária,
+  // e a resposta diz isso em vez de afirmar que ela foi agendada.
+  var schedule = decision === 'approved' ? scheduleListingsJobQuietly_(LISTINGS_DISCOVERY_CONTINUE_HANDLER)
+    : { scheduled: false, error: '' };
+  var record = { candidate_id: id, status: decision, discovery_scheduled: schedule.scheduled };
+  if (schedule.error) record.discovery_schedule_error = schedule.error;
+  return successResponse_(record, props_().getProperty('DATASET_VERSION') || '1', correlationId, id);
 }
 
 // --- Índices de referência (puros sobre as linhas) ---------------------------------------
@@ -7856,8 +7890,25 @@ function listingIdForCandidate_(cand) {
   return 'LIST_WEB_' + normalizeSlug_(cand.source_name).replace(/_/g, '').toUpperCase() + '_' + toText_(cand.external_id);
 }
 
-/** Linha de LISTINGS (objeto campo → valor) para um candidato que passou nos portões. */
+/**
+ * Linha de LISTINGS (objeto campo → valor) para um candidato que passou nos portões.
+ *
+ * A procedência depende de a rotina ter lido a página. Lida (`raw_json.read_status = ok`):
+ * `automated_item_page_verified`, confirmada no portal na data DA LEITURA (`last_read_at`) —
+ * que é a da promoção no caminho automático, mas fica dias antes quando o candidato esperou
+ * a aprovação de um preço implausível. Não lida — aprovada à mão
+ * depois de LISTINGS_CANDIDATE_MAX_READ_ATTEMPTS leituras bloqueadas, com o dado digitado
+ * pelo revisor —: `manual_review_page_not_read`, e `last_seen_at`, `source_page_verified_at`
+ * e `last_check_*` ficam vazios. Assim o anúncio não entra no frescor nem no fechamento do
+ * mês como confirmado, e vence na verificação seguinte como nunca conferido — só a leitura
+ * dela o confirma.
+ */
 function listingFromCandidate_(cand, resolved, now, runId) {
+  var meta = candidateMeta_(cand);
+  var pageRead = meta.read_status === 'ok';
+  var readAt = cellDate_(meta.last_read_at);
+  if (!readAt || readAt.getTime() === now.getTime()) readAt = now;
+  var seenAt = pageRead ? readAt : '';
   var id = listingIdForCandidate_(cand);
   var portalCode = normalizeSlug_(cand.source_name).replace(/_/g, '').toUpperCase();
   var token = toText_(cand.external_id);
@@ -7871,7 +7922,7 @@ function listingFromCandidate_(cand, resolved, now, runId) {
     listing_id: id, portal: toText_(cand.source_name), transaction_type: 'sale',
     title: (LISTINGS_TYPE_LABELS[type] || type) + ' à venda · ' + locality,
     source_url: toText_(cand.source_url), source_url_type: 'individual_listing', external_id: token,
-    portal_listing_code: token, source_page_verified_at: now, status: 'active', last_seen_at: now,
+    portal_listing_code: token, source_page_verified_at: seenAt, status: 'active', last_seen_at: seenAt,
     property_id: 'PROP_WEB_' + portalCode + '_' + token, property_type: type,
     address: toText_(cand.address) || locality, locality: locality, ra_geo_id: resolved.ra,
     latitude: point.lat, longitude: point.lon, coordinate_precision: resolved.precision,
@@ -7882,10 +7933,12 @@ function listingFromCandidate_(cand, resolved, now, runId) {
     parking_spaces: toNumber_(cand.parking_spaces) === null ? '' : toNumber_(cand.parking_spaces),
     condo_fee_brl: toNumber_(cand.condo_fee_brl) === null ? '' : toNumber_(cand.condo_fee_brl),
     iptu_brl: toNumber_(cand.iptu_brl) === null ? '' : toNumber_(cand.iptu_brl),
-    quality_flag: LISTINGS_AUTOMATED_QUALITY_FLAG, first_seen_at: now, last_checked_at: now,
+    quality_flag: pageRead ? LISTINGS_AUTOMATED_QUALITY_FLAG : LISTINGS_MANUAL_QUALITY_FLAG,
+    first_seen_at: now, last_checked_at: seenAt,
     parser_version: LISTINGS_PARSER_VERSION, update_run_id: runId, verification_failures: 0,
-    last_check_status: 'ok', last_check_http_code: 200,
-    last_check_message: 'PROMOTED ' + toText_(cand.candidate_id) + ' (' + toText_(cand.discovered_by) + ')',
+    last_check_status: pageRead ? 'ok' : '', last_check_http_code: pageRead ? 200 : '',
+    last_check_message: 'PROMOTED ' + toText_(cand.candidate_id) + ' (' + toText_(cand.discovered_by) + ')' +
+      (pageRead ? '' : ' sem leitura da página; aguarda a verificação'),
     content_hash: sha256Hex_([price, area, cand.bedrooms, toText_(cand.title)].join('|'))
   };
 }
@@ -7943,6 +7996,9 @@ function runListingsDiscoveryLocked_(options) {
     ref.keys['cand|' + canonicalListingUrl_(cand.source_url)] = toText_(cand.candidate_id);
   });
 
+  var forceRequest = toText_(props_().getProperty(LISTINGS_DISCOVERY_FORCE_PROP));
+  var forceAfter = cellDate_(forceRequest);
+
   var runId = 'RUN_DISCOVERY_' + Utilities.getUuid();
   appendListingsRun_(runId, now);
   var stats = { requested: 0, read: 0, blocked: 0, errors: 0, found: 0, created: 0, readCandidates: 0, rejected: 0, promoted: 0, messages: [] };
@@ -7961,7 +8017,8 @@ function runListingsDiscoveryLocked_(options) {
       if (!isBlank_(search.active) && !toBoolean_(search.active)) return;
       var frequency = toText_(search.frequency).toLowerCase() || 'daily';
       var lastRun = cellDate_(search.last_run_at);
-      if (!options.force && lastRun) {
+      var forced = options.force || (forceAfter && lastRun && lastRun.getTime() < forceAfter.getTime());
+      if (!forced && lastRun) {
         if (frequency === 'manual') return;
         if (frequency === 'weekly' && now.getTime() - lastRun.getTime() < 7 * 86400000) return;
         if (frequency !== 'weekly' && listingsDayKey_(lastRun) === today) return;
@@ -8095,7 +8152,8 @@ function runListingsDiscoveryLocked_(options) {
       createdEvents.push([
         'EVT_' + Utilities.getUuid(), now, listing.listing_id, 'created', listing.portal, '', 'active', '',
         listing.asking_price_brl, '*', runId, 'promovido de ' + toText_(cand.candidate_id) +
-          (status === 'approved' ? ' (aprovado à mão)' : ' (portões automáticos)')
+          (status !== 'approved' ? ' (portões automáticos)'
+            : (candidateMeta_(cand).read_status === 'ok' ? ' (aprovado à mão)' : ' (aprovado à mão, sem leitura da página)'))
       ]);
       cand.status = 'promoted';
       cand.reviewed_at = now;
@@ -8175,6 +8233,11 @@ function runListingsDiscoveryLocked_(options) {
   var continuation = false;
   if (!authError && (unfinished || lockBusy) && !options.noContinuation) {
     continuation = scheduleOneOffTrigger_(LISTINGS_DISCOVERY_CONTINUE_HANDLER, LISTINGS_CONTINUATION_DELAY_MS);
+  }
+  // Pedido explícito atendido: apaga, a menos que outro pedido tenha chegado durante o run.
+  if (forceRequest && !authError && !lockBusy && !unfinished &&
+      toText_(props_().getProperty(LISTINGS_DISCOVERY_FORCE_PROP)) === forceRequest) {
+    props_().deleteProperty(LISTINGS_DISCOVERY_FORCE_PROP);
   }
 
   var status;

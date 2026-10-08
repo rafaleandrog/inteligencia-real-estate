@@ -400,7 +400,8 @@ editor e implantar. `installTriggers` passa a criar também o gatilho diário `l
    Para paginar, troque na URL o número da página por `{page}` (por exemplo `…?pagina={page}`) e
    ponha `max_pages` até 5.
 3. A edição já é o gatilho de ação: um minuto depois a busca roda sozinha. Para não esperar, use o menu
-   **Anúncios: buscar novos agora**.
+   **Anúncios: buscar novos agora**. O menu roda toda busca ativa, mesmo a `manual`, a `weekly` recente
+   e a que já rodou hoje.
 4. Confira o resultado:
    - na linha da busca: `last_status = ok`, `last_found_count` (links de anúncio reconhecidos) e
      `last_new_count` (candidatos novos);
@@ -419,12 +420,20 @@ de preço, área, quartos, localidade ou RA, ou preço/m² muito fora da localid
   plausibilidade. Dado obrigatório que falta se preenche na própria linha do candidato, antes ou
   depois de aprovar.
 
+Candidato cuja página o portal bloqueou 5 vezes pede preenchimento à mão. Aprovado assim, ele entra com
+`quality_flag = manual_review_page_not_read` e sem `last_seen_at`: só conta como confirmado no portal
+depois que a verificação diária conseguir ler a página.
+
 A leitura nunca sobrescreve o que foi digitado.
 
 **Por API.** A área administrativa (ou qualquer cliente com o `ADMIN_TOKEN`) tem duas ações:
 
-- `{"action": "listings_job", "job": "verify" | "discovery"}` agenda a execução e responde na hora;
+- `{"action": "listings_job", "job": "verify" | "discovery"}` agenda a execução e responde na hora
+  (`already_pending: true` quando já havia uma agendada). `discovery` é pedido explícito, como o menu.
+  Se o Google recusar o gatilho (autorização, cota), a resposta é o erro `SCHEDULE_FAILED`;
 - `{"action": "review_candidate", "candidate_id": "…", "decision": "approved" | "rejected", "reason": "…"}`.
+  A decisão é gravada mesmo quando o agendamento falha; nesse caso a resposta traz
+  `discovery_schedule_error` e a promoção fica para a busca diária.
 
 Anúncio criado pela área administrativa é conferido no portal cerca de um minuto depois.
 
