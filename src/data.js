@@ -46,8 +46,6 @@ function linkTraffic(pieces, polygons) {
     directions,
     corridorDaily: pieces.corridorDaily || [],
     dailyLoadFailed: Boolean(pieces.dailyLoadFailed),
-    // Cadastro de trechos fora do ar (issue #185): a lista não pode dizer "não cadastrado".
-    segmentsLoadFailed: Boolean(pieces.segmentsLoadFailed),
   };
 }
 
@@ -586,7 +584,6 @@ async function fetchTrafficSheetsFromGviz(config) {
     directions: sentidos.records,
     corridorDaily: corredor.records,
     dailyLoadFailed: failed.has('traffic'),
-    segmentsLoadFailed: failed.has('segments'),
     warnings,
   };
 }
@@ -884,7 +881,6 @@ async function fetchTrafficSheetsFromAppsScript(config) {
     directions: sentidos.records,
     corridorDaily: corredor.records,
     dailyLoadFailed: failed.has('traffic'),
-    segmentsLoadFailed: failed.has('segments'),
     warnings,
   };
 }

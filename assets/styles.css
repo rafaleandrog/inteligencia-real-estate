@@ -1331,10 +1331,6 @@ select:focus, input[type="number"]:focus {
   border-top: 1px solid var(--line);
 }
 
-/* Trechos rodoviários com tráfego (issue #63) ---------------------------- */
-
-.traffic-panel[hidden] { display: none; }
-
 /* Bloco de fluxo diário dentro do painel de um trecho rodoviário (issue #131).
 
    NENHUMA regra aqui toca `.road-segment-shape` nem `.road-segment-hit`: essas classes
@@ -1374,87 +1370,6 @@ select:focus, input[type="number"]:focus {
   margin-top: 4px;
 }
 
-.traffic-list { list-style: none; margin: 0; padding: 0; }
-.traffic-item + .traffic-item {
-  margin-top: 10px;
-  padding-top: 10px;
-  border-top: 1px solid var(--line);
-}
-
-/* Trecho com geometria vira botão (leva ao corredor no mapa); sem geometria é só
-   texto — nunca um link que não leva a lugar nenhum. */
-.traffic-item-head {
-  display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: 8px;
-  width: 100%;
-  padding: 0;
-  border: 0;
-  background: none;
-  font: inherit;
-  text-align: left;
-  color: inherit;
-}
-button.traffic-item-head { cursor: pointer; }
-button.traffic-item-head:hover .traffic-item-name { color: var(--accent-text); }
-
-.traffic-item-name { font-size: 13px; font-weight: 600; color: var(--ink); }
-.traffic-item-jurisdiction { font-size: 11px; color: var(--muted); white-space: nowrap; }
-
-.traffic-item-pending {
-  margin: 4px 0 0;
-  font-size: 11px;
-  line-height: 1.4;
-  color: var(--muted);
-}
-
-.traffic-stats { list-style: none; margin: 6px 0 0; padding: 0; }
-.traffic-direction {
-  display: flex;
-  align-items: baseline;
-  gap: 8px;
-  font-size: 12px;
-  line-height: 1.6;
-}
-.traffic-direction-label { color: var(--muted); }
-.traffic-direction-value {
-  margin-left: auto;
-  font-variant-numeric: tabular-nums;
-  color: var(--ink);
-}
-.traffic-direction-empty { margin-left: auto; color: var(--muted); font-size: 11px; }
-
-.traffic-item-window {
-  margin: 4px 0 0;
-  font-size: 11px;
-  color: var(--muted);
-}
-
-/* Filtros de fluxo e legenda do eixo (issue #142). A cor das amostras vem do JS, pelas
-   mesmas constantes que pintam o mapa — nenhuma regra aqui define cor de sentido. */
-.traffic-filters { margin-bottom: 8px; }
-.traffic-filters input[type="date"] { min-width: 0; flex: 1 1 0; }
-.traffic-legend {
-  list-style: none;
-  margin: 0 0 6px;
-  padding: 0;
-  font-size: 11px;
-  color: var(--muted);
-}
-.traffic-legend li {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  margin: 2px 0;
-}
-.traffic-legend .dot-road-sample { width: 18px; flex: 0 0 18px; }
-.traffic-note {
-  margin: 0 0 6px;
-  font-size: 11px;
-  color: var(--muted);
-}
-.traffic-note:empty { display: none; }
 .detail-traffic-partial,
 .detail-traffic-note {
   margin: 6px 0 0;
