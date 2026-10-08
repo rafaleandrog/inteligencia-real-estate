@@ -1969,8 +1969,12 @@ mudou nesse meio-tempo (decisão de revisão, valor digitado, busca editada) fic
 o candidato novo que veio de uma busca alterada, ou que outro escritor pôs na fila no meio-tempo
 (mesmo `candidate_id`, portal + id ou URL): ele não é anexado, nem a promoção que tiver gerado.
 
-Texto vindo do portal ou de candidato escrito por fora (`title`, `source_name` copiado para `portal`
-em LISTINGS e LISTING_EVENTS) é gravado sempre como texto: valor que começa com
+Portal desligado em LISTING_SOURCES (`active = FALSE`) para a busca, a leitura e a promoção dos
+candidatos dele, que ficam na fila até ele ser religado.
+
+Texto vindo do portal, de candidato escrito por fora ou da API (`title`, `source_name` copiado para
+`portal` em LISTINGS e LISTING_EVENTS, o motivo do `review_candidate`, e tudo o que vai ao CHANGE_LOG)
+é gravado sempre como texto: valor que começa com
 `=`, `+`, `@` ou `-letra` ganha o apóstrofo do Sheets e nunca vira fórmula.
 
 A promoção grava em LISTINGS, além do que veio da página:

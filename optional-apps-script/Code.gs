@@ -1245,7 +1245,9 @@ function appendChangeLogRow_(row) {
   var log = ss_().getSheetByName(CHANGELOG_SHEET);
   if (!log) return;
 
-  log.appendRow(row);
+  // appendRow interpreta "=…" como fórmula; o log de auditoria guarda o texto, nunca a fórmula
+  // (id de candidato escrito por fora, editor e motivo vindos da API).
+  log.appendRow(row.map(safeCellValue_));
 
   var rows = log.getLastRow() - 1;
   if (rows > CHANGELOG_LIMIT) {
@@ -7624,7 +7626,7 @@ function reviewCandidateFromApi_(params) {
       var reason = decision === 'rejected' ? sanitizePlainText_(params.reason).slice(0, 500) || 'rejeitado na revisão' : '';
       sheet.getRange(i + 2, ix.status + 1).setValue(decision);
       sheet.getRange(i + 2, ix.reviewed_at + 1).setValue(new Date());
-      sheet.getRange(i + 2, ix.reject_reason + 1).setValue(reason);
+      sheet.getRange(i + 2, ix.reject_reason + 1).setValue(safeCellValue_(reason));
       logWriteChange_('LISTING_CANDIDATES', id, 'status', old, decision, params.editor, correlationId, 'ok', '');
       return { ok: true, old: old };
     }
@@ -8140,9 +8142,16 @@ function runListingsDiscoveryLocked_(options) {
   var promotedRows = [];
   var createdEvents = [];
   if (!authError) {
+    // Portal desligado em LISTING_SOURCES (active = FALSE) para tudo o que é dele: busca,
+    // leitura e promoção. O candidato fica na fila e volta quando o portal for religado.
+    var portalOff = function (cand) {
+      var source = sources.byPortal[normalizeSlug_(cand.source_name)];
+      return !!source && !source.active;
+    };
     var toRead = queue.filter(function (cand) {
       var status = toText_(cand.status).toLowerCase();
       if (status !== 'pending' && status !== 'approved') return false;
+      if (portalOff(cand)) return false;
       var meta = candidateMeta_(cand);
       return !candidatePageRead_(cand) && (meta.read_attempts || 0) < LISTINGS_CANDIDATE_MAX_READ_ATTEMPTS &&
         /^https?:\/\//i.test(toText_(cand.source_url));
@@ -8169,6 +8178,10 @@ function runListingsDiscoveryLocked_(options) {
       if (authError) return; // leitura interrompida sem autorização: nada é promovido
       var status = toText_(cand.status).toLowerCase();
       if (status !== 'pending' && status !== 'approved') return;
+      if (portalOff(cand)) {
+        cand.reject_reason = 'portal desativado em LISTING_SOURCES; volta quando ele for religado';
+        return;
+      }
       if (!candidatePageRead_(cand) && status !== 'approved') return;
       var verdict = evaluateListingCandidate_(cand, ref);
       var blocking = status === 'approved' ? verdict.hard : verdict.hard.concat(verdict.soft);
