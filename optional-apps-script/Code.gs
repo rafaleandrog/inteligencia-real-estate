@@ -6696,22 +6696,25 @@ function runListingsVerifyLocked_(options) {
         logWriteChange_('LISTINGS', entry.id, entry.field, entry.oldValue, entry.newValue,
           'rotina de anúncios', runId, 'ok', '');
       });
+      // O fechamento mensal lê LISTINGS e reescreve o mês: fica DENTRO da mesma seção
+      // crítica, senão outro escritor pega o lock entre a gravação e o fechamento e o mês
+      // sai de um LISTINGS pela metade (terceira revisão do Codex na #181).
+      if (!authError && remaining === 0 && !options.listingIds) {
+        var snapshot = snapshotListingsMonth_(now, runId);
+        stats.historyRows = snapshot.historyRows;
+        stats.metricsRows = snapshot.metricsRows;
+      }
     } finally {
       documentLock.releaseLock();
     }
   }
-  // Qualquer falha de lock é "ocupado", mesmo sem nada lido: o fechamento mensal também
-  // lê e grava a partir de LISTINGS, e não pode rodar enquanto outro escritor a altera.
+  // Qualquer falha de lock é "ocupado", mesmo sem nada lido: nada foi gravado, nem o
+  // fechamento mensal, e a continuação refaz tudo.
   var lockBusy = !holdsDocument;
 
   var continuation = false;
   if (!authError && (remaining > 0 || lockBusy) && !options.noContinuation) {
     continuation = scheduleOneOffTrigger_(LISTINGS_CONTINUE_HANDLER, LISTINGS_CONTINUATION_DELAY_MS);
-  }
-  if (!authError && !lockBusy && remaining === 0 && !options.listingIds) {
-    var snapshot = snapshotListingsMonth_(now, runId);
-    stats.historyRows = snapshot.historyRows;
-    stats.metricsRows = snapshot.metricsRows;
   }
 
   var status;

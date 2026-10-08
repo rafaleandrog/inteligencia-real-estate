@@ -731,3 +731,21 @@ test('appsscript.json declara o escopo de cada serviço que o Code.gs usa', asyn
   assert.deepEqual(manifest.webapp, { executeAs: 'USER_DEPLOYING', access: 'ANYONE_ANONYMOUS' });
   assert.equal(manifest.timeZone, 'America/Sao_Paulo');
 });
+
+test('o fechamento mensal acontece com o lock de documento em mãos', () => {
+  // Terceira revisão do Codex na #181: o lock era solto antes do fechamento, e outro
+  // escritor podia alterar LISTINGS entre a gravação e a leitura do mês.
+  const sandbox = createAppsScriptSandbox({ sheets: sheetsWith([listing()]) });
+  installNetwork(sandbox.context, { [DF]: response(200, jsonLdPage()) });
+  let held = false;
+  const seen = [];
+  sandbox.context.LockService.getDocumentLock = () => ({
+    tryLock: () => { held = true; return true; },
+    releaseLock: () => { held = false; },
+  });
+  const original = sandbox.context.snapshotListingsMonth_;
+  sandbox.context.snapshotListingsMonth_ = (...args) => { seen.push(held); return original(...args); };
+  sandbox.context.runListingsVerify_({ now: day(0) });
+  assert.deepEqual(seen, [true]);
+  assert.equal(held, false, 'o lock é solto no fim');
+});
