@@ -1067,3 +1067,34 @@ Cada uma nasce de um erro que aconteceu de verdade.
   de arquivo é número lido de bytes reais (manifest/summary da execução anterior × bytes por feição),
   com shards por RA e `zoom_min` como primeira resposta a um arquivo grande — nunca um palpite
   redondo que a execução de 15 minutos vai reprovar.
+- **R8.102** *(2026-10-08, rotina de anúncios, issue #178)* **Bloqueio não é remoção.** Um 403, um
+  429, uma página de captcha ou um 5xx dizem "o portal não deixou ver", não "o anúncio saiu", e os
+  portais imobiliários barram IP de datacenter, o do Google incluído. Regra: a conferência de um
+  anúncio só conta para inativar quando o portal AFIRMA a remoção (404/410, frase de anúncio removido
+  no texto visível, redirecionamento para fora do anúncio). Mesmo assim só inativa depois de três
+  confirmações em dias distintos, e a mesma rotina reativa quando a página volta. A frase de remoção
+  vale só no texto visível (nunca dentro de script ou de elemento escondido) e só numa página que
+  já não traz o anúncio, nem o id nem o dado estruturado dele. Na página que ainda o traz, ela é
+  sinal contraditório e não conta: limpeza de HTML por regex não sabe o que o CSS do portal esconde. Preço só é
+  reescrito a partir de dado estruturado que é inequivocamente do anúncio (o id da URL, ou o único
+  candidato da página), nunca da vitrine de "semelhantes".
+- **R8.103** *(2026-10-08, issue #178)* **Execução com erro não é sucesso, e falta de autorização
+  aborta antes de escrever.** A rotina instalada fora do repositório gravou quinze execuções como
+  `success` com 154 erros cada, todos "You do not have permission to call UrlFetchApp.fetch", e o
+  fechamento mensal contou como estoque ativo o que nunca foi conferido. Regra:
+  - o status de uma execução sai das contagens (`success` só com zero erro);
+  - erro de escopo derruba a execução antes da primeira escrita e vira chave legível em `APP_META`;
+  - sem o lock de documento (o mesmo da API de escrita, da edição manual e do job de 6 h), a rotina
+    não grava nada, nem o fechamento mensal, e agenda a continuação. Gravar sem o lock troca um
+    minuto de atraso por valor sobrescrito;
+  - todo serviço que o `Code.gs` usa tem escopo declarado no `appsscript.json` versionado, cobrado
+    por teste, porque com `oauthScopes` explícito o Google não infere nada;
+  - agregado histórico só conta o que foi confirmado no período. O resto sai com nome próprio
+    (`unverified`), e o registro antigo errado é sinalizado, nunca apagado.
+- **R8.104** *(2026-10-08, issue #178)* **Rotina nova nasce no repositório, e gatilho tem dono.** É a
+  terceira vez que código instalado direto no editor diverge do repositório (FipeZAP na #120, as abas
+  de sentido de 2026-09-23, a rotina de anúncios). A terceira deixou um gatilho diário rodando uma
+  função que o repositório não conhecia. Regra:
+  - gatilho só é criado por `installTriggers()`, que é idempotente;
+  - `installTriggers()` remove gatilho órfão, cujo handler não existe mais;
+  - o runbook de cada versão manda guardar o código antigo antes de colar o novo.

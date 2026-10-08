@@ -95,6 +95,24 @@ Chave: `listing_id`. 141 linhas na semente do repo; 158 na planilha viva (snapsh
 `asking_price_brl_m2` é **derivado**: calculado por `asking_price_brl / area_m2` quando vazio.
 Valor já preenchido não é sobrescrito; divergência grande vira alerta em `DATA_QUALITY` (§17).
 
+#### `status`, `last_seen_at`, `observed_at` e a rotina de anúncios (v2.5.0, issue #178)
+
+`status` ∈ `active`, `inactive`. Vazio é lido como `active`; qualquer outro valor é decisão humana e
+a rotina diária não o toca. Desde o Apps Script v2.5.0 a rotina atualiza três colunas obrigatórias, e
+por isso a semântica delas fica escrita aqui:
+
+- `last_seen_at` é a **última confirmação no portal**: a última vez que a página respondeu e foi
+  reconhecida como a do anúncio. Não é data de cadastro. `source_page_verified_at` acompanha.
+- `observed_at` é a última vez que o **preço pedido** foi observado. Muda quando a rotina lê o preço
+  na página (igual ao da planilha ou novo), não quando a página só responde.
+- `status` só vira `inactive` depois de **3 confirmações de remoção em dias distintos**, e volta a
+  `active` quando a página volta a responder. Bloqueio do portal (403/429/captcha) nunca conta.
+- `asking_price_brl` só é reescrito pela rotina com preço lido de dado estruturado do próprio anúncio
+  (JSON-LD, `__NEXT_DATA__`, meta), com variação de até 60%; acima disso vira evento
+  `price_unconfirmed` e o valor fica. `asking_price_brl_m2` acompanha só quando era o derivado.
+
+As 12 colunas que a rotina mantém em LISTINGS estão em **Abas operacionais → Rotina de anúncios**.
+
 #### `building_orientation` — classificação vertical/horizontal (issue #31)
 
 **Não é uma coluna da planilha.** `normalizeListing()` deriva `building_orientation`
@@ -1714,6 +1732,12 @@ publica valor vazio, não `0`**: "não existe" e "existe vazia" são estados dif
 FipeZAP; `fipezap_expected_rows_*` é o que `validateAll()` usa para cobrar contagem — atualize-as
 quando a série crescer de propósito.
 
+Chaves da v2.5.0 (rotina de anúncios, a cada execução): `listings_last_run_at`, `listings_last_run_id`,
+`listings_last_run_status` (`success`/`partial`/`failed`), `listings_update_status` (`ok`, `partial`,
+`failed` ou `auth_required` — este quando o projeto não tem o escopo `script.external_request`),
+`listings_parser_version`, `listings_active_count`, `listings_verified_7d_count` (ativos confirmados no
+portal nos últimos 7 dias) e `listings_blocked_count` (ativos cuja última conferência o portal barrou).
+
 **A interface lê esta aba** e mostra a procedência do dataset no painel esquerdo — atualização,
 versão e estado da validação. É a única aba operacional exibida na tela.
 
@@ -1739,7 +1763,11 @@ Validações mínimas: aba obrigatória ausente · cabeçalho ausente · ID vazi
 latitude inválida · longitude inválida · apenas uma coordenada preenchida · URL suspeita ou
 inválida · preço não positivo · área não positiva · divergência grande de preço/m² · campo
 crítico ausente · (v2.4.0) período FipeZAP ilegível, observação FipeZAP duplicada, fonte FipeZAP
-inexistente, faixa/mês/escala de IVV_REGION, fila de pesquisa de DEVELOPMENTS.
+inexistente, faixa/mês/escala de IVV_REGION, fila de pesquisa de DEVELOPMENTS · (v2.5.0) avisos
+agregados da rotina de anúncios, categoria `source`: `LISTING_STALE_VERIFICATION` (por portal, ativos
+sem confirmação há mais de 30 dias), `LISTING_PORTAL_BLOCKED` (por portal, ativos cuja última
+conferência foi barrada) e `LISTING_HISTORY_UNVERIFIED` (por mês, linhas do histórico gravadas como
+`active` sem confirmação no mês).
 
 `category` (v2.4.0) é derivada do `code` por `qualityCategoryOf_()` e agrupa os achados num
 vocabulário fechado: `schema`, `data_type`, `missing_value`, `duplicate`, `invalid_url`, `spatial`,
@@ -1775,6 +1803,96 @@ do mapa canônico — nunca aceito em silêncio). `categories_expected` é o **m
 RAs para o mesmo indicador e ano: o mapa de figuras não publica a contagem, e a heurística é declarada
 em vez de inventada. Uma RA só é "completa" quando todos os indicadores autorizados têm status
 conhecido — não porque tem muitas linhas (Plano 02 §9.3).
+
+### Rotina de anúncios (Apps Script v2.5.0, issue #178)
+
+Seis abas e doze colunas de LISTINGS mantidas pela verificação diária de anúncios
+(`listingsVerifyJob`, 05h de Brasília). O schema é o que a planilha já tinha quando a rotina, instalada
+fora do repositório em 2026-09-23, foi trazida para o `Code.gs`, nome por nome. Nada aqui é gravável
+pela API de escrita nem lido pelo mapa. As abas e as colunas nascem na primeira execução da rotina
+(`ensureListingsRoutineSchema_()`), não no **Configurar projeto**: a planilha viva já as tem.
+
+#### Colunas operacionais de LISTINGS
+`first_seen_at | last_checked_at | last_price_change_at | inactive_at | content_hash | parser_version | source_observed_at | update_run_id | verification_failures | last_check_status | last_check_http_code | last_check_message`
+
+- `last_check_status` pode ser:
+  - `ok`: página reconhecida como a do anúncio, por dado estruturado ou pelo id da URL no HTML;
+  - `gone`: 404/410, redirecionamento para fora do anúncio, ou frase de anúncio removido no texto
+    **visível** (fora de script e de elemento escondido) de uma página que **já não traz o anúncio**,
+    nem o id nem o dado estruturado dele;
+  - `blocked`: 401/403/429/451, página de desafio ou redirecionamento para captcha/login;
+  - `error`: rede, 5xx, página não reconhecida, ou `CONFLICTING_SIGNALS` (frase de remoção numa
+    página que ainda traz o anúncio).
+
+  Só `gone` conta para inativar.
+- `verification_failures` conta as confirmações de remoção seguidas, no máximo uma por dia. Volta a 0
+  no primeiro `ok`, e em 3 o anúncio vira `inactive` com `inactive_at`.
+- `last_checked_at` define a fila. Ativo é conferido uma vez por dia; inativo, a cada 7 dias.
+- `first_seen_at` é preenchida uma vez, a partir de `observed_at`, quando está vazia.
+- `content_hash` é o SHA-256 de preço, área, quartos e título lidos da página. Não vem do HTML, que muda
+  a cada requisição.
+- `source_observed_at` é a data que o portal publica no dado estruturado (`datePosted`), quando há.
+
+#### LISTING_SOURCES
+`source_id | source_name | source_type | active | collection_frequency | base_url | search_urls | parser_key | parser_config_json | request_headers_json | notes | last_success_at | last_error_at | last_run_id | last_probe_at | last_probe_http_code | last_probe_bytes | last_probe_result`
+
+Uma linha por portal. Casa com `LISTINGS.portal` pelo nome normalizado. `active = false` tira o portal
+da verificação. `request_headers_json` aceita cabeçalhos extras (objeto de texto para texto). As quatro
+`last_probe_*` (v2.5.0) são escritas pelo menu **Anúncios: diagnosticar portais**, que busca um anúncio
+de cada portal e registra o que voltou.
+
+#### LISTINGS_UPDATE_RUNS
+`run_id | started_at | finished_at | status | candidate_rows | candidate_processed | candidate_rejected | source_pages_requested | source_pages_read | new_listings | updated_listings | reactivated_listings | price_changes | active_checks | confirmed_inactive | history_rows | metrics_rows | errors | error_details | parser_version`
+
+Uma linha por execução, aberta como `running` e fechada no fim. `status` pode ser:
+
+- `success`: zero erros;
+- `partial`: algum `blocked`/`error`;
+- `failed`: nada lido; ou sem autorização de rede, caso em que `error_details` começa com
+  `AUTHORIZATION_REQUIRED` e nenhum anúncio é tocado; ou planilha ocupada por outra gravação
+  (`DOCUMENT_LOCK_BUSY`), caso em que nada é gravado (nem o fechamento mensal, mesmo com a fila
+  vazia) e a continuação refaz a leitura.
+
+`errors` é a soma de `blocked` e `error`. `source_pages_requested` conta requisições, incluindo
+redirecionamentos seguidos. As colunas `candidate_*` e `new_listings` ficam em 0 até a busca de
+anúncios novos (issue #179).
+
+#### LISTING_EVENTS
+`event_id | event_at | listing_id | event_type | portal | old_status | new_status | old_price_brl | new_price_brl | changed_fields | run_id | details`
+
+`event_type` pode ser:
+
+- `price_change`: preço gravado; também vai ao CHANGE_LOG com `correlation_id = run_id`;
+- `price_unconfirmed`: variação acima de 60%, não gravada;
+- `deactivated`;
+- `reactivated`.
+
+#### LISTING_CANDIDATES
+`candidate_id | discovered_at | discovered_by | source_id | source_name | source_url | external_id | title | transaction_type | property_type | address | locality | ra_geo_id | latitude | longitude | asking_price_brl | area_m2 | bedrooms | suites | parking_spaces | condo_fee_brl | iptu_brl | features_json | raw_json | status | reviewed_at | reject_reason | parser_version`
+
+Fila de anúncios novos. Provisionada pela v2.5.0; quem a alimenta é a busca da issue #179.
+
+#### LISTINGS_HISTORY_MONTHLY
+`history_id | reference_month | listing_id | portal | external_id | status_at_month_end | asking_price_brl | area_m2 | asking_price_brl_m2 | bedrooms | suites | parking_spaces | property_type | transaction_type | address | locality | ra_geo_id | latitude | longitude | first_seen_at | last_seen_at | last_price_change_at | content_hash | capture_run_id | captured_at`
+
+Uma linha por anúncio × mês (`history_id = yyyy-MM|listing_id`). O mês corrente é reescrito quando a
+fila do dia acaba, de modo que a última execução do mês o fecha. Meses anteriores nunca são
+reescritos. `status_at_month_end` pode ser:
+
+- `active`: confirmado no mês;
+- `inactive`;
+- `unverified`: ativo na planilha, mas sem confirmação no mês.
+
+As linhas de 2026-09 gravadas pela rotina antiga como `active` sem confirmação ficam preservadas e
+sinalizadas em DATA_QUALITY (`LISTING_HISTORY_UNVERIFIED`).
+
+#### LISTINGS_MONTHLY_METRICS
+`metric_id | reference_month | ra_geo_id | locality | property_type | transaction_type | bedrooms | area_band | active_ads_count | new_ads_count | inactive_ads_count | median_price | median_price_m2 | average_price | average_price_m2 | p25_price | p75_price | median_area_m2 | median_parking_spaces | price_change_mom_pct | inventory_change_mom_pct | source_count | coverage_quality | calculated_at`
+
+Um grupo é mês × RA × localidade × tipo × transação × quartos × `area_band` (`0-49`, `50-79`, `80-119`,
+`120-179`, `180+`), e conta **só anúncio confirmado no mês**. O mês corrente é reescrito junto com o
+histórico. `coverage_quality` ∈ `none`, `single_source` (1 portal), `good` (2 ou mais portais).
+`price_change_mom_pct` e `inventory_change_mom_pct` comparam com o mesmo grupo no mês anterior, em %.
 
 ### CHANGE_LOG
 `timestamp | sheet | range | record_id | old_value | new_value | editor | correlation_id | result | error_reason`
