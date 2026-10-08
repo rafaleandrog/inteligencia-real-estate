@@ -112,3 +112,37 @@ test('linkTrafficDataset: tráfego cujo trecho não existe em ROAD_SEGMENTS apar
   assert.equal(bySegmentId.size, 0);
   assert.deepEqual(unmatchedSegmentIds, ['RS-GHOST']);
 });
+
+// Issue #185: ROAD_SEGMENTS fora do ar (ou sem a linha) não pode apagar o fluxo de um
+// trecho cuja geometria ativa declara o mesmo id em `entity_id`.
+test('linkTrafficDataset vincula fluxo pela geometria quando ROAD_SEGMENTS não tem o trecho', () => {
+  const polygon = {
+    id: 'POLY-1', status: 'active', entity_type: 'road_segment', entity_id: 'ROADSEG_004EDF0130',
+    name: 'DF-004 · trecho 0130', properties: { rodovia: 'DF004', cod_distrital: '004EDF0130' },
+  };
+  const records = [
+    traffic({ roadSegmentId: 'ROADSEG_004EDF0130', sourceSegmentCode: '004EDF0130', direction: 'crescente', flow: 100 }),
+    traffic({ roadSegmentId: 'ROADSEG_004EDF0130', sourceSegmentCode: '004EDF0130', direction: 'decrescente', flow: 200 }),
+  ];
+  const out = linkTrafficDataset([], [polygon], records, []);
+  const linked = out.bySegmentId.get('ROADSEG_004EDF0130');
+  assert.ok(linked, 'o trecho desenhado precisa ter o fluxo vinculado');
+  assert.equal(linked.polygon, polygon);
+  assert.equal(linked.identitySource, 'polygon');
+  assert.equal(linked.sourceSegmentCode, '004EDF0130');
+  assert.equal(linked.roadCode, 'DF004');
+  assert.equal(linked.traffic.crescente.length, 1);
+  assert.equal(linked.traffic.decrescente.length, 1);
+  assert.deepEqual(out.unmatchedSegmentIds, [], 'vinculado não é órfão');
+});
+
+test('linkTrafficDataset não vincula pela geometria quando ela é inativa ou de outro tipo', () => {
+  const records = [traffic({ roadSegmentId: 'ROADSEG_X', sourceSegmentCode: 'X', direction: 'crescente' })];
+  const inativa = { id: 'P1', status: 'inactive', entity_type: 'road_segment', entity_id: 'ROADSEG_X' };
+  const ra = { id: 'P2', status: 'active', entity_type: 'administrative_region', entity_id: 'ROADSEG_X' };
+  for (const polygon of [inativa, ra]) {
+    const out = linkTrafficDataset([], [polygon], records, []);
+    assert.equal(out.bySegmentId.has('ROADSEG_X'), false);
+    assert.deepEqual(out.unmatchedSegmentIds, ['ROADSEG_X']);
+  }
+});

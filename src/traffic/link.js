@@ -166,6 +166,32 @@ export function linkTrafficDataset(segments, polygons, trafficRecords, aliases, 
     bySegmentId.set(segment.roadSegmentId, { ...linked, traffic });
   }
 
+  // Fluxo cujo `road_segment_id` não tem linha em ROAD_SEGMENTS, mas cuja geometria ATIVA
+  // declara exatamente esse id em `entity_id` (issue #185). É o mesmo vínculo por
+  // identificador declarado do caminho 2 de `linkSegmentToPolygon` — nunca por nome. Cobre
+  // o caso em que ROAD_SEGMENTS não carregou: sem isto, os 88 trechos desenhados no mapa
+  // diziam "sem dias medidos" com a série inteira carregada, a uma chave de distância.
+  for (const [id, buckets] of bySegment) {
+    if (bySegmentId.has(id)) continue;
+    const polygon = polygonsByEntityId.get(id);
+    if (!polygon) continue;
+    const first = buckets.crescente[0] || buckets.decrescente[0] || buckets.semSentido[0] || null;
+    const props = polygon.properties || {};
+    bySegmentId.set(id, {
+      roadSegmentId: id,
+      name: polygon.name || '',
+      roadCode: String(props.rodovia || props.road_code || '').trim(),
+      sourceSegmentCode: first?.sourceSegmentCode || String(props.cod_distrital || props.source_segment_code || '').trim(),
+      segmentType: '',
+      jurisdiction: '',
+      currentPolygonId: null,
+      polygon,
+      // O vínculo veio da geometria, não do cadastro — fica declarado para quem audita.
+      identitySource: 'polygon',
+      traffic: buckets,
+    });
+  }
+
   // Tráfego cujo road_segment_id (direto ou via alias) não bate com nenhum
   // ROAD_SEGMENTS conhecido: não é descartado silenciosamente, fica disponível para
   // quem chama decidir como avisar (R2.5/R2.6 — dado ruim é sinalizado, não fatal).

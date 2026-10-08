@@ -65,14 +65,15 @@ const FETCH_TIMEOUT_MS = 20000;
 const META_FETCH_TIMEOUT_MS = 6000;
 
 /**
- * Timeout de cada aba de tráfego (issue #175).
+ * Timeout de cada aba de tráfego (issues #175 e #185).
  *
- * As abas pequenas (trechos, aliases, sentidos) ficam no teto curto. As SÉRIES diárias não:
- * desde a importação de julho a TRAFFIC_DAILY_TEST tem milhares de linhas e o GViz passa
- * de 6 s com frequência — e estourar o tempo zerava o fluxo de todos os trechos.
+ * Todas no teto longo. Desde a importação de julho a TRAFFIC_DAILY_TEST tem milhares de
+ * linhas e o GViz passa de 6 s com frequência; e as cinco abas saem em paralelo, então o
+ * cadastro de trechos (ROAD_SEGMENTS) também perdia a corrida. Sem ele nenhum fluxo se
+ * vinculava ao trecho, e o painel dizia "sem dias medidos" com a série inteira carregada.
  */
-function trafficTimeoutFor(job) {
-  return job === 'traffic' || job === 'corridor' ? FETCH_TIMEOUT_MS : META_FETCH_TIMEOUT_MS;
+function trafficTimeoutFor() {
+  return FETCH_TIMEOUT_MS;
 }
 
 /**
