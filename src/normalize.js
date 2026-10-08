@@ -412,6 +412,9 @@ export function normalizeListing(row) {
     source_url: toText(row.source_url),
     source: toText(row.portal),
     observed_at: toDateISO(row.observed_at),
+    // Última confirmação no portal (issue #180): a rotina diária de anúncios atualiza esta
+    // coluna a cada página reconhecida (docs/DATA_CONTRACT.md, LISTINGS).
+    last_seen_at: toDateISO(row.last_seen_at),
     status: toText(row.status),
     // Coluna ainda não existe na planilha (issue #32) — leitura preparatória, mesmo
     // padrão de `segment` em #22: ausência normaliza para string vazia sem quebrar.
@@ -751,6 +754,11 @@ export function normalizeAll(entity, rows) {
  */
 const APP_META_FIELDS = [
   { key: 'last_data_change_at', label: 'Atualizado em', type: 'date', visibility: 'summary' },
+  // Rotina de anúncios (issues #178/#180): quantos anúncios ativos o portal confirmou nos
+  // últimos 7 dias. Contagem, e não "data da última execução": a execução que falhou por
+  // falta de autorização também tem data, e exibi-la como frescor seria mentir.
+  { key: 'listings_verified_7d_count', label: 'Anúncios confirmados (7 dias)', type: 'count', visibility: 'summary' },
+  { key: 'listings_last_run_at', label: 'Última conferência de anúncios', type: 'date', visibility: 'technical' },
   { key: 'dataset_version', label: 'Dataset', type: 'version', visibility: 'technical' },
   { key: 'validation_status', label: 'Qualidade', type: 'status', visibility: 'technical' },
   { key: 'last_validation_at', label: 'Validado em', type: 'date', visibility: 'technical' },

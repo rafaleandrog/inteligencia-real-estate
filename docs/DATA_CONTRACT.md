@@ -148,6 +148,22 @@ A decisão de visibilidade foi tomada: o campo será **público** — card de de
 **Ainda não está na tela**: a coluna e o carregamento existem desde a sincronização com o v2.0.0, e
 a exibição entra na issue #32. Até lá o valor é lido e normalizado, mas não renderizado.
 
+#### `status` e `last_seen_at` no mapa (issue #180)
+
+`normalizeListing()` lê `status` e `last_seen_at`. As duas colunas já eram obrigatórias, então o
+contrato de cabeçalho não muda.
+
+- **Filtro "Situação do anúncio"** (gaveta "Mais filtros"). O padrão é **Só ativos**: o anúncio com
+  `status = inactive` (marcado pela rotina diária de anúncios, issue #178) não entra no mapa, nos KPIs
+  nem na mediana. O rótulo da opção diz quantos estão ocultos. **Todos, inclusive inativos** os traz
+  de volta e grava `inativos=1` no link. Status vazio é ativo.
+- **Card do anúncio.** `last_seen_at` aparece como **Confirmado no portal em**. Anúncio inativo, quando
+  mostrado, traz **Situação: Inativo no portal** entre os campos essenciais.
+- **Procedência.** O resumo de `APP_META` mostra `listings_verified_7d_count` como **Anúncios
+  confirmados (7 dias)**, e os detalhes técnicos mostram `listings_last_run_at`. A data da execução
+  não vai para o resumo porque a execução que falhou também tem data. As duas chaves só existem
+  depois que a rotina de anúncios do Apps Script roda; sem elas, os itens não aparecem.
+
 #### Escrita pela área administrativa (issue #5, R4.9)
 
 A API de escrita do Apps Script (`doPost`) cobre, na primeira PR, só `LISTINGS`. Editável é

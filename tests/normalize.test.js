@@ -646,3 +646,23 @@ test('isRealCalendarDate é a regra única, e responde só sobre YYYY-MM-DD', ()
   assert.equal(isRealCalendarDate(null), false);
   assert.equal(isRealCalendarDate(20260430), false);
 });
+
+// --- Frescor do anúncio (issue #180) ----------------------------------------------------------
+
+test('normalizeListing lê last_seen_at, a última confirmação no portal', () => {
+  const listing = normalizeListing({ listing_id: 'L', last_seen_at: 'Date(2026,9,8)', status: 'inactive' });
+  assert.equal(listing.last_seen_at, '2026-10-08');
+  assert.equal(normalizeListing({ listing_id: 'L' }).last_seen_at, null);
+});
+
+test('APP_META: anúncios confirmados nos últimos 7 dias aparece no resumo; a data da execução, só no técnico', () => {
+  const rows = appMetaRows(normalizeAppMeta({
+    last_data_change_at: '2026-10-08', listings_verified_7d_count: '120', listings_last_run_at: '2026-10-08T08:00:00.000Z',
+  }));
+  const byKey = Object.fromEntries(rows.map((r) => [r.key, r]));
+  assert.equal(byKey.listings_verified_7d_count.label, 'Anúncios confirmados (7 dias)');
+  assert.equal(byKey.listings_verified_7d_count.visibility, 'summary');
+  assert.equal(byKey.listings_last_run_at.visibility, 'technical');
+  // Sem a rotina instalada, as chaves não existem e nada aparece.
+  assert.equal(appMetaRows(normalizeAppMeta({ last_data_change_at: '2026-10-08' })).some((r) => r.key.startsWith('listings_')), false);
+});

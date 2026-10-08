@@ -673,6 +673,90 @@ cardListing['Vertical / horizontal'] ? pass('card do anúncio traz vertical/hori
   : fail('selo de estágio apareceu num anúncio');
 await classPage.close();
 
+// --- Situação do anúncio (issue #180) ---------------------------------------------------
+// O demo só tem anúncio ativo; três viram `inactive` pela rota, como a rotina diária faz
+// depois de 3 confirmações de remoção no portal.
+console.log('\n== Situação do anúncio (issue #180) ==');
+const inactivePage = await context.newPage();
+await inactivePage.addInitScript(() => {
+  Object.defineProperty(window, 'APP_CONFIG', {
+    configurable: true,
+    set(value) { delete window.APP_CONFIG; window.APP_CONFIG = value; if (value) { value.demoMode = true; value.publicDataUrl = './tests/fixtures/public-empty/'; } },
+    get() { return undefined; },
+  });
+});
+await inactivePage.route('**/data/demo.json', async (route) => {
+  const response = await route.fetch();
+  const payload = await response.json();
+  payload.listings = payload.listings.map((l, i) => ({
+    ...l,
+    status: i < 3 ? 'inactive' : 'active',
+    last_seen_at: i < 3 ? '2026-09-01' : '2026-10-08',
+  }));
+  await route.fulfill({ response, json: payload });
+});
+await inactivePage.goto('http://localhost:8080/', { waitUntil: 'networkidle' });
+await inactivePage.waitForTimeout(1200);
+const contarInativos = async () => Number((await inactivePage.textContent('#kpiVisible')).replace(/\D/g, ''));
+const soAtivos = await contarInativos();
+(await inactivePage.inputValue('#listingStatus')) === 'active'
+  ? pass('o mapa abre só com anúncios ativos') : fail('filtro padrão não é "só ativos"');
+const rotuloAtivos = await inactivePage.textContent('#listingStatus option[value="active"]');
+/3 inativos ocultos/.test(rotuloAtivos)
+  ? pass(`a opção padrão diz quantos esconde: "${rotuloAtivos}"`) : fail('rótulo da opção: ' + rotuloAtivos);
+(await inactivePage.textContent('#moreFiltersSummary')).trim() === 'Mais filtros'
+  ? pass('o padrão não conta como filtro ativo na gaveta') : fail('a gaveta conta o padrão como filtro');
+
+await abrirMaisFiltros(inactivePage);
+await inactivePage.selectOption('#listingStatus', 'all');
+await inactivePage.waitForTimeout(400);
+const comInativos = await contarInativos();
+comInativos === soAtivos + 3
+  ? pass(`incluir inativos soma os 3 escondidos (${soAtivos} -> ${comInativos})`) : fail(`com inativos: ${soAtivos} -> ${comInativos}`);
+/inativos=1/.test(await inactivePage.evaluate(() => location.hash))
+  ? pass('incluir inativos entra no link (inativos=1)') : fail('hash: ' + await inactivePage.evaluate(() => location.hash));
+(await inactivePage.textContent('#moreFiltersSummary')).includes('1 ativo')
+  ? pass('incluir inativos conta como filtro escolhido na gaveta') : fail('gaveta não conta "todos"');
+
+// Card do anúncio: a confirmação no portal aparece; o inativo diz que é inativo.
+await inactivePage.evaluate(() => document.querySelector('#map .marker-listing')
+  .dispatchEvent(new MouseEvent('click', { bubbles: true })));
+await inactivePage.waitForTimeout(400);
+const cardFrescor = Object.fromEntries(
+  await inactivePage.$$eval('#detailBody dt', (ns) => ns.map((n) => [n.textContent, n.nextElementSibling.textContent])));
+cardFrescor['Confirmado no portal em']
+  ? pass(`card do anúncio traz "Confirmado no portal em": ${cardFrescor['Confirmado no portal em']}`)
+  : fail('"Confirmado no portal em" ausente no card');
+await inactivePage.click('#closeDetail');
+
+await inactivePage.click('#clearFilters'); await inactivePage.waitForTimeout(400);
+(await inactivePage.inputValue('#listingStatus')) === 'active' && (await contarInativos()) === soAtivos
+  ? pass('"Limpar filtros" volta a só ativos') : fail('"Limpar filtros" não voltou a só ativos');
+
+await inactivePage.close();
+
+// O link é lido ao abrir a página (como `ra=`, `type=` etc.): página nova, não troca de hash.
+const inactiveLink = await context.newPage();
+await inactiveLink.addInitScript(() => {
+  Object.defineProperty(window, 'APP_CONFIG', {
+    configurable: true,
+    set(value) { delete window.APP_CONFIG; window.APP_CONFIG = value; if (value) { value.demoMode = true; value.publicDataUrl = './tests/fixtures/public-empty/'; } },
+    get() { return undefined; },
+  });
+});
+await inactiveLink.route('**/data/demo.json', async (route) => {
+  const response = await route.fetch();
+  const payload = await response.json();
+  payload.listings = payload.listings.map((l, i) => ({ ...l, status: i < 3 ? 'inactive' : 'active' }));
+  await route.fulfill({ response, json: payload });
+});
+await inactiveLink.goto('http://localhost:8080/#mapa?inativos=1', { waitUntil: 'networkidle' });
+await inactiveLink.waitForTimeout(1200);
+(await inactiveLink.inputValue('#listingStatus')) === 'all' &&
+  Number((await inactiveLink.textContent('#kpiVisible')).replace(/\D/g, '')) === soAtivos + 3
+  ? pass('#mapa?inativos=1 abre com os inativos incluídos') : fail('link com inativos=1 não restaurou o filtro');
+await inactiveLink.close();
+
 console.log('\n== 12f. Indicadores por RA (issues #34, #35) ==');
 const lerBlocoRa = (alvo) => alvo.evaluate(() => {
   const box = document.querySelector('#raProfile');

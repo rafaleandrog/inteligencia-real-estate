@@ -42,6 +42,13 @@ export function createFilterState() {
     regularizationStatus: '',
     anchorGroup: '',
     anchorSegment: '',
+    /**
+     * Situação do anúncio (issue #180): `active` esconde o anúncio que a rotina diária
+     * marcou `inactive` (3 confirmações de remoção no portal); `all` mostra todos. O padrão
+     * é `active` — anúncio que saiu do portal não é oferta, e misturá-lo ao estoque
+     * distorce mediana e contagem.
+     */
+    listingStatus: 'active',
     layers: new Set(DISPLAY_LAYERS),
     /**
      * Grupos e tipos de contorno ligados (issue #51).
@@ -223,9 +230,26 @@ function sameEnumValue(recordValue, filterValue) {
  * examina é excluído quando o filtro está ativo — quem pediu "até R$ 500 mil" não
  * quer ver imóvel sem preço, mas quem não filtrou preço quer ver todos.
  */
+/**
+ * Anúncio marcado inativo pela rotina de anúncios (issue #178/#180). Status vazio é ATIVO,
+ * como em `isActivePolygon`: linha sem a coluna preenchida não pode sumir do mapa.
+ */
+export function isInactiveListing(record) {
+  return !!record && record.kind === 'listing' && String(record.status || '').trim().toLowerCase() === 'inactive';
+}
+
+/** Quantos anúncios inativos há no conjunto — o que o filtro padrão esconde (R5.7). */
+export function countInactiveListings(records) {
+  return (records || []).filter(isInactiveListing).length;
+}
+
 export function matchesFilters(record, state) {
   if (!record) return false;
   if (state.layers && !state.layers.has(record.kind)) return false;
+
+  // Só o valor explícito `active` esconde: estado montado à mão sem a chave (testes,
+  // chamadas antigas) continua mostrando tudo, como antes da issue #180.
+  if (state.listingStatus === 'active' && isInactiveListing(record)) return false;
 
   if (state.search) {
     const needle = normalizeSearchText(state.search);
