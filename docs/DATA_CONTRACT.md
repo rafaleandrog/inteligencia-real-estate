@@ -1909,6 +1909,9 @@ campos viram o contexto de todo anúncio que a busca encontrar. O resto é escri
   paginação só para antes do teto quando a página não tem link de anúncio ou repete a lista da anterior;
   página só com anúncios já conhecidos não encerra, porque o novo pode estar na seguinte.
 - `ra_geo_id` aceita `RA2026_RA-XX`, `RA-XX` ou a chave de RA_PROFILES (`RA_20`).
+- `source_id` precisa ser do mesmo portal do host da `search_url` quando LISTINGS já associa esse host a
+  um portal; em conflito, a busca termina em `error` sem ler a página, para não rotular os anúncios
+  com o portal errado.
 - `last_status` ∈ `ok`, `blocked`, `error`. `blocked` inclui a página de desafio (WAF, captcha) servida
   com HTTP 200: sem link de anúncio e com marcador de bloqueio, ela não conta como busca vazia.
   `last_found_count` são os links de anúncio reconhecidos na página e `last_new_count`, os que viraram
@@ -1962,7 +1965,9 @@ quando há pelo menos 3 referências.
 A leitura das páginas leva minutos, e a planilha continua aberta para edição. Por isso, com o lock de
 documento em mãos e antes de gravar, a busca relê as linhas de candidato e de busca, e relê LISTINGS
 com as mesmas três chaves da deduplicação (id, portal + id do anúncio e URL canônica), porque a área
-administrativa pode ter cadastrado o mesmo anúncio com outro `listing_id`. Sem autorização de rede,
+administrativa pode ter cadastrado o mesmo anúncio com outro `listing_id`. A deduplicação vale também
+dentro do mesmo lote: dois candidatos com a mesma URL ou o mesmo portal + id viram um anúncio só.
+LISTING_SOURCES também é relida, e a promoção de um portal desligado no meio da execução é desfeita. Sem autorização de rede,
 mesmo que o erro apareça no meio da leitura, nada é gravado nem promovido. Linha que alguém
 mudou nesse meio-tempo (decisão de revisão, valor digitado, busca editada) fica fora da execução: não
 é promovida nem regravada, e a continuação a refaz a partir do que está na planilha. O mesmo vale para

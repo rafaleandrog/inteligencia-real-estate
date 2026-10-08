@@ -8051,6 +8051,16 @@ function runListingsDiscoveryLocked_(options) {
         ? findSourceById_(sources, toText_(search.source_id))
         : sources.byPortal[normalizeSlug_(ref.portalByHost[host] || '')];
       var portalName = source ? source.name : (ref.portalByHost[host] || '');
+      // Host que LISTINGS já associa a um portal decide: `source_id` de outro portal rotularia
+      // cada anúncio da página com o portal errado (identidade e deduplicação quebradas).
+      var hostPortal = ref.portalByHost[host] || '';
+      if (source && hostPortal && normalizeSlug_(hostPortal) !== normalizeSlug_(source.name)) {
+        searchChanges[searchId] = { last_run_at: now, last_status: 'error', last_http_code: '', last_found_count: 0, last_new_count: 0 };
+        stats.errors++;
+        stats.messages.push(searchId + ': source_id ' + toText_(search.source_id) + ' (' + source.name +
+          ') não é o portal da URL (' + hostPortal + ')');
+        return;
+      }
       if (!portalName) {
         searchChanges[searchId] = { last_run_at: now, last_status: 'error', last_http_code: '', last_found_count: 0, last_new_count: 0 };
         stats.errors++;
@@ -8196,6 +8206,7 @@ function runListingsDiscoveryLocked_(options) {
       }
       ref.ids[listing.listing_id] = true;
       ref.keys[normalizeSlug_(cand.source_name) + '|' + toText_(cand.external_id)] = listing.listing_id;
+      ref.urls[canonicalListingUrl_(cand.source_url)] = listing.listing_id; // mesma URL no lote é duplicata
       promotedRows.push(listingHeaders.map(function (h) { return listing[h] === undefined ? '' : listing[h]; }));
       createdEvents.push([
         'EVT_' + Utilities.getUuid(), now, listing.listing_id, 'created', listing.portal, '', 'active', '',
@@ -8266,6 +8277,21 @@ function runListingsDiscoveryLocked_(options) {
         if (queuedMeanwhile) stats.messages.push(toText_(cand.candidate_id) + ': já entrou na fila por outro escritor durante a busca');
         return false;
       });
+      // Portal desligado em LISTING_SOURCES durante a execução: a promoção do retrato antigo
+      // não vale mais. O candidato volta ao estado anterior e espera o portal ser religado.
+      var sourcesNow = readListingSources_();
+      candidates.concat(newCandidates).forEach(function (cand) {
+        var listingId = listingIdForCandidate_(cand);
+        if (cand.status !== 'promoted' || dropped[listingId]) return;
+        var source = sourcesNow.byPortal[normalizeSlug_(cand.source_name)];
+        if (!source || source.active) return;
+        var before = cand._original || {};
+        cand.status = toText_(before.status) || 'pending';
+        cand.reviewed_at = before.reviewed_at === undefined ? '' : before.reviewed_at;
+        cand.reject_reason = 'portal desativado em LISTING_SOURCES; volta quando ele for religado';
+        dropped[listingId] = true;
+        stats.promoted--;
+      });
       if (Object.keys(dropped).length) {
         var dropColumn = listingHeaders.indexOf('listing_id');
         promotedRows = promotedRows.filter(function (row) { return !dropped[toText_(row[dropColumn])]; });
@@ -8288,7 +8314,13 @@ function runListingsDiscoveryLocked_(options) {
           var url = canonicalListingUrl_(row[col('source_url')]);
           var dupOf = fresh.ids[id] ? id
             : (key in fresh.keys ? fresh.keys[key] : (url in fresh.urls ? fresh.urls[url] : null));
-          if (dupOf === null) return true;
+          if (dupOf === null) {
+            // A linha aceita entra no índice: outra do mesmo lote com a mesma chave é duplicata.
+            fresh.ids[id] = true;
+            fresh.keys[key] = id;
+            fresh.urls[url] = id;
+            return true;
+          }
           duplicated[id] = dupOf || id;
           return false;
         });

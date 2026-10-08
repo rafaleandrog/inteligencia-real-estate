@@ -1060,3 +1060,54 @@ test('portal desligado em LISTING_SOURCES: candidato dele não é lido nem promo
   assert.equal(cands.C_APP.status, 'approved');
   assert.match(cands.C_APP.reject_reason, /portal desativado em LISTING_SOURCES/);
 });
+
+// --- revisão do PR #182, rodada 7 ---------------------------------------------------------------
+
+test('dois candidatos com a mesma URL e ids diferentes no mesmo lote: entra um só', () => {
+  const base = sheets({ searches: [] });
+  const approved = (id, ext) => candRow({ candidate_id: id, source_url: NEW_1, external_id: ext, asking_price_brl: 640000,
+    area_m2: 64, bedrooms: 2, status: 'approved', raw_json: JSON.stringify({ read_attempts: 5 }) });
+  base.LISTING_CANDIDATES = [CAND_COLUMNS, approved('C1', '1400001'), approved('C2', '1400011')];
+  const sandbox = createAppsScriptSandbox({ sheets: base });
+  network(sandbox.context, {});
+  sandbox.context.runListingsDiscovery_({ now: day(0), noContinuation: true });
+  const promoted = table(sandbox, 'LISTINGS').filter((r) => r.source_url === NEW_1);
+  assert.equal(promoted.length, 1, 'mesma URL, um anúncio só');
+  const cands = Object.fromEntries(table(sandbox, 'LISTING_CANDIDATES').map((c) => [c.candidate_id, c]));
+  assert.equal(cands.C1.status, 'promoted');
+  assert.equal(cands.C2.status, 'approved');
+  assert.match(cands.C2.reject_reason, /já existe em LISTINGS \(LIST_WEB_DFIMOVEIS_1400001\)/);
+  assert.equal(table(sandbox, 'LISTING_EVENTS').length, 1);
+});
+
+test('busca com source_id de outro portal na URL de um portal conhecido termina em erro, sem rotular nada', () => {
+  const base = sheets({ searches: [searchRow({ source_id: 'SRC_PORTAL_WIMOVEIS' })] });
+  base.LISTING_SOURCES.push(['SRC_PORTAL_WIMOVEIS', 'Wimoveis', 'portal', true, 'daily', '', '', 'generic_html', '', '', '', '', '', '']);
+  const sandbox = createAppsScriptSandbox({ sheets: base });
+  const calls = network(sandbox.context, {
+    [SEARCH_URL]: response(200, searchPage([NEW_1])),
+    [NEW_1]: response(200, listingPage({ price: 620000, url: NEW_1 })),
+  });
+  sandbox.context.runListingsDiscovery_({ now: day(0), noContinuation: true });
+  assert.deepEqual(calls, [], 'a página nem é pedida');
+  assert.equal(table(sandbox, 'LISTING_CANDIDATES').length, 0);
+  const search = table(sandbox, 'LISTING_SEARCHES')[0];
+  assert.equal(search.last_status, 'error');
+  assert.match(lastRun(sandbox).error_details, /source_id SRC_PORTAL_WIMOVEIS \(Wimoveis\) não é o portal da URL \(DFImoveis\)/);
+});
+
+test('portal desligado durante a execução: o que ele promoveria fica de fora', () => {
+  const sandbox = createAppsScriptSandbox({ sheets: sheets() });
+  network(sandbox.context, {
+    [SEARCH_URL]: response(200, searchPage([NEW_1])),
+    [NEW_1]: response(200, listingPage({ price: 620000, url: NEW_1 })),
+  });
+  editDuringRun(sandbox, () => { sandbox.sheets.LISTING_SOURCES._rows[1][3] = false; });
+  sandbox.context.runListingsDiscovery_({ now: day(0), noContinuation: true });
+  assert.equal(listingsById(sandbox).LIST_WEB_DFIMOVEIS_1400001, undefined);
+  assert.equal(table(sandbox, 'LISTING_EVENTS').length, 0);
+  const cand = table(sandbox, 'LISTING_CANDIDATES')[0];
+  assert.equal(cand.status, 'pending');
+  assert.match(cand.reject_reason, /portal desativado em LISTING_SOURCES/);
+  assert.equal(lastRun(sandbox).new_listings, 0);
+});
