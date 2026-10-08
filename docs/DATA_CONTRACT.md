@@ -1921,7 +1921,9 @@ Editar uma coluna de configuração esvazia `last_run_at` da linha e agenda a bu
 (gatilho de ação). Um link é aceito como anúncio quando:
 
 - está no mesmo host da busca;
-- tem id numérico (5 ou mais dígitos, fora preço);
+- tem id numérico (5 ou mais dígitos, fora preço). O id é o segmento só de dígitos (QuintoAndar,
+  `/imovel/893565467/…`), o número depois de `id-` (VivaReal) ou, no resto, o último número do caminho
+  (DFImoveis, Wimoveis); um CEP no meio do slug nunca vira o id;
 - o caminho começa por um segmento que os anúncios do portal já usam em LISTINGS (`imovel`,
   `propriedades`) ou bate com `listing_path_regex` em `LISTING_SOURCES.parser_config_json`.
 

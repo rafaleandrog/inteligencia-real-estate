@@ -753,6 +753,7 @@ test('preço digitado durante a busca não é sobrescrito; divergente da página
   sandbox.context.runListingsDiscovery_({ now: day(1) });
   assert.equal(table(sandbox, 'LISTING_CANDIDATES')[0].asking_price_brl, 655000);
   assert.equal(listingsById(sandbox).LIST_WEB_DFIMOVEIS_1400001, undefined);
+  assert.equal(meta(sandbox, 'listings_pending_candidates'), '1', 'a linha relida segue pendente na contagem');
   assert.deepEqual(sandbox.triggers.map((t) => t.getHandlerFunction()), ['listingsDiscoveryContinue']);
 
   sandbox.context.LockService.getDocumentLock = lock;
@@ -1151,18 +1152,45 @@ test('quartos do slug da URL cedem ao dado estruturado da página; suíte não c
   assert.equal(sandbox.context.inferBedroomsFromUrl_(`${HOST}/imovel/apartamento-2-suites-3-quartos-venda-df-1400005`), 3);
 });
 
-test('id do anúncio é o último número do caminho, não o maior (CEP no slug)', () => {
+test('id do anúncio pela forma do caminho de cada portal, nunca o CEP do slug', () => {
   const { context } = createAppsScriptSandbox({ sheets: sheets() });
-  const url = `${HOST}/imovel/apartamento-venda-sqn-210-70710000-1400001`;
-  assert.deepEqual([...context.listingIdTokens_(url, '')], ['70710000', '1400001']);
+  const cases = [
+    ['/imovel/apartamento-venda-sqn-210-70710000-1400001', '1400001'], // DFImoveis: termina no id
+    ['/imovel/893565467/comprar/apartamento-1-quarto-asa-norte-70710000', '893565467'], // QuintoAndar
+    ['/imovel/casa-2-quartos-lago-norte-RS650000-id-2907369820/', '2907369820'], // VivaReal
+    ['/propriedades/apartamento-aguas-claras-df-3023259970.html', '3023259970'], // Wimoveis
+  ];
+  for (const [path, id] of cases) assert.equal(context.listingTokenOfPath_(path), id, path);
+  assert.deepEqual([...context.listingIdTokens_(`${HOST}${cases[0][0]}`, '')], ['70710000', '1400001'], 'na ordem do caminho');
+  const url = `${HOST}${cases[0][0]}`;
   const links = context.extractListingLinks_(`<a href="${url}">x</a>`, SEARCH_URL, { imovel: true }, null);
   assert.deepEqual(Array.from(links, (l) => l.token), ['1400001']);
 });
 
+test('quartos digitados por fora iguais ao slug não são trocados pela página; os deduzidos pela rotina são, mesmo 0', () => {
+  const base = sheets({ searches: [] });
+  base.LISTING_CANDIDATES = [CAND_COLUMNS, candRow({ candidate_id: 'C_EXT', source_url: NEW_1, external_id: '1400001', bedrooms: 2 })];
+  const sandbox = createAppsScriptSandbox({ sheets: base });
+  network(sandbox.context, { [NEW_1]: response(200, listingPage({ price: 620000, url: NEW_1, rooms: 3 })) });
+  sandbox.context.runListingsDiscovery_({ now: day(0), noContinuation: true });
+  const ext = table(sandbox, 'LISTING_CANDIDATES')[0];
+  assert.equal(ext.bedrooms, 2, 'o digitado vale');
+  assert.match(ext.reject_reason, /quartos 2 diverge da página \(3\)/);
+
+  const studio = createAppsScriptSandbox({ sheets: sheets() });
+  const KIT = `${HOST}/imovel/kitnet-1-quarto-venda-aguas-claras-brasilia-df-1400020`;
+  network(studio.context, {
+    [SEARCH_URL]: response(200, searchPage([KIT])),
+    [KIT]: response(200, listingPage({ price: 300000, area: 30, url: KIT, rooms: 0 })),
+  });
+  studio.context.runListingsDiscovery_({ now: day(0), noContinuation: true });
+  assert.equal(table(studio, 'LISTING_CANDIDATES')[0].bedrooms, 0, 'o slug cede ao 0 estruturado');
+});
+
 test('lock de script ocupado: gatilho diário de busca e verificação são reagendados, não perdidos', () => {
   const sandbox = createAppsScriptSandbox({ sheets: sheets(), scriptLockBusy: true });
-  sandbox.context.listingsDiscoveryJob();
-  sandbox.context.runListingsVerify_({ trigger: 'time' });
+  assert.match(sandbox.context.listingsDiscoveryJob(), /a busca foi reagendada/);
+  assert.match(sandbox.context.runListingsVerify_({ trigger: 'time' }), /a verificação foi reagendada/);
   assert.deepEqual(sandbox.triggers.map((t) => t.getHandlerFunction()).sort(), ['listingsDiscoveryContinue', 'listingsVerifyContinue']);
 });
 

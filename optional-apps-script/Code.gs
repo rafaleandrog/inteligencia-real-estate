@@ -6038,11 +6038,12 @@ function runListingsVerify_(options) {
   options = options || {};
   var lock = LockService.getScriptLock();
   if (!lock.tryLock(0)) {
-    var busy = 'Outra execução da rotina de anúncios está em andamento; esta foi reagendada.';
-    Logger.log(busy);
     // A busca segura o mesmo lock por minutos: a verificação pedida (gatilho diário, anúncio
     // criado pela área administrativa, listings_job) tenta de novo em vez de se perder.
-    scheduleListingsJobQuietly_(LISTINGS_CONTINUE_HANDLER);
+    var retry = scheduleListingsJobQuietly_(LISTINGS_CONTINUE_HANDLER);
+    var busy = 'Outra execução da rotina de anúncios está em andamento; a verificação ' +
+      (retry.error ? 'NÃO pôde ser reagendada (' + retry.error + ') e fica para o gatilho diário.' : 'foi reagendada.');
+    Logger.log(busy);
     return busy;
   }
   try {
@@ -7519,11 +7520,12 @@ function runListingsDiscovery_(options) {
   options = options || {};
   var lock = LockService.getScriptLock();
   if (!lock.tryLock(0)) {
-    var busy = 'Outra execução da rotina de anúncios está em andamento; a busca foi ignorada.';
-    Logger.log(busy);
     // Nem o gatilho diário nem o de ação podem se perder porque a verificação estava rodando
     // (ela e as continuações dela seguram o mesmo lock): tenta de novo em um minuto.
-    scheduleListingsJobQuietly_(LISTINGS_DISCOVERY_CONTINUE_HANDLER);
+    var retry = scheduleListingsJobQuietly_(LISTINGS_DISCOVERY_CONTINUE_HANDLER);
+    var busy = 'Outra execução da rotina de anúncios está em andamento; a busca ' +
+      (retry.error ? 'NÃO pôde ser reagendada (' + retry.error + ') e fica para o gatilho diário.' : 'foi reagendada.');
+    Logger.log(busy);
     return busy;
   }
   try {
@@ -7783,6 +7785,22 @@ function inferBedroomsFromUrl_(url) {
  * LISTINGS. Junta também as `url` de JSON-LD (ItemList). Devolve `[{url, token}]` sem
  * repetição de token.
  */
+/**
+ * Id do anúncio no caminho, pela forma dos portais da base: segmento só de dígitos (QuintoAndar,
+ * `/imovel/893565467/comprar/…`); número depois de `id-` (VivaReal, `…-RS650000-id-2907369820/`);
+ * no resto, o último número do caminho (DFImoveis e Wimoveis terminam no id — um CEP no meio do
+ * slug não é o id, e o maior número também não seria: no QuintoAndar o CEP vem depois).
+ */
+function listingTokenOfPath_(path) {
+  var tokens = listingIdTokens_(path, '');
+  if (!tokens.length) return '';
+  var segment = /\/(\d{5,})(?=\/|$)/.exec(path);
+  if (segment) return segment[1];
+  var marked = /(?:^|[-_\/])id[-_]?(\d{5,})/i.exec(path);
+  if (marked) return marked[1];
+  return tokens[tokens.length - 1];
+}
+
 function extractListingLinks_(html, pageUrl, segments, pathRegex) {
   var host = urlHost_(pageUrl);
   var seen = {};
@@ -7798,9 +7816,8 @@ function extractListingLinks_(html, pageUrl, segments, pathRegex) {
       var segment = (path.split('/')[1] || '').toLowerCase();
       if (!segments || !segments[segment]) return;
     }
-    var tokens = listingIdTokens_(clean, '');
-    if (!tokens.length) return;
-    var token = tokens[tokens.length - 1];
+    var token = listingTokenOfPath_(path);
+    if (!token) return;
     if (seen[token]) return;
     seen[token] = true;
     out.push({ url: clean, token: token });
@@ -8036,6 +8053,12 @@ function runListingsDiscoveryLocked_(options) {
     searches.forEach(function (search) {
       var searchId = toText_(search.search_id);
       if (!searchId || !/^https?:\/\//i.test(toText_(search.search_url))) return;
+      // Busca mal configurada: registra o erro na linha e no run, sem ler página nenhuma.
+      var failSearch = function (message) {
+        searchChanges[searchId] = { last_run_at: now, last_status: 'error', last_http_code: '', last_found_count: 0, last_new_count: 0 };
+        stats.errors++;
+        stats.messages.push(message);
+      };
       if (!isBlank_(search.active) && !toBoolean_(search.active)) return;
       var frequency = toText_(search.frequency).toLowerCase() || 'daily';
       var lastRun = cellDate_(search.last_run_at);
@@ -8055,23 +8078,14 @@ function runListingsDiscoveryLocked_(options) {
       // cada anúncio da página com o portal errado (identidade e deduplicação quebradas).
       var hostPortal = ref.portalByHost[host] || '';
       if (toText_(search.source_id) && !source) {
-        searchChanges[searchId] = { last_run_at: now, last_status: 'error', last_http_code: '', last_found_count: 0, last_new_count: 0 };
-        stats.errors++;
-        stats.messages.push(searchId + ': source_id ' + toText_(search.source_id) + ' não existe em LISTING_SOURCES');
-        return;
+        return failSearch(searchId + ': source_id ' + toText_(search.source_id) + ' não existe em LISTING_SOURCES');
       }
       if (source && hostPortal && normalizeSlug_(hostPortal) !== normalizeSlug_(source.name)) {
-        searchChanges[searchId] = { last_run_at: now, last_status: 'error', last_http_code: '', last_found_count: 0, last_new_count: 0 };
-        stats.errors++;
-        stats.messages.push(searchId + ': source_id ' + toText_(search.source_id) + ' (' + source.name +
+        return failSearch(searchId + ': source_id ' + toText_(search.source_id) + ' (' + source.name +
           ') não é o portal da URL (' + hostPortal + ')');
-        return;
       }
       if (!portalName) {
-        searchChanges[searchId] = { last_run_at: now, last_status: 'error', last_http_code: '', last_found_count: 0, last_new_count: 0 };
-        stats.errors++;
-        stats.messages.push(searchId + ': portal não identificado (preencha source_id)');
-        return;
+        return failSearch(searchId + ': portal não identificado (preencha source_id)');
       }
       if (source && !source.active) return;
       var config = sourceConfig[normalizeSlug_(portalName)] || {};
@@ -8131,7 +8145,9 @@ function runListingsDiscoveryLocked_(options) {
             latitude: '', longitude: '', asking_price_brl: '', area_m2: '',
             bedrooms: inferBedroomsFromUrl_(link.url) === null ? '' : inferBedroomsFromUrl_(link.url),
             suites: '', parking_spaces: '', condo_fee_brl: '', iptu_brl: '', features_json: '',
-            raw_json: JSON.stringify({ search_id: searchId, read_attempts: 0 }), status: 'pending',
+            raw_json: JSON.stringify(inferBedroomsFromUrl_(link.url) === null
+              ? { search_id: searchId, read_attempts: 0 }
+              : { search_id: searchId, read_attempts: 0, bedrooms_from_url: true }), status: 'pending',
             reviewed_at: '', reject_reason: 'aguardando leitura da página do anúncio',
             parser_version: LISTINGS_PARSER_VERSION
           });
@@ -8408,7 +8424,8 @@ function runListingsDiscoveryLocked_(options) {
   });
 
   var pending = candidates.concat(newCandidates).filter(function (cand) {
-    var s = toText_(holdsDocument ? cand.status : (cand._original || cand).status).toLowerCase();
+    var written = holdsDocument && !(touchedCandidates && touchedCandidates[toText_(cand.candidate_id)]);
+    var s = toText_(written ? cand.status : (cand._original || cand).status).toLowerCase();
     return s === 'pending' || s === 'approved';
   }).length;
   setMeta_('listings_last_discovery_at', now.toISOString());
@@ -8497,11 +8514,6 @@ function candidatePageRead_(cand) {
   var meta = candidateMeta_(cand);
   return meta.read_status === 'ok' && typeof meta.read_sig === 'string' && meta.read_sig !== '' &&
     meta.read_sig === readAttestation_(cand, meta);
-}
-
-function numberOrNull_(value) {
-  var n = toNumber_(value);
-  return n === null || !isFinite(n) ? null : n;
 }
 
 /**
@@ -8594,10 +8606,13 @@ function applyCandidateRead_(cand, verdict, now, stats) {
     };
     fill('asking_price_brl', parsed.price);
     fill('area_m2', parsed.area);
-    // Quartos que vieram do slug da URL (inferência da própria rotina) cedem ao dado estruturado.
-    if (positiveNumber_(parsed.bedrooms) !== null && toNumber_(cand.bedrooms) === inferBedroomsFromUrl_(cand.source_url)) {
+    // Quartos que a própria rotina deduziu do slug (marcados na criação e ainda intocados) cedem
+    // ao dado estruturado da página; o que alguém digitou continua valendo.
+    if (meta.bedrooms_from_url && toNumber_(parsed.bedrooms) !== null &&
+        toNumber_(cand.bedrooms) === inferBedroomsFromUrl_(cand.source_url)) {
       cand.bedrooms = parsed.bedrooms;
     }
+    delete meta.bedrooms_from_url;
     fill('bedrooms', parsed.bedrooms);
     fill('parking_spaces', parsed.parking);
     fill('condo_fee_brl', parsed.condo);
@@ -8607,7 +8622,7 @@ function applyCandidateRead_(cand, verdict, now, stats) {
     meta.read_status = 'ok';
     // O que a página disse, assinado junto com a leitura: a promoção automática só usa dado que
     // a página confirma (pageConflicts_), e o que veio digitado por fora não ganha esse selo.
-    meta.page = { price: numberOrNull_(parsed.price), area: numberOrNull_(parsed.area), bedrooms: numberOrNull_(parsed.bedrooms) };
+    meta.page = { price: toNumber_(parsed.price), area: toNumber_(parsed.area), bedrooms: toNumber_(parsed.bedrooms) };
     meta.read_sig = readAttestation_(cand, meta);
     meta.signals = parsed.signals || [];
     meta.price_source = parsed.priceSource || '';
