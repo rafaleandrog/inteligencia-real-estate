@@ -6746,18 +6746,23 @@ function runListingsVerifyLocked_(options) {
   // fechamento mensal, e a continuação refaz tudo.
   var lockBusy = !holdsDocument;
 
+  // As gravações já aconteceram: falha ao agendar a continuação (autorização, cota de
+  // gatilhos) não pode derrubar o fechamento do run, só torná-lo parcial e dizer por quê.
   var continuation = false;
+  var continuationError = '';
   if (!authError && (remaining > 0 || lockBusy) && !options.noContinuation) {
-    continuation = scheduleOneOffTrigger_(LISTINGS_CONTINUE_HANDLER, LISTINGS_CONTINUATION_DELAY_MS);
+    var schedule = scheduleListingsJobQuietly_(LISTINGS_CONTINUE_HANDLER);
+    continuation = schedule.scheduled;
+    continuationError = schedule.error;
   }
 
   var status;
   if (authError || lockBusy) status = 'failed';
   else if (stats.requested > 0 && stats.read === 0 && (stats.blocked + stats.errors) > 0) status = 'failed';
-  else if (stats.blocked + stats.errors === 0) status = 'success';
+  else if (stats.blocked + stats.errors === 0 && !continuationError) status = 'success';
   else status = 'partial';
 
-  var details = listingsRunDetails_(stats, authError, remaining, continuation, lockBusy);
+  var details = listingsRunDetails_(stats, authError, remaining, continuation, lockBusy, continuationError);
   finishListingsRun_(runId, {
     status: status, source_pages_requested: stats.requested, source_pages_read: stats.read,
     updated_listings: stats.updated, reactivated_listings: stats.reactivated,
@@ -7015,9 +7020,13 @@ function finishListingsRun_(runId, values) {
   }
 }
 
-function listingsRunDetails_(stats, authError, remaining, continuation, lockBusy) {
+function listingsRunDetails_(stats, authError, remaining, continuation, lockBusy, continuationError) {
   var parts = [];
   if (authError) parts.push('AUTHORIZATION_REQUIRED: ' + toText_(authError.message || authError).slice(0, 300));
+  if (continuationError) {
+    parts.push('CONTINUATION_NOT_SCHEDULED: ' + toText_(continuationError).slice(0, 200) +
+      '; o restante fica para o gatilho diário');
+  }
   if (lockBusy) parts.push('DOCUMENT_LOCK_BUSY: lock da planilha ocupado por 30 s; nada gravado, leitura refeita na continuação');
   Object.keys(stats.byPortal).sort().forEach(function (portal) {
     var p = stats.byPortal[portal];
@@ -7441,6 +7450,8 @@ var LISTINGS_AUTOMATED_QUALITY_FLAG = 'automated_item_page_verified';
 /** Colunas de LISTING_SEARCHES que mudam o que a busca faz (gatilho de edição, releitura no lock). */
 var LISTING_SEARCH_CONFIG_FIELDS = ['search_id', 'source_id', 'search_url', 'ra_geo_id', 'locality',
   'property_type', 'transaction_type', 'active', 'frequency', 'max_pages'];
+/** Chave do atestado de leitura (ver candidatePageRead_). Propriedade do script, fora da planilha. */
+var LISTINGS_READ_KEY_PROP = 'LISTINGS_READ_ATTESTATION_KEY';
 /** Instante do último pedido explícito de busca (ver requestForcedDiscovery_). */
 var LISTINGS_DISCOVERY_FORCE_PROP = 'LISTINGS_DISCOVERY_FORCE_AFTER';
 /** Aprovado à mão sem que a rotina tenha lido a página (ver listingFromCandidate_). */
@@ -7902,7 +7913,8 @@ function listingIdForCandidate_(cand) {
 /**
  * Linha de LISTINGS (objeto campo → valor) para um candidato que passou nos portões.
  *
- * A procedência depende de a rotina ter lido a página. Lida (`raw_json.read_status = ok`):
+ * A procedência depende de a rotina ter lido a página — e "lida" é o atestado assinado por
+ * ela (candidatePageRead_), não o `read_status` que qualquer escritor da fila edita. Lida:
  * `automated_item_page_verified`, confirmada no portal na data DA LEITURA (`last_read_at`) —
  * que é a da promoção no caminho automático, mas fica dias antes quando o candidato esperou
  * a aprovação de um preço implausível. Não lida — aprovada à mão
@@ -7914,7 +7926,7 @@ function listingIdForCandidate_(cand) {
  */
 function listingFromCandidate_(cand, resolved, now, runId) {
   var meta = candidateMeta_(cand);
-  var pageRead = meta.read_status === 'ok';
+  var pageRead = candidatePageRead_(cand);
   var readAt = cellDate_(meta.last_read_at);
   if (!readAt || readAt.getTime() === now.getTime()) readAt = now;
   var seenAt = pageRead ? readAt : '';
@@ -8051,6 +8063,7 @@ function runListingsDiscoveryLocked_(options) {
       var status = 'ok';
       var lastCode = '';
       var pages = searchPageUrls_(search.search_url, search.max_pages);
+      var previousSignature = null;
       for (var p = 0; p < pages.length; p++) {
         // Página de busca segue redirecionamento (barra final, http→https): aqui não há
         // "anúncio removido" a distinguir, só a página de resultados.
@@ -8068,8 +8081,13 @@ function runListingsDiscoveryLocked_(options) {
         }
         stats.read++;
         var links = extractListingLinks_(response.body, pages[p], ref.pathPrefixes[host], config.pathRegex);
+        // A paginação acabou quando a página repete a lista da anterior (portal que devolve a
+        // última página para número fora do intervalo) ou não tem link de anúncio. Página só
+        // com anúncios já conhecidos NÃO encerra: o novo pode estar na seguinte.
+        var signature = links.map(function (l) { return l.url; }).sort().join(' ');
+        if (signature === previousSignature) break;
+        previousSignature = signature;
         found += links.length;
-        var pageNew = 0;
         links.forEach(function (link) {
           var portalSlug = normalizeSlug_(portalName);
           if (ref.keys[portalSlug + '|' + link.token] || ref.urls[canonicalListingUrl_(link.url)] ||
@@ -8092,9 +8110,8 @@ function runListingsDiscoveryLocked_(options) {
             parser_version: LISTINGS_PARSER_VERSION
           });
           created++;
-          pageNew++;
         });
-        if (pageNew === 0 && p > 0) break; // página sem novidade: o resto da paginação é repetição
+        if (!links.length) break;
       }
       stats.found += found;
       stats.created += created;
@@ -8119,7 +8136,7 @@ function runListingsDiscoveryLocked_(options) {
       var status = toText_(cand.status).toLowerCase();
       if (status !== 'pending' && status !== 'approved') return false;
       var meta = candidateMeta_(cand);
-      return meta.read_status !== 'ok' && (meta.read_attempts || 0) < LISTINGS_CANDIDATE_MAX_READ_ATTEMPTS &&
+      return !candidatePageRead_(cand) && (meta.read_attempts || 0) < LISTINGS_CANDIDATE_MAX_READ_ATTEMPTS &&
         /^https?:\/\//i.test(toText_(cand.source_url));
     });
     if (toRead.length > readsPerRun) unfinished = true;
@@ -8143,7 +8160,7 @@ function runListingsDiscoveryLocked_(options) {
     queue.forEach(function (cand) {
       var status = toText_(cand.status).toLowerCase();
       if (status !== 'pending' && status !== 'approved') return;
-      if (candidateMeta_(cand).read_status !== 'ok' && status !== 'approved') return;
+      if (!candidatePageRead_(cand) && status !== 'approved') return;
       var verdict = evaluateListingCandidate_(cand, ref);
       var blocking = status === 'approved' ? verdict.hard : verdict.hard.concat(verdict.soft);
       if (blocking.length) {
@@ -8162,7 +8179,7 @@ function runListingsDiscoveryLocked_(options) {
         'EVT_' + Utilities.getUuid(), now, listing.listing_id, 'created', listing.portal, '', 'active', '',
         listing.asking_price_brl, '*', runId, 'promovido de ' + toText_(cand.candidate_id) +
           (status !== 'approved' ? ' (portões automáticos)'
-            : (candidateMeta_(cand).read_status === 'ok' ? ' (aprovado à mão)' : ' (aprovado à mão, sem leitura da página)'))
+            : (candidatePageRead_(cand) ? ' (aprovado à mão)' : ' (aprovado à mão, sem leitura da página)'))
       ]);
       cand.status = 'promoted';
       cand.reviewed_at = now;
@@ -8290,9 +8307,13 @@ function runListingsDiscoveryLocked_(options) {
     }
   }
 
+  // Gravações já feitas: falha ao agendar a continuação deixa o run parcial, nunca `running`.
   var continuation = false;
+  var continuationError = '';
   if (!authError && (unfinished || lockBusy) && !options.noContinuation) {
-    continuation = scheduleOneOffTrigger_(LISTINGS_DISCOVERY_CONTINUE_HANDLER, LISTINGS_CONTINUATION_DELAY_MS);
+    var schedule = scheduleListingsJobQuietly_(LISTINGS_DISCOVERY_CONTINUE_HANDLER);
+    continuation = schedule.scheduled;
+    continuationError = schedule.error;
   }
   // Pedido explícito atendido: apaga, a menos que outro pedido tenha chegado durante o run.
   if (forceRequest && !authError && !lockBusy && !unfinished &&
@@ -8303,9 +8324,11 @@ function runListingsDiscoveryLocked_(options) {
   var status;
   if (authError || lockBusy) status = 'failed';
   else if (stats.requested > 0 && stats.read === 0 && (stats.blocked + stats.errors) > 0) status = 'failed';
-  else if (stats.blocked + stats.errors === 0) status = 'success';
+  else if (stats.blocked + stats.errors === 0 && !continuationError) status = 'success';
   else status = 'partial';
   var details = (authError ? 'AUTHORIZATION_REQUIRED: ' + toText_(authError.message || authError).slice(0, 300) + ' · ' : '') +
+    (continuationError ? 'CONTINUATION_NOT_SCHEDULED: ' + toText_(continuationError).slice(0, 200) +
+      '; o restante fica para o gatilho diário · ' : '') +
     (lockBusy ? 'DOCUMENT_LOCK_BUSY: lock da planilha ocupado por 30 s; nada gravado, busca refeita na continuação · ' : '') +
     'links ' + stats.found + ', novos ' + stats.created + ', lidos ' + stats.readCandidates +
     ', promovidos ' + stats.promoted + (continuation ? ' · continuação agendada' : '') +
@@ -8394,6 +8417,49 @@ function sameCellValue_(a, b) {
   return toText_(a) === toText_(b);
 }
 
+// --- Atestado de leitura ------------------------------------------------------------------
+
+/**
+ * A página do candidato foi lida e reconhecida PELA ROTINA? `raw_json` é editável por qualquer
+ * escritor da fila (agente externo, digitação), então `read_status = ok` sozinho não prova
+ * nada: a rotina assina a leitura (HMAC-SHA256) com uma chave que só ela tem, guardada nas
+ * propriedades do script. A assinatura cobre o candidato, a identidade da fonte e o instante
+ * da leitura; mudou a URL ou o id depois, a leitura deixa de valer e a página é lida de novo.
+ */
+function candidatePageRead_(cand) {
+  var meta = candidateMeta_(cand);
+  return meta.read_status === 'ok' && typeof meta.read_sig === 'string' && meta.read_sig !== '' &&
+    meta.read_sig === readAttestation_(cand, meta);
+}
+
+function readAttestation_(cand, meta) {
+  return hmacSha256Hex_(['read-ok', toText_(cand.candidate_id), normalizeSlug_(cand.source_name),
+    toText_(cand.external_id), canonicalListingUrl_(cand.source_url), toText_(meta.last_read_at)].join('|'),
+    listingsReadKey_());
+}
+
+var LISTINGS_READ_KEY_CACHE_ = null;
+
+/** Chave do atestado; criada (aleatória) na primeira leitura e guardada no script. */
+function listingsReadKey_() {
+  if (LISTINGS_READ_KEY_CACHE_) return LISTINGS_READ_KEY_CACHE_;
+  var key = toText_(props_().getProperty(LISTINGS_READ_KEY_PROP));
+  if (!key) {
+    key = Utilities.getUuid() + Utilities.getUuid();
+    props_().setProperty(LISTINGS_READ_KEY_PROP, key);
+  }
+  LISTINGS_READ_KEY_CACHE_ = key;
+  return key;
+}
+
+function hmacSha256Hex_(value, key) {
+  // Como computeDigest, a assinatura vem em bytes COM sinal (-128..127).
+  return Utilities.computeHmacSha256Signature(String(value), String(key)).map(function (byte) {
+    var n = byte < 0 ? byte + 256 : byte;
+    return ('0' + n.toString(16)).slice(-2);
+  }).join('');
+}
+
 function findSourceById_(sources, sourceId) {
   var found = null;
   Object.keys(sources.byPortal).forEach(function (slug) {
@@ -8430,6 +8496,7 @@ function applyCandidateRead_(cand, verdict, now, stats) {
     fill('title', parsed.title);
     if (isBlank_(cand.property_type)) cand.property_type = inferPropertyType_(cand.source_url + ' ' + (parsed.title || ''));
     meta.read_status = 'ok';
+    meta.read_sig = readAttestation_(cand, meta);
     meta.signals = parsed.signals || [];
     meta.price_source = parsed.priceSource || '';
     cand.reject_reason = '';
@@ -8441,6 +8508,7 @@ function applyCandidateRead_(cand, verdict, now, stats) {
     cand.reviewed_at = now;
     cand.reject_reason = 'anúncio removido antes da promoção (' + verdict.message + ')';
     meta.read_status = 'gone';
+    delete meta.read_sig;
   } else {
     if (verdict.outcome === 'blocked') stats.blocked++; else stats.errors++;
     meta.read_attempts = (meta.read_attempts || 0) + 1;

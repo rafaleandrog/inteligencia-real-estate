@@ -1111,7 +1111,8 @@ Cada uma nasce de um erro que aconteceu de verdade.
     rede: a linha alterada é relida com o lock e fica de fora, junto com o que ela tiver produzido;
   - texto de portal nunca vira fórmula na planilha (`safeCellValue_` em toda escrita da rotina);
   - procedência automática (`automated_item_page_verified`, `last_seen_at`, `last_check_status = ok`) só
-    com leitura da página feita pela rotina; aprovado à mão sem leitura nasce
+    com leitura da página feita pela rotina, provada por atestado que só ela assina (campo editável
+    por terceiros nunca é prova); aprovado à mão sem leitura nasce
     `manual_review_page_not_read`, sem confirmação no portal;
   - todo anúncio promovido nasce com a coordenada aproximada declarada (`*_centroid_deterministic_jitter`,
     `low_spatial_…`), porque um ponto que é do bairro não pode virar endereço (Code Review Rules, item 5).

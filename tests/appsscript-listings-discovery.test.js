@@ -866,3 +866,79 @@ test('título do portal que começa com = é gravado como texto, nunca como fór
   assert.equal(raw('1400002'), "'+SUM(1)", 'candidato existente: regravação por coluna');
   assert.equal(raw('1400001'), `'${evil}`, 'a coluna regravada não devolve o texto antigo como fórmula');
 });
+
+// --- revisão do PR #182, rodada 4 ---------------------------------------------------------------
+
+test('read_status = ok escrito por fora não vale como leitura: a página é lida, e sem leitura não há procedência automática', () => {
+  const CAND_HEADERS = [
+    'candidate_id', 'discovered_at', 'discovered_by', 'source_id', 'source_name', 'source_url',
+    'external_id', 'title', 'transaction_type', 'property_type', 'address', 'locality',
+    'ra_geo_id', 'latitude', 'longitude', 'asking_price_brl', 'area_m2', 'bedrooms', 'suites',
+    'parking_spaces', 'condo_fee_brl', 'iptu_brl', 'features_json', 'raw_json', 'status',
+    'reviewed_at', 'reject_reason', 'parser_version',
+  ];
+  const forged = Object.fromEntries(CAND_HEADERS.map((h) => [h, '']));
+  Object.assign(forged, {
+    candidate_id: 'CAND_GPT_1', discovered_at: day(-1), discovered_by: 'agente:gpt', source_name: 'DFImoveis',
+    source_url: NEW_1, external_id: '1400001', transaction_type: 'sale', property_type: 'apartamento',
+    locality: 'Águas Claras', asking_price_brl: 640000, area_m2: 64, bedrooms: 2, status: 'pending',
+    raw_json: JSON.stringify({ read_status: 'ok', last_read_at: '2026-10-07T12:00:00.000Z', read_sig: 'forjado' }),
+  });
+  const base = sheets({ searches: [] });
+  base.LISTING_CANDIDATES = [CAND_HEADERS, CAND_HEADERS.map((h) => forged[h])];
+  const sandbox = createAppsScriptSandbox({ sheets: base });
+  const calls = network(sandbox.context, { [NEW_1]: response(403) });
+  sandbox.context.runListingsDiscovery_({ now: day(0), noContinuation: true });
+  assert.deepEqual(calls, [NEW_1], 'o atestado forjado não dispensa a leitura');
+  assert.equal(listingsById(sandbox).LIST_WEB_DFIMOVEIS_1400001, undefined, 'pendente sem leitura não é promovido');
+
+  setCandidate(sandbox, 1, 'status', 'approved');
+  sandbox.context.runListingsDiscovery_({ now: day(1), noContinuation: true });
+  const created = listingsById(sandbox).LIST_WEB_DFIMOVEIS_1400001;
+  assert.equal(created.quality_flag, 'manual_review_page_not_read');
+  assert.equal(created.last_seen_at, '');
+  assert.equal(created.last_check_status, '');
+});
+
+test('paginação: página só com anúncios conhecidos não encerra; página repetida encerra', () => {
+  const paged = `${SEARCH_URL}?pagina={page}`;
+  const page = (n) => `${SEARCH_URL}?pagina=${n}`;
+  const NEW_3 = `${HOST}/imovel/apartamento-2-quartos-venda-aguas-claras-brasilia-df-1400003`;
+  const sandbox = createAppsScriptSandbox({ sheets: sheets({ searches: [searchRow({ search_url: paged, max_pages: 5 })] }) });
+  const calls = network(sandbox.context, {
+    [page(1)]: response(200, searchPage([NEW_1])),
+    [page(2)]: response(200, searchPage([EXISTING])), // só conhecido
+    [page(3)]: response(200, searchPage([NEW_3])),
+    [page(4)]: response(200, searchPage([NEW_3])), // fora do intervalo: o portal repete a última
+    [NEW_1]: response(403),
+    [NEW_3]: response(403),
+  });
+  sandbox.context.runListingsDiscovery_({ now: day(0), noContinuation: true });
+  assert.deepEqual(calls.filter((u) => u.includes('pagina=')), [page(1), page(2), page(3), page(4)], 'p5 não é pedida');
+  assert.deepEqual(table(sandbox, 'LISTING_CANDIDATES').map((c) => c.external_id).sort(), ['1400001', '1400003']);
+  assert.equal(table(sandbox, 'LISTING_SEARCHES')[0].last_found_count, 3, 'a página repetida não conta de novo');
+});
+
+test('falha ao agendar a continuação depois de gravar: o run fecha parcial, nunca fica running', () => {
+  const sandbox = createAppsScriptSandbox({ sheets: sheets() });
+  network(sandbox.context, {
+    [SEARCH_URL]: response(200, searchPage([NEW_1, NEW_2])),
+    [NEW_1]: response(200, listingPage({ price: 620000, url: NEW_1 })),
+    [NEW_2]: response(200, listingPage({ price: 700000, area: 70, url: NEW_2, rooms: 3 })),
+  });
+  sandbox.context.ScriptApp.newTrigger = () => { throw new Error('Esta conta atingiu a cota de gatilhos'); };
+  sandbox.context.runListingsDiscovery_({ now: day(0), readsPerRun: 1 });
+  const run = lastRun(sandbox);
+  assert.equal(run.status, 'partial');
+  assert.match(run.error_details, /^CONTINUATION_NOT_SCHEDULED: Esta conta atingiu a cota/);
+  assert.equal(run.new_listings, 1, 'o que foi gravado continua registrado');
+  assert.equal(meta(sandbox, 'listings_last_discovery_status'), 'partial');
+
+  // A verificação diária tem o mesmo ponto: grava e depois agenda.
+  sandbox.context.UrlFetchApp.fetchAll = (requests) => requests.map(() => response(429));
+  sandbox.context.runListingsVerify_({ now: day(1), maxPerRun: 1 });
+  const verify = lastRun(sandbox);
+  assert.equal(verify.status, 'failed', 'tudo bloqueado continua failed');
+  assert.match(verify.error_details, /^CONTINUATION_NOT_SCHEDULED/);
+  assert.notEqual(verify.status, 'running');
+});

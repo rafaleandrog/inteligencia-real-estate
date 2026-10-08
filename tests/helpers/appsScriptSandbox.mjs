@@ -14,7 +14,7 @@
 
 import vm from 'node:vm';
 import { readFileSync } from 'node:fs';
-import { randomUUID, createHash } from 'node:crypto';
+import { randomUUID, createHash, createHmac } from 'node:crypto';
 
 /** Uma planilha em memória: linhas como array de arrays, primeira linha é cabeçalho. */
 export function createFakeSheet(name, rows) {
@@ -234,6 +234,11 @@ export function createAppsScriptSandbox({
       computeDigest: (_algorithm, value, _charset) => {
         const hash = createHash('sha256').update(String(value), 'utf8').digest();
         return [...hash].map((byte) => (byte > 127 ? byte - 256 : byte));
+      },
+      // Mesma convenção de bytes com sinal do Apps Script (atestado de leitura, v2.6.0).
+      computeHmacSha256Signature: (value, key) => {
+        const mac = createHmac('sha256', String(key)).update(String(value), 'utf8').digest();
+        return [...mac].map((byte) => (byte > 127 ? byte - 256 : byte));
       },
       unzip: () => { throw new Error('unzip() exige um blob real; nenhum teste exercita KMZ'); },
       // As duas sincronizações da v2.2.x montam um KMZ no Drive. Blob e zip reais não

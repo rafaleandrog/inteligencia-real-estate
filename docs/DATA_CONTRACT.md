@@ -1857,7 +1857,9 @@ de cada portal e registra o que voltou.
 Uma linha por execução, aberta como `running` e fechada no fim. `status` pode ser:
 
 - `success`: zero erros;
-- `partial`: algum `blocked`/`error`;
+- `partial`: algum `blocked`/`error`, ou a continuação que faltava não pôde ser agendada
+  (`CONTINUATION_NOT_SCHEDULED` em `error_details`, com o motivo; o restante fica para o gatilho
+  diário);
 - `failed`: nada lido; ou sem autorização de rede, caso em que `error_details` começa com
   `AUTHORIZATION_REQUIRED` e nenhum anúncio é tocado; ou planilha ocupada por outra gravação
   (`DOCUMENT_LOCK_BUSY`), caso em que nada é gravado (nem o fechamento mensal, mesmo com a fila
@@ -1903,7 +1905,9 @@ campos viram o contexto de todo anúncio que a busca encontrar. O resto é escri
   busca ativa cujo `last_run_at` é anterior ao pedido roda, qualquer que seja a frequência. O pedido fica
   na propriedade `LISTINGS_DISCOVERY_FORCE_AFTER`, sobrevive à continuação e se apaga quando a busca
   termina sem pendência.
-- `{page}` na URL é trocado por 1…`max_pages` (teto 5). Sem `{page}`, só a primeira página é lida.
+- `{page}` na URL é trocado por 1…`max_pages` (teto 5). Sem `{page}`, só a primeira página é lida. A
+  paginação só para antes do teto quando a página não tem link de anúncio ou repete a lista da anterior;
+  página só com anúncios já conhecidos não encerra, porque o novo pode estar na seguinte.
 - `ra_geo_id` aceita `RA2026_RA-XX`, `RA-XX` ou a chave de RA_PROFILES (`RA_20`).
 - `last_status` ∈ `ok`, `blocked`, `error`. `last_found_count` são os links de anúncio reconhecidos na
   página e `last_new_count`, os que viraram candidato.
@@ -1971,7 +1975,12 @@ A promoção grava em LISTINGS, além do que veio da página:
 - `title` no formato da base (`Apartamento à venda · Águas Claras`);
 - um evento `created` em LISTING_EVENTS.
 
-A procedência depende de a rotina ter lido a página do candidato (`raw_json.read_status = ok`):
+A procedência depende de a rotina ter lido a página do candidato. Como `raw_json` é editável por
+qualquer escritor da fila, `read_status = ok` sozinho não vale: a leitura só conta com o atestado
+`raw_json.read_sig`, um HMAC-SHA256 do candidato, da identidade da fonte e do instante da leitura,
+assinado com uma chave que fica nas propriedades do script (`LISTINGS_READ_ATTESTATION_KEY`, criada
+sozinha). Atestado ausente ou que não confere, inclusive depois de trocar a URL ou o id, é página não
+lida, que a rotina volta a ler.
 
 | | página lida | aprovado à mão sem leitura |
 |---|---|---|
