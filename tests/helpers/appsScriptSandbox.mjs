@@ -132,7 +132,10 @@ function createRange(data, row, col, numRows, numCols) {
  * Cria o sandbox com Code.gs carregado. `sheets` é `{NOME: [[header...], [linha...]]}`.
  * `scriptProperties` é o estado inicial de PropertiesService.getScriptProperties().
  */
-export function createAppsScriptSandbox({ sheets = {}, scriptProperties = {}, googleEmail = '', externalSpreadsheets = {} } = {}) {
+export function createAppsScriptSandbox({
+  sheets = {}, scriptProperties = {}, googleEmail = '', externalSpreadsheets = {}, scriptLockBusy = false,
+  documentLockBusy = false,
+} = {}) {
   const fakeSheets = {};
   for (const [name, rows] of Object.entries(sheets)) {
     fakeSheets[name] = createFakeSheet(name, rows);
@@ -147,6 +150,7 @@ export function createAppsScriptSandbox({ sheets = {}, scriptProperties = {}, go
 
   const properties = { ...scriptProperties };
   const cache = new Map();
+  const triggers = [];
   const contentOutputs = [];
 
   const book = {
@@ -177,7 +181,14 @@ export function createAppsScriptSandbox({ sheets = {}, scriptProperties = {}, go
     },
     LockService: {
       getDocumentLock: () => ({
-        tryLock: () => true,
+        tryLock: () => !documentLockBusy,
+        releaseLock: () => {},
+      }),
+      // v2.5.0 — a rotina de anúncios usa o lock de SCRIPT (uma execução por vez, venha do
+      // gatilho de tempo, da continuação ou do menu). `scriptLockBusy` simula outra execução
+      // segurando o lock.
+      getScriptLock: () => ({
+        tryLock: () => !scriptLockBusy,
         releaseLock: () => {},
       }),
     },
@@ -257,6 +268,9 @@ export function createAppsScriptSandbox({ sheets = {}, scriptProperties = {}, go
       fetch: (url) => {
         throw new Error(`UrlFetchApp.fetch() não é permitido em teste (tentou ${url})`);
       },
+      fetchAll: (requests) => {
+        throw new Error(`UrlFetchApp.fetchAll() não é permitido em teste (tentou ${requests.length} URL(s))`);
+      },
     },
     DriveApp: {
       getFileById: () => { throw new Error('DriveApp não é exercitado pelos testes'); },
@@ -277,9 +291,38 @@ export function createAppsScriptSandbox({ sheets = {}, scriptProperties = {}, go
         return output;
       },
     },
+    /**
+     * Gatilhos em memória (v2.5.0). `newTrigger()` devolve o builder encadeável do Apps
+     * Script e registra o gatilho em `triggers` só no `create()`; `deleteTrigger()` remove.
+     * Nada dispara sozinho: o teste lê `triggers` para afirmar o que FOI agendado.
+     */
     ScriptApp: {
-      getProjectTriggers: () => [],
-      newTrigger: () => { throw new Error('newTrigger() não é usado pelos testes de escrita'); },
+      getProjectTriggers: () => [...triggers],
+      deleteTrigger: (trigger) => {
+        const at = triggers.indexOf(trigger);
+        if (at !== -1) triggers.splice(at, 1);
+      },
+      newTrigger: (handler) => {
+        const spec = { handler, kind: null };
+        const trigger = {
+          getHandlerFunction: () => handler,
+          getUniqueId: () => `trigger-${triggers.length + 1}-${handler}`,
+          _spec: spec,
+        };
+        const builder = {
+          forSpreadsheet() { spec.kind = 'spreadsheet'; return builder; },
+          onEdit() { spec.event = 'onEdit'; return builder; },
+          timeBased() { spec.kind = 'time'; return builder; },
+          after(ms) { spec.afterMs = ms; return builder; },
+          everyHours(n) { spec.everyHours = n; return builder; },
+          everyDays(n) { spec.everyDays = n; return builder; },
+          atHour(h) { spec.atHour = h; return builder; },
+          nearMinute(m) { spec.nearMinute = m; return builder; },
+          inTimezone(tz) { spec.timezone = tz; return builder; },
+          create() { triggers.push(trigger); return trigger; },
+        };
+        return builder;
+      },
     },
     Logger: { log: () => {} },
     console,
@@ -289,7 +332,7 @@ export function createAppsScriptSandbox({ sheets = {}, scriptProperties = {}, go
   const src = readFileSync(new URL('../../optional-apps-script/Code.gs', import.meta.url), 'utf8');
   vm.runInContext(src, context, { filename: 'Code.gs' });
 
-  return { context, sheets: fakeSheets, properties, cache };
+  return { context, sheets: fakeSheets, properties, cache, triggers };
 }
 
 /** Devolve o payload JSON de uma resposta ContentService (as que doPost/doGet produzem). */

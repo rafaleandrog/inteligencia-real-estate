@@ -19,8 +19,9 @@ const read = (p) => readFileSync(new URL(p, import.meta.url), 'utf8');
 test('APP_VERSION é a da fusão, não a da planilha nem a do repositório antigo', () => {
   // v2.4.0: o script instalado na planilha era a v2.2.1 + adendo FipeZAP (também chamado
   // "2.3.0"); o repositório era a 2.3.0 territorial sem FipeZAP. A 2.4.0 é a união.
+  // v2.5.0 (issue #178): a 2.4.0 + a rotina de anúncios que rodava só no editor.
   const { context } = createAppsScriptSandbox();
-  assert.equal(context.APP_VERSION, '2.4.0');
+  assert.equal(context.APP_VERSION, '2.5.0');
 });
 
 test('as quatro correções da v2.0.2 sobreviveram à fusão, na forma certa', () => {
