@@ -116,6 +116,24 @@ test('loadDataset (gviz): as três abas de tráfego ausentes viram aviso, nunca 
       'a falha precisa aparecer como aviso, não silenciosamente'
     );
     assert.equal(result.errors.length, 0, 'aba opcional nunca vira erro fatal');
+    // Falha de CARGA não é ausência de medição: o painel precisa saber a diferença (#175).
+    assert.equal(result.traffic.dailyLoadFailed, true);
+  } finally {
+    globalThis.document = originalDocument;
+  }
+});
+
+test('loadDataset (gviz): fluxo diário carregado não marca dailyLoadFailed (issue #175)', async () => {
+  const tablesBySheet = {
+    LISTINGS: table(['listing_id'], [{ listing_id: 'L1' }]),
+    DEVELOPMENTS: table(['development_id'], [{ development_id: 'D1' }]),
+    ANCHORS: table(['place_id'], [{ place_id: 'A1' }]),
+  };
+  const originalDocument = globalThis.document;
+  globalThis.document = documentRefFor(tablesBySheet, { failFor: ['ROAD_SEGMENTS'] });
+  try {
+    const result = await loadDataset(BASE_CONFIG);
+    assert.equal(result.traffic.dailyLoadFailed, false);
   } finally {
     globalThis.document = originalDocument;
   }
