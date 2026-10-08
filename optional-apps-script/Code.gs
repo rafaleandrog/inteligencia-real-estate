@@ -6258,15 +6258,32 @@ function foldText_(text) {
   return s.replace(/\s+/g, ' ');
 }
 
-/** Texto que a pessoa vê: sem `<script>`, `<style>`, `<noscript>`, `<template>` e sem tags. */
+/**
+ * Elemento escondido no próprio HTML: atributo `hidden`, `aria-hidden="true"`,
+ * `display:none`/`visibility:hidden` inline ou classe de esconder (`hidden`, `d-none`,
+ * `is-hidden`, `invisible`). Página de anúncio vivo pode carregar escondido o aviso de
+ * "anúncio indisponível" que só aparece quando ele sai (revisão do Codex na #181).
+ */
+var LISTINGS_HIDDEN_ELEMENT = /<(div|section|span|p|aside|article|h[1-6]|li|ul|strong|small|em|b)\b([^>]*\s(?:hidden(?:\s|=|>|$)|aria-hidden\s*=\s*["']true["']|style\s*=\s*["'][^"']*(?:display\s*:\s*none|visibility\s*:\s*hidden)|class\s*=\s*["'][^"']*\b(?:hidden|d-none|is-hidden|invisible)\b)[^>]*|\s+hidden)>[\s\S]*?<\/\1>/gi;
+
+/**
+ * Texto que a pessoa vê: sem `<script>`, `<style>`, `<noscript>`, `<template>`, sem elemento
+ * escondido (LISTINGS_HIDDEN_ELEMENT) e sem tags. Regex não é parser de HTML: elemento
+ * escondido com filho do mesmo nome escapa. Por isso a classificação nunca confia SÓ no
+ * marcador quando a página também traz o dado estruturado do anúncio (CONFLICTING_SIGNALS).
+ */
 function visibleText_(html) {
-  return String(html || '')
+  var text = String(html || '')
     .replace(/<script[\s\S]*?<\/script>/gi, ' ')
     .replace(/<style[\s\S]*?<\/style>/gi, ' ')
     .replace(/<noscript[\s\S]*?<\/noscript>/gi, ' ')
-    .replace(/<template[\s\S]*?<\/template>/gi, ' ')
-    .replace(/<[^>]+>/g, ' ')
-    .replace(/&nbsp;/gi, ' ');
+    .replace(/<template[\s\S]*?<\/template>/gi, ' ');
+  var previous;
+  do {
+    previous = text;
+    text = text.replace(LISTINGS_HIDDEN_ELEMENT, ' ');
+  } while (text !== previous);
+  return text.replace(/<[^>]+>/g, ' ').replace(/&nbsp;/gi, ' ');
 }
 
 /** Resolve `Location` relativo contra a URL de origem. */
@@ -6348,17 +6365,22 @@ function classifyListingResponse_(url, response, externalId) {
   if (code < 200 || code >= 300) return { outcome: 'error', code: code, message: 'HTTP_' + code };
 
   var body = String(response.body || '');
-  // Marcador de remoção só no texto VISÍVEL: bundle de JavaScript embutido carrega as
-  // strings da rota de erro ("página não encontrada") em página de anúncio vivo.
-  var visible = foldText_(visibleText_(body));
-  for (var r = 0; r < LISTINGS_REMOVED_MARKERS.length; r++) {
-    if (visible.indexOf(LISTINGS_REMOVED_MARKERS[r]) !== -1) {
-      return { outcome: 'gone', code: code, message: 'REMOVED_MARKER "' + LISTINGS_REMOVED_MARKERS[r] + '"' };
-    }
-  }
   var tokens = listingIdTokens_(url, externalId);
   var parsed = parseListingHtml_(body, tokens);
   var hasData = parsed.price !== null || parsed.area !== null;
+  // Marcador de remoção só no texto VISÍVEL: bundle de JavaScript embutido carrega as
+  // strings da rota de erro ("página não encontrada") em página de anúncio vivo, e a
+  // página pode trazer o aviso de indisponível escondido. Marcador JUNTO com o dado
+  // estruturado do próprio anúncio é sinal contraditório: não confirma nem conta para
+  // inativar — inativar um anúncio vivo é o erro mais caro desta rotina.
+  var visible = foldText_(visibleText_(body));
+  for (var r = 0; r < LISTINGS_REMOVED_MARKERS.length; r++) {
+    if (visible.indexOf(LISTINGS_REMOVED_MARKERS[r]) === -1) continue;
+    if (hasData) {
+      return { outcome: 'error', code: code, message: 'CONFLICTING_SIGNALS marcador "' + LISTINGS_REMOVED_MARKERS[r] + '" com dado do anúncio (' + parsed.signals.join('+') + ')' };
+    }
+    return { outcome: 'gone', code: code, message: 'REMOVED_MARKER "' + LISTINGS_REMOVED_MARKERS[r] + '"' };
+  }
   if (!hasData) {
     var text = foldText_(body);
     for (var b = 0; b < LISTINGS_BLOCKED_MARKERS.length; b++) {
@@ -6652,41 +6674,45 @@ function runListingsVerifyLocked_(options) {
   }
 
   var remaining = due.length - processed;
-  // A gravação segura também o lock de DOCUMENTO: `recalculateDerivedFields()` (job de 6 h)
-  // reescreve a coluna inteira de preço/m² a partir do que leu, e sem o lock uma das duas
-  // escritas apagaria a outra. Sem lock em 30 s grava assim mesmo — perder a conferência
-  // do dia inteiro custaria mais que a disputa improvável.
+  // A gravação exige o lock de DOCUMENTO, o mesmo da API de escrita, da edição manual e do
+  // job de 6 h (`recalculateDerivedFields()` reescreve a coluna inteira de preço/m² a partir
+  // do que leu). Sem ele em 30 s, NADA é gravado: os anúncios continuam na fila (o
+  // `last_checked_at` não mudou) e a continuação refaz a leitura. Gravar sem lock trocaria
+  // um minuto de atraso por valor sobrescrito ou evento perdido (revisão do Codex na #181).
   var documentLock = LockService.getDocumentLock();
   var holdsDocument = documentLock.tryLock(LOCK_TIMEOUT_MS);
-  var written;
-  try {
-    written = writeListingChanges_(sheet, state.changes);
-    appendListingEvents_(state.events);
-    state.changeLog.forEach(function (entry) {
-      logWriteChange_('LISTINGS', entry.id, entry.field, entry.oldValue, entry.newValue,
-        'rotina de anúncios', runId, 'ok', '');
-    });
-  } finally {
-    if (holdsDocument) documentLock.releaseLock();
+  var written = 0;
+  if (holdsDocument) {
+    try {
+      written = writeListingChanges_(sheet, state.changes);
+      appendListingEvents_(state.events);
+      state.changeLog.forEach(function (entry) {
+        logWriteChange_('LISTINGS', entry.id, entry.field, entry.oldValue, entry.newValue,
+          'rotina de anúncios', runId, 'ok', '');
+      });
+    } finally {
+      documentLock.releaseLock();
+    }
   }
+  var lockBusy = !holdsDocument && processed > 0;
 
   var continuation = false;
-  if (!authError && remaining > 0 && !options.noContinuation) {
+  if (!authError && (remaining > 0 || lockBusy) && !options.noContinuation) {
     continuation = scheduleOneOffTrigger_(LISTINGS_CONTINUE_HANDLER, LISTINGS_CONTINUATION_DELAY_MS);
   }
-  if (!authError && remaining === 0 && !options.listingIds) {
+  if (!authError && !lockBusy && remaining === 0 && !options.listingIds) {
     var snapshot = snapshotListingsMonth_(now, runId);
     stats.historyRows = snapshot.historyRows;
     stats.metricsRows = snapshot.metricsRows;
   }
 
   var status;
-  if (authError) status = 'failed';
+  if (authError || lockBusy) status = 'failed';
   else if (stats.requested > 0 && stats.read === 0 && (stats.blocked + stats.errors) > 0) status = 'failed';
   else if (stats.blocked + stats.errors === 0) status = 'success';
   else status = 'partial';
 
-  var details = listingsRunDetails_(stats, authError, remaining, continuation);
+  var details = listingsRunDetails_(stats, authError, remaining, continuation, lockBusy);
   finishListingsRun_(runId, now, status, stats, details);
   updateListingSourcesAfterRun_(sources, stats, runId, now);
 
@@ -6709,6 +6735,9 @@ function runListingsVerifyLocked_(options) {
     ? 'Rotina de anúncios SEM AUTORIZAÇÃO de rede (script.external_request). Nenhum anúncio foi ' +
       'alterado. Rode "Instalar gatilhos" pelo editor do Apps Script para abrir a tela de autorização ' +
       '(docs/SHEET_SETUP.md §10).'
+    : lockBusy
+    ? 'Planilha ocupada por outra gravação: nada foi gravado neste run (' + runId + '). ' +
+      (continuation ? 'Continuação agendada para refazer a leitura.' : '')
     : 'Run ' + runId + ': ' + status + '. Conferidos ' + stats.checks + ' de ' + due.length +
       ' (ok ' + stats.ok + ', removidos ' + stats.gone + ', bloqueados ' + stats.blocked +
       ', erros ' + stats.errors + '). Preço alterado: ' + stats.priceChanges +
@@ -6922,9 +6951,10 @@ function finishListingsRun_(runId, now, status, stats, details) {
   }
 }
 
-function listingsRunDetails_(stats, authError, remaining, continuation) {
+function listingsRunDetails_(stats, authError, remaining, continuation, lockBusy) {
   var parts = [];
   if (authError) parts.push('AUTHORIZATION_REQUIRED: ' + toText_(authError.message || authError).slice(0, 300));
+  if (lockBusy) parts.push('DOCUMENT_LOCK_BUSY: lock da planilha ocupado por 30 s; nada gravado, leitura refeita na continuação');
   Object.keys(stats.byPortal).sort().forEach(function (portal) {
     var p = stats.byPortal[portal];
     parts.push(portal + ' ok=' + p.ok + ' gone=' + p.gone + ' blocked=' + p.blocked + ' error=' + p.error);

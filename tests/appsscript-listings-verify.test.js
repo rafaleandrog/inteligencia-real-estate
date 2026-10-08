@@ -375,6 +375,54 @@ test('marcador de remoção só conta no texto visível, não dentro de script',
   assert.equal(context.classifyListingResponse_(DF, { code: 200, body: REMOVED_PAGE }, '1364276').outcome, 'gone');
 });
 
+test('aviso de indisponível escondido no HTML não conta como remoção', () => {
+  // Revisão do Codex na #181: anúncio vivo pode carregar escondido o aviso que só aparece
+  // quando ele sai. Antes, isso dava `gone` e três dias depois inativava um anúncio vivo.
+  const { context } = createAppsScriptSandbox();
+  const hiddenVariants = [
+    '<div class="unavailable" style="display: none">Este anúncio não está mais disponível</div>',
+    '<div hidden>Este anúncio não está mais disponível</div>',
+    '<section class="banner d-none">Anúncio indisponível</section>',
+    '<p aria-hidden="true">Imóvel indisponível</p>',
+  ];
+  for (const hidden of hiddenVariants) {
+    const live = jsonLdPage({ extra: hidden });
+    assert.equal(context.classifyListingResponse_(DF, { code: 200, body: live }, '1364276').outcome, 'ok', hidden);
+    const noData = `<html><body>Apartamento código 1364276 ${hidden}</body></html>`;
+    assert.equal(context.classifyListingResponse_(DF, { code: 200, body: noData }, '1364276').outcome, 'ok', hidden);
+  }
+});
+
+test('marcador visível junto com o dado do próprio anúncio é inconclusivo, não remoção', () => {
+  const { context } = createAppsScriptSandbox();
+  // Escondido de um jeito que a regex não pega (filho do mesmo elemento): o dado do anúncio
+  // na mesma página impede a inativação.
+  const nested = jsonLdPage({ extra: '<div style="display:none"><div>x</div><p>Anúncio indisponível</p></div>' });
+  const verdict = context.classifyListingResponse_(DF, { code: 200, body: nested }, '1364276');
+  assert.equal(verdict.outcome, 'error');
+  assert.match(verdict.message, /^CONFLICTING_SIGNALS/);
+  // Sem dado do anúncio, o marcador visível continua sendo remoção.
+  assert.equal(context.classifyListingResponse_(DF, { code: 200, body: REMOVED_PAGE }, '1364276').outcome, 'gone');
+});
+
+test('lock da planilha ocupado: nada é gravado, e a continuação refaz a leitura', () => {
+  // Revisão do Codex na #181: gravar sem o lock de documento disputa com a API de escrita,
+  // a edição manual e o job de 6 h.
+  const sandbox = createAppsScriptSandbox({ sheets: sheetsWith([listing()]), documentLockBusy: true });
+  installNetwork(sandbox.context, { [DF]: response(200, jsonLdPage({ price: 760000 })) });
+  sandbox.context.ensureListingsRoutineSchema_();
+  const before = JSON.stringify(sandbox.sheets.LISTINGS._rows);
+  const message = sandbox.context.runListingsVerify_({ now: day(0) });
+  assert.match(message, /nada foi gravado/);
+  assert.equal(JSON.stringify(sandbox.sheets.LISTINGS._rows), before);
+  assert.equal(events(sandbox).length, 0);
+  assert.equal(sandbox.sheets.CHANGE_LOG._rows.length, 1);
+  assert.equal(lastRun(sandbox).status, 'failed');
+  assert.match(lastRun(sandbox).error_details, /^DOCUMENT_LOCK_BUSY/);
+  assert.deepEqual(sandbox.triggers.map((t) => t.getHandlerFunction()), ['listingsVerifyContinue']);
+  assert.equal(sandbox.sheets.LISTINGS_HISTORY_MONTHLY._rows.length, 1, 'sem gravação, sem fechamento');
+});
+
 test('página de desafio é bloqueio; reCAPTCHA num anúncio com dado é ok', () => {
   const { context } = createAppsScriptSandbox();
   assert.equal(context.classifyListingResponse_(DF, { code: 200, body: CHALLENGE_PAGE }, '1364276').outcome, 'blocked');

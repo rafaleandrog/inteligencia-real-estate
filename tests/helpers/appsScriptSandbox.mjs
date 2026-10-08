@@ -134,6 +134,7 @@ function createRange(data, row, col, numRows, numCols) {
  */
 export function createAppsScriptSandbox({
   sheets = {}, scriptProperties = {}, googleEmail = '', externalSpreadsheets = {}, scriptLockBusy = false,
+  documentLockBusy = false,
 } = {}) {
   const fakeSheets = {};
   for (const [name, rows] of Object.entries(sheets)) {
@@ -180,7 +181,7 @@ export function createAppsScriptSandbox({
     },
     LockService: {
       getDocumentLock: () => ({
-        tryLock: () => true,
+        tryLock: () => !documentLockBusy,
         releaseLock: () => {},
       }),
       // v2.5.0 — a rotina de anúncios usa o lock de SCRIPT (uma execução por vez, venha do

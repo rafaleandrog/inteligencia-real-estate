@@ -1799,10 +1799,15 @@ pela API de escrita nem lido pelo mapa. As abas e as colunas nascem na primeira 
 #### Colunas operacionais de LISTINGS
 `first_seen_at | last_checked_at | last_price_change_at | inactive_at | content_hash | parser_version | source_observed_at | update_run_id | verification_failures | last_check_status | last_check_http_code | last_check_message`
 
-- `last_check_status` ∈ `ok` (página reconhecida como a do anúncio, por dado estruturado ou pelo id da
-  URL no HTML), `gone` (404/410, frase de anúncio removido no texto **visível**, ou redirecionamento
-  para fora do anúncio), `blocked` (401/403/429/451, página de desafio, redirecionamento para
-  captcha/login) e `error` (rede, 5xx, página não reconhecida). Só `gone` conta para inativar.
+- `last_check_status` pode ser:
+  - `ok`: página reconhecida como a do anúncio, por dado estruturado ou pelo id da URL no HTML;
+  - `gone`: 404/410, frase de anúncio removido no texto **visível** (fora de script e de elemento
+    escondido) ou redirecionamento para fora do anúncio;
+  - `blocked`: 401/403/429/451, página de desafio ou redirecionamento para captcha/login;
+  - `error`: rede, 5xx, página não reconhecida, ou `CONFLICTING_SIGNALS` (frase de remoção junto com
+    o dado estruturado do próprio anúncio).
+
+  Só `gone` conta para inativar.
 - `verification_failures` conta as confirmações de remoção seguidas, no máximo uma por dia. Volta a 0
   no primeiro `ok`, e em 3 o anúncio vira `inactive` com `inactive_at`.
 - `last_checked_at` define a fila. Ativo é conferido uma vez por dia; inativo, a cada 7 dias.
@@ -1826,8 +1831,9 @@ Uma linha por execução, aberta como `running` e fechada no fim. `status` pode 
 
 - `success`: zero erros;
 - `partial`: algum `blocked`/`error`;
-- `failed`: nada lido, ou sem autorização de rede, caso em que `error_details` começa com
-  `AUTHORIZATION_REQUIRED` e nenhum anúncio é tocado.
+- `failed`: nada lido; ou sem autorização de rede, caso em que `error_details` começa com
+  `AUTHORIZATION_REQUIRED` e nenhum anúncio é tocado; ou planilha ocupada por outra gravação
+  (`DOCUMENT_LOCK_BUSY`), caso em que nada é gravado e a continuação refaz a leitura.
 
 `errors` é a soma de `blocked` e `error`. `source_pages_requested` conta requisições, incluindo
 redirecionamentos seguidos. As colunas `candidate_*` e `new_listings` ficam em 0 até a busca de
