@@ -500,7 +500,7 @@ test('anúncio criado pela área administrativa agenda a verificação', () => {
   assert.deepEqual(sandbox.triggers.map((t) => t.getHandlerFunction()), ['listingsVerifyContinue']);
 });
 
-test('candidato escrito por fora (agente externo) segue o mesmo caminho, e o que foi digitado vale mais que o parser', () => {
+test('candidato escrito por fora (agente externo): o digitado vale mais que o parser, mas o que diverge da página só entra aprovado', () => {
   const CAND_HEADERS = [
     'candidate_id', 'discovered_at', 'discovered_by', 'source_id', 'source_name', 'source_url',
     'external_id', 'title', 'transaction_type', 'property_type', 'address', 'locality',
@@ -520,9 +520,17 @@ test('candidato escrito por fora (agente externo) segue o mesmo caminho, e o que
   network(sandbox.context, { [NEW_1]: response(200, listingPage({ price: 620000, area: 64, url: NEW_1 })) });
   sandbox.context.runListingsDiscovery_({ now: day(0) });
 
-  const cand = table(sandbox, 'LISTING_CANDIDATES')[0];
+  let cand = table(sandbox, 'LISTING_CANDIDATES')[0];
   assert.equal(cand.asking_price_brl, 640000, 'preço digitado não é trocado pelo lido');
   assert.equal(cand.area_m2, 64, 'campo vazio é preenchido pela leitura');
+  assert.equal(cand.status, 'pending', 'preço que a página não confirma não ganha selo automático');
+  assert.match(cand.reject_reason, /preço 640000 diverge da página \(620000\)/);
+  assert.equal(listingsById(sandbox).LIST_WEB_DFIMOVEIS_1400001, undefined);
+
+  // Quem aprova atesta o valor digitado.
+  setCandidate(sandbox, 1, 'status', 'approved');
+  sandbox.context.runListingsDiscovery_({ now: day(0) });
+  cand = table(sandbox, 'LISTING_CANDIDATES')[0];
   assert.equal(cand.status, 'promoted');
   assert.equal(listingsById(sandbox).LIST_WEB_DFIMOVEIS_1400001.asking_price_brl, 640000);
 });
@@ -731,7 +739,7 @@ test('candidato rejeitado à mão enquanto a busca lia a página não é promovi
   assert.match(lastRun(sandbox).error_details, /CAND_DFIMOVEIS_1400001: linha alterada durante a busca/);
 });
 
-test('preço digitado durante a busca não é sobrescrito, e a execução seguinte promove com ele', () => {
+test('preço digitado durante a busca não é sobrescrito; divergente da página, entra quando aprovado', () => {
   const sandbox = createAppsScriptSandbox({ sheets: sheets() });
   let blocked = true;
   network(sandbox.context, {
@@ -748,6 +756,10 @@ test('preço digitado durante a busca não é sobrescrito, e a execução seguin
   assert.deepEqual(sandbox.triggers.map((t) => t.getHandlerFunction()), ['listingsDiscoveryContinue']);
 
   sandbox.context.LockService.getDocumentLock = lock;
+  sandbox.context.runListingsDiscovery_({ now: day(1), noContinuation: true });
+  assert.equal(listingsById(sandbox).LIST_WEB_DFIMOVEIS_1400001, undefined, 'a página diz 620000');
+  assert.match(table(sandbox, 'LISTING_CANDIDATES')[0].reject_reason, /preço 655000 diverge da página/);
+  setCandidate(sandbox, 1, 'status', 'approved');
   sandbox.context.runListingsDiscovery_({ now: day(1), noContinuation: true });
   assert.equal(listingsById(sandbox).LIST_WEB_DFIMOVEIS_1400001.asking_price_brl, 655000);
 });
@@ -1110,4 +1122,70 @@ test('portal desligado durante a execução: o que ele promoveria fica de fora',
   assert.equal(cand.status, 'pending');
   assert.match(cand.reject_reason, /portal desativado em LISTING_SOURCES/);
   assert.equal(lastRun(sandbox).new_listings, 0);
+});
+
+// --- revisão adversarial no lugar da rodada 8 do Codex (cota esgotada) ---------------------------
+
+test('portal desligado não mexe em candidato promovido em execução anterior', () => {
+  const base = sheets({ searches: [] });
+  base.LISTING_SOURCES[1][3] = false;
+  base.LISTING_CANDIDATES = [CAND_COLUMNS, candRow({ candidate_id: 'C_OLD', source_url: NEW_1, external_id: '1400001', status: 'promoted' })];
+  const sandbox = createAppsScriptSandbox({ sheets: base });
+  network(sandbox.context, {});
+  sandbox.context.runListingsDiscovery_({ now: day(0), noContinuation: true });
+  const cand = table(sandbox, 'LISTING_CANDIDATES')[0];
+  assert.equal(cand.status, 'promoted');
+  assert.equal(cand.reject_reason, '', 'linha histórica intocada');
+  assert.equal(lastRun(sandbox).new_listings, 0);
+});
+
+test('quartos do slug da URL cedem ao dado estruturado da página; suíte não conta como quarto', () => {
+  const sandbox = createAppsScriptSandbox({ sheets: sheets() });
+  network(sandbox.context, {
+    [SEARCH_URL]: response(200, searchPage([NEW_1])),
+    [NEW_1]: response(200, listingPage({ price: 620000, url: NEW_1, rooms: 3 })), // o slug diz 2-quartos
+  });
+  sandbox.context.runListingsDiscovery_({ now: day(0), noContinuation: true });
+  assert.equal(table(sandbox, 'LISTING_CANDIDATES')[0].bedrooms, 3);
+  assert.equal(listingsById(sandbox).LIST_WEB_DFIMOVEIS_1400001.bedrooms, 3);
+  assert.equal(sandbox.context.inferBedroomsFromUrl_(`${HOST}/imovel/apartamento-2-suites-3-quartos-venda-df-1400005`), 3);
+});
+
+test('id do anúncio é o último número do caminho, não o maior (CEP no slug)', () => {
+  const { context } = createAppsScriptSandbox({ sheets: sheets() });
+  const url = `${HOST}/imovel/apartamento-venda-sqn-210-70710000-1400001`;
+  assert.deepEqual([...context.listingIdTokens_(url, '')], ['70710000', '1400001']);
+  const links = context.extractListingLinks_(`<a href="${url}">x</a>`, SEARCH_URL, { imovel: true }, null);
+  assert.deepEqual(Array.from(links, (l) => l.token), ['1400001']);
+});
+
+test('lock de script ocupado: gatilho diário de busca e verificação são reagendados, não perdidos', () => {
+  const sandbox = createAppsScriptSandbox({ sheets: sheets(), scriptLockBusy: true });
+  sandbox.context.listingsDiscoveryJob();
+  sandbox.context.runListingsVerify_({ trigger: 'time' });
+  assert.deepEqual(sandbox.triggers.map((t) => t.getHandlerFunction()).sort(), ['listingsDiscoveryContinue', 'listingsVerifyContinue']);
+});
+
+test('busca com source_id que não existe em LISTING_SOURCES termina em erro, sem requisição', () => {
+  const sandbox = createAppsScriptSandbox({ sheets: sheets({ searches: [searchRow({ source_id: 'SRC_DIGITADO_ERRADO' })] }) });
+  const calls = network(sandbox.context, {});
+  sandbox.context.runListingsDiscovery_({ now: day(0), noContinuation: true });
+  assert.deepEqual(calls, []);
+  assert.equal(table(sandbox, 'LISTING_SEARCHES')[0].last_status, 'error');
+  assert.match(lastRun(sandbox).error_details, /source_id SRC_DIGITADO_ERRADO não existe em LISTING_SOURCES/);
+});
+
+test('lock de documento ocupado: a contagem de pendentes é a da planilha, não a do que ficou sem gravar', () => {
+  const base = sheets({ searches: [] });
+  base.LISTING_CANDIDATES = [CAND_COLUMNS,
+    candRow({ candidate_id: 'C1', source_url: NEW_1, external_id: '1400001' }),
+    candRow({ candidate_id: 'C2', source_url: NEW_2, external_id: '1400002' }),
+  ];
+  const sandbox = createAppsScriptSandbox({ sheets: base, documentLockBusy: true });
+  network(sandbox.context, {
+    [NEW_1]: response(200, listingPage({ price: 620000, url: NEW_1 })),
+    [NEW_2]: response(200, listingPage({ price: 700000, area: 70, url: NEW_2, rooms: 3 })),
+  });
+  sandbox.context.runListingsDiscovery_({ now: day(0), noContinuation: true });
+  assert.equal(meta(sandbox, 'listings_pending_candidates'), '2');
 });

@@ -1105,7 +1105,8 @@ Cada uma nasce de um erro que aconteceu de verdade.
   - o link de anúncio é reconhecido pelo caminho que os anúncios do portal já têm na base, nunca pelo
     layout do card de busca, que muda sem aviso;
   - o dado do anúncio vem da página do próprio anúncio, lida pelo mesmo parser da verificação;
-  - a leitura só preenche campo vazio;
+  - a leitura só preenche campo vazio, e valor digitado que a página não confirma só entra aprovado à
+    mão (a promoção automática usa só dado que a página disse);
   - a aprovação manual dispensa só plausibilidade, nunca dado obrigatório;
   - o que a pessoa mudou na planilha durante a execução vence o retrato que a execução tirou antes da
     rede: a linha alterada é relida com o lock e fica de fora, junto com o que ela tiver produzido;

@@ -6038,8 +6038,11 @@ function runListingsVerify_(options) {
   options = options || {};
   var lock = LockService.getScriptLock();
   if (!lock.tryLock(0)) {
-    var busy = 'Outra execução da rotina de anúncios está em andamento; esta foi ignorada.';
+    var busy = 'Outra execução da rotina de anúncios está em andamento; esta foi reagendada.';
     Logger.log(busy);
+    // A busca segura o mesmo lock por minutos: a verificação pedida (gatilho diário, anúncio
+    // criado pela área administrativa, listings_job) tenta de novo em vez de se perder.
+    scheduleListingsJobQuietly_(LISTINGS_CONTINUE_HANDLER);
     return busy;
   }
   try {
@@ -6347,14 +6350,16 @@ function resolveUrl_(base, location) {
 function listingIdTokens_(url, externalId) {
   var ext = toText_(externalId).replace(/\.0+$/, '');
   if (/^\d{5,}$/.test(ext)) return [ext];
-  var tokens = {};
+  // Na ordem em que aparecem no caminho: Object.keys poria chave numérica em ordem crescente,
+  // e quem pega "o último número" (extractListingLinks_) levaria um CEP no lugar do id.
+  var tokens = [];
   var path = toText_(url).replace(/^https?:\/\/[^\/]+/i, '').replace(/[?#].*$/, '');
   var re = /(R\$|RS)?(\d{5,})/gi;
   var m;
   while ((m = re.exec(path))) {
-    if (!m[1]) tokens[m[2]] = true;
+    if (!m[1] && tokens.indexOf(m[2]) === -1) tokens.push(m[2]);
   }
-  return Object.keys(tokens);
+  return tokens;
 }
 
 function canonicalListingUrl_(url) {
@@ -7516,8 +7521,9 @@ function runListingsDiscovery_(options) {
   if (!lock.tryLock(0)) {
     var busy = 'Outra execução da rotina de anúncios está em andamento; a busca foi ignorada.';
     Logger.log(busy);
-    // Gatilho de ação não pode se perder porque a verificação estava rodando: tenta de novo.
-    if (options.trigger !== 'time') scheduleListingsJobQuietly_(LISTINGS_DISCOVERY_CONTINUE_HANDLER);
+    // Nem o gatilho diário nem o de ação podem se perder porque a verificação estava rodando
+    // (ela e as continuações dela seguram o mesmo lock): tenta de novo em um minuto.
+    scheduleListingsJobQuietly_(LISTINGS_DISCOVERY_CONTINUE_HANDLER);
     return busy;
   }
   try {
@@ -7764,7 +7770,7 @@ function inferPropertyType_(text) {
 }
 
 function inferBedroomsFromUrl_(url) {
-  var m = /(?:^|[-_\/])(\d{1,2})[-_](?:quartos?|qts?|dormitorios?|suites?)(?:[-_\/.]|$)/i.exec(normalizeSlug_(url).replace(/_/g, '-'));
+  var m = /(?:^|[-_\/])(\d{1,2})[-_](?:quartos?|qts?|dormitorios?)(?:[-_\/.]|$)/i.exec(normalizeSlug_(url).replace(/_/g, '-'));
   return m ? Number(m[1]) : null;
 }
 
@@ -7967,12 +7973,6 @@ function listingFromCandidate_(cand, resolved, now, runId) {
 
 // --- Execução ----------------------------------------------------------------------------
 
-function rowObject_(headers, row) {
-  var out = {};
-  headers.forEach(function (h, i) { if (h) out[h] = row[i]; });
-  return out;
-}
-
 function candidateMeta_(cand) {
   var parsed = safeJsonParse_(toText_(cand.raw_json));
   return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : {};
@@ -8005,10 +8005,10 @@ function runListingsDiscoveryLocked_(options) {
 
   var searchSheet = book.getSheetByName('LISTING_SEARCHES');
   var searchHeaders = headersOf_(searchSheet);
-  var searches = dataRowsOf_(searchSheet).map(function (row) { return rowObject_(searchHeaders, row); });
+  var searches = dataRowsOf_(searchSheet).map(function (row) { return rowToRecord_(searchHeaders, row); });
   var candSheet = book.getSheetByName('LISTING_CANDIDATES');
   var candHeaders = headersOf_(candSheet);
-  var candidates = dataRowsOf_(candSheet).map(function (row) { return rowObject_(candHeaders, row); });
+  var candidates = dataRowsOf_(candSheet).map(function (row) { return rowToRecord_(candHeaders, row); });
   candidates.forEach(function (cand) {
     // Cópia rasa do estado lido: Date continua o mesmo objeto, então só o que o run mudar
     // de verdade difere — e só isso é regravado.
@@ -8054,6 +8054,12 @@ function runListingsDiscoveryLocked_(options) {
       // Host que LISTINGS já associa a um portal decide: `source_id` de outro portal rotularia
       // cada anúncio da página com o portal errado (identidade e deduplicação quebradas).
       var hostPortal = ref.portalByHost[host] || '';
+      if (toText_(search.source_id) && !source) {
+        searchChanges[searchId] = { last_run_at: now, last_status: 'error', last_http_code: '', last_found_count: 0, last_new_count: 0 };
+        stats.errors++;
+        stats.messages.push(searchId + ': source_id ' + toText_(search.source_id) + ' não existe em LISTING_SOURCES');
+        return;
+      }
       if (source && hostPortal && normalizeSlug_(hostPortal) !== normalizeSlug_(source.name)) {
         searchChanges[searchId] = { last_run_at: now, last_status: 'error', last_http_code: '', last_found_count: 0, last_new_count: 0 };
         stats.errors++;
@@ -8194,7 +8200,7 @@ function runListingsDiscoveryLocked_(options) {
       }
       if (!candidatePageRead_(cand) && status !== 'approved') return;
       var verdict = evaluateListingCandidate_(cand, ref);
-      var blocking = status === 'approved' ? verdict.hard : verdict.hard.concat(verdict.soft);
+      var blocking = status === 'approved' ? verdict.hard : verdict.hard.concat(verdict.soft, pageConflicts_(cand));
       if (blocking.length) {
         cand.reject_reason = blocking.join('; ');
         return;
@@ -8283,6 +8289,7 @@ function runListingsDiscoveryLocked_(options) {
       candidates.concat(newCandidates).forEach(function (cand) {
         var listingId = listingIdForCandidate_(cand);
         if (cand.status !== 'promoted' || dropped[listingId]) return;
+        if (toText_((cand._original || {}).status) === 'promoted') return; // promovido em run anterior
         var source = sourcesNow.byPortal[normalizeSlug_(cand.source_name)];
         if (!source || source.active) return;
         var before = cand._original || {};
@@ -8401,7 +8408,7 @@ function runListingsDiscoveryLocked_(options) {
   });
 
   var pending = candidates.concat(newCandidates).filter(function (cand) {
-    var s = toText_(cand.status).toLowerCase();
+    var s = toText_(holdsDocument ? cand.status : (cand._original || cand).status).toLowerCase();
     return s === 'pending' || s === 'approved';
   }).length;
   setMeta_('listings_last_discovery_at', now.toISOString());
@@ -8437,7 +8444,7 @@ function rowsChangedSince_(sheet, headers, idField, snapshots, fields) {
   var current = {};
   if (sheet.getLastRow() > 1) {
     sheet.getRange(2, 1, sheet.getLastRow() - 1, headers.length).getValues().forEach(function (row) {
-      var record = rowObject_(headers, row);
+      var record = rowToRecord_(headers, row);
       var id = toText_(record[idField]);
       if (id && !current[id]) current[id] = record;
     });
@@ -8460,7 +8467,7 @@ function candidateKeysOnSheet_(sheet, headers) {
   var keys = {};
   if (!sheet || sheet.getLastRow() < 2) return keys;
   sheet.getRange(2, 1, sheet.getLastRow() - 1, headers.length).getValues().forEach(function (row) {
-    var cand = rowObject_(headers, row);
+    var cand = rowToRecord_(headers, row);
     var id = toText_(cand.candidate_id);
     if (id) keys[id] = true;
     if (toText_(cand.external_id)) keys[normalizeSlug_(cand.source_name) + '|' + toText_(cand.external_id)] = true;
@@ -8492,9 +8499,38 @@ function candidatePageRead_(cand) {
     meta.read_sig === readAttestation_(cand, meta);
 }
 
+function numberOrNull_(value) {
+  var n = toNumber_(value);
+  return n === null || !isFinite(n) ? null : n;
+}
+
+/**
+ * O que impede a promoção AUTOMÁTICA de um candidato lido: preço, área e quartos têm de ser os
+ * que a página disse (meta.page, assinado na leitura). Quartos sem dado estruturado valem pelo
+ * slug da URL, que a rotina recalcula. Valor digitado por fora que diverge da página, ou que a
+ * página não confirma, fica para a aprovação manual — quem aprova atesta o valor.
+ */
+function pageConflicts_(cand) {
+  var page = candidateMeta_(cand).page || {};
+  var out = [];
+  var check = function (field, key, label) {
+    var typed = toNumber_(cand[field]);
+    if (typed === null) return; // falta de dado é portão hard, não conflito
+    var seen = page[key] === undefined ? null : page[key];
+    if (key === 'bedrooms' && seen === null && inferBedroomsFromUrl_(cand.source_url) === typed) return;
+    if (seen === null) out.push(label + ' não confirmado pela página; aprove à mão se estiver certo');
+    else if (seen !== typed) out.push(label + ' ' + typed + ' diverge da página (' + seen + '); aprove à mão se estiver certo');
+  };
+  check('asking_price_brl', 'price', 'preço');
+  check('area_m2', 'area', 'área');
+  if (toText_(cand.property_type) !== 'terreno') check('bedrooms', 'bedrooms', 'quartos');
+  return out;
+}
+
 function readAttestation_(cand, meta) {
   return hmacSha256Hex_(['read-ok', toText_(cand.candidate_id), normalizeSlug_(cand.source_name),
-    toText_(cand.external_id), canonicalListingUrl_(cand.source_url), toText_(meta.last_read_at)].join('|'),
+    toText_(cand.external_id), canonicalListingUrl_(cand.source_url), toText_(meta.last_read_at),
+    JSON.stringify(meta.page || null)].join('|'),
     listingsReadKey_());
 }
 
@@ -8558,6 +8594,10 @@ function applyCandidateRead_(cand, verdict, now, stats) {
     };
     fill('asking_price_brl', parsed.price);
     fill('area_m2', parsed.area);
+    // Quartos que vieram do slug da URL (inferência da própria rotina) cedem ao dado estruturado.
+    if (positiveNumber_(parsed.bedrooms) !== null && toNumber_(cand.bedrooms) === inferBedroomsFromUrl_(cand.source_url)) {
+      cand.bedrooms = parsed.bedrooms;
+    }
     fill('bedrooms', parsed.bedrooms);
     fill('parking_spaces', parsed.parking);
     fill('condo_fee_brl', parsed.condo);
@@ -8565,6 +8605,9 @@ function applyCandidateRead_(cand, verdict, now, stats) {
     fill('title', parsed.title);
     if (isBlank_(cand.property_type)) cand.property_type = inferPropertyType_(cand.source_url + ' ' + (parsed.title || ''));
     meta.read_status = 'ok';
+    // O que a página disse, assinado junto com a leitura: a promoção automática só usa dado que
+    // a página confirma (pageConflicts_), e o que veio digitado por fora não ganha esse selo.
+    meta.page = { price: numberOrNull_(parsed.price), area: numberOrNull_(parsed.area), bedrooms: numberOrNull_(parsed.bedrooms) };
     meta.read_sig = readAttestation_(cand, meta);
     meta.signals = parsed.signals || [];
     meta.price_source = parsed.priceSource || '';

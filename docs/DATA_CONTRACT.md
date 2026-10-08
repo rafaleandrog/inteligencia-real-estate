@@ -1909,8 +1909,8 @@ campos viram o contexto de todo anúncio que a busca encontrar. O resto é escri
   paginação só para antes do teto quando a página não tem link de anúncio ou repete a lista da anterior;
   página só com anúncios já conhecidos não encerra, porque o novo pode estar na seguinte.
 - `ra_geo_id` aceita `RA2026_RA-XX`, `RA-XX` ou a chave de RA_PROFILES (`RA_20`).
-- `source_id` precisa ser do mesmo portal do host da `search_url` quando LISTINGS já associa esse host a
-  um portal; em conflito, a busca termina em `error` sem ler a página, para não rotular os anúncios
+- `source_id`, quando preenchido, tem de existir em LISTING_SOURCES e ser do mesmo portal do host da
+  `search_url` quando LISTINGS já associa esse host a um portal; em conflito, a busca termina em `error` sem ler a página, para não rotular os anúncios
   com o portal errado.
 - `last_status` ∈ `ok`, `blocked`, `error`. `blocked` inclui a página de desafio (WAF, captcha) servida
   com HTTP 200: sem link de anúncio e com marcador de bloqueio, ela não conta como busca vazia.
@@ -1942,7 +1942,11 @@ LISTINGS e contra a própria fila, então candidato rejeitado nunca volta.
 - `promoted`: virou linha de LISTINGS. `reviewed_at` registra quando.
 
 A página de cada candidato é lida pelo mesmo classificador e parser da verificação. A leitura só
-**preenche campo vazio**: o que foi digitado na linha vale mais que o parser. Bloqueio e erro contam
+**preenche campo vazio**: o que foi digitado na linha vale mais que o parser. A exceção são os quartos
+deduzidos do slug da URL, que cedem ao dado estruturado da página. A promoção **automática** exige
+preço, área e quartos iguais aos que a página disse (guardados e assinados na leitura; quartos sem dado
+estruturado valem pelo slug). Valor digitado que diverge da página, ou que ela não confirma, fica
+`pending` com o motivo e só entra aprovado à mão, porque quem aprova atesta o valor. Bloqueio e erro contam
 tentativa em `raw_json.read_attempts`; depois de 5 a rotina para de tentar e pede preenchimento à mão.
 
 Portões de dado obrigatório (`hard`):

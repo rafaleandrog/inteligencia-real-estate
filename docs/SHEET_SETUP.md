@@ -424,7 +424,8 @@ Candidato cuja página o portal bloqueou 5 vezes pede preenchimento à mão. Apr
 `quality_flag = manual_review_page_not_read` e sem `last_seen_at`: só conta como confirmado no portal
 depois que a verificação diária conseguir ler a página.
 
-A leitura nunca sobrescreve o que foi digitado.
+A leitura nunca sobrescreve o que foi digitado. Mas preço, área ou quartos digitados que divergem da
+página não entram sozinhos: o candidato fica `pending` com o motivo e precisa de `approved`.
 
 **Por API.** A área administrativa (ou qualquer cliente com o `ADMIN_TOKEN`) tem duas ações:
 
