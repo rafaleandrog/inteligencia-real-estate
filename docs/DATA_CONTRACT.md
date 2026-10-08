@@ -1922,6 +1922,8 @@ tentativa em `raw_json.read_attempts`; depois de 5 a rotina para de tentar e ped
 
 Portões de dado obrigatório (`hard`):
 
+- identidade da fonte: `source_name` preenchido, `source_url` http(s) e `external_id` só com letras,
+  dígitos, `_` e `-` (candidato da busca sempre tem; o portão pega linha escrita por fora);
 - venda;
 - `property_type` do vocabulário;
 - preço lido (pelo menos R$ 1.000);
@@ -1934,6 +1936,11 @@ Portões de dado obrigatório (`hard`):
 
 Portão de plausibilidade (`soft`): preço/m² entre ⅓ e 3× a mediana do mesmo tipo na localidade,
 quando há pelo menos 3 referências.
+
+A leitura das páginas leva minutos, e a planilha continua aberta para edição. Por isso, com o lock de
+documento em mãos e antes de gravar, a busca relê as linhas de candidato e de busca. Linha que alguém
+mudou nesse meio-tempo (decisão de revisão, valor digitado, busca editada) fica fora da execução: não
+é promovida nem regravada, e a continuação a refaz a partir do que está na planilha.
 
 A promoção grava em LISTINGS, além do que veio da página:
 

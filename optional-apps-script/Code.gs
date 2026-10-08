@@ -7436,6 +7436,9 @@ var LISTINGS_JITTER_MAX_DEG = 0.004;
 var LISTINGS_PRICE_M2_OUTLIER_FACTOR = 3;
 var LISTINGS_PRICE_M2_MIN_REFERENCES = 3;
 var LISTINGS_AUTOMATED_QUALITY_FLAG = 'automated_item_page_verified';
+/** Colunas de LISTING_SEARCHES que mudam o que a busca faz (gatilho de edição, releitura no lock). */
+var LISTING_SEARCH_CONFIG_FIELDS = ['search_id', 'source_id', 'search_url', 'ra_geo_id', 'locality',
+  'property_type', 'transaction_type', 'active', 'frequency', 'max_pages'];
 /** Instante do último pedido explícito de busca (ver requestForcedDiscovery_). */
 var LISTINGS_DISCOVERY_FORCE_PROP = 'LISTINGS_DISCOVERY_FORCE_AFTER';
 /** Aprovado à mão sem que a rotina tenha lido a página (ver listingFromCandidate_). */
@@ -7548,9 +7551,7 @@ function handleListingsRoutineEdit_(e, sheet, name) {
   var numRows = typeof e.range.getNumRows === 'function' ? e.range.getNumRows() : 1;
 
   if (name === 'LISTING_SEARCHES') {
-    var config = ['search_id', 'source_id', 'search_url', 'ra_geo_id', 'locality', 'property_type',
-      'transaction_type', 'active', 'frequency', 'max_pages'];
-    if (!config.some(touches)) return true;
+    if (!LISTING_SEARCH_CONFIG_FIELDS.some(touches)) return true;
     if (ix.last_run_at !== undefined) {
       var blank = [];
       for (var r = 0; r < numRows; r++) blank.push(['']);
@@ -7835,6 +7836,12 @@ function parseParserConfig_(cell) {
 function evaluateListingCandidate_(cand, ref) {
   var hard = [];
   var soft = [];
+  // Identidade da fonte: sem ela o anúncio sairia com `portal`/`source_url` vazios e id
+  // `LIST_WEB__`, sem como deduplicar nem verificar. Candidato da busca sempre tem as três;
+  // o que falta aqui vem de linha escrita por fora (agente externo, digitação).
+  if (!normalizeSlug_(cand.source_name)) hard.push('portal (source_name) vazio');
+  if (!/^https?:\/\/[^\s]+$/i.test(toText_(cand.source_url))) hard.push('source_url não é um endereço http(s)');
+  if (!/^[A-Za-z0-9_-]+$/.test(toText_(cand.external_id))) hard.push('external_id vazio ou com caractere inválido');
   var transaction = toText_(cand.transaction_type).toLowerCase() || 'sale';
   if (transaction !== 'sale') hard.push('transação não é venda (' + transaction + ')');
   var type = toText_(cand.property_type);
@@ -8174,6 +8181,34 @@ function runListingsDiscoveryLocked_(options) {
   }
   if (!lockBusy) {
     try {
+      // O retrato das linhas foi tirado ANTES da rede, que leva minutos. Com o lock, as linhas
+      // de candidato e de busca são relidas: a que alguém mudou nesse meio-tempo (decisão de
+      // revisão, preço digitado, busca editada) fica fora deste run inteira — não é promovida
+      // nem regravada — e a continuação a refaz a partir do que está na planilha.
+      var touchedCandidates = rowsChangedSince_(candSheet, candHeaders, 'candidate_id', candidates);
+      var touchedSearches = rowsChangedSince_(searchSheet, searchHeaders, 'search_id', searches,
+        LISTING_SEARCH_CONFIG_FIELDS.concat(['last_run_at']));
+      Object.keys(touchedSearches).forEach(function (id) {
+        delete searchChanges[id];
+        stats.messages.push(id + ': busca alterada durante a execução; refeita na continuação');
+      });
+      var dropped = {};
+      candidates.forEach(function (cand) {
+        var id = toText_(cand.candidate_id);
+        if (!touchedCandidates[id]) return;
+        if (cand.status === 'promoted' && toText_(cand._original.status) !== 'promoted') {
+          dropped[listingIdForCandidate_(cand)] = true;
+          stats.promoted--;
+        }
+        stats.messages.push(id + ': linha alterada durante a busca; fica para a continuação');
+      });
+      if (Object.keys(dropped).length) {
+        var dropColumn = listingHeaders.indexOf('listing_id');
+        promotedRows = promotedRows.filter(function (row) { return !dropped[toText_(row[dropColumn])]; });
+        createdEvents = createdEvents.filter(function (ev) { return !dropped[ev[2]]; });
+      }
+      if (Object.keys(touchedCandidates).length || Object.keys(touchedSearches).length) unfinished = true;
+
       // A referência de duplicidade foi lida ANTES do lock. Com ele em mãos, os ids de
       // LISTINGS são relidos: o que alguém criou nesse meio-tempo (API de escrita, edição
       // manual) não é anexado de novo, e o candidato volta ao estado anterior com o motivo.
@@ -8211,6 +8246,7 @@ function runListingsDiscoveryLocked_(options) {
       // edição humana feita durante o run em OUTRO campo sobrevive). Os novos já foram
       // gravados acima no estado final, porque leitura e promoção acontecem antes da gravação.
       candidates.forEach(function (cand) {
+        if (touchedCandidates[toText_(cand.candidate_id)]) return;
         var changes = {};
         ['title', 'property_type', 'asking_price_brl', 'area_m2', 'bedrooms', 'parking_spaces',
           'condo_fee_brl', 'iptu_brl', 'raw_json', 'status', 'reviewed_at', 'reject_reason'].forEach(function (f) {
@@ -8280,6 +8316,41 @@ function runListingsDiscoveryLocked_(options) {
       stats.promoted + '; pendentes: ' + pending + '.' + (continuation ? ' Continuação agendada.' : '');
   Logger.log(message);
   return message;
+}
+
+/**
+ * Ids das linhas cuja versão atual na planilha difere do retrato tirado no início do run
+ * (`_original` quando existe, senão o próprio objeto), olhando só `fields` (todas as colunas
+ * por padrão). Linha apagada conta como alterada.
+ */
+function rowsChangedSince_(sheet, headers, idField, snapshots, fields) {
+  var changed = {};
+  if (!sheet || !snapshots.length) return changed;
+  var compare = (fields || headers).filter(function (h) { return h && headers.indexOf(h) !== -1; });
+  var current = {};
+  if (sheet.getLastRow() > 1) {
+    sheet.getRange(2, 1, sheet.getLastRow() - 1, headers.length).getValues().forEach(function (row) {
+      var record = rowObject_(headers, row);
+      var id = toText_(record[idField]);
+      if (id && !current[id]) current[id] = record;
+    });
+  }
+  snapshots.forEach(function (snap) {
+    var before = snap._original || snap;
+    var id = toText_(before[idField]);
+    if (!id) return;
+    var now = current[id];
+    if (!now || compare.some(function (h) { return !sameCellValue_(now[h], before[h]); })) changed[id] = true;
+  });
+  return changed;
+}
+
+/** Mesma célula? Data por instante; o resto por texto (número e booleano voltam iguais do Sheets). */
+function sameCellValue_(a, b) {
+  var da = isDateValue_(a) ? cellDate_(a) : null;
+  var db = isDateValue_(b) ? cellDate_(b) : null;
+  if (da || db) return !!da && !!db && da.getTime() === db.getTime();
+  return toText_(a) === toText_(b);
 }
 
 function findSourceById_(sources, sourceId) {

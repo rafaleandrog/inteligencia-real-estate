@@ -1107,6 +1107,8 @@ Cada uma nasce de um erro que aconteceu de verdade.
   - o dado do anúncio vem da página do próprio anúncio, lida pelo mesmo parser da verificação;
   - a leitura só preenche campo vazio;
   - a aprovação manual dispensa só plausibilidade, nunca dado obrigatório;
+  - o que a pessoa mudou na planilha durante a execução vence o retrato que a execução tirou antes da
+    rede: a linha alterada é relida com o lock e fica de fora;
   - procedência automática (`automated_item_page_verified`, `last_seen_at`, `last_check_status = ok`) só
     com leitura da página feita pela rotina; aprovado à mão sem leitura nasce
     `manual_review_page_not_read`, sem confirmação no portal;

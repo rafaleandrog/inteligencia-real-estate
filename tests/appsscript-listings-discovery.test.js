@@ -696,3 +696,111 @@ test('falha ao criar gatilho: listings_job responde SCHEDULE_FAILED; review_cand
   assert.match(review.record.discovery_schedule_error, /cota de gatilhos/);
   assert.equal(table(sandbox, 'LISTING_CANDIDATES')[0].status, 'approved');
 });
+
+// --- revisão do PR #182, rodada 2: o que muda na planilha enquanto a busca está na rede ---------
+
+/** Lock de documento que, no instante em que é pego, aplica `edit` (a pessoa mexeu durante a rede). */
+function editDuringRun(sandbox, edit) {
+  sandbox.context.LockService.getDocumentLock = () => ({
+    tryLock: () => { edit(); return true; },
+    releaseLock: () => {},
+  });
+}
+
+function setCandidate(sandbox, row, field, value) {
+  const header = sandbox.sheets.LISTING_CANDIDATES._rows[0];
+  sandbox.sheets.LISTING_CANDIDATES._rows[row][header.indexOf(field)] = value;
+}
+
+test('candidato rejeitado à mão enquanto a busca lia a página não é promovido nem desfeito', () => {
+  const sandbox = createAppsScriptSandbox({ sheets: sheets() });
+  let blocked = true;
+  network(sandbox.context, {
+    [SEARCH_URL]: response(200, searchPage([NEW_1])),
+    [NEW_1]: () => (blocked ? response(403) : response(200, listingPage({ price: 620000, url: NEW_1 }))),
+  });
+  sandbox.context.runListingsDiscovery_({ now: day(0), noContinuation: true });
+  blocked = false;
+  editDuringRun(sandbox, () => setCandidate(sandbox, 1, 'status', 'rejected'));
+  sandbox.context.runListingsDiscovery_({ now: day(1), noContinuation: true });
+
+  assert.equal(listingsById(sandbox).LIST_WEB_DFIMOVEIS_1400001, undefined, 'rejeitado não vira anúncio');
+  assert.equal(table(sandbox, 'LISTING_CANDIDATES')[0].status, 'rejected');
+  assert.equal(table(sandbox, 'LISTING_EVENTS').length, 0);
+  assert.equal(lastRun(sandbox).new_listings, 0);
+  assert.match(lastRun(sandbox).error_details, /CAND_DFIMOVEIS_1400001: linha alterada durante a busca/);
+});
+
+test('preço digitado durante a busca não é sobrescrito, e a execução seguinte promove com ele', () => {
+  const sandbox = createAppsScriptSandbox({ sheets: sheets() });
+  let blocked = true;
+  network(sandbox.context, {
+    [SEARCH_URL]: response(200, searchPage([NEW_1])),
+    [NEW_1]: () => (blocked ? response(403) : response(200, listingPage({ price: 620000, url: NEW_1 }))),
+  });
+  sandbox.context.runListingsDiscovery_({ now: day(0), noContinuation: true });
+  blocked = false;
+  const lock = sandbox.context.LockService.getDocumentLock;
+  editDuringRun(sandbox, () => setCandidate(sandbox, 1, 'asking_price_brl', 655000));
+  sandbox.context.runListingsDiscovery_({ now: day(1) });
+  assert.equal(table(sandbox, 'LISTING_CANDIDATES')[0].asking_price_brl, 655000);
+  assert.equal(listingsById(sandbox).LIST_WEB_DFIMOVEIS_1400001, undefined);
+  assert.deepEqual(sandbox.triggers.map((t) => t.getHandlerFunction()), ['listingsDiscoveryContinue']);
+
+  sandbox.context.LockService.getDocumentLock = lock;
+  sandbox.context.runListingsDiscovery_({ now: day(1), noContinuation: true });
+  assert.equal(listingsById(sandbox).LIST_WEB_DFIMOVEIS_1400001.asking_price_brl, 655000);
+});
+
+test('busca editada durante a execução continua vencida e é refeita na continuação', () => {
+  const sandbox = createAppsScriptSandbox({ sheets: sheets() });
+  const edited = `${SEARCH_URL}?quartos=3`;
+  network(sandbox.context, { [SEARCH_URL]: response(200, searchPage([])) });
+  editDuringRun(sandbox, () => {
+    // O gatilho de edição esvazia last_run_at e troca a URL.
+    const header = sandbox.sheets.LISTING_SEARCHES._rows[0];
+    const row = sandbox.sheets.LISTING_SEARCHES._rows[1];
+    row[header.indexOf('search_url')] = edited;
+    row[header.indexOf('last_run_at')] = '';
+  });
+  sandbox.context.runListingsDiscovery_({ now: day(0) });
+  const search = table(sandbox, 'LISTING_SEARCHES')[0];
+  assert.equal(search.search_url, edited);
+  assert.equal(search.last_run_at, '', 'o resultado da URL antiga não marca a busca como feita');
+  assert.match(lastRun(sandbox).error_details, /busca alterada durante a execução/);
+  assert.deepEqual(sandbox.triggers.map((t) => t.getHandlerFunction()), ['listingsDiscoveryContinue']);
+});
+
+test('candidato aprovado sem identidade da fonte não é promovido', () => {
+  const CAND_HEADERS = [
+    'candidate_id', 'discovered_at', 'discovered_by', 'source_id', 'source_name', 'source_url',
+    'external_id', 'title', 'transaction_type', 'property_type', 'address', 'locality',
+    'ra_geo_id', 'latitude', 'longitude', 'asking_price_brl', 'area_m2', 'bedrooms', 'suites',
+    'parking_spaces', 'condo_fee_brl', 'iptu_brl', 'features_json', 'raw_json', 'status',
+    'reviewed_at', 'reject_reason', 'parser_version',
+  ];
+  const row = (over) => {
+    const r = Object.fromEntries(CAND_HEADERS.map((h) => [h, '']));
+    Object.assign(r, {
+      discovered_at: day(-1), discovered_by: 'agente:gpt', transaction_type: 'sale', property_type: 'apartamento',
+      locality: 'Águas Claras', asking_price_brl: 640000, area_m2: 64, bedrooms: 2, status: 'approved',
+    }, over);
+    return CAND_HEADERS.map((h) => r[h]);
+  };
+  const base = sheets({ searches: [] });
+  base.LISTING_CANDIDATES = [CAND_HEADERS,
+    row({ candidate_id: 'C1', source_name: '', source_url: NEW_1, external_id: '1400001' }),
+    row({ candidate_id: 'C2', source_name: 'DFImoveis', source_url: 'portal dfimoveis', external_id: '1400002' }),
+    row({ candidate_id: 'C3', source_name: 'DFImoveis', source_url: NEW_1, external_id: '' }),
+  ];
+  const sandbox = createAppsScriptSandbox({ sheets: base });
+  network(sandbox.context, {});
+  sandbox.context.runListingsDiscovery_({ now: day(0), noContinuation: true });
+  const cands = Object.fromEntries(table(sandbox, 'LISTING_CANDIDATES').map((c) => [c.candidate_id, c]));
+  assert.match(cands.C1.reject_reason, /portal \(source_name\) vazio/);
+  assert.match(cands.C2.reject_reason, /source_url não é um endereço http\(s\)/);
+  assert.match(cands.C3.reject_reason, /external_id vazio/);
+  for (const c of Object.values(cands)) assert.equal(c.status, 'approved');
+  assert.equal(table(sandbox, 'LISTINGS').filter((r) => /^LIST_WEB_/.test(r.listing_id) && !/\d{5,}$/.test(r.listing_id)).length, 0);
+  assert.equal(lastRun(sandbox).new_listings, 0);
+});
