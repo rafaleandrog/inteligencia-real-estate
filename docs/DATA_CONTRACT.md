@@ -89,8 +89,15 @@ Chave: `listing_id`. 141 linhas na semente do repo; 158 na planilha viva (snapsh
 | `regularization_status` | texto | não | 0/141 | provisionada pelo v2.0.0; sem dado ainda |
 
 **`property_type`:** `apartamento`, `casa`, `casa_condominio`, `kitnet`, `predio`, `terreno`.
-**`coordinate_precision`:** `locality_centroid_deterministic_jitter`, `locality_centroid_jitter`.
+**`coordinate_precision`:** `locality_centroid_deterministic_jitter`, `locality_centroid_jitter`;
+desde a v2.6.0 também `ra_centroid_deterministic_jitter`, usado por anúncio promovido da busca automática
+quando a localidade não tem ponto de referência e a RA tem.
 **`confidence_flag`:** `low_spatial_high_attribute` — atributos confiáveis, localização aproximada.
+**`quality_flag`:** desde a v2.6.0 também `automated_item_page_verified`: anúncio que entrou pela busca
+automática (issue #179), com a página do próprio anúncio lida e reconhecida no momento da promoção. E
+`manual_review_page_not_read`: candidato aprovado à mão depois de 5 leituras bloqueadas, com o dado
+digitado pelo revisor. A rotina nunca leu essa página, então ele nasce com `last_seen_at` e
+`source_page_verified_at` vazios até a verificação confirmá-lo no portal.
 
 `asking_price_brl_m2` é **derivado**: calculado por `asking_price_brl / area_m2` quando vazio.
 Valor já preenchido não é sobrescrito; divergência grande vira alerta em `DATA_QUALITY` (§17).
@@ -1737,6 +1744,8 @@ Chaves da v2.5.0 (rotina de anúncios, a cada execução): `listings_last_run_at
 `failed` ou `auth_required` — este quando o projeto não tem o escopo `script.external_request`),
 `listings_parser_version`, `listings_active_count`, `listings_verified_7d_count` (ativos confirmados no
 portal nos últimos 7 dias) e `listings_blocked_count` (ativos cuja última conferência o portal barrou).
+Da busca (v2.6.0): `listings_last_discovery_at`, `listings_last_discovery_status` e
+`listings_pending_candidates` (candidatos `pending` + `approved` à espera de promoção).
 
 **A interface lê esta aba** e mostra a procedência do dataset no painel esquerdo — atualização,
 versão e estado da validação. É a única aba operacional exibida na tela.
@@ -1806,8 +1815,9 @@ conhecido — não porque tem muitas linhas (Plano 02 §9.3).
 
 ### Rotina de anúncios (Apps Script v2.5.0, issue #178)
 
-Seis abas e doze colunas de LISTINGS mantidas pela verificação diária de anúncios
-(`listingsVerifyJob`, 05h de Brasília). O schema é o que a planilha já tinha quando a rotina, instalada
+Sete abas e doze colunas de LISTINGS mantidas pela verificação diária de anúncios
+(`listingsVerifyJob`, 05h de Brasília) e pela busca de anúncios novos (`listingsDiscoveryJob`, 06h,
+v2.6.0). O schema é o que a planilha já tinha quando a rotina, instalada
 fora do repositório em 2026-09-23, foi trazida para o `Code.gs`, nome por nome. Nada aqui é gravável
 pela API de escrita nem lido pelo mapa. As abas e as colunas nascem na primeira execução da rotina
 (`ensureListingsRoutineSchema_()`), não no **Configurar projeto**: a planilha viva já as tem.
@@ -1847,15 +1857,25 @@ de cada portal e registra o que voltou.
 Uma linha por execução, aberta como `running` e fechada no fim. `status` pode ser:
 
 - `success`: zero erros;
-- `partial`: algum `blocked`/`error`;
+- `partial`: algum `blocked`/`error`, ou a continuação que faltava não pôde ser agendada
+  (`CONTINUATION_NOT_SCHEDULED` em `error_details`, com o motivo; o restante fica para o gatilho
+  diário);
 - `failed`: nada lido; ou sem autorização de rede, caso em que `error_details` começa com
   `AUTHORIZATION_REQUIRED` e nenhum anúncio é tocado; ou planilha ocupada por outra gravação
   (`DOCUMENT_LOCK_BUSY`), caso em que nada é gravado (nem o fechamento mensal, mesmo com a fila
   vazia) e a continuação refaz a leitura.
 
 `errors` é a soma de `blocked` e `error`. `source_pages_requested` conta requisições, incluindo
-redirecionamentos seguidos. As colunas `candidate_*` e `new_listings` ficam em 0 até a busca de
-anúncios novos (issue #179).
+redirecionamentos seguidos.
+
+Desde a v2.6.0 a busca grava a mesma aba com `run_id = RUN_DISCOVERY_…`:
+
+- `candidate_rows`: candidatos novos;
+- `candidate_processed`: páginas de candidato lidas;
+- `candidate_rejected`: candidatos rejeitados por remoção;
+- `new_listings`: candidatos promovidos.
+
+Na busca, as colunas de verificação ficam em 0.
 
 #### LISTING_EVENTS
 `event_id | event_at | listing_id | event_type | portal | old_status | new_status | old_price_brl | new_price_brl | changed_fields | run_id | details`
@@ -1865,12 +1885,136 @@ anúncios novos (issue #179).
 - `price_change`: preço gravado; também vai ao CHANGE_LOG com `correlation_id = run_id`;
 - `price_unconfirmed`: variação acima de 60%, não gravada;
 - `deactivated`;
-- `reactivated`.
+- `reactivated`;
+- `created` (v2.6.0): promovido da fila de candidatos.
+
+#### LISTING_SEARCHES (v2.6.0, issue #179)
+`search_id | source_id | label | search_url | ra_geo_id | locality | property_type | transaction_type | active | frequency | max_pages | last_run_at | last_status | last_http_code | last_found_count | last_new_count | notes`
+
+Uma linha por busca salva: `search_url` é a URL de resultados copiada do portal, com o filtro já aplicado
+no navegador. A pessoa preenche as colunas `search_*`/`source_id`/`label`/`active`/`frequency`/`max_pages`/
+`notes` e, quando a busca é de um lugar e de um tipo só, `locality`, `ra_geo_id` e `property_type`. Esses
+campos viram o contexto de todo anúncio que a busca encontrar. O resto é escrito pela rotina.
+
+- `source_id` aponta para `LISTING_SOURCES.source_id`; vazio é resolvido pelo host da URL contra os
+  portais que LISTINGS já tem.
+- `active` vazio conta como `true`.
+- `frequency` ∈ `daily` (padrão), `weekly` e `manual`. `manual` roda só quando `last_run_at` está vazio
+  ou por pedido explícito.
+- Pedido explícito (menu **Anúncios: buscar novos agora** ou `listings_job` com `job = discovery`): toda
+  busca ativa cujo `last_run_at` é anterior ao pedido roda, qualquer que seja a frequência. O pedido fica
+  na propriedade `LISTINGS_DISCOVERY_FORCE_AFTER`, sobrevive à continuação e se apaga quando a busca
+  termina sem pendência.
+- `{page}` na URL é trocado por 1…`max_pages` (teto 5). Sem `{page}`, só a primeira página é lida. A
+  paginação só para antes do teto quando a página não tem link de anúncio ou repete a lista da anterior;
+  página só com anúncios já conhecidos não encerra, porque o novo pode estar na seguinte.
+- `ra_geo_id` aceita `RA2026_RA-XX`, `RA-XX` ou a chave de RA_PROFILES (`RA_20`).
+- `source_id`, quando preenchido, tem de existir em LISTING_SOURCES e ser do mesmo portal do host da
+  `search_url` quando LISTINGS já associa esse host a um portal; em conflito, a busca termina em `error` sem ler a página, para não rotular os anúncios
+  com o portal errado.
+- `last_status` ∈ `ok`, `blocked`, `error`. `blocked` inclui a página de desafio (WAF, captcha) servida
+  com HTTP 200: sem link de anúncio e com marcador de bloqueio, ela não conta como busca vazia.
+  `last_found_count` são os links de anúncio reconhecidos na página e `last_new_count`, os que viraram
+  candidato.
+
+Editar uma coluna de configuração esvazia `last_run_at` da linha e agenda a busca para dali a um minuto
+(gatilho de ação). Um link é aceito como anúncio quando:
+
+- está no mesmo host da busca;
+- tem id numérico (5 ou mais dígitos, fora preço). O id é o segmento só de dígitos (QuintoAndar,
+  `/imovel/893565467/…`), o número depois de `id-` (VivaReal) ou, no resto, o último número do caminho
+  (DFImoveis, Wimoveis); um CEP no meio do slug nunca vira o id;
+- o caminho começa por um segmento que os anúncios do portal já usam em LISTINGS (`imovel`,
+  `propriedades`) ou bate com `listing_path_regex` em `LISTING_SOURCES.parser_config_json`.
 
 #### LISTING_CANDIDATES
 `candidate_id | discovered_at | discovered_by | source_id | source_name | source_url | external_id | title | transaction_type | property_type | address | locality | ra_geo_id | latitude | longitude | asking_price_brl | area_m2 | bedrooms | suites | parking_spaces | condo_fee_brl | iptu_brl | features_json | raw_json | status | reviewed_at | reject_reason | parser_version`
 
-Fila de anúncios novos. Provisionada pela v2.5.0; quem a alimenta é a busca da issue #179.
+Fila de anúncios novos (v2.6.0). É a porta única de entrada automática: a busca escreve aqui, e
+qualquer agente externo pode escrever aqui também (`discovered_by` diz quem). A chave é
+`candidate_id = CAND_<PORTAL>_<id>`. A deduplicação é por portal + id e por URL canônica, contra
+LISTINGS e contra a própria fila, então candidato rejeitado nunca volta.
+
+`status`:
+
+- `pending`: na fila. `reject_reason` diz o que falta ou que a leitura está pendente.
+- `approved`: marcado à mão (na planilha, ou pela ação `review_candidate`). Dispensa os portões de
+  plausibilidade, não os de dado obrigatório.
+- `rejected`: marcado à mão, ou página removida antes da promoção.
+- `promoted`: virou linha de LISTINGS. `reviewed_at` registra quando.
+
+A página de cada candidato é lida pelo mesmo classificador e parser da verificação. A leitura só
+**preenche campo vazio**: o que foi digitado na linha vale mais que o parser. A exceção são os quartos
+deduzidos do slug da URL, que cedem ao dado estruturado da página. A promoção **automática** exige
+preço, área e quartos iguais aos que a página disse (guardados e assinados na leitura; quartos sem dado
+estruturado valem pelo slug). Valor digitado que diverge da página, ou que ela não confirma, fica
+`pending` com o motivo e só entra aprovado à mão, porque quem aprova atesta o valor. Bloqueio e erro contam
+tentativa em `raw_json.read_attempts`; depois de 5 a rotina para de tentar e pede preenchimento à mão.
+
+Portões de dado obrigatório (`hard`):
+
+- identidade da fonte: `source_name` preenchido, `source_url` http(s) e `external_id` só com letras,
+  dígitos, `_` e `-` (candidato da busca sempre tem; o portão pega linha escrita por fora);
+- venda;
+- `property_type` do vocabulário;
+- preço lido (pelo menos R$ 1.000);
+- área lida;
+- quartos lidos (exceto terreno);
+- localidade identificada (da busca ou do slug da URL, entre as que LISTINGS já tem);
+- RA identificada (da busca, da localidade em LISTINGS ou do nome em RA_PROFILES);
+- ponto de referência (mediana dos pontos da localidade em LISTINGS; senão, da RA);
+- não duplicado em LISTINGS.
+
+Portão de plausibilidade (`soft`): preço/m² entre ⅓ e 3× a mediana do mesmo tipo na localidade,
+quando há pelo menos 3 referências.
+
+A leitura das páginas leva minutos, e a planilha continua aberta para edição. Por isso, com o lock de
+documento em mãos e antes de gravar, a busca relê as linhas de candidato e de busca, e relê LISTINGS
+com as mesmas três chaves da deduplicação (id, portal + id do anúncio e URL canônica), porque a área
+administrativa pode ter cadastrado o mesmo anúncio com outro `listing_id`. A deduplicação vale também
+dentro do mesmo lote: dois candidatos com a mesma URL ou o mesmo portal + id viram um anúncio só.
+LISTING_SOURCES também é relida, e a promoção de um portal desligado no meio da execução é desfeita. Sem autorização de rede,
+mesmo que o erro apareça no meio da leitura, nada é gravado nem promovido. Linha que alguém
+mudou nesse meio-tempo (decisão de revisão, valor digitado, busca editada) fica fora da execução: não
+é promovida nem regravada, e a continuação a refaz a partir do que está na planilha. O mesmo vale para
+o candidato novo que veio de uma busca alterada, ou que outro escritor pôs na fila no meio-tempo
+(mesmo `candidate_id`, portal + id ou URL): ele não é anexado, nem a promoção que tiver gerado.
+
+Portal desligado em LISTING_SOURCES (`active = FALSE`) para a busca, a leitura e a promoção dos
+candidatos dele, que ficam na fila até ele ser religado.
+
+Texto vindo do portal, de candidato escrito por fora ou da API (`title`, `source_name` copiado para
+`portal` em LISTINGS e LISTING_EVENTS, o motivo do `review_candidate`, e tudo o que vai ao CHANGE_LOG)
+é gravado sempre como texto: valor que começa com
+`=`, `+`, `@` ou `-letra` ganha o apóstrofo do Sheets e nunca vira fórmula.
+
+A promoção grava em LISTINGS, além do que veio da página:
+
+- `coordinate_precision = locality_centroid_deterministic_jitter` (ou `ra_centroid_…`), com jitter
+  determinístico de até 0,004° a partir do hash do `listing_id`;
+- `confidence_flag = low_spatial_high_attribute`;
+- `title` no formato da base (`Apartamento à venda · Águas Claras`);
+- um evento `created` em LISTING_EVENTS.
+
+A procedência depende de a rotina ter lido a página do candidato. Como `raw_json` é editável por
+qualquer escritor da fila, `read_status = ok` sozinho não vale: a leitura só conta com o atestado
+`raw_json.read_sig`, um HMAC-SHA256 do candidato, da identidade da fonte e do instante da leitura,
+assinado com uma chave que fica nas propriedades do script (`LISTINGS_READ_ATTESTATION_KEY`, criada
+sozinha). Atestado ausente ou que não confere, inclusive depois de trocar a URL ou o id, é página não
+lida, que a rotina volta a ler.
+
+| | página lida | aprovado à mão sem leitura |
+|---|---|---|
+| `quality_flag` | `automated_item_page_verified` | `manual_review_page_not_read` |
+| `last_seen_at`, `source_page_verified_at`, `last_checked_at` | data da leitura (`raw_json.last_read_at`) | vazios |
+| `last_check_status`, `last_check_http_code` | `ok`, `200` | vazios |
+
+A data da leitura é a da promoção no caminho automático. Num candidato que esperou a aprovação de um
+preço implausível, ela fica dias antes, e é ela que vale.
+
+Sem leitura, o anúncio não conta no frescor (`listings_verified_7d_count`) nem como confirmado no
+fechamento do mês. Ele vence na verificação seguinte como nunca conferido, e só a leitura dela o
+confirma.
 
 #### LISTINGS_HISTORY_MONTHLY
 `history_id | reference_month | listing_id | portal | external_id | status_at_month_end | asking_price_brl | area_m2 | asking_price_brl_m2 | bedrooms | suites | parking_spaces | property_type | transaction_type | address | locality | ra_geo_id | latitude | longitude | first_seen_at | last_seen_at | last_price_change_at | content_hash | capture_run_id | captured_at`

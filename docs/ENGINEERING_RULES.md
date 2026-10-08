@@ -1098,3 +1098,22 @@ Cada uma nasce de um erro que aconteceu de verdade.
   - gatilho só é criado por `installTriggers()`, que é idempotente;
   - `installTriggers()` remove gatilho órfão, cujo handler não existe mais;
   - o runbook de cada versão manda guardar o código antigo antes de colar o novo.
+- **R8.105** *(2026-10-08, busca de anúncios novos, issue #179)* **Entrada automática tem porta única,
+  portões declarados e nunca vence o que a pessoa digitou.** A busca automática e qualquer agente
+  externo (a antiga "fila do GPT") escrevem no mesmo lugar, `LISTING_CANDIDATES`, e passam pelos mesmos
+  portões. Regra:
+  - o link de anúncio é reconhecido pelo caminho que os anúncios do portal já têm na base, nunca pelo
+    layout do card de busca, que muda sem aviso;
+  - o dado do anúncio vem da página do próprio anúncio, lida pelo mesmo parser da verificação;
+  - a leitura só preenche campo vazio, e valor digitado que a página não confirma só entra aprovado à
+    mão (a promoção automática usa só dado que a página disse);
+  - a aprovação manual dispensa só plausibilidade, nunca dado obrigatório;
+  - o que a pessoa mudou na planilha durante a execução vence o retrato que a execução tirou antes da
+    rede: a linha alterada é relida com o lock e fica de fora, junto com o que ela tiver produzido;
+  - texto de portal nunca vira fórmula na planilha (`safeCellValue_` em toda escrita da rotina);
+  - procedência automática (`automated_item_page_verified`, `last_seen_at`, `last_check_status = ok`) só
+    com leitura da página feita pela rotina, provada por atestado que só ela assina (campo editável
+    por terceiros nunca é prova); aprovado à mão sem leitura nasce
+    `manual_review_page_not_read`, sem confirmação no portal;
+  - todo anúncio promovido nasce com a coordenada aproximada declarada (`*_centroid_deterministic_jitter`,
+    `low_spatial_…`), porque um ponto que é do bairro não pode virar endereço (Code Review Rules, item 5).

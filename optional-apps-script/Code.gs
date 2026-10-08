@@ -67,6 +67,15 @@
  *   - `installTriggers()` instala o gatilho diário e remove gatilho órfão (handler que não
  *     existe mais); menu ganha "Anúncios: verificar agora" e "Anúncios: diagnosticar portais".
  *
+ * Versão 2.6.0 (busca de anúncios novos — issue #179):
+ *   - LISTING_SEARCHES: cada linha é uma URL de busca copiada do portal; `listingsDiscoveryJob`
+ *     (diário, 06h) lê os links de anúncio da página, lê a página de cada anúncio novo com o
+ *     mesmo parser da verificação e promove a LISTINGS o que passa nos portões, com
+ *     coordenada aproximada declarada; o resto fica `pending` em LISTING_CANDIDATES com motivo;
+ *   - gatilhos de ação: editar uma busca ou aprovar um candidato agenda a busca em 1 minuto
+ *     (debounce); anúncio criado pela área administrativa agenda a verificação;
+ *   - doPost ganha `listings_job` e `review_candidate`, com token.
+ *
  * Instalação:
  *   1. Extensões → Apps Script na planilha
  *   2. Cole este arquivo
@@ -81,7 +90,7 @@
 // Constantes
 // ---------------------------------------------------------------------------
 
-var APP_VERSION = '2.5.0';
+var APP_VERSION = '2.6.0';
 
 /**
  * Protocolo da API de escrita que este script fala, exposto em `health_()`.
@@ -634,6 +643,7 @@ function onOpen() {
     .addItem('Sincronizar trechos rodoviários DER', 'syncRoadSegmentsFromTraffic_UI')
     .addSeparator()
     .addItem('Anúncios: verificar agora', 'listingsVerifyNow_UI')
+    .addItem('Anúncios: buscar novos agora', 'listingsDiscoverNow_UI')
     .addItem('Anúncios: diagnosticar portais', 'listingsDiagnosePortals_UI')
     .addSeparator()
     .addItem('Instalar gatilhos', 'installTriggers')
@@ -1172,7 +1182,8 @@ function installTriggers() {
   var orphans = [];
   ScriptApp.getProjectTriggers().forEach(function (trigger) {
     var fn = trigger.getHandlerFunction();
-    if (fn === 'handleEdit' || fn === 'maintenanceJob' || fn === LISTINGS_VERIFY_HANDLER) {
+    if (fn === 'handleEdit' || fn === 'maintenanceJob' || fn === LISTINGS_VERIFY_HANDLER ||
+        fn === LISTINGS_DISCOVERY_HANDLER) {
       ScriptApp.deleteTrigger(trigger);
     } else if (typeof globalThis[fn] !== 'function') {
       orphans.push(fn);
@@ -1184,9 +1195,12 @@ function installTriggers() {
   ScriptApp.newTrigger('maintenanceJob').timeBased().everyHours(6).create();
   ScriptApp.newTrigger(LISTINGS_VERIFY_HANDLER).timeBased().everyDays(1)
     .atHour(LISTINGS_DAILY_HOUR).inTimezone(LISTINGS_TIME_ZONE).create();
+  ScriptApp.newTrigger(LISTINGS_DISCOVERY_HANDLER).timeBased().everyDays(1)
+    .atHour(LISTINGS_DISCOVERY_HOUR).inTimezone(LISTINGS_TIME_ZONE).create();
 
-  var message = 'Gatilhos instalados: handleEdit (a cada edição), maintenanceJob (a cada 6 horas) e ' +
-    LISTINGS_VERIFY_HANDLER + ' (diário, ' + LISTINGS_DAILY_HOUR + 'h de Brasília).' +
+  var message = 'Gatilhos instalados: handleEdit (a cada edição), maintenanceJob (a cada 6 horas), ' +
+    LISTINGS_VERIFY_HANDLER + ' (diário, ' + LISTINGS_DAILY_HOUR + 'h de Brasília) e ' +
+    LISTINGS_DISCOVERY_HANDLER + ' (diário, ' + LISTINGS_DISCOVERY_HOUR + 'h).' +
     (orphans.length ? '\nGatilhos órfãos removidos: ' + orphans.join(', ') + '.' : '');
   Logger.log(message);
   notify_('Gatilhos', message);
@@ -1205,6 +1219,7 @@ function handleEdit(e) {
 
   var sheet = e.range.getSheet();
   var name = sheet.getName();
+  if (handleListingsRoutineEdit_(e, sheet, name)) return;
   if (REQUIRED_SHEETS.indexOf(name) === -1 && OPTIONAL_SHEETS.indexOf(name) === -1) return;
   if (e.range.getRow() === 1) return; // edição de cabeçalho é tratada pela validação
 
@@ -1230,7 +1245,9 @@ function appendChangeLogRow_(row) {
   var log = ss_().getSheetByName(CHANGELOG_SHEET);
   if (!log) return;
 
-  log.appendRow(row);
+  // appendRow interpreta "=…" como fórmula; o log de auditoria guarda o texto, nunca a fórmula
+  // (id de candidato escrito por fora, editor e motivo vindos da API).
+  log.appendRow(row.map(safeCellValue_));
 
   var rows = log.getLastRow() - 1;
   if (rows > CHANGELOG_LIMIT) {
@@ -3739,6 +3756,8 @@ function doPost(e) {
 
     var action = normalized.action;
     if (action === 'validate') return successResponse_({ valid: true }, props_().getProperty('DATASET_VERSION') || '1');
+    if (action === 'listings_job') return listingsJobFromApi_(params);
+    if (action === 'review_candidate') return reviewCandidateFromApi_(params);
 
     var sheetName = normalized.sheet;
     if (!WRITE_ALLOWLIST[sheetName]) {
@@ -3781,11 +3800,17 @@ function normalizeWriteRequest_(params) {
   var action = toText_(params.action || params.method).toLowerCase();
   var sheet = toText_(params.sheet || params.entity).toUpperCase();
   if (action === 'validate') return { ok: true, action: action, sheet: '' };
+  // v2.6.0 — ações da rotina de anúncios. Não escrevem em aba do WRITE_ALLOWLIST: uma agenda
+  // um gatilho, a outra muda só `status`/`reject_reason` de um candidato.
+  if (action === 'listings_job' || action === 'review_candidate') return { ok: true, action: action, sheet: '' };
   if (['create', 'update', 'delete'].indexOf(action) === -1) {
     return {
       ok: false,
       sheet: sheet,
-      error: { code: 'INVALID_PAYLOAD', message: 'action/method deve ser validate, create, update ou delete.' }
+      error: {
+        code: 'INVALID_PAYLOAD',
+        message: 'action/method deve ser validate, create, update, delete, listings_job ou review_candidate.'
+      }
     };
   }
   if (!sheet) {
@@ -3883,6 +3908,9 @@ function doWrite_(sheetName, action, params, versionBeforeSchema) {
     }
 
     var created = applyCreate_(sheet, headers, idField, id, validatedCreate.fields);
+    // v2.6.0: anúncio cadastrado pela área administrativa é conferido no portal em ~1 min
+    // (linha nova tem `last_checked_at` vazio, então entra na fila da continuação).
+    if (sheetName === 'LISTINGS') scheduleListingsJobQuietly_(LISTINGS_CONTINUE_HANDLER);
     return finishWrite_(sheetName, id, [
       { field: '*', oldValue: '', newValue: JSON.stringify(validatedCreate.fields) }
     ], editor, correlationId, created);
@@ -5913,8 +5941,16 @@ var LISTINGS_MONTHLY_METRICS_HEADERS = [
   'inventory_change_mom_pct', 'source_count', 'coverage_quality', 'calculated_at'
 ];
 
+/** Uma linha por busca salva (v2.6.0, issue #179). Ver a seção "Busca de anúncios novos". */
+var LISTING_SEARCHES_HEADERS = [
+  'search_id', 'source_id', 'label', 'search_url', 'ra_geo_id', 'locality', 'property_type',
+  'transaction_type', 'active', 'frequency', 'max_pages', 'last_run_at', 'last_status',
+  'last_http_code', 'last_found_count', 'last_new_count', 'notes'
+];
+
 var LISTINGS_ROUTINE_SHEETS = {
   LISTING_SOURCES: LISTING_SOURCES_HEADERS,
+  LISTING_SEARCHES: LISTING_SEARCHES_HEADERS,
   LISTING_CANDIDATES: LISTING_CANDIDATES_HEADERS,
   LISTING_EVENTS: LISTING_EVENTS_HEADERS,
   LISTINGS_UPDATE_RUNS: LISTINGS_UPDATE_RUNS_HEADERS,
@@ -6002,7 +6038,11 @@ function runListingsVerify_(options) {
   options = options || {};
   var lock = LockService.getScriptLock();
   if (!lock.tryLock(0)) {
-    var busy = 'Outra execução da rotina de anúncios está em andamento; esta foi ignorada.';
+    // A busca segura o mesmo lock por minutos: a verificação pedida (gatilho diário, anúncio
+    // criado pela área administrativa, listings_job) tenta de novo em vez de se perder.
+    var retry = scheduleListingsJobQuietly_(LISTINGS_CONTINUE_HANDLER);
+    var busy = 'Outra execução da rotina de anúncios está em andamento; a verificação ' +
+      (retry.error ? 'NÃO pôde ser reagendada (' + retry.error + ') e fica para o gatilho diário.' : 'foi reagendada.');
     Logger.log(busy);
     return busy;
   }
@@ -6311,14 +6351,16 @@ function resolveUrl_(base, location) {
 function listingIdTokens_(url, externalId) {
   var ext = toText_(externalId).replace(/\.0+$/, '');
   if (/^\d{5,}$/.test(ext)) return [ext];
-  var tokens = {};
+  // Na ordem em que aparecem no caminho: Object.keys poria chave numérica em ordem crescente,
+  // e quem pega "o último número" (extractListingLinks_) levaria um CEP no lugar do id.
+  var tokens = [];
   var path = toText_(url).replace(/^https?:\/\/[^\/]+/i, '').replace(/[?#].*$/, '');
   var re = /(R\$|RS)?(\d{5,})/gi;
   var m;
   while ((m = re.exec(path))) {
-    if (!m[1]) tokens[m[2]] = true;
+    if (!m[1] && tokens.indexOf(m[2]) === -1) tokens.push(m[2]);
   }
-  return Object.keys(tokens);
+  return tokens;
 }
 
 function canonicalListingUrl_(url) {
@@ -6389,12 +6431,8 @@ function classifyListingResponse_(url, response, externalId) {
     return { outcome: 'gone', code: code, message: 'REMOVED_MARKER "' + LISTINGS_REMOVED_MARKERS[r] + '"' };
   }
   if (!hasData) {
-    var text = foldText_(body);
-    for (var b = 0; b < LISTINGS_BLOCKED_MARKERS.length; b++) {
-      if (text.indexOf(LISTINGS_BLOCKED_MARKERS[b]) !== -1) {
-        return { outcome: 'blocked', code: code, message: 'CHALLENGE_PAGE "' + LISTINGS_BLOCKED_MARKERS[b] + '"' };
-      }
-    }
+    var challenge = challengeMarker_(body);
+    if (challenge) return { outcome: 'blocked', code: code, message: 'CHALLENGE_PAGE "' + challenge + '"' };
   }
   if (hasData || idInPage) {
     return {
@@ -6712,19 +6750,30 @@ function runListingsVerifyLocked_(options) {
   // fechamento mensal, e a continuação refaz tudo.
   var lockBusy = !holdsDocument;
 
+  // As gravações já aconteceram: falha ao agendar a continuação (autorização, cota de
+  // gatilhos) não pode derrubar o fechamento do run, só torná-lo parcial e dizer por quê.
   var continuation = false;
+  var continuationError = '';
   if (!authError && (remaining > 0 || lockBusy) && !options.noContinuation) {
-    continuation = scheduleOneOffTrigger_(LISTINGS_CONTINUE_HANDLER, LISTINGS_CONTINUATION_DELAY_MS);
+    var schedule = scheduleListingsJobQuietly_(LISTINGS_CONTINUE_HANDLER);
+    continuation = schedule.scheduled;
+    continuationError = schedule.error;
   }
 
   var status;
   if (authError || lockBusy) status = 'failed';
   else if (stats.requested > 0 && stats.read === 0 && (stats.blocked + stats.errors) > 0) status = 'failed';
-  else if (stats.blocked + stats.errors === 0) status = 'success';
+  else if (stats.blocked + stats.errors === 0 && !continuationError) status = 'success';
   else status = 'partial';
 
-  var details = listingsRunDetails_(stats, authError, remaining, continuation, lockBusy);
-  finishListingsRun_(runId, now, status, stats, details);
+  var details = listingsRunDetails_(stats, authError, remaining, continuation, lockBusy, continuationError);
+  finishListingsRun_(runId, {
+    status: status, source_pages_requested: stats.requested, source_pages_read: stats.read,
+    updated_listings: stats.updated, reactivated_listings: stats.reactivated,
+    price_changes: stats.priceChanges, active_checks: stats.checks,
+    confirmed_inactive: stats.confirmedInactive, history_rows: stats.historyRows,
+    metrics_rows: stats.metricsRows, errors: stats.blocked + stats.errors, error_details: details
+  });
   updateListingSourcesAfterRun_(sources, stats, runId, now);
 
   setMeta_('listings_last_run_at', now.toISOString());
@@ -6885,13 +6934,18 @@ function applyListingCheck_(state, item, verdict) {
  * nas linhas tocadas, para não trocar fórmula por valor.
  */
 function writeListingChanges_(sheet, changes) {
+  return writeRowChanges_(sheet, 'listing_id', changes);
+}
+
+/** `writeListingChanges_` para qualquer aba com chave de texto (v2.6.0: LISTING_CANDIDATES, LISTING_SEARCHES). */
+function writeRowChanges_(sheet, idField, changes) {
   var ids = Object.keys(changes);
-  if (!ids.length) return 0;
+  if (!ids.length || !sheet) return 0;
   var ix = headerIndex_(headersOf_(sheet));
   var lastRow = sheet.getLastRow();
-  if (lastRow < 2 || ix.listing_id === undefined) return 0;
+  if (lastRow < 2 || ix[idField] === undefined) return 0;
   var rowById = {};
-  sheet.getRange(2, ix.listing_id + 1, lastRow - 1, 1).getValues().forEach(function (r, i) {
+  sheet.getRange(2, ix[idField] + 1, lastRow - 1, 1).getValues().forEach(function (r, i) {
     var id = toText_(r[0]);
     if (id && rowById[id] === undefined) rowById[id] = i;
   });
@@ -6908,7 +6962,7 @@ function writeListingChanges_(sheet, changes) {
       ids.forEach(function (id) {
         if (!(field in changes[id]) || rowById[id] === undefined) return;
         if (formulas[rowById[id]][0] !== '') return; // célula com fórmula nunca é sobrescrita
-        sheet.getRange(rowById[id] + 2, ix[field] + 1).setValue(changes[id][field]);
+        sheet.getRange(rowById[id] + 2, ix[field] + 1).setValue(safeCellValue_(changes[id][field]));
         written[id] = true;
       });
       return;
@@ -6921,7 +6975,9 @@ function writeListingChanges_(sheet, changes) {
       written[id] = true;
       touched = true;
     });
-    if (touched) range.setValues(values);
+    // A coluna inteira volta à planilha: texto que começa com `=`/`+`/`@` (título vindo do
+    // portal, ou um que já estava lá como texto) não pode voltar como fórmula.
+    if (touched) range.setValues(values.map(function (r) { return [safeCellValue_(r[0])]; }));
   });
   return Object.keys(written).length;
 }
@@ -6931,7 +6987,10 @@ function appendListingEvents_(events) {
   var sheet = ss_().getSheetByName('LISTING_EVENTS');
   if (!sheet) return;
   var start = sheet.getLastRow() + 1;
-  sheet.getRange(start, 1, events.length, LISTING_EVENTS_HEADERS.length).setValues(events);
+  // O portal pode vir de candidato escrito por fora: texto nunca vira fórmula.
+  sheet.getRange(start, 1, events.length, LISTING_EVENTS_HEADERS.length).setValues(events.map(function (row) {
+    return row.map(safeCellValue_);
+  }));
 }
 
 /** Abre o run com `status = running`: se a execução morrer no meio, o rastro fica. */
@@ -6946,25 +7005,35 @@ function appendListingsRun_(runId, now) {
   sheet.appendRow(row);
 }
 
-function finishListingsRun_(runId, now, status, stats, details) {
+/**
+ * Fecha o run aberto por `appendListingsRun_`. `values` é `{coluna: valor}`; coluna numérica
+ * omitida vale 0 — verificação e busca preenchem colunas diferentes da mesma aba.
+ */
+function finishListingsRun_(runId, values) {
   var sheet = ss_().getSheetByName('LISTINGS_UPDATE_RUNS');
   if (!sheet) return;
   var ids = sheet.getLastRow() > 1 ? sheet.getRange(2, 1, sheet.getLastRow() - 1, 1).getValues() : [];
+  var textual = { run_id: true, started_at: true, finished_at: true, status: true, error_details: true, parser_version: true };
   for (var i = ids.length - 1; i >= 0; i--) {
     if (toText_(ids[i][0]) !== runId) continue;
-    sheet.getRange(i + 2, 3, 1, LISTINGS_UPDATE_RUNS_HEADERS.length - 2).setValues([[
-      new Date(), status, 0, 0, 0, stats.requested, stats.read, 0, stats.updated,
-      stats.reactivated, stats.priceChanges, stats.checks, stats.confirmedInactive,
-      stats.historyRows, stats.metricsRows, stats.blocked + stats.errors, details,
-      LISTINGS_PARSER_VERSION
-    ]]);
+    var row = LISTINGS_UPDATE_RUNS_HEADERS.slice(2).map(function (h) {
+      if (h === 'finished_at') return new Date();
+      if (h === 'parser_version') return LISTINGS_PARSER_VERSION;
+      if (values[h] !== undefined) return values[h];
+      return textual[h] ? '' : 0;
+    });
+    sheet.getRange(i + 2, 3, 1, row.length).setValues([row]);
     return;
   }
 }
 
-function listingsRunDetails_(stats, authError, remaining, continuation, lockBusy) {
+function listingsRunDetails_(stats, authError, remaining, continuation, lockBusy, continuationError) {
   var parts = [];
   if (authError) parts.push('AUTHORIZATION_REQUIRED: ' + toText_(authError.message || authError).slice(0, 300));
+  if (continuationError) {
+    parts.push('CONTINUATION_NOT_SCHEDULED: ' + toText_(continuationError).slice(0, 200) +
+      '; o restante fica para o gatilho diário');
+  }
   if (lockBusy) parts.push('DOCUMENT_LOCK_BUSY: lock da planilha ocupado por 30 s; nada gravado, leitura refeita na continuação');
   Object.keys(stats.byPortal).sort().forEach(function (portal) {
     var p = stats.byPortal[portal];
@@ -7345,4 +7414,1234 @@ function validateListingsRoutine_(report, now) {
       month + ': ' + unverified[month] + ' linha(s) gravada(s) como active sem confirmação no portal no mês. ' +
       'Registro preservado; não usar como estoque confirmado.');
   });
+}
+
+// ---------------------------------------------------------------------------
+// Busca de anúncios novos (v2.6.0, issue #179)
+// ---------------------------------------------------------------------------
+//
+// Até a v2.5.0 nenhum anúncio novo entrava sozinho: LISTING_SOURCES tinha `search_urls`
+// vazio nos cinco portais e a nota dizia que novas buscas "entram pela fila do GPT".
+// Aqui a busca vira três etapas idempotentes, todas no mesmo run:
+//
+//   1. BUSCA. Cada linha ativa de LISTING_SEARCHES é uma URL de resultado copiada do
+//      portal, com o filtro já aplicado no navegador. Da página saem só os LINKS de
+//      anúncio, reconhecidos pelo caminho que os anúncios do mesmo portal já têm em
+//      LISTINGS (`/imovel/…`, `/propriedades/…`) ou pela regex `listing_path_regex` de
+//      `LISTING_SOURCES.parser_config_json`. Nunca pelo layout do card, que muda sem aviso.
+//   2. LEITURA. A página de cada candidato novo passa pelo MESMO classificador e pelo MESMO
+//      parser da verificação diária: preço só de dado estruturado do próprio anúncio.
+//   3. PROMOÇÃO. O candidato que passa nos portões vira linha de LISTINGS, com coordenada
+//      aproximada DECLARADA (centroide da localidade + jitter determinístico). O que não
+//      passa fica `pending`, com o motivo em `reject_reason`. Quem marca `approved` à mão
+//      dispensa só os portões de plausibilidade, nunca os de dado obrigatório, e pode
+//      preencher na própria linha do candidato o que a página não trouxe.
+//
+// O candidato é a porta única: qualquer agente externo (a antiga "fila do GPT") escreve
+// em LISTING_CANDIDATES e segue o mesmo caminho.
+
+var LISTINGS_DISCOVERY_HANDLER = 'listingsDiscoveryJob';
+var LISTINGS_DISCOVERY_CONTINUE_HANDLER = 'listingsDiscoveryContinue';
+var LISTINGS_DISCOVERY_HOUR = 6;
+var LISTINGS_SEARCH_MAX_PAGES = 5;
+/** Páginas de candidato lidas por execução; o resto fica para a continuação. */
+var LISTINGS_CANDIDATE_READS_PER_RUN = 60;
+/** Leituras que falham (bloqueio, rede) até o candidato parar de ser tentado sozinho. */
+var LISTINGS_CANDIDATE_MAX_READ_ATTEMPTS = 5;
+/** Raio máximo do jitter, em graus (~450 m): o ponto é da localidade, não do imóvel. */
+var LISTINGS_JITTER_MAX_DEG = 0.004;
+/** Preço/m² fora de [mediana ÷ 3, mediana × 3] da localidade e do tipo é implausível. */
+var LISTINGS_PRICE_M2_OUTLIER_FACTOR = 3;
+var LISTINGS_PRICE_M2_MIN_REFERENCES = 3;
+var LISTINGS_AUTOMATED_QUALITY_FLAG = 'automated_item_page_verified';
+/** Colunas de LISTING_SEARCHES que mudam o que a busca faz (gatilho de edição, releitura no lock). */
+var LISTING_SEARCH_CONFIG_FIELDS = ['search_id', 'source_id', 'search_url', 'ra_geo_id', 'locality',
+  'property_type', 'transaction_type', 'active', 'frequency', 'max_pages'];
+/** Chave do atestado de leitura (ver candidatePageRead_). Propriedade do script, fora da planilha. */
+var LISTINGS_READ_KEY_PROP = 'LISTINGS_READ_ATTESTATION_KEY';
+/** Instante do último pedido explícito de busca (ver requestForcedDiscovery_). */
+var LISTINGS_DISCOVERY_FORCE_PROP = 'LISTINGS_DISCOVERY_FORCE_AFTER';
+/** Aprovado à mão sem que a rotina tenha lido a página (ver listingFromCandidate_). */
+var LISTINGS_MANUAL_QUALITY_FLAG = 'manual_review_page_not_read';
+var LISTING_CANDIDATE_STATUSES = ['pending', 'approved', 'rejected', 'promoted'];
+
+/** Tipo pela URL ou título. A ordem importa: casa em condomínio antes de casa. */
+var LISTINGS_PROPERTY_TYPE_HINTS = [
+  { type: 'casa_condominio', pattern: /casa[-_ ]+(em[-_ ]+)?(de[-_ ]+)?condominio|condominio[-_ ]+fechado/ },
+  { type: 'kitnet', pattern: /kitnet|kitinete|quitinete/ },
+  { type: 'terreno', pattern: /terreno|(^|[-_ \/])lote([-_ \/]|$)/ },
+  { type: 'predio', pattern: /(^|[-_ \/])predio([-_ \/]|$)/ },
+  { type: 'apartamento', pattern: /apartamento|cobertura|(^|[-_ \/])flat([-_ \/]|$)/ },
+  { type: 'casa', pattern: /(^|[-_ \/])casas?([-_ \/]|$)/ }
+];
+
+var LISTINGS_TYPE_LABELS = {
+  apartamento: 'Apartamento', casa: 'Casa', casa_condominio: 'Casa Condominio', kitnet: 'Kitnet',
+  predio: 'Prédio', terreno: 'Terreno'
+};
+
+// --- Pontos de entrada ---------------------------------------------------------------
+
+/** Gatilho diário (instalado por `installTriggers()`). */
+function listingsDiscoveryJob(e) {
+  return runListingsDiscovery_({ trigger: 'time' });
+}
+
+/** Continuação e gatilho de ação (busca editada, candidato aprovado). */
+function listingsDiscoveryContinue(e) {
+  clearTriggersFor_(LISTINGS_DISCOVERY_CONTINUE_HANDLER);
+  return runListingsDiscovery_({ trigger: 'continuation' });
+}
+
+/** Menu: Anúncios: buscar novos agora. */
+function listingsDiscoverNow_UI() {
+  requestForcedDiscovery_();
+  var message = runListingsDiscovery_({ trigger: 'manual' });
+  notify_('Anúncios: busca', message);
+  return message;
+}
+
+/**
+ * Pedido explícito de busca (menu, `listings_job`): toda busca ativa cujo último run é
+ * ANTERIOR ao pedido roda, qualquer que seja a frequência (`manual` e `weekly` inclusive).
+ * Fica em propriedade porque a continuação é um gatilho e não recebe argumento; uma busca
+ * que já rodou depois do pedido não roda de novo, e a propriedade se apaga quando a busca
+ * termina sem pendência.
+ */
+function requestForcedDiscovery_(now) {
+  // Truncado ao segundo: a planilha pode guardar `last_run_at` sem milissegundo, e a busca
+  // que rodou logo depois do pedido não pode parecer anterior a ele.
+  var at = Math.floor((now || new Date()).getTime() / 1000) * 1000;
+  props_().setProperty(LISTINGS_DISCOVERY_FORCE_PROP, new Date(at).toISOString());
+}
+
+/** Mesmo lock de script da verificação: as duas escrevem em LISTINGS. */
+function runListingsDiscovery_(options) {
+  options = options || {};
+  var lock = LockService.getScriptLock();
+  if (!lock.tryLock(0)) {
+    // Nem o gatilho diário nem o de ação podem se perder porque a verificação estava rodando
+    // (ela e as continuações dela seguram o mesmo lock): tenta de novo em um minuto.
+    var retry = scheduleListingsJobQuietly_(LISTINGS_DISCOVERY_CONTINUE_HANDLER);
+    var busy = 'Outra execução da rotina de anúncios está em andamento; a busca ' +
+      (retry.error ? 'NÃO pôde ser reagendada (' + retry.error + ') e fica para o gatilho diário.' : 'foi reagendada.');
+    Logger.log(busy);
+    return busy;
+  }
+  try {
+    return runListingsDiscoveryLocked_(options);
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+/**
+ * Agenda um gatilho único sem deixar a falha de agendamento derrubar quem pediu. Devolve
+ * `{ scheduled, error }`: `scheduled = false` com `error` vazio é o debounce (já havia um
+ * pendente); `error` preenchido é falha de agendamento (autorização, cota de gatilhos), e
+ * nada vai rodar até o gatilho diário.
+ */
+function scheduleListingsJobQuietly_(handler) {
+  try {
+    return { scheduled: scheduleOneOffTrigger_(handler, LISTINGS_CONTINUATION_DELAY_MS), error: '' };
+  } catch (err) {
+    var message = toText_((err && err.message) || err) || 'erro desconhecido';
+    Logger.log('não foi possível agendar %s: %s', handler, message);
+    return { scheduled: false, error: message };
+  }
+}
+
+// --- Gatilhos de ação ------------------------------------------------------------------
+
+/**
+ * Chamado por `handleEdit` antes do filtro de abas de dados. Faz o mínimo: em
+ * LISTING_SEARCHES, uma edição de configuração (URL, filtro, ativa) esvazia
+ * `last_run_at` da linha — ela volta a vencer hoje — e agenda a busca; em
+ * LISTING_CANDIDATES, marcar `approved` agenda a busca, que é quem promove. Devolve true
+ * quando a aba era da rotina, para `handleEdit` não seguir.
+ */
+function handleListingsRoutineEdit_(e, sheet, name) {
+  if (name !== 'LISTING_SEARCHES' && name !== 'LISTING_CANDIDATES') return false;
+  if (e.range.getRow() === 1) return true;
+  var ix = headerIndex_(headersOf_(sheet));
+  var firstCol = typeof e.range.getColumn === 'function' ? e.range.getColumn() : 1;
+  var lastCol = firstCol + (typeof e.range.getNumColumns === 'function' ? e.range.getNumColumns() : 1) - 1;
+  var touches = function (field) {
+    return ix[field] !== undefined && ix[field] + 1 >= firstCol && ix[field] + 1 <= lastCol;
+  };
+  var firstRow = e.range.getRow();
+  var numRows = typeof e.range.getNumRows === 'function' ? e.range.getNumRows() : 1;
+
+  if (name === 'LISTING_SEARCHES') {
+    if (!LISTING_SEARCH_CONFIG_FIELDS.some(touches)) return true;
+    if (ix.last_run_at !== undefined) {
+      var blank = [];
+      for (var r = 0; r < numRows; r++) blank.push(['']);
+      sheet.getRange(firstRow, ix.last_run_at + 1, numRows, 1).setValues(blank);
+    }
+    scheduleListingsJobQuietly_(LISTINGS_DISCOVERY_CONTINUE_HANDLER);
+    return true;
+  }
+
+  if (!touches('status')) return true;
+  var statuses = sheet.getRange(firstRow, ix.status + 1, numRows, 1).getValues();
+  var approved = statuses.some(function (row) { return toText_(row[0]).toLowerCase() === 'approved'; });
+  if (approved) scheduleListingsJobQuietly_(LISTINGS_DISCOVERY_CONTINUE_HANDLER);
+  return true;
+}
+
+/**
+ * doPost `action = listings_job`, `job = verify | discovery` (token já conferido). Só
+ * AGENDA: a execução leva minutos e a requisição do navegador não pode esperar por ela.
+ */
+function listingsJobFromApi_(params) {
+  var job = toText_(params.job).toLowerCase();
+  var handler = job === 'verify' ? LISTINGS_CONTINUE_HANDLER
+    : (job === 'discovery' ? LISTINGS_DISCOVERY_CONTINUE_HANDLER : '');
+  if (!handler) return errorResponse_('INVALID_PAYLOAD', 'job deve ser verify ou discovery.', params.correlation_id);
+  if (job === 'discovery') requestForcedDiscovery_();
+  var result = scheduleListingsJobQuietly_(handler);
+  if (result.error) {
+    return errorResponse_('SCHEDULE_FAILED', 'Não foi possível agendar a execução (' + result.error +
+      '). Rode pelo menu ou espere o gatilho diário.', params.correlation_id);
+  }
+  return successResponse_({ job: job, scheduled: result.scheduled, already_pending: !result.scheduled },
+    props_().getProperty('DATASET_VERSION') || '1', params.correlation_id);
+}
+
+/**
+ * doPost `action = review_candidate`: `candidate_id`, `decision = approved | rejected`,
+ * `reason` opcional. Muda só `status`, `reviewed_at` e `reject_reason`, registra no
+ * CHANGE_LOG e, na aprovação, agenda a busca, que é quem promove.
+ */
+function reviewCandidateFromApi_(params) {
+  var id = toText_(params.candidate_id || params.id);
+  var decision = toText_(params.decision).toLowerCase();
+  var correlationId = toText_(params.correlation_id);
+  if (!id) return errorResponse_('INVALID_PAYLOAD', 'candidate_id é obrigatório.', correlationId);
+  if (decision !== 'approved' && decision !== 'rejected') {
+    return errorResponse_('INVALID_PAYLOAD', 'decision deve ser approved ou rejected.', correlationId);
+  }
+  var result = withLock_(function () {
+    var sheet = ss_().getSheetByName('LISTING_CANDIDATES');
+    if (!sheet) return { error: 'NOT_FOUND', message: 'Aba LISTING_CANDIDATES ausente.' };
+    var ix = headerIndex_(headersOf_(sheet));
+    var rows = dataRowsOf_(sheet);
+    for (var i = 0; i < rows.length; i++) {
+      if (toText_(rows[i][ix.candidate_id]) !== id) continue;
+      var old = toText_(rows[i][ix.status]);
+      if (old === 'promoted') return { error: 'VALIDATION_ERROR', message: 'Candidato já promovido: ' + id };
+      var reason = decision === 'rejected' ? sanitizePlainText_(params.reason).slice(0, 500) || 'rejeitado na revisão' : '';
+      sheet.getRange(i + 2, ix.status + 1).setValue(decision);
+      sheet.getRange(i + 2, ix.reviewed_at + 1).setValue(new Date());
+      sheet.getRange(i + 2, ix.reject_reason + 1).setValue(safeCellValue_(reason));
+      logWriteChange_('LISTING_CANDIDATES', id, 'status', old, decision, params.editor, correlationId, 'ok', '');
+      return { ok: true, old: old };
+    }
+    return { error: 'NOT_FOUND', message: 'Candidato não encontrado: ' + id };
+  });
+  if (!result) return errorResponse_('INTERNAL_ERROR', 'Não foi possível obter lock; tente novamente.', correlationId);
+  if (result.error) return errorResponse_(result.error, result.message, correlationId);
+  // A decisão já está gravada; falha de agendamento só atrasa a promoção até a busca diária,
+  // e a resposta diz isso em vez de afirmar que ela foi agendada.
+  var schedule = decision === 'approved' ? scheduleListingsJobQuietly_(LISTINGS_DISCOVERY_CONTINUE_HANDLER)
+    : { scheduled: false, error: '' };
+  var record = { candidate_id: id, status: decision, discovery_scheduled: schedule.scheduled };
+  if (schedule.error) record.discovery_schedule_error = schedule.error;
+  return successResponse_(record, props_().getProperty('DATASET_VERSION') || '1', correlationId, id);
+}
+
+// --- Índices de referência (puros sobre as linhas) ---------------------------------------
+
+function median_(values) {
+  var list = values.filter(function (v) { return v !== null && isFinite(v); }).sort(function (a, b) { return a - b; });
+  if (!list.length) return null;
+  var mid = Math.floor(list.length / 2);
+  return list.length % 2 ? list[mid] : (list[mid - 1] + list[mid]) / 2;
+}
+
+/**
+ * O que os anúncios existentes já sabem: chaves de duplicidade, caminho de anúncio por
+ * host, portal por host, RA e centroide por localidade e preço/m² de referência. Tudo
+ * derivado de LISTINGS — nenhuma lista de bairros ou de padrões de URL mantida à mão.
+ */
+function buildListingsReference_(listingRows, lix, raProfileRows, rpix) {
+  var ref = {
+    keys: {}, urls: {}, ids: {}, pathPrefixes: {}, portalByHost: {}, localities: {}, ras: {},
+    raByName: {}, raById: {}
+  };
+  listingRows.forEach(function (row) {
+    var url = toText_(row[lix.source_url]);
+    var portal = toText_(row[lix.portal]);
+    var id = toText_(row[lix.listing_id]);
+    if (id) ref.ids[id] = true;
+    if (/^https?:\/\//i.test(url)) {
+      ref.urls[canonicalListingUrl_(url)] = id;
+      listingIdTokens_(url, lix.external_id === undefined ? '' : row[lix.external_id]).forEach(function (token) {
+        ref.keys[normalizeSlug_(portal) + '|' + token] = id;
+      });
+      var host = urlHost_(url);
+      var segment = (url.replace(/^https?:\/\/[^\/]+/i, '').split('/')[1] || '').toLowerCase();
+      if (host && segment) (ref.pathPrefixes[host] || (ref.pathPrefixes[host] = {}))[segment] = true;
+      if (host && portal) ref.portalByHost[host] = portal;
+    }
+    var locality = toText_(row[lix.locality]);
+    var ra = toText_(row[lix.ra_geo_id]);
+    var lat = toNumber_(row[lix.latitude]);
+    var lon = toNumber_(row[lix.longitude]);
+    var precision = toText_(row[lix.coordinate_precision]);
+    var type = toText_(row[lix.property_type]);
+    var priceM2 = toNumber_(row[lix.asking_price_brl_m2]);
+    if (priceM2 === null) {
+      var price = toNumber_(row[lix.asking_price_brl]);
+      var area = toNumber_(row[lix.area_m2]);
+      if (price !== null && area !== null && area > 0) priceM2 = price / area;
+    }
+    var add = function (bucket, key) {
+      if (!key) return;
+      var entry = bucket[key] || (bucket[key] = { name: '', ra: {}, points: [], centroidPoints: [], priceM2: {} });
+      if (bucket === ref.localities && !entry.name) entry.name = locality;
+      if (ra) entry.ra[ra] = (entry.ra[ra] || 0) + 1;
+      if (lat !== null && lon !== null) {
+        entry.points.push([lat, lon]);
+        if (/locality_centroid/.test(precision)) entry.centroidPoints.push([lat, lon]);
+      }
+      if (type && priceM2 !== null && priceM2 > 0) (entry.priceM2[type] || (entry.priceM2[type] = [])).push(priceM2);
+    };
+    add(ref.localities, normalizeSlug_(locality));
+    add(ref.ras, ra);
+  });
+  (raProfileRows || []).forEach(function (row) {
+    var name = rpix.ra_name === undefined ? '' : toText_(row[rpix.ra_name]);
+    var code = rpix.ra_code === undefined ? '' : raCodeFromGeoId_(row[rpix.ra_code]);
+    var profileId = rpix.ra_geo_id === undefined ? '' : toText_(row[rpix.ra_geo_id]).toUpperCase();
+    if (name && code) ref.raByName[normalizeSlug_(name)] = 'RA2026_' + code;
+    if (profileId && code) ref.raById[profileId] = 'RA2026_' + code;
+  });
+  return ref;
+}
+
+/** Ponto de referência: mediana dos centroides de localidade; senão de todos os pontos. */
+function referencePoint_(entry) {
+  if (!entry) return null;
+  var points = entry.centroidPoints.length ? entry.centroidPoints : entry.points;
+  if (!points.length) return null;
+  return {
+    lat: median_(points.map(function (p) { return p[0]; })),
+    lon: median_(points.map(function (p) { return p[1]; }))
+  };
+}
+
+function dominantKey_(counts) {
+  var best = '';
+  Object.keys(counts || {}).forEach(function (key) { if (!best || counts[key] > counts[best]) best = key; });
+  return best;
+}
+
+/**
+ * RA no formato de LISTINGS (`RA2026_RA-I`) a partir de `RA2026_RA-I` ou `RA-I`; com `ref`,
+ * também da chave de RA_PROFILES (`RA_01`), que é como a planilha escreve a RA em outras abas.
+ */
+function normalizeListingRa_(value, ref) {
+  var code = raCodeFromGeoId_(value);
+  if (code) return 'RA2026_' + code;
+  return ref ? (ref.raById[toText_(value).toUpperCase()] || '') : '';
+}
+
+/**
+ * Localidade a partir do slug da URL: a de nome mais longo, entre as que LISTINGS já tem,
+ * cujo slug aparece no caminho. "lago-norte" vence "norte"; nenhuma casa = ''.
+ */
+function inferLocalityFromUrl_(url, ref) {
+  var path = normalizeSlug_(toText_(url).replace(/^https?:\/\/[^\/]+/i, '').replace(/[?#].*$/, ''));
+  var best = '';
+  Object.keys(ref.localities).forEach(function (slug) {
+    if (!slug || slug.length < 3) return;
+    if (('_' + path + '_').indexOf('_' + slug + '_') === -1) return;
+    if (slug.length > best.length) best = slug;
+  });
+  return best ? ref.localities[best].name : '';
+}
+
+function inferPropertyType_(text) {
+  var slug = normalizeSlug_(text).replace(/_/g, '-');
+  for (var i = 0; i < LISTINGS_PROPERTY_TYPE_HINTS.length; i++) {
+    if (LISTINGS_PROPERTY_TYPE_HINTS[i].pattern.test(slug)) return LISTINGS_PROPERTY_TYPE_HINTS[i].type;
+  }
+  return '';
+}
+
+function inferBedroomsFromUrl_(url) {
+  var m = /(?:^|[-_\/])(\d{1,2})[-_](?:quartos?|qts?|dormitorios?)(?:[-_\/.]|$)/i.exec(normalizeSlug_(url).replace(/_/g, '-'));
+  return m ? Number(m[1]) : null;
+}
+
+// --- Busca (pura sobre o HTML) -------------------------------------------------------------
+
+/**
+ * Links de anúncio de uma página de busca. Aceita um link quando ele está no mesmo host da
+ * busca, tem id numérico (`listingIdTokens_`) e o caminho bate com `pathRegex` (de
+ * `parser_config_json`) ou começa por um segmento que os anúncios do portal já usam em
+ * LISTINGS. Junta também as `url` de JSON-LD (ItemList). Devolve `[{url, token}]` sem
+ * repetição de token.
+ */
+/**
+ * Id do anúncio no caminho, pela forma dos portais da base: segmento só de dígitos (QuintoAndar,
+ * `/imovel/893565467/comprar/…`); número depois de `id-` (VivaReal, `…-RS650000-id-2907369820/`);
+ * no resto, o último número do caminho (DFImoveis e Wimoveis terminam no id — um CEP no meio do
+ * slug não é o id, e o maior número também não seria: no QuintoAndar o CEP vem depois).
+ */
+function listingTokenOfPath_(path) {
+  var tokens = listingIdTokens_(path, '');
+  if (!tokens.length) return '';
+  var segment = /\/(\d{5,})(?=\/|$)/.exec(path);
+  if (segment) return segment[1];
+  var marked = /(?:^|[-_\/])id[-_]?(\d{5,})/i.exec(path);
+  if (marked) return marked[1];
+  return tokens[tokens.length - 1];
+}
+
+function extractListingLinks_(html, pageUrl, segments, pathRegex) {
+  var host = urlHost_(pageUrl);
+  var seen = {};
+  var out = [];
+  var consider = function (raw) {
+    var url = resolveUrl_(pageUrl, toText_(raw).replace(/&amp;/g, '&'));
+    if (!url || urlHost_(url) !== host) return;
+    var clean = url.replace(/[?#].*$/, '');
+    var path = clean.replace(/^https?:\/\/[^\/]+/i, '');
+    if (pathRegex) {
+      if (!pathRegex.test(path)) return;
+    } else {
+      var segment = (path.split('/')[1] || '').toLowerCase();
+      if (!segments || !segments[segment]) return;
+    }
+    var token = listingTokenOfPath_(path);
+    if (!token) return;
+    if (seen[token]) return;
+    seen[token] = true;
+    out.push({ url: clean, token: token });
+  };
+  var text = String(html || '');
+  var re = /href\s*=\s*["']([^"'#][^"']*)["']/gi;
+  var m;
+  while ((m = re.exec(text))) consider(m[1]);
+  var ld = /<script[^>]*type\s*=\s*["']application\/ld\+json["'][^>]*>([\s\S]*?)<\/script>/gi;
+  while ((m = ld.exec(text))) {
+    var data = safeJsonParse_(m[1]);
+    var stack = data === null ? [] : [data];
+    var guard = 0;
+    while (stack.length && guard++ < 5000) {
+      var node = stack.pop();
+      if (!node || typeof node !== 'object') continue;
+      if (Array.isArray(node)) { node.forEach(function (c) { stack.push(c); }); continue; }
+      if (typeof node.url === 'string') consider(node.url);
+      Object.keys(node).forEach(function (k) { if (node[k] && typeof node[k] === 'object') stack.push(node[k]); });
+    }
+  }
+  return out;
+}
+
+/** URLs das páginas de uma busca: `{page}` na URL é trocado por 1..max_pages; sem ele, uma página. */
+function searchPageUrls_(searchUrl, maxPages) {
+  var url = toText_(searchUrl);
+  if (url.indexOf('{page}') === -1) return [url];
+  var n = Math.max(1, Math.min(LISTINGS_SEARCH_MAX_PAGES, Math.floor(toNumber_(maxPages) || 1)));
+  var out = [];
+  for (var p = 1; p <= n; p++) out.push(url.replace(/\{page\}/g, String(p)));
+  return out;
+}
+
+function parseParserConfig_(cell) {
+  var parsed = safeJsonParse_(toText_(cell));
+  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return {};
+  var out = {};
+  if (typeof parsed.listing_path_regex === 'string') {
+    try { out.pathRegex = new RegExp(parsed.listing_path_regex, 'i'); } catch (err) { /* regex inválida é ignorada */ }
+  }
+  return out;
+}
+
+// --- Portões (puros) -------------------------------------------------------------------------
+
+/**
+ * Avalia um candidato contra os portões de promoção. `hard` é dado obrigatório que falta ou
+ * duplicidade — nem a aprovação manual passa por cima. `soft` é plausibilidade (preço/m²
+ * muito fora da localidade) — a aprovação manual dispensa. `resolved` traz o que a
+ * promoção vai gravar: RA, ponto de referência e a precisão declarada dele.
+ */
+function evaluateListingCandidate_(cand, ref) {
+  var hard = [];
+  var soft = [];
+  // Identidade da fonte: sem ela o anúncio sairia com `portal`/`source_url` vazios e id
+  // `LIST_WEB__`, sem como deduplicar nem verificar. Candidato da busca sempre tem as três;
+  // o que falta aqui vem de linha escrita por fora (agente externo, digitação).
+  if (!normalizeSlug_(cand.source_name)) hard.push('portal (source_name) vazio');
+  if (!/^https?:\/\/[^\s]+$/i.test(toText_(cand.source_url))) hard.push('source_url não é um endereço http(s)');
+  if (!/^[A-Za-z0-9_-]+$/.test(toText_(cand.external_id))) hard.push('external_id vazio ou com caractere inválido');
+  var transaction = toText_(cand.transaction_type).toLowerCase() || 'sale';
+  if (transaction !== 'sale') hard.push('transação não é venda (' + transaction + ')');
+  var type = toText_(cand.property_type);
+  if (ENUM_VALUES.property_type.indexOf(type) === -1) hard.push('tipo de imóvel desconhecido');
+  var price = toNumber_(cand.asking_price_brl);
+  var area = toNumber_(cand.area_m2);
+  var bedrooms = toNumber_(cand.bedrooms);
+  if (price === null || price < 1000) hard.push('preço não lido');
+  if (area === null || area <= 0) hard.push('área não lida');
+  if (bedrooms === null && type !== 'terreno') hard.push('quartos não lidos');
+
+  var locality = toText_(cand.locality);
+  var localityEntry = ref.localities[normalizeSlug_(locality)];
+  var ra = normalizeListingRa_(cand.ra_geo_id, ref) ||
+    (localityEntry ? dominantKey_(localityEntry.ra) : '') ||
+    ref.raByName[normalizeSlug_(locality)] || '';
+  if (!locality) hard.push('localidade não identificada');
+  if (!ra) hard.push('RA não identificada');
+
+  var point = referencePoint_(localityEntry);
+  var precision = 'locality_centroid_deterministic_jitter';
+  if (!point && ra) { point = referencePoint_(ref.ras[ra]); precision = 'ra_centroid_deterministic_jitter'; }
+  if (!point) hard.push('sem coordenada de referência para a localidade ou a RA');
+
+  var portalSlug = normalizeSlug_(cand.source_name);
+  var token = toText_(cand.external_id);
+  var dup = ref.keys[portalSlug + '|' + token] || ref.urls[canonicalListingUrl_(cand.source_url)];
+  if (dup) hard.push('já existe em LISTINGS (' + dup + ')');
+
+  if (price !== null && area !== null && area > 0 && localityEntry && localityEntry.priceM2[type] &&
+      localityEntry.priceM2[type].length >= LISTINGS_PRICE_M2_MIN_REFERENCES) {
+    var reference = median_(localityEntry.priceM2[type]);
+    var ratio = (price / area) / reference;
+    if (ratio > LISTINGS_PRICE_M2_OUTLIER_FACTOR || ratio < 1 / LISTINGS_PRICE_M2_OUTLIER_FACTOR) {
+      soft.push('preço/m² ' + (Math.round(ratio * 10) / 10) + '× a mediana de ' + type + ' em ' + locality +
+        '; aprove à mão se estiver certo');
+    }
+  }
+  return { hard: hard, soft: soft, resolved: { ra: ra, point: point, precision: precision } };
+}
+
+/** Desvio determinístico (mesmo id, mesmo ponto) dentro de LISTINGS_JITTER_MAX_DEG. */
+function deterministicJitter_(id, point) {
+  var hash = sha256Hex_(id);
+  var angle = parseInt(hash.slice(0, 8), 16) / 0xffffffff * 2 * Math.PI;
+  var radius = Math.sqrt(parseInt(hash.slice(8, 16), 16) / 0xffffffff) * LISTINGS_JITTER_MAX_DEG;
+  var lat = point.lat + radius * Math.sin(angle);
+  var lon = point.lon + radius * Math.cos(angle) / Math.cos(point.lat * Math.PI / 180);
+  return { lat: Math.round(lat * 1e6) / 1e6, lon: Math.round(lon * 1e6) / 1e6 };
+}
+
+function listingIdForCandidate_(cand) {
+  return 'LIST_WEB_' + normalizeSlug_(cand.source_name).replace(/_/g, '').toUpperCase() + '_' + toText_(cand.external_id);
+}
+
+/**
+ * Linha de LISTINGS (objeto campo → valor) para um candidato que passou nos portões.
+ *
+ * A procedência depende de a rotina ter lido a página — e "lida" é o atestado assinado por
+ * ela (candidatePageRead_), não o `read_status` que qualquer escritor da fila edita. Lida:
+ * `automated_item_page_verified`, confirmada no portal na data DA LEITURA (`last_read_at`) —
+ * que é a da promoção no caminho automático, mas fica dias antes quando o candidato esperou
+ * a aprovação de um preço implausível. Não lida — aprovada à mão
+ * depois de LISTINGS_CANDIDATE_MAX_READ_ATTEMPTS leituras bloqueadas, com o dado digitado
+ * pelo revisor —: `manual_review_page_not_read`, e `last_seen_at`, `source_page_verified_at`
+ * e `last_check_*` ficam vazios. Assim o anúncio não entra no frescor nem no fechamento do
+ * mês como confirmado, e vence na verificação seguinte como nunca conferido — só a leitura
+ * dela o confirma.
+ */
+function listingFromCandidate_(cand, resolved, now, runId) {
+  var meta = candidateMeta_(cand);
+  var pageRead = candidatePageRead_(cand);
+  var readAt = cellDate_(meta.last_read_at);
+  if (!readAt || readAt.getTime() === now.getTime()) readAt = now;
+  var seenAt = pageRead ? readAt : '';
+  var id = listingIdForCandidate_(cand);
+  var portalCode = normalizeSlug_(cand.source_name).replace(/_/g, '').toUpperCase();
+  var token = toText_(cand.external_id);
+  var price = toNumber_(cand.asking_price_brl);
+  var area = toNumber_(cand.area_m2);
+  var point = deterministicJitter_(id, resolved.point);
+  var type = toText_(cand.property_type);
+  var locality = toText_(cand.locality);
+  var bedrooms = toNumber_(cand.bedrooms);
+  return {
+    listing_id: id, portal: toText_(cand.source_name), transaction_type: 'sale',
+    title: (LISTINGS_TYPE_LABELS[type] || type) + ' à venda · ' + locality,
+    source_url: toText_(cand.source_url), source_url_type: 'individual_listing', external_id: token,
+    portal_listing_code: token, source_page_verified_at: seenAt, status: 'active', last_seen_at: seenAt,
+    property_id: 'PROP_WEB_' + portalCode + '_' + token, property_type: type,
+    address: toText_(cand.address) || locality, locality: locality, ra_geo_id: resolved.ra,
+    latitude: point.lat, longitude: point.lon, coordinate_precision: resolved.precision,
+    confidence_flag: 'low_spatial_high_attribute', observed_at: now, asking_price_brl: price,
+    area_m2: area, area_basis: 'portal_area_unspecified',
+    asking_price_brl_m2: Math.round(price / area * 100) / 100,
+    bedrooms: bedrooms === null ? 0 : bedrooms, suites: toNumber_(cand.suites) === null ? '' : toNumber_(cand.suites),
+    parking_spaces: toNumber_(cand.parking_spaces) === null ? '' : toNumber_(cand.parking_spaces),
+    condo_fee_brl: toNumber_(cand.condo_fee_brl) === null ? '' : toNumber_(cand.condo_fee_brl),
+    iptu_brl: toNumber_(cand.iptu_brl) === null ? '' : toNumber_(cand.iptu_brl),
+    quality_flag: pageRead ? LISTINGS_AUTOMATED_QUALITY_FLAG : LISTINGS_MANUAL_QUALITY_FLAG,
+    first_seen_at: now, last_checked_at: seenAt,
+    parser_version: LISTINGS_PARSER_VERSION, update_run_id: runId, verification_failures: 0,
+    last_check_status: pageRead ? 'ok' : '', last_check_http_code: pageRead ? 200 : '',
+    last_check_message: 'PROMOTED ' + toText_(cand.candidate_id) + ' (' + toText_(cand.discovered_by) + ')' +
+      (pageRead ? '' : ' sem leitura da página; aguarda a verificação'),
+    content_hash: sha256Hex_([price, area, cand.bedrooms, toText_(cand.title)].join('|'))
+  };
+}
+
+// --- Execução ----------------------------------------------------------------------------
+
+function candidateMeta_(cand) {
+  var parsed = safeJsonParse_(toText_(cand.raw_json));
+  return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : {};
+}
+
+function runListingsDiscoveryLocked_(options) {
+  var now = options.now || new Date();
+  var clockStart = Date.now();
+  var budget = options.budgetMs || LISTINGS_VERIFY_BUDGET_MS;
+  var readsPerRun = options.readsPerRun || LISTINGS_CANDIDATE_READS_PER_RUN;
+
+  ensureListingsRoutineSchema_();
+  var book = ss_();
+  var listings = book.getSheetByName('LISTINGS');
+  if (!listings) return 'Aba LISTINGS ausente.';
+  var listingHeaders = headersOf_(listings);
+  var lix = headerIndex_(listingHeaders);
+  var raProfiles = book.getSheetByName('RA_PROFILES');
+  var ref = buildListingsReference_(dataRowsOf_(listings), lix,
+    raProfiles ? dataRowsOf_(raProfiles) : [], raProfiles ? headerIndex_(headersOf_(raProfiles)) : {});
+  var sources = readListingSources_();
+  var sourceConfig = {};
+  if (sources.sheet) {
+    var srcIx = headerIndex_(headersOf_(sources.sheet));
+    dataRowsOf_(sources.sheet).forEach(function (row) {
+      var name = toText_(row[srcIx.source_name]);
+      if (name) sourceConfig[normalizeSlug_(name)] = parseParserConfig_(srcIx.parser_config_json === undefined ? '' : row[srcIx.parser_config_json]);
+    });
+  }
+
+  var searchSheet = book.getSheetByName('LISTING_SEARCHES');
+  var searchHeaders = headersOf_(searchSheet);
+  var searches = dataRowsOf_(searchSheet).map(function (row) { return rowToRecord_(searchHeaders, row); });
+  var candSheet = book.getSheetByName('LISTING_CANDIDATES');
+  var candHeaders = headersOf_(candSheet);
+  var candidates = dataRowsOf_(candSheet).map(function (row) { return rowToRecord_(candHeaders, row); });
+  candidates.forEach(function (cand) {
+    // Cópia rasa do estado lido: Date continua o mesmo objeto, então só o que o run mudar
+    // de verdade difere — e só isso é regravado.
+    cand._original = {};
+    Object.keys(cand).forEach(function (key) { if (key !== '_original') cand._original[key] = cand[key]; });
+    ref.keys['cand|' + normalizeSlug_(cand.source_name) + '|' + toText_(cand.external_id)] = toText_(cand.candidate_id);
+    ref.keys['cand|' + canonicalListingUrl_(cand.source_url)] = toText_(cand.candidate_id);
+  });
+
+  var forceRequest = toText_(props_().getProperty(LISTINGS_DISCOVERY_FORCE_PROP));
+  var forceAfter = cellDate_(forceRequest);
+
+  var runId = 'RUN_DISCOVERY_' + Utilities.getUuid();
+  appendListingsRun_(runId, now);
+  var stats = { requested: 0, read: 0, blocked: 0, errors: 0, found: 0, created: 0, readCandidates: 0, rejected: 0, promoted: 0, messages: [] };
+  var searchChanges = {};
+  var candChanges = {};
+  var newCandidates = [];
+  var authError = null;
+  var unfinished = false;
+  var today = listingsDayKey_(now);
+
+  // 1. Buscas vencidas.
+  try {
+    searches.forEach(function (search) {
+      var searchId = toText_(search.search_id);
+      if (!searchId || !/^https?:\/\//i.test(toText_(search.search_url))) return;
+      // Busca mal configurada: registra o erro na linha e no run, sem ler página nenhuma.
+      var failSearch = function (message) {
+        searchChanges[searchId] = { last_run_at: now, last_status: 'error', last_http_code: '', last_found_count: 0, last_new_count: 0 };
+        stats.errors++;
+        stats.messages.push(message);
+      };
+      if (!isBlank_(search.active) && !toBoolean_(search.active)) return;
+      var frequency = toText_(search.frequency).toLowerCase() || 'daily';
+      var lastRun = cellDate_(search.last_run_at);
+      var forced = options.force || (forceAfter && lastRun && lastRun.getTime() < forceAfter.getTime());
+      if (!forced && lastRun) {
+        if (frequency === 'manual') return;
+        if (frequency === 'weekly' && now.getTime() - lastRun.getTime() < 7 * 86400000) return;
+        if (frequency !== 'weekly' && listingsDayKey_(lastRun) === today) return;
+      }
+      if (Date.now() - clockStart > budget) { unfinished = true; return; }
+      var host = urlHost_(search.search_url);
+      var source = toText_(search.source_id)
+        ? findSourceById_(sources, toText_(search.source_id))
+        : sources.byPortal[normalizeSlug_(ref.portalByHost[host] || '')];
+      var portalName = source ? source.name : (ref.portalByHost[host] || '');
+      // Host que LISTINGS já associa a um portal decide: `source_id` de outro portal rotularia
+      // cada anúncio da página com o portal errado (identidade e deduplicação quebradas).
+      var hostPortal = ref.portalByHost[host] || '';
+      if (toText_(search.source_id) && !source) {
+        return failSearch(searchId + ': source_id ' + toText_(search.source_id) + ' não existe em LISTING_SOURCES');
+      }
+      if (source && hostPortal && normalizeSlug_(hostPortal) !== normalizeSlug_(source.name)) {
+        return failSearch(searchId + ': source_id ' + toText_(search.source_id) + ' (' + source.name +
+          ') não é o portal da URL (' + hostPortal + ')');
+      }
+      if (!portalName) {
+        return failSearch(searchId + ': portal não identificado (preencha source_id)');
+      }
+      if (source && !source.active) return;
+      var config = sourceConfig[normalizeSlug_(portalName)] || {};
+      var found = 0;
+      var created = 0;
+      var status = 'ok';
+      var lastCode = '';
+      var pages = searchPageUrls_(search.search_url, search.max_pages);
+      var previousSignature = null;
+      for (var p = 0; p < pages.length; p++) {
+        // Página de busca segue redirecionamento (barra final, http→https): aqui não há
+        // "anúncio removido" a distinguir, só a página de resultados.
+        var request = buildListingRequest_(pages[p], source);
+        request.followRedirects = true;
+        var response = fetchListingPages_([request])[0];
+        stats.requested++;
+        lastCode = response && response.code !== undefined ? response.code : '';
+        if (!response || response.error || response.code !== 200) {
+          var verdict = classifyListingResponse_(pages[p], response, '');
+          status = verdict.outcome === 'blocked' ? 'blocked' : 'error';
+          if (status === 'blocked') stats.blocked++; else stats.errors++;
+          stats.messages.push(searchId + ' p' + (p + 1) + ': ' + verdict.message);
+          break;
+        }
+        var links = extractListingLinks_(response.body, pages[p], ref.pathPrefixes[host], config.pathRegex);
+        // Desafio do WAF servido com HTTP 200: página sem link de anúncio e com marcador de
+        // bloqueio é bloqueio, não "busca sem resultado".
+        var challenge = links.length ? '' : challengeMarker_(response.body);
+        if (challenge) {
+          status = 'blocked';
+          stats.blocked++;
+          stats.messages.push(searchId + ' p' + (p + 1) + ': CHALLENGE_PAGE "' + challenge + '"');
+          break;
+        }
+        stats.read++;
+        // A paginação acabou quando a página repete a lista da anterior (portal que devolve a
+        // última página para número fora do intervalo) ou não tem link de anúncio. Página só
+        // com anúncios já conhecidos NÃO encerra: o novo pode estar na seguinte.
+        var signature = links.map(function (l) { return l.url; }).sort().join(' ');
+        if (signature === previousSignature) break;
+        previousSignature = signature;
+        found += links.length;
+        links.forEach(function (link) {
+          var portalSlug = normalizeSlug_(portalName);
+          if (ref.keys[portalSlug + '|' + link.token] || ref.urls[canonicalListingUrl_(link.url)] ||
+              ref.keys['cand|' + portalSlug + '|' + link.token] || ref.keys['cand|' + canonicalListingUrl_(link.url)]) return;
+          var candidateId = 'CAND_' + portalSlug.replace(/_/g, '').toUpperCase() + '_' + link.token;
+          ref.keys['cand|' + portalSlug + '|' + link.token] = candidateId;
+          ref.keys['cand|' + canonicalListingUrl_(link.url)] = candidateId;
+          var locality = toText_(search.locality) || inferLocalityFromUrl_(link.url, ref);
+          newCandidates.push({
+            candidate_id: candidateId, discovered_at: now, discovered_by: 'search:' + searchId,
+            source_id: source ? source.sourceId : '', source_name: portalName, source_url: link.url,
+            external_id: link.token, title: '', transaction_type: toText_(search.transaction_type) || 'sale',
+            property_type: toText_(search.property_type) || inferPropertyType_(link.url),
+            address: '', locality: locality, ra_geo_id: normalizeListingRa_(search.ra_geo_id, ref) || toText_(search.ra_geo_id),
+            latitude: '', longitude: '', asking_price_brl: '', area_m2: '',
+            bedrooms: inferBedroomsFromUrl_(link.url) === null ? '' : inferBedroomsFromUrl_(link.url),
+            suites: '', parking_spaces: '', condo_fee_brl: '', iptu_brl: '', features_json: '',
+            raw_json: JSON.stringify(inferBedroomsFromUrl_(link.url) === null
+              ? { search_id: searchId, read_attempts: 0 }
+              : { search_id: searchId, read_attempts: 0, bedrooms_from_url: true }), status: 'pending',
+            reviewed_at: '', reject_reason: 'aguardando leitura da página do anúncio',
+            parser_version: LISTINGS_PARSER_VERSION
+          });
+          created++;
+        });
+        if (!links.length) break;
+      }
+      stats.found += found;
+      stats.created += created;
+      searchChanges[searchId] = {
+        last_run_at: now, last_status: status, last_http_code: lastCode, last_found_count: found, last_new_count: created
+      };
+      if (status === 'ok' && found === 0) {
+        stats.messages.push(searchId + ': nenhum link de anúncio reconhecido na página (conferir a URL ou listing_path_regex)');
+      }
+    });
+  } catch (err) {
+    if (!isUrlFetchAuthorizationError_(err)) throw err;
+    authError = err;
+  }
+
+  // 2 e 3. Leitura e promoção dos candidatos (os de antes e os novos deste run).
+  var queue = candidates.concat(newCandidates);
+  var promotedRows = [];
+  var createdEvents = [];
+  if (!authError) {
+    // Portal desligado em LISTING_SOURCES (active = FALSE) para tudo o que é dele: busca,
+    // leitura e promoção. O candidato fica na fila e volta quando o portal for religado.
+    var portalOff = function (cand) {
+      var source = sources.byPortal[normalizeSlug_(cand.source_name)];
+      return !!source && !source.active;
+    };
+    var toRead = queue.filter(function (cand) {
+      var status = toText_(cand.status).toLowerCase();
+      if (status !== 'pending' && status !== 'approved') return false;
+      if (portalOff(cand)) return false;
+      var meta = candidateMeta_(cand);
+      return !candidatePageRead_(cand) && (meta.read_attempts || 0) < LISTINGS_CANDIDATE_MAX_READ_ATTEMPTS &&
+        /^https?:\/\//i.test(toText_(cand.source_url));
+    });
+    if (toRead.length > readsPerRun) unfinished = true;
+    var items = toRead.slice(0, readsPerRun).map(function (cand) {
+      return { cand: cand, url: toText_(cand.source_url), externalId: cand.external_id,
+        source: sources.byPortal[normalizeSlug_(cand.source_name)] || null };
+    });
+    var chunks = chunkByHost_(items, LISTINGS_FETCH_CHUNK, LISTINGS_FETCH_PER_HOST);
+    try {
+      for (var c = 0; c < chunks.length; c++) {
+        if (c > 0 && Date.now() - clockStart > budget) { unfinished = true; break; }
+        if (c > 0 && LISTINGS_FETCH_PAUSE_MS > 0 && typeof Utilities.sleep === 'function') Utilities.sleep(LISTINGS_FETCH_PAUSE_MS);
+        var results = fetchAndClassifyListings_(chunks[c]);
+        chunks[c].forEach(function (item, k) { applyCandidateRead_(item.cand, results[k], now, stats); });
+      }
+    } catch (err) {
+      if (!isUrlFetchAuthorizationError_(err)) throw err;
+      authError = err;
+    }
+
+    queue.forEach(function (cand) {
+      if (authError) return; // leitura interrompida sem autorização: nada é promovido
+      var status = toText_(cand.status).toLowerCase();
+      if (status !== 'pending' && status !== 'approved') return;
+      if (portalOff(cand)) {
+        cand.reject_reason = 'portal desativado em LISTING_SOURCES; volta quando ele for religado';
+        return;
+      }
+      if (!candidatePageRead_(cand) && status !== 'approved') return;
+      var verdict = evaluateListingCandidate_(cand, ref);
+      var blocking = status === 'approved' ? verdict.hard : verdict.hard.concat(verdict.soft, pageConflicts_(cand));
+      if (blocking.length) {
+        cand.reject_reason = blocking.join('; ');
+        return;
+      }
+      var listing = listingFromCandidate_(cand, verdict.resolved, now, runId);
+      if (ref.ids[listing.listing_id]) {
+        cand.reject_reason = 'já existe em LISTINGS (' + listing.listing_id + ')';
+        return;
+      }
+      ref.ids[listing.listing_id] = true;
+      ref.keys[normalizeSlug_(cand.source_name) + '|' + toText_(cand.external_id)] = listing.listing_id;
+      ref.urls[canonicalListingUrl_(cand.source_url)] = listing.listing_id; // mesma URL no lote é duplicata
+      promotedRows.push(listingHeaders.map(function (h) { return listing[h] === undefined ? '' : listing[h]; }));
+      createdEvents.push([
+        'EVT_' + Utilities.getUuid(), now, listing.listing_id, 'created', listing.portal, '', 'active', '',
+        listing.asking_price_brl, '*', runId, 'promovido de ' + toText_(cand.candidate_id) +
+          (status !== 'approved' ? ' (portões automáticos)'
+            : (candidatePageRead_(cand) ? ' (aprovado à mão)' : ' (aprovado à mão, sem leitura da página)'))
+      ]);
+      cand.status = 'promoted';
+      cand.reviewed_at = now;
+      cand.reject_reason = '';
+      stats.promoted++;
+    });
+  }
+
+  // Gravação: candidatos (novos e alterados), buscas, LISTINGS, eventos — só com o lock de
+  // documento, pela mesma razão da verificação (R8.103). Sem ele nada é gravado: a busca
+  // continua vencida (`last_run_at` não mudou) e a continuação refaz tudo.
+  // Sem autorização de rede nada é gravado (R8.102), nem o que foi colhido antes do erro.
+  var documentLock = authError ? null : LockService.getDocumentLock();
+  var holdsDocument = !!documentLock && documentLock.tryLock(LOCK_TIMEOUT_MS);
+  var lockBusy = !authError && !holdsDocument;
+  if (!holdsDocument) {
+    stats.promoted = 0;
+    stats.created = 0;
+    promotedRows = [];
+    newCandidates = [];
+  }
+  if (holdsDocument) {
+    try {
+      // O retrato das linhas foi tirado ANTES da rede, que leva minutos. Com o lock, as linhas
+      // de candidato e de busca são relidas: a que alguém mudou nesse meio-tempo (decisão de
+      // revisão, preço digitado, busca editada) fica fora deste run inteira — não é promovida
+      // nem regravada — e a continuação a refaz a partir do que está na planilha.
+      var touchedCandidates = rowsChangedSince_(candSheet, candHeaders, 'candidate_id', candidates);
+      var touchedSearches = rowsChangedSince_(searchSheet, searchHeaders, 'search_id', searches,
+        LISTING_SEARCH_CONFIG_FIELDS.concat(['last_run_at']));
+      Object.keys(touchedSearches).forEach(function (id) {
+        delete searchChanges[id];
+        stats.messages.push(id + ': busca alterada durante a execução; refeita na continuação');
+      });
+      var dropped = {};
+      candidates.forEach(function (cand) {
+        var id = toText_(cand.candidate_id);
+        if (!touchedCandidates[id]) return;
+        if (cand.status === 'promoted' && toText_(cand._original.status) !== 'promoted') {
+          dropped[listingIdForCandidate_(cand)] = true;
+          stats.promoted--;
+        }
+        stats.messages.push(id + ': linha alterada durante a busca; fica para a continuação');
+      });
+      // Candidato novo que não pode entrar: veio de uma busca alterada durante a execução (o
+      // filtro antigo não vale mais), ou outro escritor (agente externo) pôs o mesmo anúncio
+      // na fila nesse meio-tempo. Sai com a promoção que tiver gerado.
+      var staleSearch = {};
+      Object.keys(touchedSearches).forEach(function (id) { staleSearch['search:' + id] = true; });
+      var queued = candidateKeysOnSheet_(candSheet, candHeaders);
+      newCandidates = newCandidates.filter(function (cand) {
+        var stale = !!staleSearch[toText_(cand.discovered_by)];
+        var queuedMeanwhile = queued[toText_(cand.candidate_id)] ||
+          queued[normalizeSlug_(cand.source_name) + '|' + toText_(cand.external_id)] ||
+          queued[canonicalListingUrl_(cand.source_url)];
+        if (!stale && !queuedMeanwhile) return true;
+        stats.created--;
+        if (cand.status === 'promoted') {
+          dropped[listingIdForCandidate_(cand)] = true;
+          stats.promoted--;
+        }
+        if (queuedMeanwhile) stats.messages.push(toText_(cand.candidate_id) + ': já entrou na fila por outro escritor durante a busca');
+        return false;
+      });
+      // Portal desligado em LISTING_SOURCES durante a execução: a promoção do retrato antigo
+      // não vale mais. O candidato volta ao estado anterior e espera o portal ser religado.
+      var sourcesNow = readListingSources_();
+      candidates.concat(newCandidates).forEach(function (cand) {
+        var listingId = listingIdForCandidate_(cand);
+        if (cand.status !== 'promoted' || dropped[listingId]) return;
+        if (toText_((cand._original || {}).status) === 'promoted') return; // promovido em run anterior
+        var source = sourcesNow.byPortal[normalizeSlug_(cand.source_name)];
+        if (!source || source.active) return;
+        var before = cand._original || {};
+        cand.status = toText_(before.status) || 'pending';
+        cand.reviewed_at = before.reviewed_at === undefined ? '' : before.reviewed_at;
+        cand.reject_reason = 'portal desativado em LISTING_SOURCES; volta quando ele for religado';
+        dropped[listingId] = true;
+        stats.promoted--;
+      });
+      if (Object.keys(dropped).length) {
+        var dropColumn = listingHeaders.indexOf('listing_id');
+        promotedRows = promotedRows.filter(function (row) { return !dropped[toText_(row[dropColumn])]; });
+        createdEvents = createdEvents.filter(function (ev) { return !dropped[ev[2]]; });
+      }
+      if (Object.keys(touchedCandidates).length || Object.keys(touchedSearches).length) unfinished = true;
+
+      // A referência de duplicidade foi lida ANTES do lock. Com ele em mãos, os ids de
+      // LISTINGS são relidos: o que alguém criou nesse meio-tempo (API de escrita, edição
+      // manual) não é anexado de novo, e o candidato volta ao estado anterior com o motivo.
+      if (promotedRows.length) {
+        // As mesmas três chaves da deduplicação inicial: id, portal + id do anúncio e URL
+        // canônica. A área administrativa pode ter criado o mesmo anúncio com outro listing_id.
+        var fresh = buildListingsReference_(dataRowsOf_(listings), lix, [], {});
+        var col = function (h) { return listingHeaders.indexOf(h); };
+        var duplicated = {};
+        promotedRows = promotedRows.filter(function (row) {
+          var id = toText_(row[col('listing_id')]);
+          var key = normalizeSlug_(row[col('portal')]) + '|' + toText_(row[col('external_id')]);
+          var url = canonicalListingUrl_(row[col('source_url')]);
+          var dupOf = fresh.ids[id] ? id
+            : (key in fresh.keys ? fresh.keys[key] : (url in fresh.urls ? fresh.urls[url] : null));
+          if (dupOf === null) {
+            // A linha aceita entra no índice: outra do mesmo lote com a mesma chave é duplicata.
+            fresh.ids[id] = true;
+            fresh.keys[key] = id;
+            fresh.urls[url] = id;
+            return true;
+          }
+          duplicated[id] = dupOf || id;
+          return false;
+        });
+        createdEvents = createdEvents.filter(function (ev) { return !duplicated[ev[2]]; });
+        queue.forEach(function (cand) {
+          var id = listingIdForCandidate_(cand);
+          if (cand.status !== 'promoted' || !duplicated[id]) return;
+          var before = cand._original || {};
+          cand.status = toText_(before.status) || 'pending';
+          cand.reviewed_at = before.reviewed_at === undefined ? '' : before.reviewed_at;
+          cand.reject_reason = 'já existe em LISTINGS (' + duplicated[id] + ')';
+          stats.promoted--;
+        });
+      }
+      if (newCandidates.length) {
+        var start = candSheet.getLastRow() + 1;
+        candSheet.getRange(start, 1, newCandidates.length, candHeaders.length).setValues(newCandidates.map(function (cand) {
+          return candHeaders.map(function (h) { return cand[h] === undefined ? '' : safeCellValue_(cand[h]); });
+        }));
+      }
+      // Candidato que já existia: grava só os campos que o run mudou, casando por id (uma
+      // edição humana feita durante o run em OUTRO campo sobrevive). Os novos já foram
+      // gravados acima no estado final, porque leitura e promoção acontecem antes da gravação.
+      candidates.forEach(function (cand) {
+        if (touchedCandidates[toText_(cand.candidate_id)]) return;
+        var changes = {};
+        ['title', 'property_type', 'asking_price_brl', 'area_m2', 'bedrooms', 'parking_spaces',
+          'condo_fee_brl', 'iptu_brl', 'raw_json', 'status', 'reviewed_at', 'reject_reason'].forEach(function (f) {
+          if (cand[f] !== cand._original[f]) changes[f] = cand[f];
+        });
+        if (Object.keys(changes).length) candChanges[toText_(cand.candidate_id)] = changes;
+      });
+      writeRowChanges_(candSheet, 'candidate_id', candChanges);
+      writeRowChanges_(searchSheet, 'search_id', searchChanges);
+      if (promotedRows.length) {
+        var at = listings.getLastRow() + 1;
+        listings.getRange(at, 1, promotedRows.length, listingHeaders.length).setValues(promotedRows.map(function (row) {
+          return row.map(safeCellValue_);
+        }));
+      }
+      appendListingEvents_(createdEvents);
+    } finally {
+      documentLock.releaseLock();
+    }
+  }
+
+  // Gravações já feitas: falha ao agendar a continuação deixa o run parcial, nunca `running`.
+  var continuation = false;
+  var continuationError = '';
+  if (!authError && (unfinished || lockBusy) && !options.noContinuation) {
+    var schedule = scheduleListingsJobQuietly_(LISTINGS_DISCOVERY_CONTINUE_HANDLER);
+    continuation = schedule.scheduled;
+    continuationError = schedule.error;
+  }
+  // Pedido explícito atendido: apaga, a menos que outro pedido tenha chegado durante o run.
+  if (forceRequest && !authError && !lockBusy && !unfinished &&
+      toText_(props_().getProperty(LISTINGS_DISCOVERY_FORCE_PROP)) === forceRequest) {
+    props_().deleteProperty(LISTINGS_DISCOVERY_FORCE_PROP);
+  }
+
+  var status;
+  if (authError || lockBusy) status = 'failed';
+  else if (stats.requested > 0 && stats.read === 0 && (stats.blocked + stats.errors) > 0) status = 'failed';
+  else if (stats.blocked + stats.errors === 0 && !continuationError) status = 'success';
+  else status = 'partial';
+  var details = (authError ? 'AUTHORIZATION_REQUIRED: ' + toText_(authError.message || authError).slice(0, 300) + ' · ' : '') +
+    (continuationError ? 'CONTINUATION_NOT_SCHEDULED: ' + toText_(continuationError).slice(0, 200) +
+      '; o restante fica para o gatilho diário · ' : '') +
+    (lockBusy ? 'DOCUMENT_LOCK_BUSY: lock da planilha ocupado por 30 s; nada gravado, busca refeita na continuação · ' : '') +
+    'links ' + stats.found + ', novos ' + stats.created + ', lidos ' + stats.readCandidates +
+    ', promovidos ' + stats.promoted + (continuation ? ' · continuação agendada' : '') +
+    (stats.messages.length ? ' · ' + stats.messages.slice(0, 40).join(' | ') : '');
+  finishListingsRun_(runId, {
+    status: status, candidate_rows: stats.created, candidate_processed: stats.readCandidates,
+    candidate_rejected: stats.rejected, source_pages_requested: stats.requested,
+    source_pages_read: stats.read, new_listings: stats.promoted, errors: stats.blocked + stats.errors,
+    error_details: details.slice(0, LISTINGS_ERROR_DETAILS_MAX)
+  });
+
+  var pending = candidates.concat(newCandidates).filter(function (cand) {
+    var written = holdsDocument && !(touchedCandidates && touchedCandidates[toText_(cand.candidate_id)]);
+    var s = toText_(written ? cand.status : (cand._original || cand).status).toLowerCase();
+    return s === 'pending' || s === 'approved';
+  }).length;
+  setMeta_('listings_last_discovery_at', now.toISOString());
+  setMeta_('listings_last_discovery_status', status);
+  setMeta_('listings_pending_candidates', String(pending));
+  if (authError) setMeta_('listings_update_status', 'auth_required');
+  if (promotedRows.length) {
+    bumpDatasetVersion_();
+    setMeta_('validation_status', 'dirty');
+    setMeta_('last_data_change_at', nowISO_());
+    clearCache();
+  }
+
+  var message = authError
+    ? 'Busca de anúncios SEM AUTORIZAÇÃO de rede (script.external_request). Nada foi gravado em ' +
+      'LISTINGS. Rode "Instalar gatilhos" pelo editor (docs/SHEET_SETUP.md §10).'
+    : 'Busca ' + runId + ': ' + status + '. Links de anúncio: ' + stats.found + '; candidatos novos: ' +
+      stats.created + '; páginas de candidato lidas: ' + stats.readCandidates + '; promovidos a LISTINGS: ' +
+      stats.promoted + '; pendentes: ' + pending + '.' + (continuation ? ' Continuação agendada.' : '');
+  Logger.log(message);
+  return message;
+}
+
+/**
+ * Ids das linhas cuja versão atual na planilha difere do retrato tirado no início do run
+ * (`_original` quando existe, senão o próprio objeto), olhando só `fields` (todas as colunas
+ * por padrão). Linha apagada conta como alterada.
+ */
+function rowsChangedSince_(sheet, headers, idField, snapshots, fields) {
+  var changed = {};
+  if (!sheet || !snapshots.length) return changed;
+  var compare = (fields || headers).filter(function (h) { return h && headers.indexOf(h) !== -1; });
+  var current = {};
+  if (sheet.getLastRow() > 1) {
+    sheet.getRange(2, 1, sheet.getLastRow() - 1, headers.length).getValues().forEach(function (row) {
+      var record = rowToRecord_(headers, row);
+      var id = toText_(record[idField]);
+      if (id && !current[id]) current[id] = record;
+    });
+  }
+  snapshots.forEach(function (snap) {
+    var before = snap._original || snap;
+    var id = toText_(before[idField]);
+    if (!id) return;
+    var now = current[id];
+    if (!now || compare.some(function (h) { return !sameCellValue_(now[h], before[h]); })) changed[id] = true;
+  });
+  return changed;
+}
+
+/**
+ * Chaves de deduplicação dos candidatos que estão na planilha AGORA (relida com o lock):
+ * `candidate_id`, portal + id e URL canônica.
+ */
+function candidateKeysOnSheet_(sheet, headers) {
+  var keys = {};
+  if (!sheet || sheet.getLastRow() < 2) return keys;
+  sheet.getRange(2, 1, sheet.getLastRow() - 1, headers.length).getValues().forEach(function (row) {
+    var cand = rowToRecord_(headers, row);
+    var id = toText_(cand.candidate_id);
+    if (id) keys[id] = true;
+    if (toText_(cand.external_id)) keys[normalizeSlug_(cand.source_name) + '|' + toText_(cand.external_id)] = true;
+    if (/^https?:\/\//i.test(toText_(cand.source_url))) keys[canonicalListingUrl_(cand.source_url)] = true;
+  });
+  return keys;
+}
+
+/** Mesma célula? Data por instante; o resto por texto (número e booleano voltam iguais do Sheets). */
+function sameCellValue_(a, b) {
+  var da = isDateValue_(a) ? cellDate_(a) : null;
+  var db = isDateValue_(b) ? cellDate_(b) : null;
+  if (da || db) return !!da && !!db && da.getTime() === db.getTime();
+  return toText_(a) === toText_(b);
+}
+
+// --- Atestado de leitura ------------------------------------------------------------------
+
+/**
+ * A página do candidato foi lida e reconhecida PELA ROTINA? `raw_json` é editável por qualquer
+ * escritor da fila (agente externo, digitação), então `read_status = ok` sozinho não prova
+ * nada: a rotina assina a leitura (HMAC-SHA256) com uma chave que só ela tem, guardada nas
+ * propriedades do script. A assinatura cobre o candidato, a identidade da fonte e o instante
+ * da leitura; mudou a URL ou o id depois, a leitura deixa de valer e a página é lida de novo.
+ */
+function candidatePageRead_(cand) {
+  var meta = candidateMeta_(cand);
+  return meta.read_status === 'ok' && typeof meta.read_sig === 'string' && meta.read_sig !== '' &&
+    meta.read_sig === readAttestation_(cand, meta);
+}
+
+/**
+ * O que impede a promoção AUTOMÁTICA de um candidato lido: preço, área e quartos têm de ser os
+ * que a página disse (meta.page, assinado na leitura). Quartos sem dado estruturado valem pelo
+ * slug da URL, que a rotina recalcula. Valor digitado por fora que diverge da página, ou que a
+ * página não confirma, fica para a aprovação manual — quem aprova atesta o valor.
+ */
+function pageConflicts_(cand) {
+  var page = candidateMeta_(cand).page || {};
+  var out = [];
+  var check = function (field, key, label) {
+    var typed = toNumber_(cand[field]);
+    if (typed === null) return; // falta de dado é portão hard, não conflito
+    var seen = page[key] === undefined ? null : page[key];
+    if (key === 'bedrooms' && seen === null && inferBedroomsFromUrl_(cand.source_url) === typed) return;
+    if (seen === null) out.push(label + ' não confirmado pela página; aprove à mão se estiver certo');
+    else if (seen !== typed) out.push(label + ' ' + typed + ' diverge da página (' + seen + '); aprove à mão se estiver certo');
+  };
+  check('asking_price_brl', 'price', 'preço');
+  check('area_m2', 'area', 'área');
+  if (toText_(cand.property_type) !== 'terreno') check('bedrooms', 'bedrooms', 'quartos');
+  return out;
+}
+
+function readAttestation_(cand, meta) {
+  return hmacSha256Hex_(['read-ok', toText_(cand.candidate_id), normalizeSlug_(cand.source_name),
+    toText_(cand.external_id), canonicalListingUrl_(cand.source_url), toText_(meta.last_read_at),
+    JSON.stringify(meta.page || null)].join('|'),
+    listingsReadKey_());
+}
+
+var LISTINGS_READ_KEY_CACHE_ = null;
+
+/** Chave do atestado; criada (aleatória) na primeira leitura e guardada no script. */
+function listingsReadKey_() {
+  if (LISTINGS_READ_KEY_CACHE_) return LISTINGS_READ_KEY_CACHE_;
+  var key = toText_(props_().getProperty(LISTINGS_READ_KEY_PROP));
+  if (!key) {
+    key = Utilities.getUuid() + Utilities.getUuid();
+    props_().setProperty(LISTINGS_READ_KEY_PROP, key);
+  }
+  LISTINGS_READ_KEY_CACHE_ = key;
+  return key;
+}
+
+function hmacSha256Hex_(value, key) {
+  // Como computeDigest, a assinatura vem em bytes COM sinal (-128..127).
+  return Utilities.computeHmacSha256Signature(String(value), String(key)).map(function (byte) {
+    var n = byte < 0 ? byte + 256 : byte;
+    return ('0' + n.toString(16)).slice(-2);
+  }).join('');
+}
+
+/** Marcador de página de desafio (WAF, captcha) no corpo, ou '' quando não há. */
+function challengeMarker_(body) {
+  var text = foldText_(body);
+  for (var b = 0; b < LISTINGS_BLOCKED_MARKERS.length; b++) {
+    if (text.indexOf(LISTINGS_BLOCKED_MARKERS[b]) !== -1) return LISTINGS_BLOCKED_MARKERS[b];
+  }
+  return '';
+}
+
+function findSourceById_(sources, sourceId) {
+  var found = null;
+  Object.keys(sources.byPortal).forEach(function (slug) {
+    if (sources.byPortal[slug].sourceId === sourceId) found = sources.byPortal[slug];
+  });
+  return found;
+}
+
+/**
+ * Aplica a leitura da página de um candidato. Só PREENCHE campo vazio: o que alguém digitou
+ * na linha do candidato vale mais que o parser. `gone` rejeita; bloqueio e erro contam
+ * tentativa, até LISTINGS_CANDIDATE_MAX_READ_ATTEMPTS.
+ */
+function applyCandidateRead_(cand, verdict, now, stats) {
+  var meta = candidateMeta_(cand);
+  stats.requested += verdict.requests || 1;
+  meta.last_read_at = now.toISOString();
+  meta.last_read_status = verdict.outcome;
+  meta.http_code = verdict.code === undefined ? '' : verdict.code;
+  if (verdict.outcome === 'ok') {
+    stats.read++;
+    stats.readCandidates++;
+    var parsed = verdict.parsed || {};
+    var fill = function (field, value) {
+      if (value === null || value === undefined || value === '') return;
+      if (isBlank_(cand[field])) cand[field] = value;
+    };
+    fill('asking_price_brl', parsed.price);
+    fill('area_m2', parsed.area);
+    // Quartos que a própria rotina deduziu do slug (marcados na criação e ainda intocados) cedem
+    // ao dado estruturado da página; o que alguém digitou continua valendo.
+    if (meta.bedrooms_from_url && toNumber_(parsed.bedrooms) !== null &&
+        toNumber_(cand.bedrooms) === inferBedroomsFromUrl_(cand.source_url)) {
+      cand.bedrooms = parsed.bedrooms;
+    }
+    delete meta.bedrooms_from_url;
+    fill('bedrooms', parsed.bedrooms);
+    fill('parking_spaces', parsed.parking);
+    fill('condo_fee_brl', parsed.condo);
+    fill('iptu_brl', parsed.iptu);
+    fill('title', parsed.title);
+    if (isBlank_(cand.property_type)) cand.property_type = inferPropertyType_(cand.source_url + ' ' + (parsed.title || ''));
+    meta.read_status = 'ok';
+    // O que a página disse, assinado junto com a leitura: a promoção automática só usa dado que
+    // a página confirma (pageConflicts_), e o que veio digitado por fora não ganha esse selo.
+    meta.page = { price: toNumber_(parsed.price), area: toNumber_(parsed.area), bedrooms: toNumber_(parsed.bedrooms) };
+    meta.read_sig = readAttestation_(cand, meta);
+    meta.signals = parsed.signals || [];
+    meta.price_source = parsed.priceSource || '';
+    cand.reject_reason = '';
+  } else if (verdict.outcome === 'gone') {
+    stats.read++;
+    stats.readCandidates++;
+    stats.rejected++;
+    cand.status = 'rejected';
+    cand.reviewed_at = now;
+    cand.reject_reason = 'anúncio removido antes da promoção (' + verdict.message + ')';
+    meta.read_status = 'gone';
+    delete meta.read_sig;
+  } else {
+    if (verdict.outcome === 'blocked') stats.blocked++; else stats.errors++;
+    meta.read_attempts = (meta.read_attempts || 0) + 1;
+    cand.reject_reason = (meta.read_attempts >= LISTINGS_CANDIDATE_MAX_READ_ATTEMPTS
+      ? 'leitura falhou ' + meta.read_attempts + ' vezes; preencha preço, área e quartos à mão e aprove: '
+      : 'leitura pendente (' + meta.read_attempts + '/' + LISTINGS_CANDIDATE_MAX_READ_ATTEMPTS + '): ') + verdict.message;
+  }
+  cand.raw_json = JSON.stringify(meta);
 }

@@ -177,11 +177,14 @@ declarada entre as grafias de RA; e os agregados por RA cruzados com o PDAD. Pen
 primeira execução real do pipeline — até lá `data/public/` não tem nenhum conjunto e as camadas
 ficam desabilitadas, com o motivo — e o Modelo 2 (`warehouse/`, issue #154), só desenhado.
 
-O Apps Script v2.5.0 (`optional-apps-script/Code.gs`) é a camada de governança da planilha:
+O Apps Script v2.6.0 (`optional-apps-script/Code.gs`) é a camada de governança da planilha:
 validação, saneamento (dinheiro como número, período FipeZap como texto), filas de cobertura,
 metadados e a **verificação diária dos anúncios nos portais** (issue #178). Gatilho às 05h. Bloqueio do
 portal nunca inativa; um anúncio vira inativo com 3 confirmações de remoção em dias distintos e é
 reativado quando volta. Cada execução fica em `LISTINGS_UPDATE_RUNS` e o mês fecha em
-`LISTINGS_MONTHLY_METRICS`. A busca de anúncios novos é a issue #179. O runbook de instalação e
-sincronização está em [`docs/SHEET_SETUP.md`](docs/SHEET_SETUP.md) §9 e §10. Contagens de registros vivem em `APP_META`, não
+`LISTINGS_MONTHLY_METRICS`. A **busca de anúncios novos** (issue #179, 06h) lê as buscas salvas
+em `LISTING_SEARCHES` (uma URL de resultados por linha, copiada do portal), gera candidatos, lê a
+página de cada um e promove a `LISTINGS` o que passa nos portões. A coordenada é aproximada e
+declarada. Editar uma busca ou aprovar um candidato dispara a rotina. O runbook de instalação e
+sincronização está em [`docs/SHEET_SETUP.md`](docs/SHEET_SETUP.md) §9, §10 e §11. Contagens de registros vivem em `APP_META`, não
 neste README — qualquer número escrito aqui envelheceria no dia seguinte.
