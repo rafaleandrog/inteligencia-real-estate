@@ -55,6 +55,18 @@
  *   - `refreshMeta()` publica contagens de IVV, FipeZAP, PDAD, cobertura e polígonos ativos;
  *   - PDAD_A_DATA, PDAD_A_FIGURE_MAP e PDAD_A_GUIDE entram em ALLOWED_DATASETS.
  *
+ * Versão 2.5.0 (rotina de anúncios — issue #178):
+ *   - traz para o repositório a rotina diária de verificação de anúncios que rodava só no
+ *     editor desde 2026-09-23 (R8.86 de novo) — abas LISTING_SOURCES, LISTING_CANDIDATES,
+ *     LISTING_EVENTS, LISTINGS_UPDATE_RUNS, LISTINGS_HISTORY_MONTHLY, LISTINGS_MONTHLY_METRICS
+ *     e as 12 colunas operacionais de LISTINGS, com o schema que a planilha já tem;
+ *   - bloqueio (403/429/captcha) não é remoção; inativar exige 3 confirmações em dias
+ *     distintos; run com erro não é `success`; falta de `script.external_request` aborta o
+ *     run sem tocar em anúncio e publica `listings_update_status = auth_required`;
+ *   - fechamento mensal grava `unverified` para anúncio não confirmado no mês;
+ *   - `installTriggers()` instala o gatilho diário e remove gatilho órfão (handler que não
+ *     existe mais); menu ganha "Anúncios: verificar agora" e "Anúncios: diagnosticar portais".
+ *
  * Instalação:
  *   1. Extensões → Apps Script na planilha
  *   2. Cole este arquivo
@@ -69,7 +81,7 @@
 // Constantes
 // ---------------------------------------------------------------------------
 
-var APP_VERSION = '2.4.0';
+var APP_VERSION = '2.5.0';
 
 /**
  * Protocolo da API de escrita que este script fala, exposto em `health_()`.
@@ -621,6 +633,9 @@ function onOpen() {
     .addItem('Sincronizar Regiões Administrativas', 'syncAdministrativeRegions_UI')
     .addItem('Sincronizar trechos rodoviários DER', 'syncRoadSegmentsFromTraffic_UI')
     .addSeparator()
+    .addItem('Anúncios: verificar agora', 'listingsVerifyNow_UI')
+    .addItem('Anúncios: diagnosticar portais', 'listingsDiagnosePortals_UI')
+    .addSeparator()
     .addItem('Instalar gatilhos', 'installTriggers')
     .addItem('Atualizar metadados', 'refreshMeta')
     .addItem('Configurar / trocar token de administração', 'configureAdminToken')
@@ -1145,18 +1160,34 @@ function notify_(title, message) {
  *
  * onEdit simples não serve aqui: não tem permissão para escrever em outras abas
  * nem para usar Script Properties.
+ *
+ * v2.5.0: também remove gatilho ÓRFÃO — cujo handler não existe mais no projeto. É o caso
+ * do gatilho diário da rotina de anúncios antiga, instalada fora do repositório: depois
+ * de colar este arquivo e apagar o antigo, ele dispararia todo dia contra uma função que
+ * não existe. Rodar esta função PELO EDITOR é também o que abre a tela de autorização
+ * quando falta escopo (`script.external_request`, docs/SHEET_SETUP.md §10).
  */
 function installTriggers() {
   var book = ss_();
+  var orphans = [];
   ScriptApp.getProjectTriggers().forEach(function (trigger) {
     var fn = trigger.getHandlerFunction();
-    if (fn === 'handleEdit' || fn === 'maintenanceJob') ScriptApp.deleteTrigger(trigger);
+    if (fn === 'handleEdit' || fn === 'maintenanceJob' || fn === LISTINGS_VERIFY_HANDLER) {
+      ScriptApp.deleteTrigger(trigger);
+    } else if (typeof globalThis[fn] !== 'function') {
+      orphans.push(fn);
+      ScriptApp.deleteTrigger(trigger);
+    }
   });
 
   ScriptApp.newTrigger('handleEdit').forSpreadsheet(book).onEdit().create();
   ScriptApp.newTrigger('maintenanceJob').timeBased().everyHours(6).create();
+  ScriptApp.newTrigger(LISTINGS_VERIFY_HANDLER).timeBased().everyDays(1)
+    .atHour(LISTINGS_DAILY_HOUR).inTimezone(LISTINGS_TIME_ZONE).create();
 
-  var message = 'Gatilhos instalados: handleEdit (a cada edição) e maintenanceJob (a cada 6 horas).';
+  var message = 'Gatilhos instalados: handleEdit (a cada edição), maintenanceJob (a cada 6 horas) e ' +
+    LISTINGS_VERIFY_HANDLER + ' (diário, ' + LISTINGS_DAILY_HOUR + 'h de Brasília).' +
+    (orphans.length ? '\nGatilhos órfãos removidos: ' + orphans.join(', ') + '.' : '');
   Logger.log(message);
   notify_('Gatilhos', message);
   return message;
@@ -1406,6 +1437,7 @@ function validateAll() {
     validateFipezapDataset_(report);
     validateIvvRegion_(report);
     validateDevelopmentCoverage_(report);
+    validateListingsRoutine_(report);
 
     sortFindings_(findings);
     writeQuality_(findings);
@@ -4538,6 +4570,8 @@ function qualityCategoryOf_(code) {
   if (/PERIOD|_MONTH$|COVERAGE_RANGE|_DATE$/.test(c)) return 'date';
   if (/SOURCE|NOTE_NOT_FOUND/.test(c)) return 'source';
   if (/^COVERAGE_|COVERAGE_GAP|UNEXPECTED_HISTORICAL/.test(c)) return 'coverage';
+  // v2.5.0 — rotina de anúncios: confirmação no portal é procedência do registro.
+  if (/^LISTING_(STALE_VERIFICATION|PORTAL_BLOCKED|HISTORY_UNVERIFIED)$/.test(c)) return 'source';
   if (/INVALID|MISMATCH|_SUM$|SCALE/.test(c)) return 'data_type';
   return 'other';
 }
@@ -5760,5 +5794,1514 @@ function validateDevelopmentCoverage_(report) {
       report('warning', 'DEVELOPMENTS', rn, id, field, 'COVERAGE_MISSING_' + field.toUpperCase(),
         'Fila de pesquisa: ' + field + ' vazio. Preencher só com fonte específica (source_url).');
     });
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Rotina de anúncios — verificação diária nos portais (v2.5.0, issue #178)
+// ---------------------------------------------------------------------------
+//
+// A rotina nasceu fora do repositório: foi instalada direto no editor em 2026-09-23
+// (`parser_version 2026-09-23-listings-1`) e rodou quinze dias sem ler uma página. Faltava
+// o escopo `script.external_request`, e mesmo assim cada execução era gravada como
+// `success` com 154 erros. Esta seção a traz para o repositório (R8.86) e corrige três
+// semânticas que o dado da planilha mostrou erradas:
+//
+//   1. BLOQUEIO NÃO É REMOÇÃO. 403/429/captcha/5xx/timeout dizem "o portal não deixou
+//      ver", não "o anúncio saiu". Só 404/410, marcador explícito de anúncio indisponível
+//      ou redirecionamento para fora do anúncio contam como remoção — e só inativam depois
+//      de LISTINGS_GONE_CONFIRMATIONS confirmações em dias distintos.
+//   2. RUN COM ERRO NÃO É SUCESSO. `success` só com zero erros, `partial` com erros,
+//      `failed` quando nada foi lido. Falta de autorização aborta o run antes de tocar em
+//      qualquer anúncio e publica `listings_update_status = auth_required` em APP_META.
+//   3. HISTÓRICO SÓ CONTA O QUE FOI CONFIRMADO. Anúncio ativo sem confirmação no mês sai
+//      no fechamento como `unverified`, nunca `active` — e as métricas não o contam.
+//
+// O schema das abas é o que a planilha viva tem (lido em 2026-10-08), coluna por coluna:
+// a rotina antiga já as criou, e trocar um nome aqui criaria uma coluna nova e vazia ao
+// lado da antiga. As abas ficam fora de REQUIRED_HEADERS de propósito, como
+// LISTINGS_COVERAGE: são operacionais, nascem desta seção e nunca são graváveis pela API
+// de escrita — e as 12 colunas operacionais de LISTINGS também não entram no
+// WRITE_ALLOWLIST, que deriva de REQUIRED_HEADERS.
+
+/** Versão do classificador/parser. Muda quando o critério de leitura de página muda. */
+var LISTINGS_PARSER_VERSION = '2026-10-08-listings-2';
+
+/** Fuso do "dia" da rotina: confirmação em dias distintos é dia de Brasília. */
+var LISTINGS_TIME_ZONE = 'America/Sao_Paulo';
+
+/** Quantas confirmações de remoção, em dias distintos, até inativar um anúncio. */
+var LISTINGS_GONE_CONFIRMATIONS = 3;
+
+/** Anúncio inativo é reconferido a cada N dias — é assim que a reativação acontece. */
+var LISTINGS_INACTIVE_RECHECK_DAYS = 7;
+
+/** Anúncio ativo sem confirmação no portal há mais que isto vira aviso em DATA_QUALITY. */
+var LISTINGS_STALE_AFTER_DAYS = 30;
+
+/**
+ * Orçamento de tempo de UMA execução. O Apps Script mata a execução aos 6 minutos; 4,5
+ * deixam margem para gravar o que foi lido. O que sobra vai para a continuação.
+ */
+var LISTINGS_VERIFY_BUDGET_MS = 270000;
+var LISTINGS_VERIFY_MAX_PER_RUN = 400;
+
+/** Requisições por lote de `fetchAll` e, dentro do lote, por domínio. */
+var LISTINGS_FETCH_CHUNK = 8;
+var LISTINGS_FETCH_PER_HOST = 3;
+/** Pausa entre lotes: volume baixo e espaçado é a regra de convivência com os portais. */
+var LISTINGS_FETCH_PAUSE_MS = 1000;
+var LISTINGS_MAX_REDIRECTS = 2;
+
+/**
+ * Variação de preço acima disto não é gravada: vira evento `price_unconfirmed`. Um parser
+ * que lê o campo errado (condomínio, preço de outro anúncio da página) não pode reescrever
+ * `asking_price_brl` sozinho.
+ */
+var LISTINGS_PRICE_MAX_RELATIVE_CHANGE = 0.6;
+
+var LISTINGS_ERROR_DETAILS_MAX = 4000;
+var LISTINGS_DAILY_HOUR = 5;
+var LISTINGS_CONTINUATION_DELAY_MS = 60 * 1000;
+var LISTINGS_VERIFY_HANDLER = 'listingsVerifyJob';
+var LISTINGS_CONTINUE_HANDLER = 'listingsVerifyContinue';
+
+/** Colunas operacionais de LISTINGS, mantidas só pela rotina (nunca pela API de escrita). */
+var LISTINGS_ROUTINE_COLUMNS = [
+  'first_seen_at', 'last_checked_at', 'last_price_change_at', 'inactive_at', 'content_hash',
+  'parser_version', 'source_observed_at', 'update_run_id', 'verification_failures',
+  'last_check_status', 'last_check_http_code', 'last_check_message'
+];
+
+/** As 14 colunas da planilha viva mais as 4 do diagnóstico de portal (v2.5.0). */
+var LISTING_SOURCES_HEADERS = [
+  'source_id', 'source_name', 'source_type', 'active', 'collection_frequency', 'base_url',
+  'search_urls', 'parser_key', 'parser_config_json', 'request_headers_json', 'notes',
+  'last_success_at', 'last_error_at', 'last_run_id',
+  'last_probe_at', 'last_probe_http_code', 'last_probe_bytes', 'last_probe_result'
+];
+var LISTING_CANDIDATES_HEADERS = [
+  'candidate_id', 'discovered_at', 'discovered_by', 'source_id', 'source_name', 'source_url',
+  'external_id', 'title', 'transaction_type', 'property_type', 'address', 'locality',
+  'ra_geo_id', 'latitude', 'longitude', 'asking_price_brl', 'area_m2', 'bedrooms', 'suites',
+  'parking_spaces', 'condo_fee_brl', 'iptu_brl', 'features_json', 'raw_json', 'status',
+  'reviewed_at', 'reject_reason', 'parser_version'
+];
+var LISTING_EVENTS_HEADERS = [
+  'event_id', 'event_at', 'listing_id', 'event_type', 'portal', 'old_status', 'new_status',
+  'old_price_brl', 'new_price_brl', 'changed_fields', 'run_id', 'details'
+];
+var LISTINGS_UPDATE_RUNS_HEADERS = [
+  'run_id', 'started_at', 'finished_at', 'status', 'candidate_rows', 'candidate_processed',
+  'candidate_rejected', 'source_pages_requested', 'source_pages_read', 'new_listings',
+  'updated_listings', 'reactivated_listings', 'price_changes', 'active_checks',
+  'confirmed_inactive', 'history_rows', 'metrics_rows', 'errors', 'error_details',
+  'parser_version'
+];
+var LISTINGS_HISTORY_MONTHLY_HEADERS = [
+  'history_id', 'reference_month', 'listing_id', 'portal', 'external_id', 'status_at_month_end',
+  'asking_price_brl', 'area_m2', 'asking_price_brl_m2', 'bedrooms', 'suites', 'parking_spaces',
+  'property_type', 'transaction_type', 'address', 'locality', 'ra_geo_id', 'latitude',
+  'longitude', 'first_seen_at', 'last_seen_at', 'last_price_change_at', 'content_hash',
+  'capture_run_id', 'captured_at'
+];
+var LISTINGS_MONTHLY_METRICS_HEADERS = [
+  'metric_id', 'reference_month', 'ra_geo_id', 'locality', 'property_type', 'transaction_type',
+  'bedrooms', 'area_band', 'active_ads_count', 'new_ads_count', 'inactive_ads_count',
+  'median_price', 'median_price_m2', 'average_price', 'average_price_m2', 'p25_price',
+  'p75_price', 'median_area_m2', 'median_parking_spaces', 'price_change_mom_pct',
+  'inventory_change_mom_pct', 'source_count', 'coverage_quality', 'calculated_at'
+];
+
+var LISTINGS_ROUTINE_SHEETS = {
+  LISTING_SOURCES: LISTING_SOURCES_HEADERS,
+  LISTING_CANDIDATES: LISTING_CANDIDATES_HEADERS,
+  LISTING_EVENTS: LISTING_EVENTS_HEADERS,
+  LISTINGS_UPDATE_RUNS: LISTINGS_UPDATE_RUNS_HEADERS,
+  LISTINGS_HISTORY_MONTHLY: LISTINGS_HISTORY_MONTHLY_HEADERS,
+  LISTINGS_MONTHLY_METRICS: LISTINGS_MONTHLY_METRICS_HEADERS
+};
+
+/** Faixas de área das métricas mensais — as cinco que a planilha já usa. */
+var LISTINGS_AREA_BANDS = [
+  { label: '0-49', max: 50 },
+  { label: '50-79', max: 80 },
+  { label: '80-119', max: 120 },
+  { label: '120-179', max: 180 },
+  { label: '180+', max: null }
+];
+
+/**
+ * Frases que só aparecem em página de anúncio removido. Comparadas contra o texto em
+ * minúsculas e sem acento. Tem que ser frase específica: "vendido" sozinho aparece no menu
+ * de qualquer portal ("imóveis vendidos"), e um falso positivo aqui conta para inativar.
+ */
+var LISTINGS_REMOVED_MARKERS = [
+  'anuncio nao esta mais disponivel', 'imovel nao esta mais disponivel',
+  'este anuncio nao esta mais disponivel', 'este imovel nao esta mais disponivel',
+  'anuncio foi removido', 'anuncio removido', 'anuncio indisponivel', 'imovel indisponivel',
+  'anuncio expirado', 'anuncio desativado', 'anuncio inativo', 'imovel ja foi vendido',
+  'imovel ja foi alugado', 'nao encontramos o imovel', 'nao encontramos este imovel',
+  'nao encontramos esse imovel', 'pagina nao encontrada', 'anuncio nao encontrado',
+  'imovel nao encontrado'
+];
+
+/**
+ * Sinais de página de desafio (captcha, WAF). Só valem quando a página NÃO trouxe dado do
+ * anúncio: página de anúncio legítima costuma carregar reCAPTCHA no formulário de contato.
+ */
+var LISTINGS_BLOCKED_MARKERS = [
+  'just a moment', 'attention required', 'cf-chl', 'cf_chl', 'px-captcha', 'perimeterx',
+  'datadome', 'are you a robot', 'are you human', 'access denied', 'acesso negado',
+  'request unsuccessful', 'incapsula', 'verifique que voce e humano', 'captcha'
+];
+
+/**
+ * Redirecionamento para estas rotas é bloqueio, não remoção. Casa SEGMENTO de caminho, nunca
+ * substring: "jardim-botanico" é bairro do DF e aparece em URL de anúncio de verdade.
+ */
+var LISTINGS_BLOCKED_URL_PATTERN = /\/(captcha|challenge|cdn-cgi|validate|blocked|denied|login|signin|auth)(\/|\?|#|$)/i;
+
+// --- Pontos de entrada ---------------------------------------------------------------
+
+/** Gatilho diário (instalado por `installTriggers()`). */
+function listingsVerifyJob(e) {
+  return runListingsVerify_({ trigger: 'time' });
+}
+
+/** Continuação agendada quando o orçamento da execução acaba antes da fila. */
+function listingsVerifyContinue(e) {
+  clearTriggersFor_(LISTINGS_CONTINUE_HANDLER);
+  return runListingsVerify_({ trigger: 'continuation' });
+}
+
+/** Menu: Anúncios: verificar agora. */
+function listingsVerifyNow_UI() {
+  var message = runListingsVerify_({ trigger: 'manual' });
+  notify_('Anúncios: verificação', message);
+  return message;
+}
+
+/** Menu: Anúncios: diagnosticar portais. */
+function listingsDiagnosePortals_UI() {
+  var message = diagnoseListingPortals_({ saveSamples: true });
+  notify_('Anúncios: diagnóstico dos portais', message);
+  return message;
+}
+
+/**
+ * Executa a verificação sob o lock de SCRIPT: gatilho diário, continuação e menu disputam
+ * as mesmas linhas, e uma segunda execução simultânea contaria a mesma remoção duas vezes.
+ * `tryLock(0)`: quem chega com o lock ocupado desiste na hora, em vez de esperar e
+ * repetir o trabalho que a outra execução acabou de fazer.
+ *
+ * `options` (para teste e para o menu): `now` (Date), `budgetMs`, `maxPerRun`, `force`,
+ * `listingIds` (verificar só estes), `noContinuation`.
+ */
+function runListingsVerify_(options) {
+  options = options || {};
+  var lock = LockService.getScriptLock();
+  if (!lock.tryLock(0)) {
+    var busy = 'Outra execução da rotina de anúncios está em andamento; esta foi ignorada.';
+    Logger.log(busy);
+    return busy;
+  }
+  try {
+    return runListingsVerifyLocked_(options);
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+// --- Schema --------------------------------------------------------------------------
+
+/**
+ * Cria o que falta das abas da rotina e das colunas operacionais de LISTINGS. Nunca
+ * reordena nem renomeia: `ensureHeaders_()` só acrescenta à direita. Em LISTINGS a criação
+ * é restrita à lista LISTINGS_ROUTINE_COLUMNS — nenhuma outra coluna nasce daqui.
+ */
+function ensureListingsRoutineSchema_() {
+  var book = ss_();
+  var added = [];
+  Object.keys(LISTINGS_ROUTINE_SHEETS).forEach(function (name) {
+    var sheet = book.getSheetByName(name) || book.insertSheet(name);
+    var result = ensureHeaders_(sheet, LISTINGS_ROUTINE_SHEETS[name], null);
+    if (result.added.length) added.push(name + ': ' + result.added.join(', '));
+  });
+  var listings = book.getSheetByName('LISTINGS');
+  if (listings) {
+    var columns = ensureHeaders_(listings, LISTINGS_ROUTINE_COLUMNS, LISTINGS_ROUTINE_COLUMNS);
+    if (columns.added.length) added.push('LISTINGS: ' + columns.added.join(', '));
+  }
+  return added;
+}
+
+// --- Datas -----------------------------------------------------------------------------
+
+function listingsDayKey_(date) {
+  return Utilities.formatDate(date, LISTINGS_TIME_ZONE, 'yyyy-MM-dd');
+}
+
+function listingsMonthKey_(date) {
+  return Utilities.formatDate(date, LISTINGS_TIME_ZONE, 'yyyy-MM');
+}
+
+/** Data de uma célula: Date, texto ISO ou vazio. Devolve null quando não há data legível. */
+function cellDate_(value) {
+  if (isDateValue_(value)) return isNaN(value.getTime()) ? null : value;
+  var text = toText_(value);
+  if (!text || !/^\d{4}-\d{2}-\d{2}/.test(text)) return null;
+  var date = new Date(text);
+  return isNaN(date.getTime()) ? null : date;
+}
+
+// --- Fontes ----------------------------------------------------------------------------
+
+/** LISTING_SOURCES indexada pelo nome do portal normalizado (casa com LISTINGS.portal). */
+function readListingSources_() {
+  var sheet = ss_().getSheetByName('LISTING_SOURCES');
+  var out = { byPortal: {}, sheet: sheet, ix: {} };
+  if (!sheet) return out;
+  var ix = headerIndex_(headersOf_(sheet));
+  out.ix = ix;
+  dataRowsOf_(sheet).forEach(function (row, i) {
+    var name = ix.source_name === undefined ? '' : toText_(row[ix.source_name]);
+    if (!name) return;
+    var activeCell = ix.active === undefined ? '' : row[ix.active];
+    out.byPortal[normalizeSlug_(name)] = {
+      rowNumber: i + 2,
+      sourceId: ix.source_id === undefined ? '' : toText_(row[ix.source_id]),
+      name: name,
+      active: isBlank_(activeCell) ? true : toBoolean_(activeCell),
+      parserKey: (ix.parser_key === undefined ? '' : toText_(row[ix.parser_key])) || 'generic_html',
+      headers: parseRequestHeaders_(ix.request_headers_json === undefined ? '' : row[ix.request_headers_json])
+    };
+  });
+  return out;
+}
+
+/** Cabeçalhos extras por fonte (`request_headers_json`). Só pares texto → texto. */
+function parseRequestHeaders_(cell) {
+  var text = toText_(cell);
+  if (!text) return {};
+  var parsed = safeJsonParse_(text);
+  var out = {};
+  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return out;
+  Object.keys(parsed).forEach(function (key) {
+    if (typeof parsed[key] === 'string' && /^[A-Za-z0-9-]+$/.test(key)) out[key] = parsed[key];
+  });
+  return out;
+}
+
+function safeJsonParse_(text) {
+  try { return JSON.parse(String(text)); } catch (err) { return null; }
+}
+
+// --- Seleção ---------------------------------------------------------------------------
+
+/**
+ * Índices (em `rows`) dos anúncios que vencem hoje, do conferido há mais tempo para o mais
+ * recente. Ativo: uma vez por dia. Inativo: a cada LISTINGS_INACTIVE_RECHECK_DAYS, para que
+ * um anúncio que voltou seja reativado. Status fora de active/inactive (vazio conta como
+ * active) é decisão humana e não é tocado; fonte com `active = false` também não.
+ */
+function selectDueListings_(rows, ix, now, options, sources) {
+  var today = listingsDayKey_(now);
+  var due = [];
+  rows.forEach(function (row, i) {
+    var id = toText_(row[ix.listing_id]);
+    if (!id) return;
+    if (options.listingIds && options.listingIds.indexOf(id) === -1) return;
+    if (!/^https?:\/\//i.test(toText_(row[ix.source_url]))) return;
+    var status = toText_(row[ix.status]).toLowerCase();
+    if (status !== '' && status !== 'active' && status !== 'inactive') return;
+    var source = sources.byPortal[normalizeSlug_(row[ix.portal])];
+    if (source && !source.active) return;
+    var lastChecked = cellDate_(row[ix.last_checked_at]);
+    if (!options.force && lastChecked) {
+      if (listingsDayKey_(lastChecked) === today) return;
+      if (status === 'inactive' &&
+          now.getTime() - lastChecked.getTime() < LISTINGS_INACTIVE_RECHECK_DAYS * 86400000) return;
+    }
+    due.push({ index: i, at: lastChecked ? lastChecked.getTime() : 0 });
+  });
+  due.sort(function (a, b) { return (a.at - b.at) || (a.index - b.index); });
+  return due.map(function (d) { return d.index; });
+}
+
+/**
+ * Parte a fila em lotes de `fetchAll` com no máximo LISTINGS_FETCH_PER_HOST requisições
+ * por domínio — DFImoveis é 86% da base, e oito acessos simultâneos ao mesmo portal é o
+ * padrão que um WAF bloqueia.
+ */
+function chunkByHost_(items, size, perHost) {
+  var queue = items.slice();
+  var chunks = [];
+  while (queue.length) {
+    var chunk = [];
+    var hosts = {};
+    var rest = [];
+    for (var i = 0; i < queue.length; i++) {
+      var host = urlHost_(queue[i].url);
+      if (chunk.length < size && (hosts[host] || 0) < perHost) {
+        chunk.push(queue[i]);
+        hosts[host] = (hosts[host] || 0) + 1;
+      } else {
+        rest.push(queue[i]);
+      }
+    }
+    chunks.push(chunk);
+    queue = rest;
+  }
+  return chunks;
+}
+
+function urlHost_(url) {
+  var m = /^https?:\/\/([^\/?#]+)/i.exec(toText_(url));
+  return m ? m[1].toLowerCase().replace(/^www\./, '') : '';
+}
+
+// --- Rede ------------------------------------------------------------------------------
+
+/** Erro de escopo ausente — em inglês e em português, que é como a conta da planilha o vê. */
+function isUrlFetchAuthorizationError_(err) {
+  var message = toText_(err && (err.message || err));
+  return /script\.external_request|permission to call UrlFetchApp|Required permissions|permiss(ão|ao) para chamar UrlFetchApp|Permiss(õ|o)es necess(á|a)rias|Authorization is required/i.test(message);
+}
+
+function buildListingRequest_(url, source) {
+  var headers = {
+    'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+    'Accept-Language': 'pt-BR,pt;q=0.9,en;q=0.5'
+  };
+  var extra = (source && source.headers) || {};
+  Object.keys(extra).forEach(function (key) { headers[key] = extra[key]; });
+  return { url: url, method: 'get', muteHttpExceptions: true, followRedirects: false, headers: headers };
+}
+
+function responseRecord_(response) {
+  var headers = {};
+  try {
+    var raw = typeof response.getAllHeaders === 'function' ? response.getAllHeaders()
+      : (typeof response.getHeaders === 'function' ? response.getHeaders() : {});
+    Object.keys(raw || {}).forEach(function (key) { headers[String(key).toLowerCase()] = String(raw[key]); });
+  } catch (err) { /* cabeçalho ilegível não impede ler o corpo */ }
+  var body = '';
+  try { body = response.getContentText(); } catch (err) { body = ''; }
+  return { code: Number(response.getResponseCode()) || 0, headers: headers, body: String(body || '') };
+}
+
+/**
+ * Busca um lote. `fetchAll` falha inteiro quando UMA URL dá erro de rede; aí cai para uma
+ * por uma, para que um portal fora do ar não derrube a leitura dos outros. Erro de
+ * AUTORIZAÇÃO nunca é engolido: sobe, e o run aborta sem tocar em anúncio.
+ */
+function fetchListingPages_(requests) {
+  try {
+    return UrlFetchApp.fetchAll(requests).map(responseRecord_);
+  } catch (err) {
+    if (isUrlFetchAuthorizationError_(err)) throw err;
+    return requests.map(function (request) {
+      var params = {};
+      Object.keys(request).forEach(function (key) { if (key !== 'url') params[key] = request[key]; });
+      try {
+        return responseRecord_(UrlFetchApp.fetch(request.url, params));
+      } catch (inner) {
+        if (isUrlFetchAuthorizationError_(inner)) throw inner;
+        return { error: toText_(inner && inner.message) || 'falha de rede' };
+      }
+    });
+  }
+}
+
+/**
+ * Busca e classifica um lote, seguindo até LISTINGS_MAX_REDIRECTS redirecionamentos que
+ * ficam no MESMO anúncio (http→https, slug corrigido). Devolve, por item, a classificação
+ * final mais `requests` (quantas requisições custou) e `bytes`.
+ */
+function fetchAndClassifyListings_(items) {
+  var results = items.map(function () { return null; });
+  var pending = items.map(function (item, i) { return { i: i, url: item.url, hops: 0 }; });
+  while (pending.length) {
+    var responses = fetchListingPages_(pending.map(function (p) {
+      return buildListingRequest_(p.url, items[p.i].source);
+    }));
+    var next = [];
+    pending.forEach(function (p, k) {
+      var item = items[p.i];
+      var verdict = classifyListingResponse_(item.url, responses[k], item.externalId);
+      var previous = results[p.i];
+      verdict.requests = (previous ? previous.requests : 0) + 1;
+      verdict.bytes = responses[k] && responses[k].body ? responses[k].body.length : 0;
+      verdict.body = responses[k] && responses[k].body ? responses[k].body : '';
+      if (verdict.outcome === 'redirect') {
+        if (p.hops + 1 > LISTINGS_MAX_REDIRECTS) {
+          verdict = { outcome: 'error', code: verdict.code, message: 'TOO_MANY_REDIRECTS ' + verdict.location,
+            requests: verdict.requests, bytes: verdict.bytes, body: '' };
+        } else {
+          next.push({ i: p.i, url: verdict.location, hops: p.hops + 1 });
+        }
+      }
+      results[p.i] = verdict;
+    });
+    pending = next;
+  }
+  return results;
+}
+
+// --- Classificação (pura) ----------------------------------------------------------------
+
+/** Texto em minúsculas e sem acento, para casar marcadores. */
+function foldText_(text) {
+  var s = String(text || '').toLowerCase();
+  try { s = s.normalize('NFD').replace(/[\u0300-\u036f]/g, ''); } catch (err) { /* V8 antigo */ }
+  return s.replace(/\s+/g, ' ');
+}
+
+/** Texto que a pessoa vê: sem `<script>`, `<style>`, `<noscript>`, `<template>` e sem tags. */
+function visibleText_(html) {
+  return String(html || '')
+    .replace(/<script[\s\S]*?<\/script>/gi, ' ')
+    .replace(/<style[\s\S]*?<\/style>/gi, ' ')
+    .replace(/<noscript[\s\S]*?<\/noscript>/gi, ' ')
+    .replace(/<template[\s\S]*?<\/template>/gi, ' ')
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/&nbsp;/gi, ' ');
+}
+
+/** Resolve `Location` relativo contra a URL de origem. */
+function resolveUrl_(base, location) {
+  var loc = toText_(location);
+  if (!loc) return '';
+  if (/^https?:\/\//i.test(loc)) return loc;
+  var m = /^(https?:\/\/[^\/?#]+)/i.exec(toText_(base));
+  if (!m) return '';
+  if (loc.indexOf('//') === 0) return base.split(':')[0] + ':' + loc;
+  if (loc.charAt(0) === '/') return m[1] + loc;
+  var path = toText_(base).replace(/[?#].*$/, '');
+  return path.replace(/\/[^\/]*$/, '/') + loc;
+}
+
+/**
+ * Identificadores numéricos do anúncio. São eles que dizem se um redirecionamento ficou no
+ * mesmo anúncio e se uma página sem dado estruturado é mesmo a do anúncio. Com `external_id`
+ * numérico (DFImoveis, Wimoveis, Imovelweb, VivaReal) ele é o identificador; sem ele
+ * (QuintoAndar guarda o slug), valem as sequências de 5+ dígitos do caminho — menos as que
+ * são preço: a URL do VivaReal carrega `venda-RS650000-id-…`, e "650000" aparece em qualquer
+ * página com esse preço.
+ */
+function listingIdTokens_(url, externalId) {
+  var ext = toText_(externalId).replace(/\.0+$/, '');
+  if (/^\d{5,}$/.test(ext)) return [ext];
+  var tokens = {};
+  var path = toText_(url).replace(/^https?:\/\/[^\/]+/i, '').replace(/[?#].*$/, '');
+  var re = /(R\$|RS)?(\d{5,})/gi;
+  var m;
+  while ((m = re.exec(path))) {
+    if (!m[1]) tokens[m[2]] = true;
+  }
+  return Object.keys(tokens);
+}
+
+function canonicalListingUrl_(url) {
+  return toText_(url).toLowerCase()
+    .replace(/^https?:\/\//, '').replace(/^www\./, '')
+    .replace(/[?#].*$/, '').replace(/\/+$/, '');
+}
+
+function isSameListingUrl_(original, target) {
+  if (canonicalListingUrl_(original) === canonicalListingUrl_(target)) return true;
+  var targetPath = toText_(target).replace(/^https?:\/\/[^\/]+/i, '').replace(/[?#].*$/, '');
+  return listingIdTokens_(original, '').some(function (token) { return targetPath.indexOf(token) !== -1; });
+}
+
+/**
+ * Classifica a resposta de UMA página de anúncio. Pura: recebe o que o fetch devolveu
+ * (`{code, headers, body}` ou `{error}`) e devolve `{outcome, code, message, parsed}`:
+ *
+ *   ok        a página é do anúncio (dado estruturado ou o id dele aparece nela)
+ *   gone      404/410, marcador de anúncio removido, ou redirecionamento para fora dele
+ *   blocked   401/403/429/451, página de desafio, ou redirecionamento para captcha/login
+ *   error     rede, 5xx, resposta que não se reconhece — nunca conta para inativar
+ *   redirect  3xx que fica no mesmo anúncio; quem chama segue
+ */
+function classifyListingResponse_(url, response, externalId) {
+  if (!response || response.error) {
+    return { outcome: 'error', code: '', message: 'NETWORK: ' + toText_(response && response.error).slice(0, 200) };
+  }
+  var code = Number(response.code) || 0;
+  if (code >= 300 && code < 400) {
+    var location = resolveUrl_(url, (response.headers || {}).location || '');
+    if (!location) return { outcome: 'error', code: code, message: 'REDIRECT_WITHOUT_LOCATION' };
+    if (isSameListingUrl_(url, location)) {
+      return { outcome: 'redirect', code: code, location: location, message: 'REDIRECT_SAME_LISTING ' + location };
+    }
+    if (LISTINGS_BLOCKED_URL_PATTERN.test(location.replace(/^https?:\/\/[^\/]+/i, ''))) {
+      return { outcome: 'blocked', code: code, message: 'REDIRECT_TO_CHALLENGE ' + location };
+    }
+    return { outcome: 'gone', code: code, message: 'REDIRECT_AWAY ' + location };
+  }
+  if (code === 404 || code === 410) return { outcome: 'gone', code: code, message: 'HTTP_' + code };
+  if (code === 401 || code === 403 || code === 429 || code === 451) {
+    return { outcome: 'blocked', code: code, message: 'HTTP_' + code };
+  }
+  if (code < 200 || code >= 300) return { outcome: 'error', code: code, message: 'HTTP_' + code };
+
+  var body = String(response.body || '');
+  // Marcador de remoção só no texto VISÍVEL: bundle de JavaScript embutido carrega as
+  // strings da rota de erro ("página não encontrada") em página de anúncio vivo.
+  var visible = foldText_(visibleText_(body));
+  for (var r = 0; r < LISTINGS_REMOVED_MARKERS.length; r++) {
+    if (visible.indexOf(LISTINGS_REMOVED_MARKERS[r]) !== -1) {
+      return { outcome: 'gone', code: code, message: 'REMOVED_MARKER "' + LISTINGS_REMOVED_MARKERS[r] + '"' };
+    }
+  }
+  var tokens = listingIdTokens_(url, externalId);
+  var parsed = parseListingHtml_(body, tokens);
+  var hasData = parsed.price !== null || parsed.area !== null;
+  if (!hasData) {
+    var text = foldText_(body);
+    for (var b = 0; b < LISTINGS_BLOCKED_MARKERS.length; b++) {
+      if (text.indexOf(LISTINGS_BLOCKED_MARKERS[b]) !== -1) {
+        return { outcome: 'blocked', code: code, message: 'CHALLENGE_PAGE "' + LISTINGS_BLOCKED_MARKERS[b] + '"' };
+      }
+    }
+  }
+  var idInPage = tokens.some(function (token) { return body.indexOf(token) !== -1; });
+  if (hasData || idInPage) {
+    return {
+      outcome: 'ok', code: code, parsed: parsed,
+      message: 'OK ' + (parsed.signals.length ? parsed.signals.join('+') : 'id_na_pagina')
+    };
+  }
+  return { outcome: 'error', code: code, message: 'UNRECOGNIZED_PAGE' };
+}
+
+// --- Leitura de página (pura) ----------------------------------------------------------
+
+var LISTINGS_NEXT_PRICE_KEYS = ['salePrice', 'sale_price', 'priceSale', 'price', 'listPrice', 'valor', 'preco', 'valorVenda'];
+var LISTINGS_NEXT_AREA_KEYS = ['area', 'usableArea', 'usableAreas', 'privateArea', 'totalArea', 'totalAreas', 'areaUtil', 'area_util', 'areaPrivativa'];
+var LISTINGS_NEXT_BEDROOM_KEYS = ['bedrooms', 'bedroomCount', 'bedroom', 'dormitorios', 'quartos'];
+var LISTINGS_NEXT_PARKING_KEYS = ['parkingSpaces', 'parkingSpots', 'parking', 'garages', 'vagas'];
+var LISTINGS_NEXT_CONDO_KEYS = ['condoPrice', 'condoFee', 'condominium', 'condominio', 'monthlyCondoFee'];
+var LISTINGS_NEXT_IPTU_KEYS = ['iptu', 'iptuPrice', 'yearlyIptu'];
+var LISTINGS_NEXT_ID_KEYS = ['id', 'houseId', 'listingId', 'legacyId', 'code', 'externalId', 'sourceId', 'url', 'href', 'slug'];
+
+/**
+ * Extrai do HTML só o que vem ESTRUTURADO: JSON-LD (schema.org), `__NEXT_DATA__` (Next.js,
+ * QuintoAndar) e meta de preço. Nada de regex sobre o texto visível — um "R$" solto na
+ * página é tanto preço quanto condomínio, e esse valor pode reescrever `asking_price_brl`.
+ *
+ * Página de anúncio costuma trazer também a vitrine de "imóveis semelhantes", com preço
+ * estruturado de OUTROS anúncios. Por isso cada objeto com preço/área vira um candidato, e
+ * só se usa o candidato que é inequivocamente o anúncio: o que carrega o id da URL, ou o
+ * único com preço na página. Mais de um sem id que desempate é ambíguo e não vira dado —
+ * `signals` registra `ambiguous_N`, e a página só conta como do anúncio pelo id no HTML.
+ */
+function parseListingHtml_(html, tokens) {
+  tokens = tokens || [];
+  var out = {
+    title: '', price: null, area: null, bedrooms: null, parking: null, condo: null, iptu: null,
+    datePosted: '', priceSource: '', signals: []
+  };
+  html = String(html || '');
+  var candidates = [];
+
+  var re = /<script[^>]*type\s*=\s*["']application\/ld\+json["'][^>]*>([\s\S]*?)<\/script>/gi;
+  var m;
+  while ((m = re.exec(html))) {
+    var data = safeJsonParse_(m[1].replace(/^\s*<!\[CDATA\[|\]\]>\s*$/g, ''));
+    if (data !== null) walkJsonLd_(data, candidates, 0, { n: 0 });
+  }
+  var next = /<script[^>]*id\s*=\s*["']__NEXT_DATA__["'][^>]*>([\s\S]*?)<\/script>/i.exec(html);
+  if (next) {
+    var nd = safeJsonParse_(next[1]);
+    if (nd) collectNextDataCandidates_(nd, candidates);
+  }
+
+  var chosen = pickListingCandidate_(candidates, tokens);
+  if (chosen) {
+    ['price', 'area', 'bedrooms', 'parking', 'condo', 'iptu'].forEach(function (field) {
+      if (chosen[field] !== null && chosen[field] !== undefined) out[field] = chosen[field];
+    });
+    if (chosen.datePosted) out.datePosted = chosen.datePosted;
+    if (out.price !== null) out.priceSource = chosen.source;
+    out.signals.push(chosen.source);
+  } else if (candidates.length) {
+    out.signals.push('ambiguous_' + candidates.length);
+  }
+
+  if (out.price === null) {
+    var metaPrice = metaContent_(html, 'product:price:amount') || metaContent_(html, 'og:price:amount') ||
+      itempropContent_(html, 'price');
+    var p = toNumber_(metaPrice);
+    if (p !== null && p >= 1000) {
+      out.price = p;
+      out.priceSource = 'meta';
+      out.signals.push('meta_price');
+    }
+  }
+  out.title = sanitizePlainText_(metaContent_(html, 'og:title') || titleTag_(html)).slice(0, 300);
+  return out;
+}
+
+/** O candidato que é o anúncio: casa o id da URL; senão, o único com preço; senão, o único. */
+function pickListingCandidate_(candidates, tokens) {
+  if (!candidates.length) return null;
+  var matched = candidates.filter(function (c) {
+    return tokens.some(function (token) { return c.ref.indexOf(token) !== -1; });
+  });
+  if (matched.length) {
+    var pricedMatch = matched.filter(function (c) { return c.price !== null; });
+    return pricedMatch.length ? pricedMatch[0] : matched[0];
+  }
+  var priced = candidates.filter(function (c) { return c.price !== null; });
+  if (priced.length === 1) return priced[0];
+  if (candidates.length === 1) return candidates[0];
+  return null;
+}
+
+function positiveNumber_(value, min) {
+  if (value && typeof value === 'object' && !Array.isArray(value)) {
+    value = value.value !== undefined ? value.value : (value.amount !== undefined ? value.amount : value.price);
+  }
+  var n = toNumber_(value);
+  return n !== null && n >= (min || 0) && n > 0 ? n : null;
+}
+
+/** Primeiro valor de `key` em `node` ou nos descendentes (sem entrar em `offers` alheias). */
+function findNestedValue_(node, key, depth) {
+  if (!node || typeof node !== 'object' || depth > 4) return undefined;
+  if (!Array.isArray(node) && node[key] !== undefined && node[key] !== null) return node[key];
+  var keys = Array.isArray(node) ? node.map(function (_, i) { return i; }) : Object.keys(node);
+  for (var i = 0; i < keys.length; i++) {
+    if (keys[i] === 'offers' || keys[i] === 'itemListElement') continue;
+    var child = node[keys[i]];
+    if (child && typeof child === 'object') {
+      var found = findNestedValue_(child, key, depth + 1);
+      if (found !== undefined) return found;
+    }
+  }
+  return undefined;
+}
+
+function jsonLdRef_(node) {
+  var parts = [node.url, node['@id'], node.sku, node.productID, node.identifier, node.mpn];
+  var offers = node.offers;
+  if (offers && !Array.isArray(offers)) parts.push(offers.url, offers['@id']);
+  return parts.map(function (p) { return p && typeof p === 'object' ? JSON.stringify(p) : toText_(p); }).join(' ');
+}
+
+function walkJsonLd_(node, candidates, depth, counter) {
+  if (node === null || typeof node !== 'object' || depth > 8 || ++counter.n > 2000) return;
+  if (Array.isArray(node)) {
+    node.forEach(function (child) { walkJsonLd_(child, candidates, depth + 1, counter); });
+    return;
+  }
+  var price = null;
+  var offers = node.offers;
+  if (offers) {
+    var offerList = Array.isArray(offers) ? offers : [offers];
+    for (var i = 0; i < offerList.length && price === null; i++) {
+      var offer = offerList[i] || {};
+      price = positiveNumber_(offer.price, 1000) ||
+        positiveNumber_(offer.lowPrice, 1000) ||
+        positiveNumber_(offer.priceSpecification && offer.priceSpecification.price, 1000);
+    }
+  }
+  var type = toText_([].concat(node['@type'] || []).join(' ')).toLowerCase();
+  if (price === null && /offer/.test(type)) price = positiveNumber_(node.price, 1000);
+  var area = positiveNumber_(findNestedValue_(node, 'floorSize', 0), 5);
+  if (price !== null || (area !== null && node.floorSize !== undefined)) {
+    var rooms = findNestedValue_(node, 'numberOfBedrooms', 0);
+    if (rooms === undefined) rooms = findNestedValue_(node, 'numberOfRooms', 0);
+    var bedrooms = toNumber_(rooms && typeof rooms === 'object' ? rooms.value : rooms);
+    var date = toText_(node.datePosted || node.dateModified || node.datePublished);
+    candidates.push({
+      source: 'jsonld', ref: jsonLdRef_(node), price: price, area: area,
+      bedrooms: bedrooms !== null && bedrooms >= 0 && bedrooms < 50 ? bedrooms : null,
+      parking: null, condo: null, iptu: null,
+      datePosted: /^\d{4}-\d{2}-\d{2}/.test(date) ? date.slice(0, 10) : ''
+    });
+  }
+  Object.keys(node).forEach(function (key) {
+    if (node[key] && typeof node[key] === 'object') walkJsonLd_(node[key], candidates, depth + 1, counter);
+  });
+}
+
+/**
+ * Objetos do `__NEXT_DATA__` com preço de venda E área plausíveis lado a lado, em largura
+ * (o anúncio da página costuma estar mais raso que as vitrines). Até 20 candidatos.
+ */
+function collectNextDataCandidates_(root, candidates) {
+  var queue = [root];
+  var seen = 0;
+  var found = 0;
+  while (queue.length && seen < 5000 && found < 20) {
+    var node = queue.shift();
+    seen++;
+    if (!node || typeof node !== 'object') continue;
+    if (Array.isArray(node)) { node.forEach(function (c) { queue.push(c); }); continue; }
+    var price = firstAlias_(node, LISTINGS_NEXT_PRICE_KEYS, 10000);
+    var area = firstAlias_(node, LISTINGS_NEXT_AREA_KEYS, 5);
+    if (price !== null && area !== null && area < 100000) {
+      var bedrooms = firstAlias_(node, LISTINGS_NEXT_BEDROOM_KEYS, 0);
+      candidates.push({
+        source: 'nextdata',
+        ref: LISTINGS_NEXT_ID_KEYS.map(function (k) {
+          return node[k] !== undefined && typeof node[k] !== 'object' ? toText_(node[k]) : '';
+        }).join(' '),
+        price: price, area: area, bedrooms: bedrooms !== null && bedrooms < 50 ? bedrooms : null,
+        parking: firstAlias_(node, LISTINGS_NEXT_PARKING_KEYS, 0),
+        condo: firstAlias_(node, LISTINGS_NEXT_CONDO_KEYS, 0),
+        iptu: firstAlias_(node, LISTINGS_NEXT_IPTU_KEYS, 0),
+        datePosted: ''
+      });
+      found++;
+      continue;
+    }
+    Object.keys(node).forEach(function (key) {
+      if (node[key] && typeof node[key] === 'object') queue.push(node[key]);
+    });
+  }
+}
+
+function firstAlias_(node, keys, min) {
+  for (var i = 0; i < keys.length; i++) {
+    if (node[keys[i]] === undefined || node[keys[i]] === null) continue;
+    var n = positiveNumber_(node[keys[i]], min);
+    if (n !== null) return n;
+  }
+  return null;
+}
+
+function metaContent_(html, property) {
+  var name = property.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  var a = new RegExp('<meta[^>]+(?:property|name)\\s*=\\s*["\']' + name + '["\'][^>]*content\\s*=\\s*["\']([^"\']*)["\']', 'i').exec(html);
+  if (a) return a[1];
+  var b = new RegExp('<meta[^>]+content\\s*=\\s*["\']([^"\']*)["\'][^>]*(?:property|name)\\s*=\\s*["\']' + name + '["\']', 'i').exec(html);
+  return b ? b[1] : '';
+}
+
+function itempropContent_(html, prop) {
+  var m = new RegExp('itemprop\\s*=\\s*["\']' + prop + '["\'][^>]*content\\s*=\\s*["\']([^"\']*)["\']', 'i').exec(html);
+  return m ? m[1] : '';
+}
+
+function titleTag_(html) {
+  var m = /<title[^>]*>([\s\S]*?)<\/title>/i.exec(html);
+  return m ? m[1] : '';
+}
+
+// --- Execução ----------------------------------------------------------------------------
+
+function runListingsVerifyLocked_(options) {
+  var now = options.now || new Date();
+  var clockStart = Date.now();
+  var budget = options.budgetMs || LISTINGS_VERIFY_BUDGET_MS;
+  var maxPerRun = options.maxPerRun || LISTINGS_VERIFY_MAX_PER_RUN;
+
+  ensureListingsRoutineSchema_();
+  var book = ss_();
+  var sheet = book.getSheetByName('LISTINGS');
+  if (!sheet) return 'Aba LISTINGS ausente.';
+  var ix = headerIndex_(headersOf_(sheet));
+  var rows = dataRowsOf_(sheet);
+  var sources = readListingSources_();
+  var due = selectDueListings_(rows, ix, now, options, sources);
+
+  var runId = 'RUN_LISTINGS_' + Utilities.getUuid();
+  var stats = {
+    requested: 0, read: 0, ok: 0, gone: 0, blocked: 0, errors: 0, updated: 0, reactivated: 0,
+    priceChanges: 0, checks: 0, confirmedInactive: 0, historyRows: 0, metricsRows: 0,
+    byPortal: {}, messages: []
+  };
+  appendListingsRun_(runId, now);
+
+  var state = {
+    now: now, today: listingsDayKey_(now), runId: runId, ix: ix, rows: rows, changes: {},
+    events: [], changeLog: [], stats: stats
+  };
+  var batch = due.slice(0, maxPerRun);
+  var items = batch.map(function (index) {
+    return {
+      index: index,
+      url: toText_(rows[index][ix.source_url]),
+      externalId: ix.external_id === undefined ? '' : rows[index][ix.external_id],
+      source: sources.byPortal[normalizeSlug_(rows[index][ix.portal])] || null
+    };
+  });
+  var chunks = chunkByHost_(items, LISTINGS_FETCH_CHUNK, LISTINGS_FETCH_PER_HOST);
+
+  var processed = 0;
+  var authError = null;
+  for (var c = 0; c < chunks.length; c++) {
+    if (c > 0 && Date.now() - clockStart > budget) break;
+    if (c > 0 && LISTINGS_FETCH_PAUSE_MS > 0 && typeof Utilities.sleep === 'function') {
+      Utilities.sleep(LISTINGS_FETCH_PAUSE_MS);
+    }
+    var results;
+    try {
+      results = fetchAndClassifyListings_(chunks[c]);
+    } catch (err) {
+      if (isUrlFetchAuthorizationError_(err)) { authError = err; break; }
+      throw err;
+    }
+    for (var k = 0; k < chunks[c].length; k++) applyListingCheck_(state, chunks[c][k], results[k]);
+    processed += chunks[c].length;
+  }
+
+  var remaining = due.length - processed;
+  // A gravação segura também o lock de DOCUMENTO: `recalculateDerivedFields()` (job de 6 h)
+  // reescreve a coluna inteira de preço/m² a partir do que leu, e sem o lock uma das duas
+  // escritas apagaria a outra. Sem lock em 30 s grava assim mesmo — perder a conferência
+  // do dia inteiro custaria mais que a disputa improvável.
+  var documentLock = LockService.getDocumentLock();
+  var holdsDocument = documentLock.tryLock(LOCK_TIMEOUT_MS);
+  var written;
+  try {
+    written = writeListingChanges_(sheet, state.changes);
+    appendListingEvents_(state.events);
+    state.changeLog.forEach(function (entry) {
+      logWriteChange_('LISTINGS', entry.id, entry.field, entry.oldValue, entry.newValue,
+        'rotina de anúncios', runId, 'ok', '');
+    });
+  } finally {
+    if (holdsDocument) documentLock.releaseLock();
+  }
+
+  var continuation = false;
+  if (!authError && remaining > 0 && !options.noContinuation) {
+    continuation = scheduleOneOffTrigger_(LISTINGS_CONTINUE_HANDLER, LISTINGS_CONTINUATION_DELAY_MS);
+  }
+  if (!authError && remaining === 0 && !options.listingIds) {
+    var snapshot = snapshotListingsMonth_(now, runId);
+    stats.historyRows = snapshot.historyRows;
+    stats.metricsRows = snapshot.metricsRows;
+  }
+
+  var status;
+  if (authError) status = 'failed';
+  else if (stats.requested > 0 && stats.read === 0 && (stats.blocked + stats.errors) > 0) status = 'failed';
+  else if (stats.blocked + stats.errors === 0) status = 'success';
+  else status = 'partial';
+
+  var details = listingsRunDetails_(stats, authError, remaining, continuation);
+  finishListingsRun_(runId, now, status, stats, details);
+  updateListingSourcesAfterRun_(sources, stats, runId, now);
+
+  setMeta_('listings_last_run_at', now.toISOString());
+  setMeta_('listings_last_run_id', runId);
+  setMeta_('listings_last_run_status', status);
+  setMeta_('listings_update_status', authError ? 'auth_required' : (status === 'success' ? 'ok' : status));
+  setMeta_('listings_parser_version', LISTINGS_PARSER_VERSION);
+  publishListingsFreshness_(now);
+  if (written > 0 || stats.historyRows > 0) {
+    // Gatilho instalável de edição não dispara para escrita feita por script: quem
+    // escreve avisa o site por conta própria.
+    bumpDatasetVersion_();
+    setMeta_('validation_status', 'dirty');
+    setMeta_('last_data_change_at', nowISO_());
+    clearCache();
+  }
+
+  var message = authError
+    ? 'Rotina de anúncios SEM AUTORIZAÇÃO de rede (script.external_request). Nenhum anúncio foi ' +
+      'alterado. Rode "Instalar gatilhos" pelo editor do Apps Script para abrir a tela de autorização ' +
+      '(docs/SHEET_SETUP.md §10).'
+    : 'Run ' + runId + ': ' + status + '. Conferidos ' + stats.checks + ' de ' + due.length +
+      ' (ok ' + stats.ok + ', removidos ' + stats.gone + ', bloqueados ' + stats.blocked +
+      ', erros ' + stats.errors + '). Preço alterado: ' + stats.priceChanges +
+      '; reativados: ' + stats.reactivated + '; inativados: ' + stats.confirmedInactive + '.' +
+      (remaining > 0 ? ' Restam ' + remaining + (continuation ? ' (continuação agendada).' : '.') : '');
+  Logger.log(message);
+  return message;
+}
+
+/**
+ * Aplica o resultado de UMA conferência às linhas em memória e registra o que mudou em
+ * `state.changes` (gravado de uma vez no fim), `state.events` e `state.changeLog`.
+ */
+function applyListingCheck_(state, item, verdict) {
+  var ix = state.ix;
+  var row = state.rows[item.index];
+  var id = toText_(row[ix.listing_id]);
+  var stats = state.stats;
+  var portal = toText_(row[ix.portal]) || '(sem portal)';
+  var byPortal = stats.byPortal[portal] || (stats.byPortal[portal] = { ok: 0, gone: 0, blocked: 0, error: 0 });
+
+  function set(field, value) {
+    if (ix[field] === undefined) return;
+    row[ix[field]] = value;
+    (state.changes[id] || (state.changes[id] = {}))[field] = value;
+  }
+  function event(type, oldStatus, newStatus, oldPrice, newPrice, changed, details) {
+    state.events.push([
+      'EVT_' + Utilities.getUuid(), state.now, id, type, portal, oldStatus, newStatus,
+      oldPrice === null || oldPrice === undefined ? '' : oldPrice,
+      newPrice === null || newPrice === undefined ? '' : newPrice,
+      changed || '', state.runId, details || ''
+    ]);
+  }
+
+  var previousStatus = toText_(row[ix.status]).toLowerCase() || 'active';
+  var previousCheck = toText_(row[ix.last_check_status]);
+  var previousCheckedAt = cellDate_(row[ix.last_checked_at]);
+  var outcome = verdict.outcome === 'redirect' ? 'error' : verdict.outcome;
+
+  stats.checks++;
+  stats.requested += verdict.requests || 1;
+  byPortal[outcome === 'error' ? 'error' : outcome]++;
+  if (outcome === 'ok' || outcome === 'gone') stats.read++;
+  if (outcome !== 'ok' && stats.messages.length < 40) stats.messages.push(id + ': ' + verdict.message);
+
+  set('last_checked_at', state.now);
+  set('last_check_status', outcome);
+  set('last_check_http_code', verdict.code === '' || verdict.code === undefined ? '' : verdict.code);
+  set('last_check_message', toText_(verdict.message).slice(0, 500));
+  set('update_run_id', state.runId);
+  set('parser_version', LISTINGS_PARSER_VERSION);
+  if (ix.first_seen_at !== undefined && isBlank_(row[ix.first_seen_at])) {
+    set('first_seen_at', cellDate_(row[ix.observed_at]) || cellDate_(row[ix.source_page_verified_at]) || state.now);
+  }
+
+  if (outcome === 'ok') {
+    stats.ok++;
+    var parsed = verdict.parsed || { signals: [] };
+    var changed = false;
+    set('last_seen_at', state.now);
+    set('source_page_verified_at', state.now);
+    set('verification_failures', 0);
+    if (parsed.datePosted) set('source_observed_at', parsed.datePosted);
+    set('content_hash', sha256Hex_([parsed.price, parsed.area, parsed.bedrooms, parsed.title].join('|')));
+
+    if (previousStatus === 'inactive') {
+      set('status', 'active');
+      set('inactive_at', '');
+      event('reactivated', 'inactive', 'active', null, null, 'status', verdict.message);
+      stats.reactivated++;
+      changed = true;
+    }
+
+    var oldPrice = toNumber_(row[ix.asking_price_brl]);
+    var newPrice = parsed.price;
+    if (newPrice !== null && oldPrice !== null && oldPrice > 0 && Math.abs(newPrice - oldPrice) >= 1) {
+      var relative = Math.abs(newPrice - oldPrice) / oldPrice;
+      if (relative <= LISTINGS_PRICE_MAX_RELATIVE_CHANGE) {
+        set('asking_price_brl', newPrice);
+        var area = toNumber_(row[ix.area_m2]);
+        var oldPriceM2 = toNumber_(row[ix.asking_price_brl_m2]);
+        // preço/m² só acompanha quando ERA o derivado (preço ÷ área): valor informado pela
+        // fonte com outro critério de área não é reescrito (mesma regra do recálculo).
+        if (area !== null && area > 0 &&
+            (oldPriceM2 === null || Math.abs(oldPriceM2 - oldPrice / area) / (oldPrice / area) <= PRICE_M2_TOLERANCE)) {
+          set('asking_price_brl_m2', Math.round(newPrice / area * 100) / 100);
+        }
+        set('last_price_change_at', state.now);
+        set('observed_at', state.now);
+        state.changeLog.push({ id: id, field: 'asking_price_brl', oldValue: oldPrice, newValue: newPrice });
+        event('price_change', previousStatus, toText_(row[ix.status]) || 'active', oldPrice, newPrice,
+          'asking_price_brl', 'fonte: ' + parsed.priceSource);
+        stats.priceChanges++;
+        changed = true;
+      } else {
+        event('price_unconfirmed', previousStatus, previousStatus, oldPrice, newPrice, '',
+          'variação de ' + Math.round(relative * 100) + '% acima do teto de ' +
+          Math.round(LISTINGS_PRICE_MAX_RELATIVE_CHANGE * 100) + '%; preço não gravado (fonte: ' + parsed.priceSource + ')');
+      }
+    } else if (newPrice !== null && oldPrice !== null && Math.abs(newPrice - oldPrice) < 1) {
+      // O preço pedido foi observado hoje, igual ao da planilha.
+      set('observed_at', state.now);
+    }
+    if (changed) stats.updated++;
+    return;
+  }
+
+  if (outcome === 'gone') {
+    stats.gone++;
+    var failures = toNumber_(row[ix.verification_failures]) || 0;
+    var sameDay = previousCheck === 'gone' && previousCheckedAt && listingsDayKey_(previousCheckedAt) === state.today;
+    if (!sameDay) failures++;
+    set('verification_failures', failures);
+    if (previousStatus !== 'inactive' && failures >= LISTINGS_GONE_CONFIRMATIONS) {
+      set('status', 'inactive');
+      set('inactive_at', state.now);
+      event('deactivated', previousStatus, 'inactive', null, null, 'status',
+        failures + ' confirmações de remoção em dias distintos; última: ' + verdict.message);
+      stats.confirmedInactive++;
+      stats.updated++;
+    }
+    return;
+  }
+
+  if (outcome === 'blocked') stats.blocked++;
+  else stats.errors++;
+}
+
+/**
+ * Grava as mudanças relendo a aba na hora e casando por `listing_id` — não pela posição
+ * da leitura inicial: uma linha inserida ou uma ordenação durante a execução deslocaria
+ * tudo. Coluna sem fórmula é escrita de uma vez; coluna com fórmula, célula a célula, só
+ * nas linhas tocadas, para não trocar fórmula por valor.
+ */
+function writeListingChanges_(sheet, changes) {
+  var ids = Object.keys(changes);
+  if (!ids.length) return 0;
+  var ix = headerIndex_(headersOf_(sheet));
+  var lastRow = sheet.getLastRow();
+  if (lastRow < 2 || ix.listing_id === undefined) return 0;
+  var rowById = {};
+  sheet.getRange(2, ix.listing_id + 1, lastRow - 1, 1).getValues().forEach(function (r, i) {
+    var id = toText_(r[0]);
+    if (id && rowById[id] === undefined) rowById[id] = i;
+  });
+  var fields = {};
+  ids.forEach(function (id) { Object.keys(changes[id]).forEach(function (f) { fields[f] = true; }); });
+
+  var written = {};
+  Object.keys(fields).forEach(function (field) {
+    if (ix[field] === undefined) return;
+    var range = sheet.getRange(2, ix[field] + 1, lastRow - 1, 1);
+    var formulas = range.getFormulas();
+    var hasFormula = formulas.some(function (r) { return r[0] !== ''; });
+    if (hasFormula) {
+      ids.forEach(function (id) {
+        if (!(field in changes[id]) || rowById[id] === undefined) return;
+        if (formulas[rowById[id]][0] !== '') return; // célula com fórmula nunca é sobrescrita
+        sheet.getRange(rowById[id] + 2, ix[field] + 1).setValue(changes[id][field]);
+        written[id] = true;
+      });
+      return;
+    }
+    var values = range.getValues();
+    var touched = false;
+    ids.forEach(function (id) {
+      if (!(field in changes[id]) || rowById[id] === undefined) return;
+      values[rowById[id]][0] = changes[id][field];
+      written[id] = true;
+      touched = true;
+    });
+    if (touched) range.setValues(values);
+  });
+  return Object.keys(written).length;
+}
+
+function appendListingEvents_(events) {
+  if (!events.length) return;
+  var sheet = ss_().getSheetByName('LISTING_EVENTS');
+  if (!sheet) return;
+  var start = sheet.getLastRow() + 1;
+  sheet.getRange(start, 1, events.length, LISTING_EVENTS_HEADERS.length).setValues(events);
+}
+
+/** Abre o run com `status = running`: se a execução morrer no meio, o rastro fica. */
+function appendListingsRun_(runId, now) {
+  var sheet = ss_().getSheetByName('LISTINGS_UPDATE_RUNS');
+  if (!sheet) return;
+  var row = LISTINGS_UPDATE_RUNS_HEADERS.map(function () { return ''; });
+  row[0] = runId;
+  row[1] = now;
+  row[3] = 'running';
+  row[19] = LISTINGS_PARSER_VERSION;
+  sheet.appendRow(row);
+}
+
+function finishListingsRun_(runId, now, status, stats, details) {
+  var sheet = ss_().getSheetByName('LISTINGS_UPDATE_RUNS');
+  if (!sheet) return;
+  var ids = sheet.getLastRow() > 1 ? sheet.getRange(2, 1, sheet.getLastRow() - 1, 1).getValues() : [];
+  for (var i = ids.length - 1; i >= 0; i--) {
+    if (toText_(ids[i][0]) !== runId) continue;
+    sheet.getRange(i + 2, 3, 1, LISTINGS_UPDATE_RUNS_HEADERS.length - 2).setValues([[
+      new Date(), status, 0, 0, 0, stats.requested, stats.read, 0, stats.updated,
+      stats.reactivated, stats.priceChanges, stats.checks, stats.confirmedInactive,
+      stats.historyRows, stats.metricsRows, stats.blocked + stats.errors, details,
+      LISTINGS_PARSER_VERSION
+    ]]);
+    return;
+  }
+}
+
+function listingsRunDetails_(stats, authError, remaining, continuation) {
+  var parts = [];
+  if (authError) parts.push('AUTHORIZATION_REQUIRED: ' + toText_(authError.message || authError).slice(0, 300));
+  Object.keys(stats.byPortal).sort().forEach(function (portal) {
+    var p = stats.byPortal[portal];
+    parts.push(portal + ' ok=' + p.ok + ' gone=' + p.gone + ' blocked=' + p.blocked + ' error=' + p.error);
+  });
+  if (remaining > 0) parts.push('restam ' + remaining + (continuation ? ' (continuação agendada)' : ''));
+  if (stats.messages.length) parts.push(stats.messages.join(' | '));
+  return parts.join(' · ').slice(0, LISTINGS_ERROR_DETAILS_MAX);
+}
+
+/** Carimba em LISTING_SOURCES o último sucesso/erro de cada portal neste run. */
+function updateListingSourcesAfterRun_(sources, stats, runId, now) {
+  var sheet = sources.sheet;
+  if (!sheet) return;
+  var ix = headerIndex_(headersOf_(sheet));
+  Object.keys(stats.byPortal).forEach(function (portal) {
+    var source = sources.byPortal[normalizeSlug_(portal)];
+    if (!source) return;
+    var p = stats.byPortal[portal];
+    if (ix.last_run_id !== undefined) sheet.getRange(source.rowNumber, ix.last_run_id + 1).setValue(runId);
+    if ((p.ok + p.gone) > 0 && ix.last_success_at !== undefined) {
+      sheet.getRange(source.rowNumber, ix.last_success_at + 1).setValue(now);
+    }
+    if ((p.blocked + p.error) > 0 && ix.last_error_at !== undefined) {
+      sheet.getRange(source.rowNumber, ix.last_error_at + 1).setValue(now);
+    }
+  });
+}
+
+/** APP_META: quantos anúncios ativos foram confirmados nos últimos 7 dias, e quantos o portal barrou. */
+function publishListingsFreshness_(now) {
+  var sheet = ss_().getSheetByName('LISTINGS');
+  if (!sheet) return;
+  var ix = headerIndex_(headersOf_(sheet));
+  var verified = 0;
+  var blocked = 0;
+  var active = 0;
+  dataRowsOf_(sheet).forEach(function (row) {
+    if ((toText_(row[ix.status]).toLowerCase() || 'active') !== 'active') return;
+    active++;
+    var seen = cellDate_(row[ix.last_seen_at]);
+    if (seen && now.getTime() - seen.getTime() <= 7 * 86400000) verified++;
+    if (ix.last_check_status !== undefined && toText_(row[ix.last_check_status]) === 'blocked') blocked++;
+  });
+  setMeta_('listings_active_count', String(active));
+  setMeta_('listings_verified_7d_count', String(verified));
+  setMeta_('listings_blocked_count', String(blocked));
+}
+
+// --- Gatilhos únicos ---------------------------------------------------------------------
+
+/**
+ * Agenda `handler` para daqui a `delayMs`, a menos que já exista gatilho pendente para ele
+ * (debounce: N pedidos seguidos viram UMA execução). Devolve true quando agendou.
+ */
+function scheduleOneOffTrigger_(handler, delayMs) {
+  var exists = ScriptApp.getProjectTriggers().some(function (trigger) {
+    return trigger.getHandlerFunction() === handler;
+  });
+  if (exists) return false;
+  ScriptApp.newTrigger(handler).timeBased().after(delayMs).create();
+  return true;
+}
+
+/** Remove os gatilhos de `handler`. Gatilho único que já disparou continua na lista até ser removido. */
+function clearTriggersFor_(handler) {
+  ScriptApp.getProjectTriggers().forEach(function (trigger) {
+    if (trigger.getHandlerFunction() === handler) ScriptApp.deleteTrigger(trigger);
+  });
+}
+
+// --- Fechamento mensal ---------------------------------------------------------------------
+
+function listingsAreaBand_(area) {
+  if (area === null || area <= 0) return '';
+  for (var i = 0; i < LISTINGS_AREA_BANDS.length; i++) {
+    if (LISTINGS_AREA_BANDS[i].max === null || area < LISTINGS_AREA_BANDS[i].max) return LISTINGS_AREA_BANDS[i].label;
+  }
+  return '';
+}
+
+function listingsQuantile_(sorted, q) {
+  if (!sorted.length) return '';
+  var pos = (sorted.length - 1) * q;
+  var lo = Math.floor(pos);
+  var hi = Math.ceil(pos);
+  return sorted[lo] + (sorted[hi] - sorted[lo]) * (pos - lo);
+}
+
+function listingsRound_(value, digits) {
+  if (value === '' || value === null || value === undefined || !isFinite(value)) return '';
+  var f = Math.pow(10, digits);
+  return Math.round(value * f) / f;
+}
+
+/** Primeiro dia do mês `yyyy-MM`, como Date no fuso do script (é o que a aba já tem). */
+function listingsMonthDate_(monthKey) {
+  var parts = monthKey.split('-').map(Number);
+  return new Date(parts[0], parts[1] - 1, 1);
+}
+
+function listingsPreviousMonthKey_(monthKey) {
+  var parts = monthKey.split('-').map(Number);
+  var y = parts[0];
+  var m = parts[1] - 1;
+  if (m === 0) { y--; m = 12; }
+  return y + '-' + (m < 10 ? '0' : '') + m;
+}
+
+/**
+ * `reference_month` de uma linha das abas mensais como `yyyy-MM` (Date ou texto). A célula
+ * guarda meia-noite do dia 1 no fuso da PLANILHA; formatada direto no fuso de Brasília ela
+ * vira dia 31 do mês anterior se a planilha estiver em UTC. Doze horas de folga mantêm o
+ * dia 1 em qualquer fuso de UTC−12 a UTC+9.
+ */
+function listingsMonthOfCell_(value) {
+  if (isDateValue_(value) && !isNaN(value.getTime())) return listingsMonthKey_(new Date(value.getTime() + 12 * 3600000));
+  var text = toText_(value);
+  return /^\d{4}-\d{2}/.test(text) ? text.slice(0, 7) : '';
+}
+
+function isoOrBlank_(value) {
+  var date = cellDate_(value);
+  return date ? date.toISOString() : '';
+}
+
+/**
+ * Reescreve o mês corrente em LISTINGS_HISTORY_MONTHLY e LISTINGS_MONTHLY_METRICS a partir
+ * de LISTINGS. Meses anteriores ficam intocados — inclusive os gravados pela rotina antiga
+ * como `active` sem confirmação: são sinalizados por `validateListingsRoutine_()`, nunca
+ * apagados. Roda quando a fila do dia acaba, então o último dia do mês fecha o mês.
+ *
+ * `status_at_month_end`: `inactive` para inativo; `active` só se `last_seen_at` cai no mês;
+ * o resto é `unverified`. Métricas contam só `active` confirmado.
+ */
+function snapshotListingsMonth_(now, runId) {
+  var book = ss_();
+  var listings = book.getSheetByName('LISTINGS');
+  if (!listings) return { historyRows: 0, metricsRows: 0 };
+  var ix = headerIndex_(headersOf_(listings));
+  var monthKey = listingsMonthKey_(now);
+  var monthDate = listingsMonthDate_(monthKey);
+
+  var historyRows = [];
+  var groups = {};
+  dataRowsOf_(listings).forEach(function (row) {
+    var id = toText_(row[ix.listing_id]);
+    if (!id) return;
+    var status = toText_(row[ix.status]).toLowerCase() || 'active';
+    if (status !== 'active' && status !== 'inactive') return;
+    var seen = cellDate_(row[ix.last_seen_at]);
+    var confirmed = !!(seen && listingsMonthKey_(seen) === monthKey);
+    var monthStatus = status === 'inactive' ? 'inactive' : (confirmed ? 'active' : 'unverified');
+    var get = function (field) { return ix[field] === undefined ? '' : row[ix[field]]; };
+    var price = toNumber_(get('asking_price_brl'));
+    var area = toNumber_(get('area_m2'));
+    var priceM2 = toNumber_(get('asking_price_brl_m2'));
+    if (priceM2 === null && price !== null && area !== null && area > 0) priceM2 = price / area;
+
+    historyRows.push([
+      monthKey + '|' + id, monthDate, id, get('portal'), get('external_id'), monthStatus,
+      price === null ? '' : price, area === null ? '' : area, priceM2 === null ? '' : listingsRound_(priceM2, 2),
+      get('bedrooms'), get('suites'), get('parking_spaces'), get('property_type'),
+      get('transaction_type'), get('address'), get('locality'), get('ra_geo_id'),
+      get('latitude'), get('longitude'), isoOrBlank_(get('first_seen_at')), isoOrBlank_(get('last_seen_at')),
+      isoOrBlank_(get('last_price_change_at')), get('content_hash'), runId, now
+    ]);
+
+    var bedrooms = toNumber_(get('bedrooms'));
+    var key = [
+      toText_(get('ra_geo_id')), toText_(get('locality')), toText_(get('property_type')),
+      toText_(get('transaction_type')), bedrooms === null ? '' : String(bedrooms), listingsAreaBand_(area)
+    ];
+    var groupKey = key.join('|');
+    var group = groups[groupKey] || (groups[groupKey] = {
+      key: key, bedrooms: bedrooms, active: [], newCount: 0, inactiveCount: 0, portals: {}
+    });
+    var firstSeen = cellDate_(get('first_seen_at'));
+    var inactiveAt = cellDate_(get('inactive_at'));
+    if (monthStatus === 'active') {
+      group.active.push({ price: price, area: area, priceM2: priceM2, parking: toNumber_(get('parking_spaces')) });
+      group.portals[toText_(get('portal'))] = true;
+      if (firstSeen && listingsMonthKey_(firstSeen) === monthKey) group.newCount++;
+    }
+    if (status === 'inactive' && inactiveAt && listingsMonthKey_(inactiveAt) === monthKey) group.inactiveCount++;
+  });
+
+  // Mês anterior, para as variações mês a mês.
+  var metricsSheet = book.getSheetByName('LISTINGS_MONTHLY_METRICS');
+  var previousKey = listingsPreviousMonthKey_(monthKey);
+  var previous = {};
+  var metricsKept = [];
+  if (metricsSheet) {
+    var mix = headerIndex_(headersOf_(metricsSheet));
+    dataRowsOf_(metricsSheet).forEach(function (row) {
+      var rowMonth = listingsMonthOfCell_(row[mix.reference_month]);
+      if (rowMonth === monthKey) return; // o mês corrente é reescrito
+      metricsKept.push(LISTINGS_MONTHLY_METRICS_HEADERS.map(function (h) { return mix[h] === undefined ? '' : row[mix[h]]; }));
+      if (rowMonth !== previousKey) return;
+      var bedroomsCell = toNumber_(row[mix.bedrooms]);
+      var prevKey = [toText_(row[mix.ra_geo_id]), toText_(row[mix.locality]), toText_(row[mix.property_type]),
+        toText_(row[mix.transaction_type]), bedroomsCell === null ? '' : String(bedroomsCell), toText_(row[mix.area_band])].join('|');
+      previous[prevKey] = { median: toNumber_(row[mix.median_price]), active: toNumber_(row[mix.active_ads_count]) };
+    });
+  }
+
+  var calculatedAt = new Date();
+  var metricRows = Object.keys(groups).sort().map(function (groupKey) {
+    var g = groups[groupKey];
+    var prices = g.active.map(function (a) { return a.price; }).filter(function (v) { return v !== null && v > 0; }).sort(function (a, b) { return a - b; });
+    var pricesM2 = g.active.map(function (a) { return a.priceM2; }).filter(function (v) { return v !== null && v > 0; }).sort(function (a, b) { return a - b; });
+    var areas = g.active.map(function (a) { return a.area; }).filter(function (v) { return v !== null && v > 0; }).sort(function (a, b) { return a - b; });
+    var parking = g.active.map(function (a) { return a.parking; }).filter(function (v) { return v !== null; }).sort(function (a, b) { return a - b; });
+    var sum = function (list) { return list.reduce(function (acc, v) { return acc + v; }, 0); };
+    var median = listingsQuantile_(prices, 0.5);
+    var prev = previous[groupKey];
+    var portals = Object.keys(g.portals).filter(Boolean).length;
+    return [
+      'METRIC_' + sha256Hex_(monthKey + '|' + groupKey).slice(0, 24).toUpperCase(), monthDate,
+      g.key[0], g.key[1], g.key[2], g.key[3], g.bedrooms === null ? '' : g.bedrooms, g.key[5],
+      g.active.length, g.newCount, g.inactiveCount,
+      listingsRound_(median, 2), listingsRound_(listingsQuantile_(pricesM2, 0.5), 2),
+      prices.length ? listingsRound_(sum(prices) / prices.length, 2) : '',
+      pricesM2.length ? listingsRound_(sum(pricesM2) / pricesM2.length, 2) : '',
+      listingsRound_(listingsQuantile_(prices, 0.25), 2), listingsRound_(listingsQuantile_(prices, 0.75), 2),
+      listingsRound_(listingsQuantile_(areas, 0.5), 2), listingsRound_(listingsQuantile_(parking, 0.5), 2),
+      prev && prev.median && median !== '' ? listingsRound_((median - prev.median) / prev.median * 100, 2) : '',
+      prev && prev.active ? listingsRound_((g.active.length - prev.active) / prev.active * 100, 2) : '',
+      portals, g.active.length === 0 ? 'none' : (portals >= 2 ? 'good' : 'single_source'), calculatedAt
+    ];
+  });
+
+  var historySheet = book.getSheetByName('LISTINGS_HISTORY_MONTHLY');
+  var historyKept = [];
+  if (historySheet) {
+    var hix = headerIndex_(headersOf_(historySheet));
+    dataRowsOf_(historySheet).forEach(function (row) {
+      if (listingsMonthOfCell_(row[hix.reference_month]) === monthKey) return;
+      historyKept.push(LISTINGS_HISTORY_MONTHLY_HEADERS.map(function (h) { return hix[h] === undefined ? '' : row[hix[h]]; }));
+    });
+  }
+  writeOperationalTable_('LISTINGS_HISTORY_MONTHLY', LISTINGS_HISTORY_MONTHLY_HEADERS, historyKept.concat(historyRows));
+  writeOperationalTable_('LISTINGS_MONTHLY_METRICS', LISTINGS_MONTHLY_METRICS_HEADERS, metricsKept.concat(metricRows));
+  return { historyRows: historyRows.length, metricsRows: metricRows.length };
+}
+
+// --- Diagnóstico dos portais ---------------------------------------------------------------
+
+/**
+ * Busca UM anúncio de cada portal e grava em LISTING_SOURCES o que voltou: código HTTP,
+ * tamanho, classificação e de onde veio o preço. É a medida que decide quais portais a
+ * rotina consegue verificar a partir do Apps Script e quais bloqueiam o Google. Com
+ * `saveSamples`, salva o HTML no Drive para virar fixture dos parsers.
+ */
+function diagnoseListingPortals_(options) {
+  options = options || {};
+  ensureListingsRoutineSchema_();
+  var now = options.now || new Date();
+  var sources = readListingSources_();
+  var sheet = ss_().getSheetByName('LISTINGS');
+  if (!sheet || !sources.sheet) return 'LISTINGS ou LISTING_SOURCES ausente.';
+  var ix = headerIndex_(headersOf_(sheet));
+  var rows = dataRowsOf_(sheet);
+
+  var picks = {};
+  rows.forEach(function (row) {
+    var slug = normalizeSlug_(row[ix.portal]);
+    if (!sources.byPortal[slug]) return;
+    if (!/^https?:\/\//i.test(toText_(row[ix.source_url]))) return;
+    var active = (toText_(row[ix.status]).toLowerCase() || 'active') === 'active';
+    var seen = cellDate_(row[ix.last_seen_at]);
+    var score = (active ? 1e13 : 0) + (seen ? seen.getTime() : 0);
+    if (!picks[slug] || score > picks[slug].score) {
+      picks[slug] = { score: score, url: toText_(row[ix.source_url]), externalId: ix.external_id === undefined ? '' : row[ix.external_id] };
+    }
+  });
+
+  var slugs = Object.keys(picks).sort();
+  if (!slugs.length) return 'Nenhum anúncio com URL para diagnosticar.';
+  var items = slugs.map(function (slug) {
+    return { url: picks[slug].url, externalId: picks[slug].externalId, source: sources.byPortal[slug] };
+  });
+  var results;
+  try {
+    results = fetchAndClassifyListings_(items);
+  } catch (err) {
+    if (isUrlFetchAuthorizationError_(err)) {
+      setMeta_('listings_update_status', 'auth_required');
+      return 'Sem autorização de rede (script.external_request). Rode "Instalar gatilhos" pelo editor ' +
+        'do Apps Script para abrir a tela de autorização (docs/SHEET_SETUP.md §10).';
+    }
+    throw err;
+  }
+
+  var six = headerIndex_(headersOf_(sources.sheet));
+  var lines = [];
+  slugs.forEach(function (slug, i) {
+    var source = sources.byPortal[slug];
+    var verdict = results[i];
+    var parsed = verdict.parsed;
+    var summary = verdict.outcome +
+      (parsed ? ' · preço ' + (parsed.price !== null ? 'via ' + parsed.priceSource : 'não lido') +
+        ' · área ' + (parsed.area !== null ? 'lida' : 'não lida') : '') +
+      ' · ' + verdict.message;
+    var sample = '';
+    if (options.saveSamples && verdict.body) {
+      try {
+        var file = DriveApp.createFile('imob-amostra-' + slug + '-' + listingsDayKey_(now) + '.html',
+          verdict.body.slice(0, 500000), 'text/html');
+        sample = ' · amostra: ' + file.getUrl();
+      } catch (err) {
+        sample = ' · amostra não salva: ' + toText_(err && err.message).slice(0, 120);
+      }
+    }
+    var write = function (field, value) {
+      if (six[field] !== undefined) sources.sheet.getRange(source.rowNumber, six[field] + 1).setValue(value);
+    };
+    write('last_probe_at', now);
+    write('last_probe_http_code', verdict.code === undefined ? '' : verdict.code);
+    write('last_probe_bytes', verdict.bytes || 0);
+    write('last_probe_result', summary.slice(0, 500));
+    lines.push(source.name + ': HTTP ' + (verdict.code || '—') + ' · ' + summary + sample);
+  });
+  return lines.join('\n');
+}
+
+// --- Validação -----------------------------------------------------------------------------
+
+/**
+ * Avisos da rotina em DATA_QUALITY, agregados por portal/mês para a aba continuar legível:
+ * anúncio ativo sem confirmação há mais de LISTINGS_STALE_AFTER_DAYS, portal que bloqueia,
+ * e linha de histórico gravada `active` sem confirmação no mês (o que a rotina antiga fez
+ * em setembro e outubro de 2026). Só roda quando a rotina já foi provisionada.
+ */
+function validateListingsRoutine_(report, now) {
+  now = now || new Date();
+  var book = ss_();
+  var listings = book.getSheetByName('LISTINGS');
+  if (!listings) return;
+  var ix = headerIndex_(headersOf_(listings));
+  if (ix.last_check_status === undefined) return;
+
+  var stale = {};
+  var blocked = {};
+  dataRowsOf_(listings).forEach(function (row) {
+    if ((toText_(row[ix.status]).toLowerCase() || 'active') !== 'active') return;
+    var portal = toText_(row[ix.portal]) || '(sem portal)';
+    var seen = cellDate_(row[ix.last_seen_at]);
+    if (!seen || now.getTime() - seen.getTime() > LISTINGS_STALE_AFTER_DAYS * 86400000) {
+      stale[portal] = (stale[portal] || 0) + 1;
+    }
+    if (toText_(row[ix.last_check_status]) === 'blocked') blocked[portal] = (blocked[portal] || 0) + 1;
+  });
+  Object.keys(stale).sort().forEach(function (portal) {
+    report('warning', 'LISTINGS', '', '', 'last_seen_at', 'LISTING_STALE_VERIFICATION',
+      portal + ': ' + stale[portal] + ' anúncio(s) ativo(s) sem confirmação no portal há mais de ' +
+      LISTINGS_STALE_AFTER_DAYS + ' dias.');
+  });
+  Object.keys(blocked).sort().forEach(function (portal) {
+    report('warning', 'LISTINGS', '', '', 'last_check_status', 'LISTING_PORTAL_BLOCKED',
+      portal + ': ' + blocked[portal] + ' anúncio(s) com a última conferência bloqueada pelo portal ' +
+      '(403/429/captcha). Bloqueio não inativa; ver "Anúncios: diagnosticar portais".');
+  });
+
+  var history = book.getSheetByName('LISTINGS_HISTORY_MONTHLY');
+  if (!history) return;
+  var hix = headerIndex_(headersOf_(history));
+  var unverified = {};
+  dataRowsOf_(history).forEach(function (row) {
+    if (toText_(row[hix.status_at_month_end]) !== 'active') return;
+    var month = listingsMonthOfCell_(row[hix.reference_month]);
+    var seen = cellDate_(row[hix.last_seen_at]);
+    if (!month || (seen && listingsMonthKey_(seen) === month)) return;
+    unverified[month] = (unverified[month] || 0) + 1;
+  });
+  Object.keys(unverified).sort().forEach(function (month) {
+    report('warning', 'LISTINGS_HISTORY_MONTHLY', '', '', 'status_at_month_end', 'LISTING_HISTORY_UNVERIFIED',
+      month + ': ' + unverified[month] + ' linha(s) gravada(s) como active sem confirmação no portal no mês. ' +
+      'Registro preservado; não usar como estoque confirmado.');
   });
 }

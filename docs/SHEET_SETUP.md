@@ -27,6 +27,10 @@ Abas opcionais:
 - `PDAD_A_DATA`, `PDAD_A_FIGURE_MAP`, `PDAD_A_GUIDE` — carregadas à mão, lidas pelo Diagnóstico
 - `LISTINGS_COVERAGE`, `PDAD_A_COVERAGE` — **operacionais**, recalculadas por inteiro pelo menu
   (v2.4.0); nunca editadas à mão
+- `LISTING_SOURCES`, `LISTING_CANDIDATES`, `LISTING_EVENTS`, `LISTINGS_UPDATE_RUNS`,
+  `LISTINGS_HISTORY_MONTHLY`, `LISTINGS_MONTHLY_METRICS` — **operacionais** da rotina de anúncios
+  (v2.5.0, §10). Nascem na primeira execução da rotina. Em `LISTING_SOURCES` só se editam à mão
+  `active` (liga/desliga o portal) e `request_headers_json`; as outras não se editam
 
 Não é preciso criar coluna à mão. A partir do Apps Script **v2.0.0**, **Configurar projeto**
 provisiona de forma **aditiva** toda coluna que falta nas abas do contrato: cria a coluna nova no
@@ -264,6 +268,10 @@ Ordem de execução — cada passo depende do anterior:
 1. **Extensões → Apps Script**: substitua TODO o conteúdo por `optional-apps-script/Code.gs` e salve.
    Não mantenha o adendo antigo abaixo: a 2.4.0 já o contém, e duas definições da mesma função
    fariam a última vencer em silêncio.
+
+   > ⚠️ **Este runbook é histórico.** Para atualizar hoje, use o §10 (v2.5.0). Colar a 2.4.0 por
+   > cima de um projeto que já tem a rotina de anúncios apaga a rotina e deixa o gatilho diário
+   > dela apontando para uma função que não existe mais.
 2. **Implantar → Gerenciar implantações → lápis → Versão: Nova versão → Implantar.** Salvar não
    atualiza o `/exec` (ver §8). Confira em `…/exec?resource=health` que `app_version` é `2.4.0`.
 3. Menu **Imob Intelligence → Configurar projeto**. Cria o que falta (`category` em DATA_QUALITY,
@@ -301,3 +309,64 @@ Menu completo da v2.4.0: Configurar projeto · Validar dados agora · Recalcular
 Saneamento (3 itens) · Cobertura (2 itens) · Sincronizar base FipeZAP · Recalcular visão FipeZAP ·
 Importar polígonos · Sincronizar Regiões Administrativas · Sincronizar trechos rodoviários DER ·
 Instalar gatilhos · Atualizar metadados · Configurar / trocar token · Limpar cache.
+
+## 10. Runbook v2.5.0 — rotina de anúncios no repositório (issue #178)
+
+Estado que este runbook resolve (leitura da planilha em 2026-10-08): a rotina diária de anúncios foi
+instalada direto no editor em 2026-09-23, fora do repositório. Ela roda todo dia às ~05h, mas **toda**
+chamada de rede falha com *"You do not have permission to call UrlFetchApp.fetch. Required
+permissions: …/auth/script.external_request"*. Em `LISTINGS_UPDATE_RUNS` são 15 execuções com
+`status = success`, `source_pages_read = 0` e 154 erros cada. Em `LISTINGS`, 149 anúncios estão com
+`last_check_status = error` e `last_seen_at` parado em agosto. Estado final esperado:
+
+```text
+GitHub Code.gs  =  Apps Script salvo  =  Apps Script implantado no /exec  =  2.5.0
+```
+
+Ordem de execução:
+
+1. **Guarde o código antigo antes de apagar.** No editor do Apps Script, copie para fora (um Doc, ou a
+   issue #178) o arquivo `.gs` da rotina de anúncios e o `appsscript.json` (**Configurações do projeto
+   → Mostrar o arquivo de manifesto "appsscript.json" no editor**). É a prova de como a rotina antiga
+   tratava bloqueio e de como calculava as métricas mensais.
+2. **Substitua o código.** Troque TODO o conteúdo de `Code.gs` por `optional-apps-script/Code.gs` e
+   **apague o arquivo antigo da rotina**. Duas definições de função com o mesmo nome fazem a última
+   vencer em silêncio, e o arquivo antigo grava `success` com erro.
+3. **Substitua o manifesto.** Troque o `appsscript.json` por `optional-apps-script/appsscript.json`.
+   Ele declara os escopos explicitamente, `script.external_request` incluído: com `oauthScopes`
+   explícito o Google não infere escopo nenhum, e foi um escopo faltando que parou a rotina. O
+   bloco `webapp` (executar como quem implantou, acesso "Qualquer pessoa") é o que a leitura
+   pública do `/exec` exige (§8). Salve.
+4. **Rode `installTriggers` PELO EDITOR** (seletor de função → `installTriggers` → Executar). É
+   este passo que abre a tela de autorização com os escopos novos: aceite. Ele recria `handleEdit`,
+   `maintenanceJob` e o gatilho diário `listingsVerifyJob` (05h de Brasília), e remove o gatilho
+   órfão da rotina antiga. A mensagem final lista os órfãos removidos.
+5. **Implante uma nova versão** (§8: Implantar → Gerenciar implantações → lápis → Nova versão) e
+   confira em `…/exec?resource=health` que `app_version` é `2.5.0`.
+6. Menu **Imob Intelligence → Anúncios: diagnosticar portais.** O menu busca um anúncio de cada
+   portal e mostra, por portal, o código HTTP, a classificação (`ok`/`gone`/`blocked`/`error`) e de
+   onde o preço foi lido. O mesmo resultado fica nas colunas `last_probe_*` de `LISTING_SOURCES`. O
+   HTML de cada portal é salvo no seu Drive (`imob-amostra-<portal>-<data>.html`) e vira fixture dos
+   parsers. **Este é o dado que decide quais portais a rotina consegue verificar a partir do Google.**
+   Portal com `blocked` não inativa ninguém, mas também não confirma.
+7. Menu **Anúncios: verificar agora.** Roda a fila do dia, até ~4,5 min por execução. O que sobrar vai
+   para uma continuação automática um minuto depois. Confira a nova linha em `LISTINGS_UPDATE_RUNS`:
+   `source_pages_read > 0` e `status` coerente com `errors`. Também é esperado:
+   - `last_check_status` distribuído entre `ok` e `blocked` por portal;
+   - eventos reais em `LISTING_EVENTS`;
+   - as chaves `listings_*` em `APP_META`.
+8. **Validar dados agora.** Os avisos `LISTING_HISTORY_UNVERIFIED` de setembro são esperados e não se
+   apagam: a rotina antiga gravou o mês como `active` sem conferir nada. Outubro é reescrito pela
+   própria rotina com `active` ou `unverified`, conforme a confirmação.
+
+Regras da rotina (ver `docs/DATA_CONTRACT.md` → Abas operacionais → Rotina de anúncios):
+
+- Bloqueio (403/429/captcha/5xx) **nunca** inativa.
+- Um anúncio só vira `inactive` depois de 3 confirmações de remoção em dias distintos, e volta a
+  `active` sozinho quando a página volta a responder.
+- Preço só é reescrito a partir de dado estruturado do próprio anúncio, com variação de até 60%.
+
+Se `APP_META.listings_update_status` voltar a `auth_required`, o conserto é o passo 4.
+
+Menu completo da v2.5.0: o da v2.4.0 mais **Anúncios: verificar agora** e **Anúncios: diagnosticar
+portais**, entre as sincronizações e **Instalar gatilhos**.

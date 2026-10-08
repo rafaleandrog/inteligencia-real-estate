@@ -7,7 +7,9 @@ Visualization Query enquanto isso for simples e confiável. Ver `docs/ARCHITECTU
 
 ## Estado
 
-`Code.gs` **v2.4.0** roda na planilha de produção desde a v2.0.0; cada versão é exercitada em
+`Code.gs` **v2.5.0** (rotina de anúncios, issue #178) é a versão do repositório; a planilha de
+produção roda a v2.4.0 mais a rotina de anúncios instalada fora do repositório até alguém executar o
+runbook do `docs/SHEET_SETUP.md` §10. Cada versão é exercitada em
 `tests/appsscript-*.test.js` num sandbox `vm` que carrega o arquivo real (não uma cópia). O que o
 sandbox não cobre — rede (GeoPortal, DER), Drive, KMZ, `openById` do staging FipeZAP — lança de
 propósito em teste e só é verificado na planilha. O runbook de instalação/sincronização está em
@@ -20,12 +22,17 @@ territorial que nunca chegou à planilha (issue #120).
 
 ## Instalação
 
+`appsscript.json` é o manifesto do projeto, também versionado. Ele declara os escopos explicitamente
+(`script.external_request` incluído; foi a falta dele que parou a rotina de anúncios por quinze dias) e
+`tests/appsscript-listings-verify.test.js` cobra que todo serviço usado pelo `Code.gs` tenha escopo na
+lista. Atualização de uma planilha que já roda o script: siga `docs/SHEET_SETUP.md` §10.
+
 1. Na planilha: **Extensões → Apps Script**
-2. Cole o conteúdo de `Code.gs`
+2. Cole o conteúdo de `Code.gs` (e o de `appsscript.json`, com o manifesto visível nas configurações)
 3. Execute `setupProject()` uma vez — é idempotente e **não sobrescreve** as abas
    `APP_META`, `DATA_QUALITY` e `CHANGE_LOG` que já vêm na planilha importada
 4. Execute `validateAll()`
-5. Execute `installTriggers()`
+5. Execute `installTriggers()` **pelo editor** (é o que abre a tela de autorização dos escopos)
 
 Depois disso o menu **Imob Intelligence** aparece ao abrir a planilha.
 
@@ -33,9 +40,12 @@ Depois disso o menu **Imob Intelligence** aparece ao abrir a planilha.
 
 | Função | Papel |
 |---|---|
-| `onOpen()` | Menu **Imob Intelligence** (17 itens na v2.4.0, em cinco grupos) |
+| `onOpen()` | Menu **Imob Intelligence** (19 itens na v2.5.0, em seis grupos) |
 | `setupProject()` | Cria o que falta nas abas operacionais, idempotente |
-| `installTriggers()` | Gatilho de edição + manutenção a cada 6 h |
+| `installTriggers()` | Gatilho de edição + manutenção a cada 6 h + verificação diária de anúncios (05h); remove gatilho órfão |
+| `listingsVerifyJob()` | Verificação diária dos anúncios nos portais (v2.5.0): lote com orçamento de 4,5 min e continuação automática; bloqueio nunca inativa; inativa com 3 remoções em dias distintos; reativa; grava preço só de dado estruturado do anúncio; fecha o mês em `LISTINGS_HISTORY_MONTHLY`/`LISTINGS_MONTHLY_METRICS` |
+| `listingsVerifyNow_UI()` | Menu **Anúncios: verificar agora** |
+| `listingsDiagnosePortals_UI()` | Menu **Anúncios: diagnosticar portais**: um anúncio por portal, código HTTP e classificação em `LISTING_SOURCES`, amostra do HTML no Drive |
 | `handleEdit(e)` | Registra → incrementa versão → marca `dirty` → invalida cache |
 | `validateAll()` | Preenche `DATA_QUALITY` |
 | `recalculateDerivedFields()` | `asking_price_brl_m2` **só quando vazio** |
