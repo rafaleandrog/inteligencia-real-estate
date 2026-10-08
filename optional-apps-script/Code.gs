@@ -6259,18 +6259,19 @@ function foldText_(text) {
 }
 
 /**
- * Elemento escondido no próprio HTML: atributo `hidden`, `aria-hidden="true"`,
+ * Elemento escondido no próprio HTML, de QUALQUER tag: atributo `hidden`, `aria-hidden="true"`,
  * `display:none`/`visibility:hidden` inline ou classe de esconder (`hidden`, `d-none`,
  * `is-hidden`, `invisible`). Página de anúncio vivo pode carregar escondido o aviso de
  * "anúncio indisponível" que só aparece quando ele sai (revisão do Codex na #181).
  */
-var LISTINGS_HIDDEN_ELEMENT = /<(div|section|span|p|aside|article|h[1-6]|li|ul|strong|small|em|b)\b([^>]*\s(?:hidden(?:\s|=|>|$)|aria-hidden\s*=\s*["']true["']|style\s*=\s*["'][^"']*(?:display\s*:\s*none|visibility\s*:\s*hidden)|class\s*=\s*["'][^"']*\b(?:hidden|d-none|is-hidden|invisible)\b)[^>]*|\s+hidden)>[\s\S]*?<\/\1>/gi;
+var LISTINGS_HIDDEN_ELEMENT = /<([a-z][a-z0-9-]*)\b(?=[^>]*(?:\shidden(?:[\s=>\/]|$)|\saria-hidden\s*=\s*["']true["']|\sstyle\s*=\s*["'][^"']*(?:display\s*:\s*none|visibility\s*:\s*hidden)|\sclass\s*=\s*["'][^"']*\b(?:hidden|d-none|is-hidden|invisible)\b))[^>]*>[\s\S]*?<\/\1\s*>/gi;
 
 /**
  * Texto que a pessoa vê: sem `<script>`, `<style>`, `<noscript>`, `<template>`, sem elemento
- * escondido (LISTINGS_HIDDEN_ELEMENT) e sem tags. Regex não é parser de HTML: elemento
- * escondido com filho do mesmo nome escapa. Por isso a classificação nunca confia SÓ no
- * marcador quando a página também traz o dado estruturado do anúncio (CONFLICTING_SIGNALS).
+ * escondido (LISTINGS_HIDDEN_ELEMENT) e sem tags. É uma aproximação — regex não aplica CSS
+ * externo nem resolve elemento escondido com filho da mesma tag —, e por isso a
+ * classificação nunca aceita o marcador de remoção numa página que ainda traz o anúncio
+ * (ver `classifyListingResponse_`).
  */
 function visibleText_(html) {
   var text = String(html || '')
@@ -6368,16 +6369,22 @@ function classifyListingResponse_(url, response, externalId) {
   var tokens = listingIdTokens_(url, externalId);
   var parsed = parseListingHtml_(body, tokens);
   var hasData = parsed.price !== null || parsed.area !== null;
-  // Marcador de remoção só no texto VISÍVEL: bundle de JavaScript embutido carrega as
-  // strings da rota de erro ("página não encontrada") em página de anúncio vivo, e a
-  // página pode trazer o aviso de indisponível escondido. Marcador JUNTO com o dado
-  // estruturado do próprio anúncio é sinal contraditório: não confirma nem conta para
-  // inativar — inativar um anúncio vivo é o erro mais caro desta rotina.
+  var idInPage = tokens.some(function (token) { return body.indexOf(token) !== -1; });
+  // Com HTTP 200, a frase de remoção só vale numa página que JÁ NÃO TRAZ o anúncio — nem o
+  // dado estruturado dele nem o id. Página que ainda o traz e também tem a frase é sinal
+  // contraditório: um aviso escondido por CSS externo, um modal, uma tag que a limpeza não
+  // reconhece. Contraditório não confirma nem conta para inativar, porque inativar anúncio
+  // vivo é o erro mais caro desta rotina (revisões do Codex na #181). A remoção afirmada
+  // pelo portal continua chegando por 404/410 e por redirecionamento para fora do anúncio.
   var visible = foldText_(visibleText_(body));
   for (var r = 0; r < LISTINGS_REMOVED_MARKERS.length; r++) {
     if (visible.indexOf(LISTINGS_REMOVED_MARKERS[r]) === -1) continue;
-    if (hasData) {
-      return { outcome: 'error', code: code, message: 'CONFLICTING_SIGNALS marcador "' + LISTINGS_REMOVED_MARKERS[r] + '" com dado do anúncio (' + parsed.signals.join('+') + ')' };
+    if (hasData || idInPage) {
+      return {
+        outcome: 'error', code: code,
+        message: 'CONFLICTING_SIGNALS marcador "' + LISTINGS_REMOVED_MARKERS[r] + '" numa página que ainda traz o anúncio (' +
+          (hasData ? parsed.signals.join('+') : 'id_na_pagina') + ')'
+      };
     }
     return { outcome: 'gone', code: code, message: 'REMOVED_MARKER "' + LISTINGS_REMOVED_MARKERS[r] + '"' };
   }
@@ -6389,7 +6396,6 @@ function classifyListingResponse_(url, response, externalId) {
       }
     }
   }
-  var idInPage = tokens.some(function (token) { return body.indexOf(token) !== -1; });
   if (hasData || idInPage) {
     return {
       outcome: 'ok', code: code, parsed: parsed,
@@ -6694,7 +6700,9 @@ function runListingsVerifyLocked_(options) {
       documentLock.releaseLock();
     }
   }
-  var lockBusy = !holdsDocument && processed > 0;
+  // Qualquer falha de lock é "ocupado", mesmo sem nada lido: o fechamento mensal também
+  // lê e grava a partir de LISTINGS, e não pode rodar enquanto outro escritor a altera.
+  var lockBusy = !holdsDocument;
 
   var continuation = false;
   if (!authError && (remaining > 0 || lockBusy) && !options.noContinuation) {

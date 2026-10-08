@@ -1073,8 +1073,9 @@ Cada uma nasce de um erro que aconteceu de verdade.
   anúncio só conta para inativar quando o portal AFIRMA a remoção (404/410, frase de anúncio removido
   no texto visível, redirecionamento para fora do anúncio). Mesmo assim só inativa depois de três
   confirmações em dias distintos, e a mesma rotina reativa quando a página volta. A frase de remoção
-  vale só no texto visível (nunca dentro de script ou de elemento escondido). Junto com o dado
-  estruturado do próprio anúncio, ela é sinal contraditório e não conta. Preço só é
+  vale só no texto visível (nunca dentro de script ou de elemento escondido) e só numa página que
+  já não traz o anúncio, nem o id nem o dado estruturado dele. Na página que ainda o traz, ela é
+  sinal contraditório e não conta: limpeza de HTML por regex não sabe o que o CSS do portal esconde. Preço só é
   reescrito a partir de dado estruturado que é inequivocamente do anúncio (o id da URL, ou o único
   candidato da página), nunca da vitrine de "semelhantes".
 - **R8.103** *(2026-10-08, issue #178)* **Execução com erro não é sucesso, e falta de autorização
@@ -1084,8 +1085,8 @@ Cada uma nasce de um erro que aconteceu de verdade.
   - o status de uma execução sai das contagens (`success` só com zero erro);
   - erro de escopo derruba a execução antes da primeira escrita e vira chave legível em `APP_META`;
   - sem o lock de documento (o mesmo da API de escrita, da edição manual e do job de 6 h), a rotina
-    não grava nada e agenda a continuação. Gravar sem o lock troca um minuto de atraso por valor
-    sobrescrito;
+    não grava nada, nem o fechamento mensal, e agenda a continuação. Gravar sem o lock troca um
+    minuto de atraso por valor sobrescrito;
   - todo serviço que o `Code.gs` usa tem escopo declarado no `appsscript.json` versionado, cobrado
     por teste, porque com `oauthScopes` explícito o Google não infere nada;
   - agregado histórico só conta o que foi confirmado no período. O resto sai com nome próprio

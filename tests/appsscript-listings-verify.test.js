@@ -384,6 +384,10 @@ test('aviso de indisponível escondido no HTML não conta como remoção', () =>
     '<div hidden>Este anúncio não está mais disponível</div>',
     '<section class="banner d-none">Anúncio indisponível</section>',
     '<p aria-hidden="true">Imóvel indisponível</p>',
+    // Segunda rodada do Codex: tag fora de qualquer lista fixa.
+    '<a hidden>Este anúncio não está mais disponível</a>',
+    '<button style="display:none" type="button">Anúncio indisponível</button>',
+    '<custom-banner class="x hidden">Anúncio removido</custom-banner>',
   ];
   for (const hidden of hiddenVariants) {
     const live = jsonLdPage({ extra: hidden });
@@ -393,15 +397,19 @@ test('aviso de indisponível escondido no HTML não conta como remoção', () =>
   }
 });
 
-test('marcador visível junto com o dado do próprio anúncio é inconclusivo, não remoção', () => {
+test('marcador numa página que ainda traz o anúncio é inconclusivo, não remoção', () => {
   const { context } = createAppsScriptSandbox();
-  // Escondido de um jeito que a regex não pega (filho do mesmo elemento): o dado do anúncio
-  // na mesma página impede a inativação.
+  // Escondido de um jeito que a regex não pega (filho da mesma tag) e escondido por CSS
+  // externo (classe que só a folha de estilo do portal conhece): o anúncio ainda está na
+  // página — pelo dado estruturado ou pelo id — e isso impede a inativação.
   const nested = jsonLdPage({ extra: '<div style="display:none"><div>x</div><p>Anúncio indisponível</p></div>' });
-  const verdict = context.classifyListingResponse_(DF, { code: 200, body: nested }, '1364276');
-  assert.equal(verdict.outcome, 'error');
-  assert.match(verdict.message, /^CONFLICTING_SIGNALS/);
-  // Sem dado do anúncio, o marcador visível continua sendo remoção.
+  const byCss = '<html><body>Apartamento código 1364276<div class="modal-indisponivel">Este anúncio não está mais disponível</div></body></html>';
+  for (const body of [nested, byCss]) {
+    const verdict = context.classifyListingResponse_(DF, { code: 200, body }, '1364276');
+    assert.equal(verdict.outcome, 'error');
+    assert.match(verdict.message, /^CONFLICTING_SIGNALS/);
+  }
+  // Página que já não traz o anúncio (nem id nem dado): o marcador visível é remoção.
   assert.equal(context.classifyListingResponse_(DF, { code: 200, body: REMOVED_PAGE }, '1364276').outcome, 'gone');
 });
 
@@ -421,6 +429,17 @@ test('lock da planilha ocupado: nada é gravado, e a continuação refaz a leitu
   assert.match(lastRun(sandbox).error_details, /^DOCUMENT_LOCK_BUSY/);
   assert.deepEqual(sandbox.triggers.map((t) => t.getHandlerFunction()), ['listingsVerifyContinue']);
   assert.equal(sandbox.sheets.LISTINGS_HISTORY_MONTHLY._rows.length, 1, 'sem gravação, sem fechamento');
+});
+
+test('lock ocupado com a fila vazia também não fecha o mês', () => {
+  // Segunda rodada do Codex: sem nada a conferir, `processed = 0` fazia a falta de lock
+  // valer como "livre", e o fechamento mensal gravava enquanto outro escritor alterava LISTINGS.
+  const sandbox = createAppsScriptSandbox({ sheets: sheetsWith([listing({ last_checked_at: day(0) })]), documentLockBusy: true });
+  installNetwork(sandbox.context, {});
+  sandbox.context.runListingsVerify_({ now: day(0) });
+  assert.equal(sandbox.sheets.LISTINGS_HISTORY_MONTHLY._rows.length, 1);
+  assert.equal(lastRun(sandbox).status, 'failed');
+  assert.deepEqual(sandbox.triggers.map((t) => t.getHandlerFunction()), ['listingsVerifyContinue']);
 });
 
 test('página de desafio é bloqueio; reCAPTCHA num anúncio com dado é ok', () => {
