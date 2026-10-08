@@ -1956,7 +1956,12 @@ quando há pelo menos 3 referências.
 A leitura das páginas leva minutos, e a planilha continua aberta para edição. Por isso, com o lock de
 documento em mãos e antes de gravar, a busca relê as linhas de candidato e de busca. Linha que alguém
 mudou nesse meio-tempo (decisão de revisão, valor digitado, busca editada) fica fora da execução: não
-é promovida nem regravada, e a continuação a refaz a partir do que está na planilha.
+é promovida nem regravada, e a continuação a refaz a partir do que está na planilha. O mesmo vale para
+o candidato novo que veio de uma busca alterada, ou que outro escritor pôs na fila no meio-tempo
+(mesmo `candidate_id`, portal + id ou URL): ele não é anexado, nem a promoção que tiver gerado.
+
+Texto vindo do portal (o `title` lido da página) é gravado sempre como texto: valor que começa com
+`=`, `+`, `@` ou `-letra` ganha o apóstrofo do Sheets e nunca vira fórmula.
 
 A promoção grava em LISTINGS, além do que veio da página:
 

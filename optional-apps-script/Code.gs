@@ -6953,7 +6953,7 @@ function writeRowChanges_(sheet, idField, changes) {
       ids.forEach(function (id) {
         if (!(field in changes[id]) || rowById[id] === undefined) return;
         if (formulas[rowById[id]][0] !== '') return; // célula com fórmula nunca é sobrescrita
-        sheet.getRange(rowById[id] + 2, ix[field] + 1).setValue(changes[id][field]);
+        sheet.getRange(rowById[id] + 2, ix[field] + 1).setValue(safeCellValue_(changes[id][field]));
         written[id] = true;
       });
       return;
@@ -6966,7 +6966,9 @@ function writeRowChanges_(sheet, idField, changes) {
       written[id] = true;
       touched = true;
     });
-    if (touched) range.setValues(values);
+    // A coluna inteira volta à planilha: texto que começa com `=`/`+`/`@` (título vindo do
+    // portal, ou um que já estava lá como texto) não pode voltar como fórmula.
+    if (touched) range.setValues(values.map(function (r) { return [safeCellValue_(r[0])]; }));
   });
   return Object.keys(written).length;
 }
@@ -8202,6 +8204,26 @@ function runListingsDiscoveryLocked_(options) {
         }
         stats.messages.push(id + ': linha alterada durante a busca; fica para a continuação');
       });
+      // Candidato novo que não pode entrar: veio de uma busca alterada durante a execução (o
+      // filtro antigo não vale mais), ou outro escritor (agente externo) pôs o mesmo anúncio
+      // na fila nesse meio-tempo. Sai com a promoção que tiver gerado.
+      var staleSearch = {};
+      Object.keys(touchedSearches).forEach(function (id) { staleSearch['search:' + id] = true; });
+      var queued = candidateKeysOnSheet_(candSheet, candHeaders);
+      newCandidates = newCandidates.filter(function (cand) {
+        var stale = !!staleSearch[toText_(cand.discovered_by)];
+        var queuedMeanwhile = queued[toText_(cand.candidate_id)] ||
+          queued[normalizeSlug_(cand.source_name) + '|' + toText_(cand.external_id)] ||
+          queued[canonicalListingUrl_(cand.source_url)];
+        if (!stale && !queuedMeanwhile) return true;
+        stats.created--;
+        if (cand.status === 'promoted') {
+          dropped[listingIdForCandidate_(cand)] = true;
+          stats.promoted--;
+        }
+        if (queuedMeanwhile) stats.messages.push(toText_(cand.candidate_id) + ': já entrou na fila por outro escritor durante a busca');
+        return false;
+      });
       if (Object.keys(dropped).length) {
         var dropColumn = listingHeaders.indexOf('listing_id');
         promotedRows = promotedRows.filter(function (row) { return !dropped[toText_(row[dropColumn])]; });
@@ -8239,7 +8261,7 @@ function runListingsDiscoveryLocked_(options) {
       if (newCandidates.length) {
         var start = candSheet.getLastRow() + 1;
         candSheet.getRange(start, 1, newCandidates.length, candHeaders.length).setValues(newCandidates.map(function (cand) {
-          return candHeaders.map(function (h) { return cand[h] === undefined ? '' : cand[h]; });
+          return candHeaders.map(function (h) { return cand[h] === undefined ? '' : safeCellValue_(cand[h]); });
         }));
       }
       // Candidato que já existia: grava só os campos que o run mudou, casando por id (uma
@@ -8258,7 +8280,9 @@ function runListingsDiscoveryLocked_(options) {
       writeRowChanges_(searchSheet, 'search_id', searchChanges);
       if (promotedRows.length) {
         var at = listings.getLastRow() + 1;
-        listings.getRange(at, 1, promotedRows.length, listingHeaders.length).setValues(promotedRows);
+        listings.getRange(at, 1, promotedRows.length, listingHeaders.length).setValues(promotedRows.map(function (row) {
+          return row.map(safeCellValue_);
+        }));
       }
       appendListingEvents_(createdEvents);
     } finally {
@@ -8293,7 +8317,7 @@ function runListingsDiscoveryLocked_(options) {
     error_details: details.slice(0, LISTINGS_ERROR_DETAILS_MAX)
   });
 
-  var pending = queue.filter(function (cand) {
+  var pending = candidates.concat(newCandidates).filter(function (cand) {
     var s = toText_(cand.status).toLowerCase();
     return s === 'pending' || s === 'approved';
   }).length;
@@ -8343,6 +8367,23 @@ function rowsChangedSince_(sheet, headers, idField, snapshots, fields) {
     if (!now || compare.some(function (h) { return !sameCellValue_(now[h], before[h]); })) changed[id] = true;
   });
   return changed;
+}
+
+/**
+ * Chaves de deduplicação dos candidatos que estão na planilha AGORA (relida com o lock):
+ * `candidate_id`, portal + id e URL canônica.
+ */
+function candidateKeysOnSheet_(sheet, headers) {
+  var keys = {};
+  if (!sheet || sheet.getLastRow() < 2) return keys;
+  sheet.getRange(2, 1, sheet.getLastRow() - 1, headers.length).getValues().forEach(function (row) {
+    var cand = rowObject_(headers, row);
+    var id = toText_(cand.candidate_id);
+    if (id) keys[id] = true;
+    if (toText_(cand.external_id)) keys[normalizeSlug_(cand.source_name) + '|' + toText_(cand.external_id)] = true;
+    if (/^https?:\/\//i.test(toText_(cand.source_url))) keys[canonicalListingUrl_(cand.source_url)] = true;
+  });
+  return keys;
 }
 
 /** Mesma célula? Data por instante; o resto por texto (número e booleano voltam iguais do Sheets). */
