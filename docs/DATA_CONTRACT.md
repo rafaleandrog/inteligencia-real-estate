@@ -1252,6 +1252,13 @@ cadastro do trecho e a contagem; `POLYGONS` guarda a geometria desenhável.
 > 'road_segment'` + `entity_id` → `road_segment_id` (`linkSegmentToPolygon` em
 > `src/traffic/link.js`) —, mantendo `current_polygon_id` como caminho primário. **A correção
 > canônica é o backend preencher essa coluna**; o segundo caminho é ponte, não substituição.
+>
+> **Fluxo sem linha em `ROAD_SEGMENTS` (issue #185).** Quando um `road_segment_id` de
+> `TRAFFIC_DAILY_TEST` não tem cadastro, mas uma geometria **ativa** de `POLYGONS` com
+> `entity_type = 'road_segment'` declara exatamente esse id em `entity_id`, o cliente vincula o
+> fluxo a ela (`identitySource: 'polygon'` em `linkTrafficDataset`). O vínculo é sempre por id,
+> nunca por nome. Isso mantém o painel e o mapa com o fluxo por sentido quando a aba de cadastro
+> não carrega; só fica como "não cadastrado" o fluxo que também não tem geometria.
 
 ### ROAD_SEGMENTS — cadastro do trecho rodoviário
 

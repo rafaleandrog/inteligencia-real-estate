@@ -2724,7 +2724,10 @@ function trafficItemNode(row, { unmatched = false } = {}) {
     pendente.className = 'traffic-item-pending';
     pendente.textContent = unmatched === 'official'
       ? 'Fluxo disponível; geometria oficial não localizada.'
-      : 'Trecho não cadastrado em ROAD_SEGMENTS — fluxo não vinculado a nenhuma geometria.';
+      : state.trafficAll.segmentsLoadFailed
+        ? `O cadastro de trechos (${CONFIG.roadSegmentsSheet || 'ROAD_SEGMENTS'}) não carregou desta vez — `
+          + 'fluxo sem geometria vinculada. Recarregue a página para tentar de novo.'
+        : 'Trecho não cadastrado em ROAD_SEGMENTS — fluxo não vinculado a nenhuma geometria.';
     li.append(pendente);
   } else if (!row.hasGeometry) {
     const pendente = document.createElement('p');
