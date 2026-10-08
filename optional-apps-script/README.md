@@ -7,7 +7,7 @@ Visualization Query enquanto isso for simples e confiável. Ver `docs/ARCHITECTU
 
 ## Estado
 
-`Code.gs` **v2.5.0** (rotina de anúncios, issue #178) é a versão do repositório; a planilha de
+`Code.gs` **v2.6.0** (rotina de anúncios, issues #178 e #179) é a versão do repositório; a planilha de
 produção roda a v2.4.0 mais a rotina de anúncios instalada fora do repositório até alguém executar o
 runbook do `docs/SHEET_SETUP.md` §10. Cada versão é exercitada em
 `tests/appsscript-*.test.js` num sandbox `vm` que carrega o arquivo real (não uma cópia). O que o
@@ -40,11 +40,14 @@ Depois disso o menu **Imob Intelligence** aparece ao abrir a planilha.
 
 | Função | Papel |
 |---|---|
-| `onOpen()` | Menu **Imob Intelligence** (19 itens na v2.5.0, em seis grupos) |
+| `onOpen()` | Menu **Imob Intelligence** (20 itens na v2.6.0, em seis grupos) |
 | `setupProject()` | Cria o que falta nas abas operacionais, idempotente |
-| `installTriggers()` | Gatilho de edição + manutenção a cada 6 h + verificação diária de anúncios (05h); remove gatilho órfão |
+| `installTriggers()` | Gatilho de edição + manutenção a cada 6 h + verificação diária de anúncios (05h) + busca diária (06h); remove gatilho órfão |
+| `doPost(e)` · `listings_job` / `review_candidate` | (v2.6.0) agenda verificação/busca; aprova ou rejeita candidato — com token |
 | `listingsVerifyJob()` | Verificação diária dos anúncios nos portais (v2.5.0): lote com orçamento de 4,5 min e continuação automática; bloqueio nunca inativa; inativa com 3 remoções em dias distintos; reativa; grava preço só de dado estruturado do anúncio; fecha o mês em `LISTINGS_HISTORY_MONTHLY`/`LISTINGS_MONTHLY_METRICS` |
 | `listingsVerifyNow_UI()` | Menu **Anúncios: verificar agora** |
+| `listingsDiscoveryJob()` | Busca de anúncios novos (v2.6.0, 06h): lê as buscas de `LISTING_SEARCHES`, gera candidatos, lê a página de cada um, promove a LISTINGS o que passa nos portões; gatilhos de ação por edição de busca e aprovação de candidato (`docs/SHEET_SETUP.md` §11) |
+| `listingsDiscoverNow_UI()` | Menu **Anúncios: buscar novos agora** |
 | `listingsDiagnosePortals_UI()` | Menu **Anúncios: diagnosticar portais**: um anúncio por portal, código HTTP e classificação em `LISTING_SOURCES`, amostra do HTML no Drive |
 | `handleEdit(e)` | Registra → incrementa versão → marca `dirty` → invalida cache |
 | `validateAll()` | Preenche `DATA_QUALITY` |

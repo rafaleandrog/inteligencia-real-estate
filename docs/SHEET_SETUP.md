@@ -27,10 +27,14 @@ Abas opcionais:
 - `PDAD_A_DATA`, `PDAD_A_FIGURE_MAP`, `PDAD_A_GUIDE` — carregadas à mão, lidas pelo Diagnóstico
 - `LISTINGS_COVERAGE`, `PDAD_A_COVERAGE` — **operacionais**, recalculadas por inteiro pelo menu
   (v2.4.0); nunca editadas à mão
-- `LISTING_SOURCES`, `LISTING_CANDIDATES`, `LISTING_EVENTS`, `LISTINGS_UPDATE_RUNS`,
+- `LISTING_SOURCES`, `LISTING_SEARCHES`, `LISTING_CANDIDATES`, `LISTING_EVENTS`, `LISTINGS_UPDATE_RUNS`,
   `LISTINGS_HISTORY_MONTHLY`, `LISTINGS_MONTHLY_METRICS` — **operacionais** da rotina de anúncios
-  (v2.5.0, §10). Nascem na primeira execução da rotina. Em `LISTING_SOURCES` só se editam à mão
-  `active` (liga/desliga o portal) e `request_headers_json`; as outras não se editam
+  (v2.5.0 e v2.6.0, §10 e §11). Nascem na primeira execução da rotina. Edita-se à mão:
+  - em `LISTING_SOURCES`: `active` (liga ou desliga o portal), `request_headers_json` e `parser_config_json`;
+  - em `LISTING_SEARCHES`: as buscas (§11);
+  - em `LISTING_CANDIDATES`: `status` (`approved`/`rejected`) e os campos que a página não trouxe.
+
+  O resto é da rotina
 
 Não é preciso criar coluna à mão. A partir do Apps Script **v2.0.0**, **Configurar projeto**
 provisiona de forma **aditiva** toda coluna que falta nas abas do contrato: cria a coluna nova no
@@ -370,3 +374,58 @@ Se `APP_META.listings_update_status` voltar a `auth_required`, o conserto é o p
 
 Menu completo da v2.5.0: o da v2.4.0 mais **Anúncios: verificar agora** e **Anúncios: diagnosticar
 portais**, entre as sincronizações e **Instalar gatilhos**.
+
+## 11. Busca de anúncios novos (v2.6.0, issue #179)
+
+A v2.6.0 instala-se como a v2.5.0 (§10, passos 2 a 5): colar `Code.gs`, rodar `installTriggers` pelo
+editor e implantar. `installTriggers` passa a criar também o gatilho diário `listingsDiscoveryJob`, às
+06h, uma hora depois da verificação.
+
+**Cadastrar uma busca é cadastrar uma linha, não escrever código.**
+
+1. No navegador, abra o portal (o DFImoveis primeiro: 136 dos 158 anúncios da base vêm dele) e
+   aplique o filtro: venda, tipo, bairro/RA, faixa de preço, o que quiser. Copie a URL da página de
+   resultados.
+2. Em `LISTING_SEARCHES`, acrescente uma linha:
+   - `search_id`: qualquer código único (`SEARCH_DF_AGUAS_CLARAS_APTO`);
+   - `source_id`: `SRC_PORTAL_DFIMOVEIS`, como em `LISTING_SOURCES`;
+   - `search_url`: a URL copiada;
+   - `locality` e `property_type`: quando a busca é de um lugar e de um tipo só, porque viram o
+     contexto de cada anúncio encontrado. Busca ampla pode deixá-los vazios: a localidade sai do slug
+     da URL do anúncio, entre as que LISTINGS já tem, e o tipo sai da URL ou do título;
+   - `active`: `TRUE`;
+   - `frequency`: `daily`;
+   - `max_pages`: `1`.
+
+   Para paginar, troque na URL o número da página por `{page}` (por exemplo `…?pagina={page}`) e
+   ponha `max_pages` até 5.
+3. A edição já é o gatilho de ação: um minuto depois a busca roda sozinha. Para não esperar, use o menu
+   **Anúncios: buscar novos agora**.
+4. Confira o resultado:
+   - na linha da busca: `last_status = ok`, `last_found_count` (links de anúncio reconhecidos) e
+     `last_new_count` (candidatos novos);
+   - em `LISTING_CANDIDATES`: cada anúncio novo, com a página dele já lida;
+   - em `LISTINGS`: os promovidos, com `quality_flag = automated_item_page_verified`.
+
+   `last_found_count = 0` com `ok` quer dizer que a página não tem link que pareça anúncio daquele
+   portal. Confira a URL ou declare o caminho em `LISTING_SOURCES.parser_config_json`, por exemplo
+   `{"listing_path_regex": "^/imovel/"}`.
+
+**Revisar candidatos.** O que não passa nos portões fica `pending`, com o motivo em `reject_reason`: falta
+de preço, área, quartos, localidade ou RA, ou preço/m² muito fora da localidade. Para decidir:
+
+- `rejected`: o candidato nunca volta;
+- `approved`: um minuto depois a busca roda de novo e promove. A aprovação dispensa só o portão de
+  plausibilidade. Dado obrigatório que falta se preenche na própria linha do candidato, antes ou
+  depois de aprovar.
+
+A leitura nunca sobrescreve o que foi digitado.
+
+**Por API.** A área administrativa (ou qualquer cliente com o `ADMIN_TOKEN`) tem duas ações:
+
+- `{"action": "listings_job", "job": "verify" | "discovery"}` agenda a execução e responde na hora;
+- `{"action": "review_candidate", "candidate_id": "…", "decision": "approved" | "rejected", "reason": "…"}`.
+
+Anúncio criado pela área administrativa é conferido no portal cerca de um minuto depois.
+
+Menu completo da v2.6.0: o da v2.5.0 mais **Anúncios: buscar novos agora**.

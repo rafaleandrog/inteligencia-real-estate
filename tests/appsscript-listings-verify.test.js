@@ -637,12 +637,12 @@ test('validação: estoque sem confirmação, portal bloqueado e histórico acti
 
 // --- 7. schema, gatilhos e diagnóstico ----------------------------------------------------------
 
-test('o schema da rotina provisiona as 6 abas e só as 12 colunas operacionais em LISTINGS', () => {
+test('o schema da rotina provisiona as 7 abas e só as 12 colunas operacionais em LISTINGS', () => {
   const seedHeaders = LISTINGS_HEADERS.slice(0, LISTINGS_HEADERS.indexOf('first_seen_at'));
   const sandbox = createAppsScriptSandbox({ sheets: { LISTINGS: [seedHeaders], APP_META: [['key', 'value', 'updated_at']] } });
   sandbox.context.ensureListingsRoutineSchema_();
   assert.deepEqual(sandbox.sheets.LISTINGS._rows[0], LISTINGS_HEADERS, 'mesma ordem da planilha viva');
-  for (const name of ['LISTING_SOURCES', 'LISTING_CANDIDATES', 'LISTING_EVENTS', 'LISTINGS_UPDATE_RUNS', 'LISTINGS_HISTORY_MONTHLY', 'LISTINGS_MONTHLY_METRICS']) {
+  for (const name of ['LISTING_SOURCES', 'LISTING_SEARCHES', 'LISTING_CANDIDATES', 'LISTING_EVENTS', 'LISTINGS_UPDATE_RUNS', 'LISTINGS_HISTORY_MONTHLY', 'LISTINGS_MONTHLY_METRICS']) {
     assert.ok(sandbox.sheets[name], name);
   }
   assert.deepEqual(sandbox.sheets.LISTING_SOURCES._rows[0].slice(0, 14), SOURCES_HEADERS, 'as 14 da planilha viva primeiro');
@@ -670,7 +670,9 @@ test('installTriggers instala o gatilho diário e remove o órfão da rotina ant
 
   const message = context.installTriggers();
   const handlers = triggers.map((t) => t.getHandlerFunction()).sort();
-  assert.deepEqual(handlers, ['handleEdit', 'listingsVerifyJob', 'maintenanceJob', 'syncFipezapFromStaging_UI']);
+  assert.deepEqual(handlers, ['handleEdit', 'listingsDiscoveryJob', 'listingsVerifyJob', 'maintenanceJob', 'syncFipezapFromStaging_UI']);
+  const discovery = triggers.find((t) => t.getHandlerFunction() === 'listingsDiscoveryJob');
+  assert.equal(discovery._spec.atHour, 6, 'a busca roda depois da verificação');
   const daily = triggers.find((t) => t.getHandlerFunction() === 'listingsVerifyJob');
   assert.equal(daily._spec.everyDays, 1);
   assert.equal(daily._spec.atHour, 5);

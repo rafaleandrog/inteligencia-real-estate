@@ -122,6 +122,7 @@ function createRange(data, row, col, numRows, numCols) {
     copyFormatToRange() { return this; },
     getA1Notation: () => `R${row}C${col}`,
     getRow: () => row,
+    getColumn: () => col,
     getNumRows: () => numRows,
     getNumColumns: () => numCols,
     getSheet: () => { throw new Error('getSheet() não é usado pelos testes de escrita'); },
