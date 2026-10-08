@@ -56,6 +56,18 @@ test('comparableStats: ignora price_m2 null/NaN e conta ativos e recentes', () =
   assert.equal(s.p75, 9250);
 });
 
+test('comparableStats: anúncio com status vazio conta como ativo, como no filtro "Só ativos" (#180)', () => {
+  const s = comparableStats([
+    listing('a', 8000, { status: '' }),
+    listing('b', 9000, { status: ' Active ' }),
+    listing('c', 10000, { status: 'inactive' }),
+  ], { now: NOW });
+  assert.equal(s.active, 2);
+  const dev = (id, status) => ({ kind: 'development', id, price_m2: 9000, status });
+  const d = comparableStats([dev('x', ''), dev('y', 'em obras'), dev('z', 'active')], { now: NOW });
+  assert.equal(d.active, 1, 'empreendimento: status em texto livre, só o active literal conta');
+});
+
 test('amostra pequena: um comparável dá quartis iguais à mediana, sem NaN', () => {
   const s = comparableStats([listing('a', 8000)], { now: NOW });
   assert.deepEqual([s.min, s.p25, s.median, s.p75, s.max], [8000, 8000, 8000, 8000, 8000]);

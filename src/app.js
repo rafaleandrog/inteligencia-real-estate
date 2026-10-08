@@ -48,9 +48,9 @@ import {
 import { buildChart, buildGroups } from './pdad/charts.js';
 import { rowsToCsv, downloadCsv } from './pdad/csv.js';
 import {
-  anchorLegendGroups, applyFilters, computeKpis, createFilterState, distinctAnchorGroups,
-  distinctAnchorSegments, distinctLocalities, distinctPropertyTypes, distinctRegions,
-  distinctRegularizationStatuses, distinctSalesStages, LAYERS,
+  anchorLegendGroups, applyFilters, computeKpis, countInactiveListings, createFilterState,
+  distinctAnchorGroups, distinctAnchorSegments, distinctLocalities, distinctPropertyTypes,
+  distinctRegions, distinctRegularizationStatuses, distinctSalesStages, isInactiveListing, LAYERS,
   groupPolygonsForLegend, polygonPassesLayerFilters, raProfileForPolygon,
 } from './filters.js';
 import {
@@ -103,6 +103,7 @@ const dom = {
   buildingOrientation: el('buildingOrientation'),
   anchorGroup: el('anchorGroup'), anchorSegment: el('anchorSegment'),
   salesStage: el('salesStage'), regularizationStatus: el('regularizationStatus'),
+  listingStatus: el('listingStatus'),
   priceMin: el('priceMin'), priceMax: el('priceMax'), beds: el('beds'),
   clearFilters: el('clearFilters'),
   moreFilters: el('moreFilters'), moreFiltersSummary: el('moreFiltersSummary'), layers: el('layersSection'),
@@ -1759,7 +1760,11 @@ function buildDetailBody(record) {
     push(essencial, 'Preço/m²', formatPriceM2(record.price_m2));
     push(essencial, 'Tipo', formatPropertyType(record.property_type));
     push(essencial, 'Localidade', record.locality);
+    // Anúncio inativo só aparece com "Todos, inclusive inativos" ligado; quando aparece,
+    // a situação vem antes de tudo o mais que o card diz (issue #180).
+    push(essencial, 'Situação', isInactiveListing(record) ? 'Inativo no portal' : null);
 
+    push(complementar, 'Confirmado no portal em', dateOrNull(record.last_seen_at));
     push(complementar, 'Quartos', num(record.bedrooms));
     push(complementar, 'Suítes', num(record.suites));
     push(complementar, 'Vagas', num(record.parking_spaces));
@@ -1917,6 +1922,7 @@ function readFilters() {
   state.filters.buildingOrientation = dom.buildingOrientation.value;
   state.filters.salesStage = dom.salesStage.value;
   state.filters.regularizationStatus = dom.regularizationStatus.value;
+  state.filters.listingStatus = dom.listingStatus.value === 'all' ? 'all' : 'active';
   state.filters.anchorGroup = dom.anchorGroup.value;
   state.filters.anchorSegment = dom.anchorSegment.value;
   state.filters.priceMin = numberFieldValue(dom.priceMin);
@@ -1957,6 +1963,8 @@ function updateMoreFiltersSummary() {
   const ativos = [
     state.filters.buildingOrientation, state.filters.salesStage, state.filters.regularizationStatus,
     state.filters.anchorGroup, state.filters.anchorSegment,
+    // "Só ativos" é o padrão, não um filtro escolhido; incluir os inativos é.
+    state.filters.listingStatus === 'all' ? 'all' : '',
   ].filter((v) => v !== '' && v !== null && v !== undefined).length;
   dom.moreFiltersSummary.textContent = ativos > 0 ? `Mais filtros (${ativos} ativo${ativos > 1 ? 's' : ''})` : 'Mais filtros';
   if (ativos > 0) dom.moreFilters.open = true;
@@ -2829,6 +2837,19 @@ function populateAnchorSegments(group, { keepSelection = true } = {}) {
   dom.anchorSegment.value = segments.includes(previous) ? previous : '';
 }
 
+/**
+ * "Só ativos" diz quantos anúncios ele esconde (R5.7): um filtro padrão que reduz o mapa
+ * sem dizer quanto é a forma mais barata de "plausível e errado".
+ */
+function labelListingStatusOptions(records) {
+  const option = dom.listingStatus.querySelector('option[value="active"]');
+  if (!option) return;
+  const hidden = countInactiveListings(records);
+  option.textContent = hidden > 0
+    ? `Só ativos (${formatNumber(hidden)} inativo${hidden > 1 ? 's' : ''} oculto${hidden > 1 ? 's' : ''})`
+    : 'Só ativos';
+}
+
 function clearFilters() {
   dom.search.value = '';
   dom.locality.value = '';
@@ -2837,6 +2858,7 @@ function clearFilters() {
   dom.buildingOrientation.value = '';
   dom.salesStage.value = '';
   dom.regularizationStatus.value = '';
+  dom.listingStatus.value = 'active';
   dom.anchorGroup.value = '';
   populateAnchorSegments('', { keepSelection: false });
   dom.priceMin.value = '';
@@ -2995,7 +3017,7 @@ function currentUrlParams(view) {
       ra: f.ra, type: f.propertyType, beds: f.bedrooms === null ? '' : String(f.bedrooms),
       price_min: f.priceMin === null ? '' : String(f.priceMin),
       price_max: f.priceMax === null ? '' : String(f.priceMax),
-      locality: f.locality, q: f.search,
+      locality: f.locality, q: f.search, inativos: f.listingStatus === 'all' ? '1' : '',
       ...territoryUrlParams(),
     };
   }
@@ -3073,6 +3095,7 @@ function applyUrlParams() {
   if (intParam(params.price_min) !== null) dom.priceMin.value = String(intParam(params.price_min));
   if (intParam(params.price_max) !== null) dom.priceMax.value = String(intParam(params.price_max));
   if (params.q) dom.search.value = params.q;
+  if (params.inativos === '1') dom.listingStatus.value = 'all';
 }
 
 async function copyAnalysisLink() {
@@ -6520,6 +6543,7 @@ async function load() {
   populateSelect(dom.anchorGroup, distinctAnchorGroups(state.records), formatAnchorGroup);
   populateAnchorSegments('');
   renderAnchorLegend(state.records);
+  labelListingStatusOptions(state.records);
 
   applyUrlParams();
   initializeTerritoryControls();
@@ -6568,7 +6592,7 @@ function bindEvents() {
     node.addEventListener('input', render);
   }
   for (const node of [dom.locality, dom.raFilter, dom.ptype, dom.buildingOrientation,
-    dom.salesStage, dom.regularizationStatus, dom.anchorSegment, dom.beds]) {
+    dom.salesStage, dom.regularizationStatus, dom.listingStatus, dom.anchorSegment, dom.beds]) {
     node.addEventListener('change', render);
   }
   // O grupo restringe a lista de segmentos antes de renderizar, então tem handler

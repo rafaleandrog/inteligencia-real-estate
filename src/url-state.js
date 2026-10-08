@@ -16,7 +16,8 @@ export const URL_KEYS = Object.freeze({
   // `terr` (camada de área: id, ou `0` = nenhuma; ausente = padrão), `terr_metrica` (métrica
   // quando não é a padrão) e `vias` (centralidade viária: `1`/`0`; ausente = padrão) são as
   // camadas territoriais (issues #150, #171) — estado do mapa, não filtro de registro.
-  mapa: Object.freeze(['ra', 'type', 'beds', 'price_min', 'price_max', 'locality', 'q', 'terr', 'terr_metrica', 'vias']),
+  // `inativos=1` inclui os anúncios inativos (issue #180); ausente = só ativos (padrão).
+  mapa: Object.freeze(['ra', 'type', 'beds', 'price_min', 'price_max', 'locality', 'q', 'inativos', 'terr', 'terr_metrica', 'vias']),
   mercado: Object.freeze(['periodo', 'ano', 'mes', 'de', 'ate', 'serie', 'compare', 'faixa', 'regiao_modo']),
   diagnostico: Object.freeze(['ra', 'ano', 'tema']),
   ranking: Object.freeze(['ra']),

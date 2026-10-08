@@ -14,7 +14,7 @@
 // - percentil por interpolação linear (o mesmo que planilhas usam por padrão), sobre a
 //   lista ordenada dos preços/m² finitos.
 
-import { median } from '../filters.js';
+import { median, isInactiveListing } from '../filters.js';
 
 /** Janela de "recente": observado nos últimos N dias em relação a `now`. */
 export const RECENT_DAYS = 90;
@@ -71,7 +71,12 @@ export function comparableStats(records, { now = Date.now() } = {}) {
   const prices = finiteNumbers(sample.map((r) => r.price_m2));
   const empty = { n: sample.length, withPriceM2: prices.length, active: 0, recent: 0,
     min: null, p25: null, median: null, p75: null, max: null };
-  empty.active = sample.filter((r) => String(r.status || '').toLowerCase() === 'active').length;
+  // Anúncio ativo é o que o filtro "Só ativos" mantém: tudo menos `inactive`, com status vazio
+  // contando como ativo (isInactiveListing). Empreendimento tem status em texto livre ("em
+  // obras", "lançamento") e só conta o `active` literal.
+  empty.active = sample.filter((r) => (r.kind === 'listing'
+    ? !isInactiveListing(r)
+    : String(r.status || '').trim().toLowerCase() === 'active')).length;
   empty.recent = sample.filter((r) => isRecent(r, now)).length;
   if (prices.length === 0) return empty;
   return {

@@ -84,3 +84,10 @@ test('terr, terr_metrica e vias são chaves do mapa e só do mapa', () => {
   assert.equal(buildHash('mapa', { terr: '0', vias: '0' }), '#mapa?terr=0&vias=0');
   assert.deepEqual(parseHash('#mapa?terr=0&vias=0').params, { terr: '0', vias: '0' });
 });
+
+test('inativos=1 inclui os anúncios inativos e sobrevive ao round-trip (issue #180)', () => {
+  assert.equal(buildHash('mapa', { inativos: '1' }), '#mapa?inativos=1');
+  assert.deepEqual(parseHash('#mapa?inativos=1').params, { inativos: '1' });
+  assert.equal(buildHash('mapa', { inativos: '' }), '#mapa', 'o padrão (só ativos) não entra no link');
+  assert.deepEqual(parseHash('#ranking?inativos=1').params, {}, 'chave só do mapa');
+});
