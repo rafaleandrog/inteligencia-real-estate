@@ -1909,8 +1909,10 @@ campos viram o contexto de todo anúncio que a busca encontrar. O resto é escri
   paginação só para antes do teto quando a página não tem link de anúncio ou repete a lista da anterior;
   página só com anúncios já conhecidos não encerra, porque o novo pode estar na seguinte.
 - `ra_geo_id` aceita `RA2026_RA-XX`, `RA-XX` ou a chave de RA_PROFILES (`RA_20`).
-- `last_status` ∈ `ok`, `blocked`, `error`. `last_found_count` são os links de anúncio reconhecidos na
-  página e `last_new_count`, os que viraram candidato.
+- `last_status` ∈ `ok`, `blocked`, `error`. `blocked` inclui a página de desafio (WAF, captcha) servida
+  com HTTP 200: sem link de anúncio e com marcador de bloqueio, ela não conta como busca vazia.
+  `last_found_count` são os links de anúncio reconhecidos na página e `last_new_count`, os que viraram
+  candidato.
 
 Editar uma coluna de configuração esvazia `last_run_at` da linha e agenda a busca para dali a um minuto
 (gatilho de ação). Um link é aceito como anúncio quando:
@@ -1958,13 +1960,17 @@ Portão de plausibilidade (`soft`): preço/m² entre ⅓ e 3× a mediana do mesm
 quando há pelo menos 3 referências.
 
 A leitura das páginas leva minutos, e a planilha continua aberta para edição. Por isso, com o lock de
-documento em mãos e antes de gravar, a busca relê as linhas de candidato e de busca. Linha que alguém
+documento em mãos e antes de gravar, a busca relê as linhas de candidato e de busca, e relê LISTINGS
+com as mesmas três chaves da deduplicação (id, portal + id do anúncio e URL canônica), porque a área
+administrativa pode ter cadastrado o mesmo anúncio com outro `listing_id`. Sem autorização de rede,
+mesmo que o erro apareça no meio da leitura, nada é gravado nem promovido. Linha que alguém
 mudou nesse meio-tempo (decisão de revisão, valor digitado, busca editada) fica fora da execução: não
 é promovida nem regravada, e a continuação a refaz a partir do que está na planilha. O mesmo vale para
 o candidato novo que veio de uma busca alterada, ou que outro escritor pôs na fila no meio-tempo
 (mesmo `candidate_id`, portal + id ou URL): ele não é anexado, nem a promoção que tiver gerado.
 
-Texto vindo do portal (o `title` lido da página) é gravado sempre como texto: valor que começa com
+Texto vindo do portal ou de candidato escrito por fora (`title`, `source_name` copiado para `portal`
+em LISTINGS e LISTING_EVENTS) é gravado sempre como texto: valor que começa com
 `=`, `+`, `@` ou `-letra` ganha o apóstrofo do Sheets e nunca vira fórmula.
 
 A promoção grava em LISTINGS, além do que veio da página:

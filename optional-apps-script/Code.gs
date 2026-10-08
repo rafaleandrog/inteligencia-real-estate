@@ -6423,12 +6423,8 @@ function classifyListingResponse_(url, response, externalId) {
     return { outcome: 'gone', code: code, message: 'REMOVED_MARKER "' + LISTINGS_REMOVED_MARKERS[r] + '"' };
   }
   if (!hasData) {
-    var text = foldText_(body);
-    for (var b = 0; b < LISTINGS_BLOCKED_MARKERS.length; b++) {
-      if (text.indexOf(LISTINGS_BLOCKED_MARKERS[b]) !== -1) {
-        return { outcome: 'blocked', code: code, message: 'CHALLENGE_PAGE "' + LISTINGS_BLOCKED_MARKERS[b] + '"' };
-      }
-    }
+    var challenge = challengeMarker_(body);
+    if (challenge) return { outcome: 'blocked', code: code, message: 'CHALLENGE_PAGE "' + challenge + '"' };
   }
   if (hasData || idInPage) {
     return {
@@ -6983,7 +6979,10 @@ function appendListingEvents_(events) {
   var sheet = ss_().getSheetByName('LISTING_EVENTS');
   if (!sheet) return;
   var start = sheet.getLastRow() + 1;
-  sheet.getRange(start, 1, events.length, LISTING_EVENTS_HEADERS.length).setValues(events);
+  // O portal pode vir de candidato escrito por fora: texto nunca vira fórmula.
+  sheet.getRange(start, 1, events.length, LISTING_EVENTS_HEADERS.length).setValues(events.map(function (row) {
+    return row.map(safeCellValue_);
+  }));
 }
 
 /** Abre o run com `status = running`: se a execução morrer no meio, o rastro fica. */
@@ -8079,8 +8078,17 @@ function runListingsDiscoveryLocked_(options) {
           stats.messages.push(searchId + ' p' + (p + 1) + ': ' + verdict.message);
           break;
         }
-        stats.read++;
         var links = extractListingLinks_(response.body, pages[p], ref.pathPrefixes[host], config.pathRegex);
+        // Desafio do WAF servido com HTTP 200: página sem link de anúncio e com marcador de
+        // bloqueio é bloqueio, não "busca sem resultado".
+        var challenge = links.length ? '' : challengeMarker_(response.body);
+        if (challenge) {
+          status = 'blocked';
+          stats.blocked++;
+          stats.messages.push(searchId + ' p' + (p + 1) + ': CHALLENGE_PAGE "' + challenge + '"');
+          break;
+        }
+        stats.read++;
         // A paginação acabou quando a página repete a lista da anterior (portal que devolve a
         // última página para número fora do intervalo) ou não tem link de anúncio. Página só
         // com anúncios já conhecidos NÃO encerra: o novo pode estar na seguinte.
@@ -8158,6 +8166,7 @@ function runListingsDiscoveryLocked_(options) {
     }
 
     queue.forEach(function (cand) {
+      if (authError) return; // leitura interrompida sem autorização: nada é promovido
       var status = toText_(cand.status).toLowerCase();
       if (status !== 'pending' && status !== 'approved') return;
       if (!candidatePageRead_(cand) && status !== 'approved') return;
@@ -8191,14 +8200,17 @@ function runListingsDiscoveryLocked_(options) {
   // Gravação: candidatos (novos e alterados), buscas, LISTINGS, eventos — só com o lock de
   // documento, pela mesma razão da verificação (R8.103). Sem ele nada é gravado: a busca
   // continua vencida (`last_run_at` não mudou) e a continuação refaz tudo.
-  var documentLock = LockService.getDocumentLock();
-  var holdsDocument = documentLock.tryLock(LOCK_TIMEOUT_MS);
-  var lockBusy = !holdsDocument;
-  if (lockBusy) {
+  // Sem autorização de rede nada é gravado (R8.102), nem o que foi colhido antes do erro.
+  var documentLock = authError ? null : LockService.getDocumentLock();
+  var holdsDocument = !!documentLock && documentLock.tryLock(LOCK_TIMEOUT_MS);
+  var lockBusy = !authError && !holdsDocument;
+  if (!holdsDocument) {
     stats.promoted = 0;
+    stats.created = 0;
     promotedRows = [];
+    newCandidates = [];
   }
-  if (!lockBusy) {
+  if (holdsDocument) {
     try {
       // O retrato das linhas foi tirado ANTES da rede, que leva minutos. Com o lock, as linhas
       // de candidato e de busca são relidas: a que alguém mudou nesse meio-tempo (decisão de
@@ -8252,26 +8264,29 @@ function runListingsDiscoveryLocked_(options) {
       // LISTINGS são relidos: o que alguém criou nesse meio-tempo (API de escrita, edição
       // manual) não é anexado de novo, e o candidato volta ao estado anterior com o motivo.
       if (promotedRows.length) {
-        var idColumn = listingHeaders.indexOf('listing_id');
-        var existing = {};
-        if (listings.getLastRow() > 1) {
-          listings.getRange(2, idColumn + 1, listings.getLastRow() - 1, 1).getValues().forEach(function (r) {
-            existing[toText_(r[0])] = true;
-          });
-        }
+        // As mesmas três chaves da deduplicação inicial: id, portal + id do anúncio e URL
+        // canônica. A área administrativa pode ter criado o mesmo anúncio com outro listing_id.
+        var fresh = buildListingsReference_(dataRowsOf_(listings), lix, [], {});
+        var col = function (h) { return listingHeaders.indexOf(h); };
         var duplicated = {};
         promotedRows = promotedRows.filter(function (row) {
-          if (!existing[toText_(row[idColumn])]) return true;
-          duplicated[toText_(row[idColumn])] = true;
+          var id = toText_(row[col('listing_id')]);
+          var key = normalizeSlug_(row[col('portal')]) + '|' + toText_(row[col('external_id')]);
+          var url = canonicalListingUrl_(row[col('source_url')]);
+          var dupOf = fresh.ids[id] ? id
+            : (key in fresh.keys ? fresh.keys[key] : (url in fresh.urls ? fresh.urls[url] : null));
+          if (dupOf === null) return true;
+          duplicated[id] = dupOf || id;
           return false;
         });
         createdEvents = createdEvents.filter(function (ev) { return !duplicated[ev[2]]; });
         queue.forEach(function (cand) {
-          if (cand.status !== 'promoted' || !duplicated[listingIdForCandidate_(cand)]) return;
+          var id = listingIdForCandidate_(cand);
+          if (cand.status !== 'promoted' || !duplicated[id]) return;
           var before = cand._original || {};
           cand.status = toText_(before.status) || 'pending';
           cand.reviewed_at = before.reviewed_at === undefined ? '' : before.reviewed_at;
-          cand.reject_reason = 'já existe em LISTINGS (' + listingIdForCandidate_(cand) + ')';
+          cand.reject_reason = 'já existe em LISTINGS (' + duplicated[id] + ')';
           stats.promoted--;
         });
       }
@@ -8458,6 +8473,15 @@ function hmacSha256Hex_(value, key) {
     var n = byte < 0 ? byte + 256 : byte;
     return ('0' + n.toString(16)).slice(-2);
   }).join('');
+}
+
+/** Marcador de página de desafio (WAF, captcha) no corpo, ou '' quando não há. */
+function challengeMarker_(body) {
+  var text = foldText_(body);
+  for (var b = 0; b < LISTINGS_BLOCKED_MARKERS.length; b++) {
+    if (text.indexOf(LISTINGS_BLOCKED_MARKERS[b]) !== -1) return LISTINGS_BLOCKED_MARKERS[b];
+  }
+  return '';
 }
 
 function findSourceById_(sources, sourceId) {

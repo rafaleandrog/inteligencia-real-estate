@@ -942,3 +942,85 @@ test('falha ao agendar a continuação depois de gravar: o run fecha parcial, nu
   assert.match(verify.error_details, /^CONTINUATION_NOT_SCHEDULED/);
   assert.notEqual(verify.status, 'running');
 });
+
+// --- revisão do PR #182, rodada 5 ---------------------------------------------------------------
+
+const CAND_COLUMNS = [
+  'candidate_id', 'discovered_at', 'discovered_by', 'source_id', 'source_name', 'source_url',
+  'external_id', 'title', 'transaction_type', 'property_type', 'address', 'locality',
+  'ra_geo_id', 'latitude', 'longitude', 'asking_price_brl', 'area_m2', 'bedrooms', 'suites',
+  'parking_spaces', 'condo_fee_brl', 'iptu_brl', 'features_json', 'raw_json', 'status',
+  'reviewed_at', 'reject_reason', 'parser_version',
+];
+function candRow(over) {
+  const r = Object.fromEntries(CAND_COLUMNS.map((h) => [h, '']));
+  Object.assign(r, {
+    discovered_at: day(-1), discovered_by: 'agente:gpt', source_name: 'DFImoveis', transaction_type: 'sale',
+    property_type: 'apartamento', locality: 'Águas Claras', status: 'pending',
+  }, over);
+  return CAND_COLUMNS.map((h) => r[h]);
+}
+
+test('erro de autorização no meio da leitura: nada é promovido nem gravado, nem o aprovado à mão', () => {
+  const base = sheets({ searches: [] });
+  base.LISTING_CANDIDATES = [CAND_COLUMNS,
+    candRow({ candidate_id: 'C_APP', source_url: NEW_1, external_id: '1400001', asking_price_brl: 640000, area_m2: 64,
+      bedrooms: 2, status: 'approved', raw_json: JSON.stringify({ read_attempts: 5 }) }),
+    candRow({ candidate_id: 'C_PEND', source_url: NEW_2, external_id: '1400002' }),
+  ];
+  const sandbox = createAppsScriptSandbox({ sheets: base });
+  const denied = () => { throw new Error('Required permissions: https://www.googleapis.com/auth/script.external_request'); };
+  sandbox.context.UrlFetchApp = { fetchAll: denied, fetch: denied };
+  const message = sandbox.context.runListingsDiscovery_({ now: day(0), noContinuation: true });
+  assert.match(message, /SEM AUTORIZAÇÃO/);
+  assert.equal(listingsById(sandbox).LIST_WEB_DFIMOVEIS_1400001, undefined, 'o aprovado à mão não entra');
+  assert.equal(table(sandbox, 'LISTING_EVENTS').length, 0);
+  const cands = Object.fromEntries(table(sandbox, 'LISTING_CANDIDATES').map((c) => [c.candidate_id, c]));
+  assert.equal(cands.C_APP.status, 'approved');
+  assert.equal(cands.C_PEND.raw_json, '', 'nem a tentativa de leitura é gravada');
+  assert.equal(lastRun(sandbox).status, 'failed');
+  assert.equal(lastRun(sandbox).new_listings, 0);
+});
+
+test('página de desafio servida com HTTP 200 na busca é bloqueio, não busca vazia', () => {
+  const sandbox = createAppsScriptSandbox({ sheets: sheets() });
+  network(sandbox.context, {
+    [SEARCH_URL]: response(200, '<html><head><title>Just a moment...</title></head><body>Checking your browser</body></html>'),
+  });
+  sandbox.context.runListingsDiscovery_({ now: day(0), noContinuation: true });
+  const search = table(sandbox, 'LISTING_SEARCHES')[0];
+  assert.equal(search.last_status, 'blocked');
+  assert.match(lastRun(sandbox).error_details, /CHALLENGE_PAGE "just a moment"/);
+  assert.equal(lastRun(sandbox).status, 'failed', 'nada lido');
+  assert.doesNotMatch(lastRun(sandbox).error_details, /nenhum link de anúncio reconhecido/);
+});
+
+test('portal de candidato escrito por fora começando com = é gravado como texto também no evento', () => {
+  const base = sheets({ searches: [] });
+  base.LISTING_CANDIDATES = [CAND_COLUMNS, candRow({ candidate_id: 'C_EVIL', source_name: '=DFImoveis', source_url: NEW_1, external_id: '1400001' })];
+  const sandbox = createAppsScriptSandbox({ sheets: base });
+  network(sandbox.context, { [NEW_1]: response(200, listingPage({ price: 620000, url: NEW_1 })) });
+  sandbox.context.runListingsDiscovery_({ now: day(0), noContinuation: true });
+  const created = listingsById(sandbox).LIST_WEB_DFIMOVEIS_1400001;
+  assert.ok(created, 'promovido');
+  assert.equal(created.portal, "'=DFImoveis");
+  assert.equal(table(sandbox, 'LISTING_EVENTS')[0].portal, "'=DFImoveis");
+});
+
+test('mesmo anúncio criado com outro listing_id durante a busca não é anexado de novo', () => {
+  const sandbox = createAppsScriptSandbox({ sheets: sheets() });
+  network(sandbox.context, {
+    [SEARCH_URL]: response(200, searchPage([NEW_1])),
+    [NEW_1]: response(200, listingPage({ price: 620000, url: NEW_1 })),
+  });
+  editDuringRun(sandbox, () => {
+    // A área administrativa cadastrou o mesmo anúncio do portal com um id próprio.
+    sandbox.sheets.LISTINGS._rows.push(listing(9, { listing_id: 'LIST_ADMIN_77', external_id: 1400001, source_url: NEW_1 }));
+  });
+  sandbox.context.runListingsDiscovery_({ now: day(0), noContinuation: true });
+  assert.equal(listingsById(sandbox).LIST_WEB_DFIMOVEIS_1400001, undefined);
+  const cand = table(sandbox, 'LISTING_CANDIDATES')[0];
+  assert.equal(cand.status, 'pending');
+  assert.match(cand.reject_reason, /já existe em LISTINGS \(LIST_ADMIN_77\)/);
+  assert.equal(table(sandbox, 'LISTING_EVENTS').length, 0);
+});
