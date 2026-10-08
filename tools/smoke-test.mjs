@@ -43,6 +43,8 @@ const pass = (m) => { ok.push(m); console.log('  ✓ ' + m); };
 const executablePath = process.env.CHROMIUM_PATH || undefined;
 // Os filtros secundários vivem numa gaveta `<details>` recolhida (issue #124); o Playwright
 // só interage com o que está visível, então cada página a abre antes de usá-los.
+// A lista de códigos de trecho também é recolhida por padrão (issue #175).
+const abrirListaTrechos = (p) => p.$$eval('.road-segment-list', (ds) => ds.forEach((d) => { d.open = true; }));
 const abrirMaisFiltros = (p) => p.$eval('#moreFilters', (d) => { d.open = true; });
 const browser = await chromium.launch(executablePath ? { executablePath } : {});
 
@@ -1144,6 +1146,7 @@ await polyPage.click('#closeDetail');
 await polyPage.waitForTimeout(900);
 
 // Clicar num código da legenda seleciona o trecho e destaca a linha.
+await abrirListaTrechos(polyPage);
 await polyPage.locator('.road-segment-legend-item').first().click();
 await polyPage.waitForTimeout(400);
 const destacados = await polyPage.evaluate(() => document.querySelectorAll('#map .road-segment-selected').length);
@@ -1178,6 +1181,7 @@ const painelLegenda = (await polyPage.textContent('#detail')) || '';
 // No trecho `001EDF0130`, que tem uma NOTA colada no fim da prosa gerada, o painel mostra
 // A NOTA — e só ela. É a regressão exata que o Codex apontou: a versão anterior via o TMD
 // e a extensão no texto e apagava o parágrafo inteiro.
+await abrirListaTrechos(polyPage);
 await polyPage.locator('.road-segment-legend-item', { hasText: '001EDF0130' }).first().click();
 await polyPage.waitForTimeout(400);
 const painelComNota = await polyPage.evaluate(() => {
@@ -1188,6 +1192,7 @@ painelComNota.quantas === 1 && painelComNota.texto === NOTA_DO_TRECHO
   ? pass('a nota colada na prosa gerada sobrevive, e a prosa repetida não')
   : fail(`descrição do 001EDF0130: ${JSON.stringify(painelComNota)}`);
 
+await abrirListaTrechos(polyPage);
 await polyPage.locator('.road-segment-legend-item').first().click();
 await polyPage.waitForTimeout(400);
 

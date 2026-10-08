@@ -45,6 +45,7 @@ function linkTraffic(pieces, polygons) {
     ...linkTrafficDataset(pieces.segments, polygons, pieces.trafficRecords, pieces.aliases, directions),
     directions,
     corridorDaily: pieces.corridorDaily || [],
+    dailyLoadFailed: Boolean(pieces.dailyLoadFailed),
   };
 }
 
@@ -62,6 +63,17 @@ const FETCH_TIMEOUT_MS = 20000;
  * obrigatórias.
  */
 const META_FETCH_TIMEOUT_MS = 6000;
+
+/**
+ * Timeout de cada aba de tráfego (issue #175).
+ *
+ * As abas pequenas (trechos, aliases, sentidos) ficam no teto curto. As SÉRIES diárias não:
+ * desde a importação de julho a TRAFFIC_DAILY_TEST tem milhares de linhas e o GViz passa
+ * de 6 s com frequência — e estourar o tempo zerava o fluxo de todos os trechos.
+ */
+function trafficTimeoutFor(job) {
+  return job === 'traffic' || job === 'corridor' ? FETCH_TIMEOUT_MS : META_FETCH_TIMEOUT_MS;
+}
 
 /**
  * `fetch` com timeout, para que falha de rede vire erro tratável e não espera infinita.
@@ -531,21 +543,23 @@ async function fetchTrafficSheetsFromGviz(config) {
   ];
 
   const settled = await Promise.allSettled(
-    jobs.map(([, sheetName]) => (
+    jobs.map(([, sheetName], i) => (
       sheetName
-        ? fetchGvizSheet(config.spreadsheetId, sheetName, { timeoutMs: META_FETCH_TIMEOUT_MS })
+        ? fetchGvizSheet(config.spreadsheetId, sheetName, { timeoutMs: trafficTimeoutFor(jobs[i][0]) })
         : Promise.resolve(null)
     ))
   );
 
   const warnings = [];
   const rowsByJob = {};
+  const failed = new Set();
   settled.forEach((result, i) => {
     const [key, sheetName] = jobs[i];
     if (!sheetName) { rowsByJob[key] = []; return; }
     if (result.status === 'fulfilled') {
       rowsByJob[key] = result.value || [];
     } else {
+      failed.add(key);
       rowsByJob[key] = [];
       warnings.push(`Tráfego (${sheetName}) indisponível: ${result.reason?.message || result.reason}`);
     }
@@ -568,6 +582,7 @@ async function fetchTrafficSheetsFromGviz(config) {
     trafficRecords: diario.records,
     directions: sentidos.records,
     corridorDaily: corredor.records,
+    dailyLoadFailed: failed.has('traffic'),
     warnings,
   };
 }
@@ -829,17 +844,19 @@ async function fetchTrafficSheetsFromAppsScript(config) {
 
   const warnings = [];
   const rowsByJob = {};
+  const failed = new Set();
 
   await Promise.all(jobs.map(async ([key, sheetName]) => {
     if (!sheetName) { rowsByJob[key] = []; return; }
     try {
       const url = `${config.appsScriptUrl}?resource=dataset&name=${encodeURIComponent(sheetName)}`;
-      const response = await fetchWithTimeout(url, { timeoutMs: META_FETCH_TIMEOUT_MS });
+      const response = await fetchWithTimeout(url, { timeoutMs: trafficTimeoutFor(key) });
       if (!response.ok) throw new Error(`HTTP ${response.status}`);
       const payload = await response.json();
       if (payload.error) throw new Error(payload.error);
       rowsByJob[key] = payload.rows || [];
     } catch (error) {
+      failed.add(key);
       rowsByJob[key] = [];
       warnings.push(`Tráfego (${sheetName}) indisponível: ${error?.message || error}`);
     }
@@ -862,6 +879,7 @@ async function fetchTrafficSheetsFromAppsScript(config) {
     trafficRecords: diario.records,
     directions: sentidos.records,
     corridorDaily: corredor.records,
+    dailyLoadFailed: failed.has('traffic'),
     warnings,
   };
 }

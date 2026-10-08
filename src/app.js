@@ -838,8 +838,12 @@ function appendRoadTrafficBlock(frag, polygon, { tmdShown = false } = {}) {
     vazio.className = 'detail-traffic-empty';
     const aba = CONFIG.trafficDailySheet || 'TRAFFIC_DAILY_TEST';
     const filtrado = activeTrafficFilterCount(state.trafficFilters) > 0;
+    // A aba de fluxo que NÃO CARREGOU não é trecho sem medição (issue #175): dizer "sem
+    // dias medidos" quando o GViz estourou o tempo é afirmar o falso sobre a planilha.
     vazio.textContent = !segmentId
       ? 'Trecho sem road_segment_id declarado — o fluxo não pode ser vinculado.'
+      : state.trafficAll.dailyLoadFailed
+        ? `O fluxo diário (${aba}) não carregou desta vez. Recarregue a página para tentar de novo.`
       : filtrado
         ? `Sem dado no filtro escolhido para ${segmentId}.`
         : `Sem dias medidos em ${aba} para ${segmentId}.`;
@@ -2306,7 +2310,26 @@ function renderPolygonLegend() {
     const eixos = selectRoadSegmentPolygons(
       state.polygons.filter((p) => polygonLayerGroup(p) === group.key)
     );
-    for (const no of roadSegmentLegendRows(eixos)) list.append(no);
+    // A lista é longa (88 trechos) e recolhida por padrão (issue #175): quem quer achar um
+    // trecho abre; quem só olha o mapa não rola por ela. O estado aberto sobrevive ao
+    // re-render da legenda, que acontece a cada troca de filtro.
+    const linhas = roadSegmentLegendRows(eixos);
+    if (linhas.length > 0) {
+      const item = document.createElement('li');
+      item.className = 'road-segment-list-holder';
+      const gaveta = document.createElement('details');
+      gaveta.className = 'road-segment-list';
+      gaveta.open = Boolean(state.roadLegendOpen);
+      gaveta.addEventListener('toggle', () => { state.roadLegendOpen = gaveta.open; });
+      const resumo = document.createElement('summary');
+      resumo.textContent = `Ver lista de trechos (${formatNumber(linhas.length)})`;
+      const sub = document.createElement('ul');
+      sub.className = 'road-segment-sublist';
+      sub.append(...linhas);
+      gaveta.append(resumo, sub);
+      item.append(gaveta);
+      list.append(item);
+    }
 
     frag.append(list);
   }
