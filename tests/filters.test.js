@@ -4,7 +4,7 @@ import {
   median, applyFilters, matchesFilters, computeKpis, createFilterState,
   distinctLocalities, distinctPropertyTypes, distinctRegions, normalizeSearchText, LAYERS,
   distinctAnchorGroups, distinctAnchorSegments, anchorLegendGroups,
-  distinctSalesStages, distinctRegularizationStatuses,
+  distinctSalesStages, distinctRegularizationStatuses, isInactiveListing, countInactiveListings,
 } from '../src/filters.js';
 
 /** Registro de teste com os campos que os filtros examinam. */
@@ -368,4 +368,34 @@ test('distinctRegularizationStatuses vem dos dados, não de lista fixa (issue #3
   ];
   assert.deepEqual(distinctRegularizationStatuses(records),
     ['em_regularizacao', 'processo_judicial', 'regularizado']);
+});
+
+// --- Situação do anúncio (issue #180) -------------------------------------------------------
+
+test('o filtro padrão esconde só o anúncio inativo; "todos" o mostra', () => {
+  const records = [
+    rec({ id: 'A', status: 'active' }),
+    rec({ id: 'I', status: 'inactive' }),
+    rec({ id: 'V', status: '' }), // vazio é ativo: linha sem a coluna não some
+    rec({ id: 'M', status: ' Inactive ' }),
+    rec({ id: 'D', kind: 'development', status: 'inactive' }), // só anúncio tem esta semântica
+  ];
+  const padrao = createFilterState();
+  assert.equal(padrao.listingStatus, 'active');
+  assert.deepEqual(applyFilters(records, padrao).map((r) => r.id), ['A', 'V', 'D']);
+  const todos = { ...padrao, listingStatus: 'all' };
+  assert.deepEqual(applyFilters(records, todos).map((r) => r.id), ['A', 'I', 'V', 'M', 'D']);
+  assert.equal(countInactiveListings(records), 2);
+});
+
+test('estado sem a chave (montado à mão) continua mostrando o inativo', () => {
+  assert.equal(matchesFilters(rec({ status: 'inactive' }), { layers: new Set(LAYERS) }), true);
+  assert.equal(isInactiveListing(null), false);
+});
+
+test('KPIs do padrão não contam o anúncio inativo', () => {
+  const records = [rec({ status: 'active', price_m2: 10000 }), rec({ status: 'inactive', price_m2: 90000 })];
+  const kpis = computeKpis(applyFilters(records, createFilterState()));
+  assert.equal(kpis.visible, 1);
+  assert.equal(kpis.medianPriceM2, 10000, 'preço de anúncio que saiu do portal não entra na mediana');
 });
