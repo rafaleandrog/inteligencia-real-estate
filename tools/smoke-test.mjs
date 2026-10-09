@@ -3277,6 +3277,8 @@ const PDAD_SMOKE = [
   pdadRow('RA_19', 'Candangolândia', 'tenure_status', 'Alugado', 25, 250), pdadRow('RA_19', 'Candangolândia', 'tenure_status', 'Próprio', 75, 750),
   pdadRow('RA_11', 'Cruzeiro', 'registered_deed', 'Sim', 80, 520), pdadRow('RA_11', 'Cruzeiro', 'registered_deed', 'Não', 20, 130),
   pdadRow('RA_19', 'Candangolândia', 'registered_deed', 'Sim', 60, 450), pdadRow('RA_19', 'Candangolândia', 'registered_deed', 'Não', 40, 300),
+  // Um indicador de outro tema (Moradores), para provar que o perfil se reparte por tema (#189).
+  pdadRow('RA_11', 'Cruzeiro', 'marital_status', 'Casado', 53, 530), pdadRow('RA_11', 'Cruzeiro', 'marital_status', 'Solteiro', 47, 470),
 ];
 const novaPaginaIndicadores = async (hash) => {
   const pg = await context.newPage();
@@ -3390,6 +3392,46 @@ cresc && cresc.valor === '11,4%' && /mediana de 2 RAs com dado/.test(cresc.ref) 
 /não a média do DF/.test(perfil.nota || '')
   ? pass('a nota diz que a referência é a mediana das RAs com dado, não a média do DF')
   : fail('nota do perfil territorial: ' + perfil.nota);
+
+// Perfil imobiliário embutido nos temas (issue #189): nada solto acima dos temas; cada
+// bloco de tema só com as leituras e indicadores dele.
+const lerPerfisDeTema = (pg) => pg.evaluate(() => ({
+  solto: !!document.querySelector('#pdadProfile'),
+  foraDosTemas: [...document.querySelectorAll('.pdad-tema-profile')].filter((s) => !document.querySelector('#pdadTemaBlocks').contains(s)).length,
+  temas: Object.fromEntries([...document.querySelectorAll('#pdadTemaBlocks .pdad-tema-profile')].map((s) => [s.dataset.pdadTemaProfile, {
+    tiles: [...s.querySelectorAll('.pdad-profile-item .pdad-profile-label')].map((l) => l.textContent),
+    linhas: [...s.querySelectorAll('.pdad-compact-label')].map((l) => l.textContent),
+    depoisDosCartoes: s.previousElementSibling?.classList.contains('pdad-ind-grid') ?? false,
+  }])),
+}));
+const todosTemas = await lerPerfisDeTema(diagPage);
+const perfilDom = todosTemas.temas.domicilios;
+const mor = todosTemas.temas.moradores;
+!todosTemas.solto && todosTemas.foraDosTemas === 0
+  && perfilDom && perfilDom.tiles.join('|') === 'Verticalização|Locação|Escritura registrada' && !perfilDom.linhas.includes('Estado civil') && perfilDom.depoisDosCartoes
+  && mor && mor.tiles.length === 0 && mor.linhas.includes('Estado civil')
+  ? pass('todos os temas: o perfil da RA vive dentro de cada tema, só com o que é dele, depois dos cartões')
+  : fail('perfil por tema (todos): ' + JSON.stringify(todosTemas));
+
+const temaPage = await novaPaginaIndicadores('#diagnostico?ra=RA_11&tema=domicilios');
+const soDomicilios = await lerPerfisDeTema(temaPage);
+const primeiroNoTema = await temaPage.evaluate(() => document.querySelector('#pdadTemaBlocks').firstElementChild?.className);
+Object.keys(soDomicilios.temas).join() === 'domicilios' && soDomicilios.temas.domicilios.tiles.length === 3 && !soDomicilios.solto && primeiroNoTema === 'pdad-ind-grid'
+  ? pass('tema Domicílios: os cartões do tema primeiro, o perfil de domicílios abaixo, sem bloco genérico por cima')
+  : fail('perfil no tema Domicílios: ' + JSON.stringify({ ...soDomicilios, primeiroNoTema }));
+await temaPage.click('#pdadTemaBlocks .pdad-tema-profile .pdad-profile-item');
+await temaPage.waitForTimeout(300);
+(await temaPage.evaluate(() => !document.querySelector('#pdadDrillOverlay').hidden))
+  ? pass('o card do perfil dentro do tema abre o detalhamento')
+  : fail('o card do perfil no tema não abriu o detalhamento');
+await temaPage.close();
+
+const semRaPage = await novaPaginaIndicadores('#diagnostico?tema=domicilios');
+const semRa = await lerPerfisDeTema(semRaPage);
+Object.keys(semRa.temas).length === 0 && !semRa.solto
+  ? pass('sem RA escolhida, nenhum perfil aparece nos temas')
+  : fail('perfil sem RA: ' + JSON.stringify(semRa));
+await semRaPage.close();
 
 // Mapa: o bloco da RA selecionada ganha as linhas territoriais, pela ponte romana → RA_nn.
 await diagPage.goto('http://localhost:8080/#mapa', { waitUntil: 'networkidle' });
