@@ -2526,6 +2526,10 @@ p.precision.precision-exact {
    indicadores. Tile é botão (abre o detalhamento), sem moldura em repouso. */
 .pdad-profile { margin-bottom: var(--esp-5); }
 .pdad-profile[hidden] { display: none; }
+/* Dentro do bloco de um tema (issue #189): o perfil vem depois dos cartões do tema. */
+.pdad-tema-profile { margin: var(--esp-4) 0 var(--esp-5); }
+.pdad-tema-profile .pdad-profile-head { margin: 0 0 var(--esp-2); font-size: var(--tipo-sm); font-weight: 700; color: var(--texto-forte); }
+.pdad-tema-profile .pdad-compact-list { margin-bottom: 0; }
 .pdad-profile-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));

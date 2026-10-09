@@ -17,7 +17,7 @@ import {
 import { aggregatePeriod } from './ivv/aggregate.js';
 import { buildMarketDashboard, formatMetricValue } from './ivv/cards.js';
 import { buildMicroKpis } from './ivv/derived.js';
-import { raRealEstateProfile, compactIndicators, RA_PROFILE_ITEMS, PROFILE_STATUS } from './pdad/insights.js';
+import { raRealEstateProfile, compactIndicators, profileItemsForTema, RA_PROFILE_ITEMS, PROFILE_STATUS } from './pdad/insights.js';
 import { parseHash, buildHash, intParam } from './url-state.js';
 import { buildRegionScatter, REGION_SCATTER_MODES } from './ivv/region.js';
 import {
@@ -149,7 +149,7 @@ const dom = {
   pdadTab: el('pdadTab'), pdadView: el('pdadView'), pdadScope: el('pdadScope'),
   pdadRa: el('pdadRa'), pdadYear: el('pdadYear'), pdadTema: el('pdadTema'),
   pdadReset: el('pdadReset'), pdadKpis: el('pdadKpis'), pdadYearNote: el('pdadYearNote'),
-  pdadTemaBlocks: el('pdadTemaBlocks'), pdadProfile: el('pdadProfile'),
+  pdadTemaBlocks: el('pdadTemaBlocks'),
   pdadScatterSection: el('pdadScatterSection'), pdadScatterMeta: el('pdadScatterMeta'),
   pdadScatterView: el('pdadScatterView'), pdadScatterInsight: el('pdadScatterInsight'),
   pdadScatterPlot: el('pdadScatterPlot'), pdadScatterNote: el('pdadScatterNote'),
@@ -4314,60 +4314,56 @@ function pdadIndicatorCard(indicador, raIds) {
 }
 
 /**
- * Perfil imobiliário da RA (issue #126, Plano 01 §10): sete leituras com referência
- * EXPLÍCITA — a mediana das RAs que publicaram o mesmo indicador no mesmo ano, com o `n`
- * escrito — e a posição entre elas. Só aparece com UMA RA escolhida: com várias não há
- * "a RA" para posicionar. Nunca chama a referência de "média do DF"; nunca mostra
- * suprimido como zero. Abaixo, os demais indicadores em lista compacta clicável, cada um
- * com a categoria dominante — o clique abre o detalhamento até a Figura de origem.
+ * Perfil imobiliário da RA dentro do bloco de um tema (issue #126, Plano 01 §10; #189).
+ * Leituras com referência EXPLÍCITA — a mediana das RAs que publicaram o mesmo indicador
+ * no mesmo ano, com o `n` escrito — e a posição entre elas; abaixo, os indicadores do tema
+ * em lista compacta clicável, cada um com a categoria dominante — o clique abre o
+ * detalhamento até a Figura de origem. Só o que é do tema entra, abaixo dos cartões do
+ * tema: o perfil não fica mais solto acima dos temas. Sem RA única (`perfil` nulo) ou sem nada do tema, devolve `null`.
+ * Nunca chama a referência de "média do DF"; nunca mostra suprimido como zero.
  */
-function renderPdadProfile(raIds) {
-  if (!dom.pdadProfile) return;
-  renderTerritoryProfile(raIds);
-  const { year } = state.pdadFilters;
-  const perfil = raIds.length === 1 ? raRealEstateProfile(state.pdadIndex, year, raIds[0]) : null;
-  if (!perfil) {
-    dom.pdadProfile.hidden = true;
-    dom.pdadProfile.replaceChildren();
-    return;
+function pdadTemaProfile(perfil, tema) {
+  if (!perfil) return null;
+  const itens = profileItemsForTema(perfil, tema);
+  const outros = compactIndicators(state.pdadIndex, perfil.year, perfil.raGeoId, RA_PROFILE_ITEMS.map((i) => i.key), tema);
+  if (itens.length === 0 && outros.length === 0) return null;
+
+  const secao = document.createElement('section');
+  secao.className = 'pdad-profile pdad-tema-profile';
+  secao.dataset.pdadTemaProfile = tema;
+  secao.setAttribute('aria-label', `Perfil da RA · ${PDAD_TEMAS[tema]}`);
+
+  if (itens.length) {
+    const head = document.createElement('div');
+    head.className = 'pdad-profile-head';
+    const rotulo = document.createElement('span');
+    rotulo.textContent = `Perfil imobiliário · ${perfil.raName}`;
+    head.append(rotulo);
+
+    const grid = document.createElement('div');
+    grid.className = 'pdad-profile-grid';
+    for (const item of itens) grid.append(pdadProfileTile(item, perfil));
+
+    const nota = document.createElement('p');
+    nota.className = 'pdad-footnote pdad-profile-note';
+    nota.textContent = 'Referência: mediana das RAs com valor publicado para o mesmo indicador e ano '
+      + '(não é a média do DF). Posição calculada só entre RAs publicadas; suprimido não entra.';
+    secao.append(head, grid, nota);
   }
 
-  const frag = document.createDocumentFragment();
-  const head = document.createElement('div');
-  head.className = 'pdad-tema-head pdad-profile-head';
-  const rotulo = document.createElement('span');
-  rotulo.textContent = `Perfil imobiliário · ${perfil.raName}`;
-  head.append(rotulo);
-  frag.append(head);
-
-  const grid = document.createElement('div');
-  grid.className = 'pdad-profile-grid';
-  for (const item of perfil.items) grid.append(pdadProfileTile(item, perfil));
-  frag.append(grid);
-
-  const nota = document.createElement('p');
-  nota.className = 'pdad-footnote pdad-profile-note';
-  nota.textContent = 'Referência: mediana das RAs com valor publicado para o mesmo indicador e ano '
-    + '(não é a média do DF). Posição calculada só entre RAs publicadas; suprimido não entra.';
-  frag.append(nota);
-
-  const outros = compactIndicators(state.pdadIndex, year, perfil.raGeoId, RA_PROFILE_ITEMS.map((i) => i.key));
   if (outros.length) {
     const subhead = document.createElement('div');
-    subhead.className = 'pdad-tema-head';
+    subhead.className = 'pdad-profile-head';
     const sub = document.createElement('span');
-    sub.textContent = 'Outros indicadores';
+    sub.textContent = itens.length ? 'Outros indicadores do tema' : `Indicadores do tema · ${perfil.raName}`;
     subhead.append(sub);
-    frag.append(subhead);
 
     const lista = document.createElement('ul');
     lista.className = 'pdad-compact-list';
     for (const item of outros) lista.append(pdadCompactRow(item, perfil));
-    frag.append(lista);
+    secao.append(subhead, lista);
   }
-
-  dom.pdadProfile.replaceChildren(frag);
-  dom.pdadProfile.hidden = false;
+  return secao;
 }
 
 /**
@@ -4519,8 +4515,9 @@ function pdadCompactRow(item, perfil) {
 }
 
 function renderPdadTemaBlocks(raIds) {
-  const { tema } = state.pdadFilters;
+  const { tema, year } = state.pdadFilters;
   const temas = tema === 'all' ? Object.keys(PDAD_TEMAS) : [tema];
+  const perfil = raIds.length === 1 ? raRealEstateProfile(state.pdadIndex, year, raIds[0]) : null;
 
   const blocos = temas.map((chave) => {
     const indicadores = INDICATORS_BY_TEMA[chave] || [];
@@ -4537,7 +4534,10 @@ function renderPdadTemaBlocks(raIds) {
       cabecalho.append(rotulo);
       wrapper.append(cabecalho);
     }
+    // Os cartões do tema vêm primeiro; o perfil da RA (só o do tema) fica abaixo deles.
     wrapper.append(grid);
+    const perfilDoTema = pdadTemaProfile(perfil, chave);
+    if (perfilDoTema) wrapper.append(perfilDoTema);
     return wrapper;
   });
 
@@ -4595,7 +4595,7 @@ function renderPdadView() {
 
   const raIds = pdadSelectedRaIds();
   renderPdadKpis(raIds);
-  renderPdadProfile(raIds);
+  renderTerritoryProfile(raIds);
   dom.pdadYearNote.textContent = pdadYearNoteText();
   renderPdadTemaBlocks(raIds);
   renderPdadScatter();
