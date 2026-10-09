@@ -2,9 +2,10 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { normalizePdadData } from '../src/pdad/normalize-pdad.js';
 import { buildPdadIndex } from '../src/pdad/aggregate.js';
+import { PDAD_TEMAS } from '../src/pdad/indicators.js';
 import {
   RA_PROFILE_ITEMS, PROFILE_STATUS, readCategories, referenceAcrossRas, deltaVsReference, raRank,
-  raRealEstateProfile, dominantCategory, compactIndicators,
+  raRealEstateProfile, dominantCategory, compactIndicators, temaOfIndicator, profileItemsForTema,
 } from '../src/pdad/insights.js';
 
 // Perfil imobiliário da RA (issue #126). O que este arquivo impede: suprimido virando 0;
@@ -134,4 +135,28 @@ test('compactIndicators lista os demais indicadores com a categoria dominante, s
   const tudo = compactIndicators(idx, 2024, 'RA_01');
   assert.equal(tudo.find((i) => i.key === 'dwelling').leader, 'Apartamento');
   assert.equal(tudo.find((i) => i.key === 'dwelling').leaderPct, 72);
+});
+
+test('todo item do perfil pertence a exatamente um tema do catálogo', () => {
+  const temas = Object.keys(PDAD_TEMAS);
+  for (const item of RA_PROFILE_ITEMS) {
+    assert.ok(temas.includes(temaOfIndicator(item.key)), `${item.id} sem tema válido`);
+  }
+  const perfil = raRealEstateProfile(fixture(), 2024, 'RA_01');
+  const distribuidos = temas.flatMap((t) => profileItemsForTema(perfil, t).map((i) => i.id));
+  assert.deepEqual(distribuidos.sort(), RA_PROFILE_ITEMS.map((i) => i.id).sort(), 'partição sem perda nem repetição');
+  assert.deepEqual(profileItemsForTema(perfil, 'domicilios').map((i) => i.id), ['verticalizacao', 'locacao', 'escritura']);
+  assert.deepEqual(profileItemsForTema(null, 'domicilios'), []);
+  assert.equal(temaOfIndicator('nao_existe'), null);
+});
+
+test('compactIndicators filtrado por tema só devolve indicadores do tema e informa o tema', () => {
+  const idx = fixture();
+  const tudo = compactIndicators(idx, 2024, 'RA_01');
+  assert.ok(tudo.every((i) => i.tema === temaOfIndicator(i.key)));
+  for (const tema of Object.keys(PDAD_TEMAS)) {
+    const lista = compactIndicators(idx, 2024, 'RA_01', [], tema);
+    assert.ok(lista.every((i) => i.tema === tema), tema);
+    assert.equal(lista.length, tudo.filter((i) => i.tema === tema).length, tema);
+  }
 });

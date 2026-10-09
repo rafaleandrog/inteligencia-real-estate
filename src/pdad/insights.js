@@ -13,6 +13,15 @@
 
 import { median } from '../filters.js';
 import { rasForYear } from './aggregate.js';
+import { PDAD_INDICATOR_LIST } from './indicators.js';
+
+/** Chave de exibição -> tema de `PDAD_TEMAS`, derivado do catálogo (nunca mantido à mão). */
+const TEMA_BY_KEY = Object.freeze(Object.fromEntries(PDAD_INDICATOR_LIST.map((m) => [m.key, m.tema])));
+
+/** Tema (`PDAD_TEMAS`) de uma chave de indicador; `null` quando a chave não está no catálogo. */
+export function temaOfIndicator(key) {
+  return TEMA_BY_KEY[key] || null;
+}
 
 /**
  * As sete leituras do perfil. `key` é a chave de exibição de `PDAD_INDICATORS`;
@@ -126,6 +135,15 @@ export function raRealEstateProfile(index, year, raGeoId) {
 }
 
 /**
+ * Itens do perfil (`raRealEstateProfile().items`) cujo indicador pertence ao `tema` —
+ * é o que o bloco de cada tema mostra no topo. Perfil nulo devolve lista vazia.
+ */
+export function profileItemsForTema(perfil, tema) {
+  if (!perfil || !Array.isArray(perfil.items)) return [];
+  return perfil.items.filter((item) => temaOfIndicator(item.key) === tema);
+}
+
+/**
  * Categoria dominante de uma série de categorias `{label, pct, status}`.
  *
  * @returns {{ leader, leaderPct, runnerUp, runnerUpPct, gapPp }|null} — `null` quando
@@ -150,19 +168,23 @@ export function dominantCategory(series) {
  * Lista compacta dos demais indicadores de uma RA (Plano 01 §10.5): rótulo, categoria
  * dominante e percentual — para virar a lista clicável que abre o detalhamento.
  * Indicadores em `excludeKeys` (os do perfil) e os de dois níveis (`shopping`) ficam fora.
+ * Com `tema`, só entram os indicadores daquele tema (`PDAD_TEMAS`).
  */
-export function compactIndicators(index, year, raGeoId, excludeKeys = []) {
+export function compactIndicators(index, year, raGeoId, excludeKeys = [], tema = null) {
   const ra = raOf(index, year, raGeoId);
   if (!ra) return [];
   const excluir = new Set(excludeKeys);
   const out = [];
   for (const indicador of Object.values(ra.indicators || {})) {
     if (excluir.has(indicador.key) || !Array.isArray(indicador.values)) continue;
+    const temaDoIndicador = temaOfIndicator(indicador.key);
+    if (tema && temaDoIndicador !== tema) continue;
     const dominante = dominantCategory(indicador.values);
     out.push({
       key: indicador.key,
       label: indicador.label,
       unit: indicador.unit,
+      tema: temaDoIndicador,
       leader: dominante ? dominante.leader : null,
       leaderPct: dominante ? dominante.leaderPct : null,
       gapPp: dominante ? dominante.gapPp : null,
