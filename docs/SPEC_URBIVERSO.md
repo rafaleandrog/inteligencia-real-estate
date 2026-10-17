@@ -1,6 +1,6 @@
 # Spec — Inteligência Imobiliária (app UrbiVerso)
 
-**Status:** rascunho em construção, versão 0.5 (2026-10-17). A v0.2 incorporou as três rodadas
+**Status:** rascunho em construção, versão 0.6 (2026-10-17). A v0.2 incorporou as três rodadas
 de pesquisa de referências (D-21 a D-54); a v0.3 trouxe o método de Novos Negócios da UP para dentro
 do app, a leitura do sítio, a viabilidade expedita e a camada de governança (D-55 a D-78); a v0.4 é
 a **conferência contra o SDK publicado** (`@urbiverso/sdk` 100.0.0, shell 0.56.37): os 84 itens de
@@ -10,18 +10,20 @@ ativação, fases em PRs com portão entre elas, convivência com o site e com a
 da coleta e das áreas próprias, e o método dos números.
 **Issues de registro:** [#193](https://github.com/rafaleandrog/inteligencia-real-estate/issues/193) (v0.1),
 [#195](https://github.com/rafaleandrog/inteligencia-real-estate/issues/195) (v0.4),
-[#197](https://github.com/rafaleandrog/inteligencia-real-estate/issues/197) (v0.5).
+[#197](https://github.com/rafaleandrog/inteligencia-real-estate/issues/197) (v0.5),
+[#198](https://github.com/rafaleandrog/inteligencia-real-estate/issues/198) (v0.6).
 **Slug da app:** `inteligencia_imobiliaria`. **Nome exibido:** Inteligência Imobiliária.
-**Repositório da app:** `UP-Urbita/app-inteligencia-imobiliaria`, privado; identidade
-`UP-Urbita/app-inteligencia-imobiliaria::inteligencia_imobiliaria` (seção 3.1).
-**Instâncias:** Pinguim (`homolog.urbiverso.com.br`) é a de **teste**: recebe toda release e é onde
-roda o QA de cada fase. Laputa (`urbiverso.up.bsb.br`), produção da UP, é onde a equipe **usa** a
-app, a partir do fim da fase 1 (seção 15).
+**Repositório da app:** este, `rafaleandrog/inteligencia-real-estate` (público), com a app em
+`apps/inteligencia_imobiliaria/`; identidade
+`rafaleandrog/inteligencia-real-estate::inteligencia_imobiliaria` (seção 3.1; D-125).
+**Instância:** só a Pinguim (`homolog.urbiverso.com.br`), por enquanto: recebe toda release, roda o
+QA de cada fase e é onde a equipe usa a app até o MVP ficar pronto (seção 15; D-128). Produção é
+passo futuro, decidido pelo dono depois do MVP.
 
 Este documento é a fonte de verdade do que o app vai ser. Ele substitui, para o app UrbiVerso,
 os papéis que `docs/PRODUCT_PLAN.md`, `docs/ARCHITECTURE.md` e `docs/DATA_CONTRACT.md` cumprem
-para o site estático. Esses três continuam valendo para o site enquanto ele existir; quando o
-app entrar em uso na Laputa e a planilha for congelada, eles passam a ser históricos.
+para o site estático. Esses três continuam valendo para o site enquanto ele existir; quando a
+app for a fonte de verdade e a planilha for congelada (fase 6), eles passam a ser históricos.
 
 Convenções do texto:
 
@@ -127,9 +129,9 @@ itens, cada um resolvido pelo contrato do bundle `@urbiverso/sdk` 100.0.0 ou pel
 apps que já rodam na plataforma (charles3 e contencioso_ciborgue em `urbiverso/apps-juridico`,
 reg360, radar_sei, nobi e o Urbigis). Seis ficaram para o dono (P-42 a P-47). Em termos de desenho:
 
-- **Onde e como nasce (3, 15, 18):** repositório privado `UP-Urbita/app-inteligencia-imobiliaria`
-  (D-95); fase −1 de ativação com checklist e alçada por item (D-96); a Pinguim testa e a Laputa
-  usa, e dado sigiloso nunca entra na Pinguim (D-97); o pipeline segue neste repositório em trilha
+- **Onde e como nasce (3, 15, 18):** repositório próprio na org da UP (D-95; superada na v0.6
+  pela D-125); fase −1 de ativação com checklist e alçada por item (D-96); uma instância de teste
+  e outra de uso, sem dado sigiloso na de teste (D-97; superada na v0.6 pela D-128); o pipeline segue neste repositório em trilha
   própria (D-100); a unidade de plano é o PR, com fases em sub-issues e portão de três condições
   (D-99, D-104); teste sem instância por `req.dados` falso tipado e banco opcional (D-101);
   aceite sobre retrato datado e entrada congelada (D-102, D-103); protocolo do kit (D-114).
@@ -275,15 +277,21 @@ Estes princípios estão provados em produção há meses e entram na app sem mu
 
 | Persona | Nível e papel | O que precisa do app |
 |---|---|---|
-| **Direção de Novos Negócios** | `leitura` + `estrategico` | o que mudou no mês (Início), o portfólio das áreas, fichas para decidir, a agenda de decisão de cada área |
+| **Admin** | `admin` (com os papéis que se atribuir) | no dia a dia, faz tudo: cadastra, importa, roda buscas e cargas, registra decisões e muda estágio, gera fichas e análises; mais parâmetros, rotinas, IA, usuários e papéis. Recebe todo alerta de erro (seção 13) |
+| **Direção de Novos Negócios** | `leitura` + `estrategico` | lê os resultados: o que mudou no mês (Início), o portfólio das áreas, fichas para decidir, a agenda de decisão de cada área; gera ficha e exporta |
+| **Decisor** | `escrita` + `decisor` | registra decisão sobre uma área e muda o estágio a partir de `iniciativa`, inclusive o encerramento (v0.6) |
 | **Analista de Novos Negócios** | `escrita` (+ `estrategico` para quem trabalha áreas próprias) | triar glebas, montar o dossiê, registrar síntese, tese e condições, simular produto, âncora e viabilidade, gerar a ficha |
-| **Curador de dados** | `escrita` + `curador` | manter cadastros, aprovar candidatos, confirmar grupos e vínculos, cadastrar as áreas próprias e as faixas de programa |
-| **Operador de dados** | `escrita` + `operador` | fontes, buscas, cargas públicas, importações, saúde do parser, qualidade |
-| **Admin** | `admin` | parâmetros, rotinas, IA, usuários e papéis |
+| **Curador de dados** | `escrita` + `curador` | inserir e corrigir dados: cadastros, candidatos, grupos e vínculos, áreas próprias, faixas de programa |
+| **Operador de dados** | `escrita` + `operador` | buscas, cargas, rotinas manuais, importações, saúde do parser, qualidade |
 | **Agente** (Claude ou outro) | o nível do token | ler o mesmo que as telas mostram, pelas mesmas rotas, para montar análises e documentos fora do app |
 
 O papel `estrategico` (v0.5) é o que abre as áreas próprias e tudo o que pende delas; sem ele,
 nem `leitura` nem `escrita` as veem (seções 4.1 e 14).
+
+**Na prática, hoje (v0.6).** A equipe é pequena: o admin faz tudo e os demais leem os resultados,
+com pouca interação na app. Os papéis `decisor`, `curador`, `operador` e `estrategico` ficam
+declarados para quando a equipe crescer, sem complicar o MVP: no começo, quem precisa de um deles é
+o próprio admin, que o atribui a si (seção 14; D-130).
 
 As sete jornadas que o app precisa servir de ponta a ponta estão na seção 24, cada uma com o
 critério de aceite. Elas, e não a lista de telas, são a medida de pronto do produto.
@@ -320,7 +328,7 @@ O app **instrumenta** o método: guarda, liga à evidência e lembra do que venc
 | Fechamento mensal (retrato + métricas) | Dentro da rotina diária do script | Rotina `fechar_mes` (mensal) + atualização do mês corrente na rotina diária |
 | Área admin (`admin.html`, token) | Token em `sessionStorage` | Telas de Cadastro e Operação, gate por nível e papel do shell |
 | Dados públicos (`data/public/`) | Arquivos no Pages, lidos pelo manifest | Tabelas `conjuntos_publicos` e `conjunto_arquivos` (coluna `arquivo`), carregadas pela rotina `carregar_dados_publicos` |
-| Pipeline Python | GitHub Actions deste repositório | Continua no GitHub Actions **deste** repositório, em trilha própria (seção 15.0a); publica artefatos públicos; a app, que mora em outro repositório, lê o manifest pela URL pública (D-05) |
+| Pipeline Python | GitHub Actions deste repositório | Continua no GitHub Actions **deste** repositório, em trilha própria (seção 15.0a); publica artefatos públicos; a app, que mora no mesmo repositório em `apps/inteligencia_imobiliaria/`, lê o manifest pela URL pública como qualquer instalação (D-05, D-125) |
 | Mapa | Leaflet vendorizado, canvas próprio | `urbi-mapa` (SDK ≥ 98), Leaflet em canvas, camadas GeoJSON |
 | Gráficos | SVG próprio (`chart-model` + `chart-layout`) | Família `urbi-grafico-*`, `urbi-kpi`, `urbi-mapa-de-calor` |
 | Estado na URL (`#mapa?ra=…`) | `url-state.js` | Sub-rota da app + querystring por `replaceState` |
@@ -334,7 +342,7 @@ fases 1 e 2 a planilha continua fonte de verdade e o Apps Script continua coleta
 planilha por reimportação incremental (`modo_duplicata = atualizar` pela chave natural
 `id_legado`), quantas vezes for preciso, e o site segue no ar sem mudança (precedente: a
 reimportação idempotente do `reg360`). Na fase 3, no dia em que as rotinas de coleta da app são
-ligadas na Laputa, os gatilhos do Apps Script são removidos e as abas de anúncios (`LISTINGS*`,
+ligadas na Pinguim, os gatilhos do Apps Script são removidos e as abas de anúncios (`LISTINGS*`,
 `LISTING_*`) ficam somente leitura: dali em diante a app é a fonte de verdade de anúncios e o site
 mostra o retrato congelado. As demais abas (IVV, FipeZap, PDAD, tráfego) migram de fonte quando a
 fase que as carrega fica pronta. A fase 6 só congela o resto e marca o site como legado (seção 15).
@@ -395,40 +403,67 @@ E, na v0.3:
 
 ### 3.1 Forma do repositório da app
 
-A app nasce num repositório novo e **privado** da org da UP, `UP-Urbita/app-inteligencia-imobiliaria`,
-com o kit instalado (`npx @urbiverso/kit-apps`: `pnpm-workspace.yaml` com `apps/*`, catálogo de
-versões, `release.yml`, `ci.yml`, `KIT.md` e skills) e a app em `apps/inteligencia_imobiliaria/`.
-A identidade é `UP-Urbita/app-inteligencia-imobiliaria::inteligencia_imobiliaria` e entra no
-`manifesto.json` desde a primeira release (o gate da `manifesto-sem-identidade` reprova, a partir
-de 2026-10-28, manifesto sem ela). Apps da UP moram na org da UP, um repositório privado por app
-(precedentes: `UP-Urbita/app-radar-sei::radar_sei`, `UP-Urbita/urbigis::magis`); o kit recusa
-`manifesto.json` na raiz, por isso a pasta fica sob `apps/`.
+A app vive **neste** repositório, `rafaleandrog/inteligencia-real-estate`, pessoal e público, em
+`apps/inteligencia_imobiliaria/` (layout do kit; a raiz continua sendo do site). A identidade é
+`rafaleandrog/inteligencia-real-estate::inteligencia_imobiliaria` e entra no `manifesto.json` desde
+a primeira release (o gate da `manifesto-sem-identidade` reprova, a partir de 2026-10-28, manifesto
+sem ela). Não há repositório novo nem org UP-Urbita. Precedente: a app `viabilidade` do mesmo dono
+roda na Pinguim a partir de repositório pessoal (`rafaleandrog/viabilidade-real-estate::viabilidade`).
+O kit recusa `manifesto.json` na raiz, por isso a pasta fica sob `apps/` (D-125; substitui a D-95).
 
-Este repositório (`rafaleandrog/inteligencia-real-estate`) continua sendo o do site estático e do
-pipeline (seção 15.0a), com as regras dele intactas: reorganizá-lo exigiria revogar
-`docs/ENGINEERING_RULES.md` (R1.1 "sem build obrigatório", R1.3 "não introduza backend Node") de um
-site que continua no ar. A spec e o site são referência, como o `prototipo/` do Urbigis: o código
-do site não é reaproveitado por cópia, só portado com os testes de paridade (11.4). Fecha D-16 e
-P-04 (D-95).
+**O que muda na raiz (v0.6, D-126).** A raiz vira workspace pnpm: `pnpm-workspace.yaml` com
+`apps/*` e o catálogo de versões, `packageManager` pnpm no `package.json` e `pnpm-lock.yaml`
+versionado; o `package-lock.json` sai. O `package.json` do site continua na raiz, com os scripts
+dele (`test`, `smoke`, `serve`…), e o `validate.yml` do site passa a instalar com pnpm. A ordem de
+instalação do kit importa: `apps/inteligencia_imobiliaria/` (com o `manifesto.json` mínimo) nasce
+**antes** de rodar `npx @urbiverso/kit-apps`. O kit só semeia `apps/ola_mundo` onde não há `apps/`
+nem `modulos/`, e o manifesto da app é o sinal de onde ele está; sem ele, recusa e pede
+`--confirmo`. Arquivos de dois donos que já existem aqui (`CLAUDE.md`, `package.json`, `.npmrc`,
+`.gitignore`…) ele relata e não toca, salvo o `.gitignore`, que ele completa no fim; o relatório
+dele diz a linha a acrescentar ao `CLAUDE.md`.
 
-Raiz do repositório da app (o que fica fora da pasta da app):
+**Que regra vale onde (v0.6, D-127).** O repositório tem dois produtos, e as regras se delimitam
+por caminho:
+
+| Caminho | Regras | Revisão |
+|---|---|---|
+| raiz do site, `src/`, `admin.html`, `assets/`, `pipeline/`, `data/`, `tests/`, `tools/` | `docs/ENGINEERING_RULES.md` (R1.x "sem build, sem bundler, sem backend Node"; R2.1 planilha como fonte de verdade) e `docs/AI_WORKFLOW.md` | review do Codex obrigatória |
+| `apps/inteligencia_imobiliaria/`, `scripts/`, `migracao/`, `qa-relatorios/` | `KIT.md` e as skills do kit (`especificar`, `implementar`, `orquestrar`, `revisar-pr-apps`, `qa`) | `revisar-pr-apps` |
+| tudo | `CLAUDE.md` deste repositório: issue antes de implementar, labels `priority:*`, `type:*` e `logged-by-claude` | — |
+
+R1.x e R2.1 não valem para a app: ela tem build, backend Node e banco próprio por desenho. PR que
+toca os dois lados passa pelas duas revisões; o normal é um PR por lado.
+
+**Repositório público (v0.6).** O código da app é público. Nenhum dado interno nem segredo entra
+no repositório: área própria, tese, cenário, observação de campo, golden set de área própria real
+e relatório de QA com dado interno ficam fora; dado entra pela instância (Operação › Importações).
+As releases ficam legíveis sem PAT, então a instância instala sem credencial do repositório; só o
+pacote `@urbiverso/sdk` pede `URBIVERSO_PACKAGES_TOKEN` (R-51).
+
+O pipeline continua aqui (seção 15.0a). A spec e o site são referência: o código do site não é
+reaproveitado por cópia, só portado com os testes de paridade (11.4). Fecha D-16 e P-04.
+
+Raiz do repositório (o que fica fora da pasta da app; o resto do site segue onde está):
 
 ```
-UP-Urbita/app-inteligencia-imobiliaria/
-├── KIT.md, CLAUDE.md, pnpm-workspace.yaml   # do kit; o "Deste repositório" do CLAUDE.md é do dono
+rafaleandrog/inteligencia-real-estate/
+├── package.json, pnpm-lock.yaml              # do site, agora com packageManager pnpm; package-lock.json sai
+├── KIT.md, CLAUDE.md, pnpm-workspace.yaml   # KIT.md e pnpm-workspace.yaml do kit; o CLAUDE.md é deste repositório
 ├── .github/workflows/
 │   ├── ci.yml, release.yml                   # do kit (typecheck, build, test, empacotamento; release)
+│   ├── validate.yml, pipeline-tests.yml, …   # do site e do pipeline, como hoje (validate.yml com pnpm)
 │   └── sdk-noturna.yml                       # noturna contra o SDK novo, do repositório (18.2)
 ├── scripts/
 │   ├── exportar-planilha.mjs                 # retrato datado da planilha, aba por aba, por GViz (11.3)
-│   └── gerar-paridade.mjs                    # fixture de paridade a partir do código do site (18.1)
+│   └── gerar-paridade.mjs                    # fixture de paridade a partir do código do site num commit fixado (18.1)
 ├── migracao/AAAA-MM-DD/                      # <aba>.csv + sha256 de cada arquivo (retrato datado)
 ├── qa-relatorios/                            # relatórios do QA; medidor/p95.mjs (18.2)
 └── apps/inteligencia_imobiliaria/
 ```
 
-`gerar-paridade.mjs` recebe por argumento um checkout do site num commit fixado e grava esse commit
-no arquivo que produz, para que a fixture diga de que código saiu (D-103).
+`gerar-paridade.mjs` recebe por argumento um checkout do site num commit fixado (uma `git worktree`
+deste mesmo repositório) e grava esse commit no arquivo que produz, para que a fixture diga de que
+código saiu e uma mudança no site não mude a fixture sem PR (D-103).
 
 A pasta da app:
 
@@ -520,11 +555,11 @@ quando o ganho justifica.
 | Dados | todas as tabelas; `req.dados`; `sql_declarado` para ranking e janelas | `schema.json` |
 | UI | todas as telas autenticadas; `urbi-mapa`, `urbi-grafico-*`, `urbi-tabela`, `urbi-kpi` | `ui` ausente (= validado) |
 | Rotinas | treze rotinas (seção 7) | `rotinas` + `export const rotinas` |
-| IA | análises (seção 9): quatro slots custom com base `poder` (território, mercado, tela, área) e um slot opcional de extração com base `barato` | `ia.slots` |
+| IA | análises (seção 9): quatro slots custom com base `poder` (território, mercado, tela, área); dois slots opcionais de extração, desligados por parâmetro: `extracao_pagina` com base `barato` e, na v0.6, `extracao_documento` com base `arquivos`, para a extração assistida de arquivo de fonte manual (seção 11.1; D-133) | `ia.slots` |
 | Config da app | parâmetros declarativos (seção 4.3); aba Rotinas nativa | `parametros` |
-| Eventos | erros de operação (incluindo `parser_degradado` e `cadeia_mensal_parada`), evento de lacuna, o evento de continuação e o callback `analise_concluida` (seção 13; ambos visíveis, D-85, D-82) | `eventos`, `erros` |
-| Arquivos | CSV de importação, shards dos dados públicos, KML/KMZ importado | colunas `arquivo` |
-| Permissões | níveis + papéis `curador`, `operador` e `estrategico` (v0.5); **rotas pessoais** para as visões salvas (D-80) e a telemetria de uso (`/pessoal/uso`) | `roles` + `export const rotasPessoais` |
+| Eventos | erros de operação (incluindo `parser_degradado` e `cadeia_mensal_parada`), evento de lacuna, o evento de continuação e os callbacks `analise_concluida` e `extracao_concluida` (seção 13; todos visíveis, D-85, D-82) | `eventos`, `erros` |
+| Arquivos | CSV de importação, anexo de carga manual (PDF, planilha, imagem; v0.6), shards dos dados públicos, KML/KMZ importado | colunas `arquivo` |
+| Permissões | níveis + papéis `curador`, `operador` e `estrategico` (v0.5) e `decisor` (v0.6; D-130); **rotas pessoais** para as visões salvas (D-80) e a telemetria de uso (`/pessoal/uso`) | `roles` + `export const rotasPessoais` |
 | Hooks de ciclo de vida | `aoIniciar` (dispara a semente memoizada, que as rotas aguardam, e reconcilia as inscrições) e `aoEncerrar` (cancela lote em voo) | exports |
 
 Não usa na V1: Segregação por conta (um território não é um tenant; C-82), Módulos (D-06; os
@@ -590,22 +625,22 @@ motivo; **referência**: doc de processo ou de conceito que a app segue, sem ado
 | Doc do SDK | Framework | Adoção | Fase | Como a app usa, ou por que não |
 |---|---|---|---|---|
 | `ajuda.md` | Ajuda, Feedback e Sentinela | adota | 1 | Sem código: o widget "?" abre `/{appId}/docs` com o `docs/README.md` da app (§3.1) e mostra reporte de bug e sugestão se o admin ligar o Sentinela da app. Não substitui o "Como ler" por tela (D-77, §10.1), que fica onde o número está. |
-| `apps-em-repo-proprio.md` | Apps em repositório próprio | adota | 0 | Forma do repositório, catálogo, kit `@urbiverso/kit-apps`, build canônico com `--minify`, `.gitignore` dos bundles e testes que só exercitam a própria pasta (§3.1; C-72, C-73, C-75, C-76). Repositório privado `UP-Urbita/app-inteligencia-imobiliaria` (§3.1; fecha D-16 e P-04), leitura dele concedida ao PAT das instâncias na fase −1 (§15.−1) e testes sem instância nem dev-shell, que não existe (§18.1). |
+| `apps-em-repo-proprio.md` | Apps em repositório próprio | adota | 0 | Forma do repositório, catálogo, kit `@urbiverso/kit-apps`, build canônico com `--minify`, `.gitignore` dos bundles e testes que só exercitam a própria pasta (§3.1; C-72, C-73, C-75, C-76). A app mora neste repositório, público, em `apps/inteligencia_imobiliaria/`, com a raiz como workspace pnpm que também tem o site (§3.1; D-125, D-126; fecha D-16 e P-04); release legível sem credencial do repositório; testes sem instância nem dev-shell, que não existe (§18.1). |
 | `arquivos.md` | Arquivos | adota | 1 | Colunas `arquivo` para CSV de importação, KML/KMZ, shards dos conjuntos públicos e foto de campo, com upload em dois passos (§5.10, §11.1; C-37, C-38). A app nunca serve bytes, só resolve `{ arquivo_id, sha256, url }` (C-39, D-81), e o TTL de anexo não obrigatório tem decisão explícita (C-41, D-89). |
-| `auditoria.md` | Auditoria | não adota | — | `auditavel` é trilha permanente de categoria fechada (autenticação, permissão, aprovação…), não telemetria de uso; o uso por tela fica em `uso_eventos` (§5.23; C-83, D-72). Não há categoria de leitura, então "quem viu" uma área própria não cabe aqui; a trilha de saída fica em `area_eventos` (§22). Um registro de decisão sobre área usaria a categoria `aprovacao` `[PENDENTE P-42]`. |
+| `auditoria.md` | Auditoria | não adota | — | `auditavel` é trilha permanente de categoria fechada (autenticação, permissão, aprovação…), não telemetria de uso; o uso por tela fica em `uso_eventos` (§5.23; C-83, D-72). Não há categoria de leitura, então "quem viu" uma área própria não cabe aqui; a trilha de saída fica em `area_eventos` (§22). A decisão sobre área também não vai à Auditoria: quem decidiu e o motivo ficam em `area_eventos` (§5.20; D-130). |
 | `autenticacao.md` | Autenticação | adota | 1 | A app não faz auth: lê `req.contexto` (`usuario.id`, `nivelApp`, `rolesApp`) e nunca `tipo` nem `natureza`, que chegam redigidos (§14; C-52). |
 | `banco-de-dados.md` | Dados | adota | 1 | Todo o `schema.json` (§5), `req.dados`, `sql_declarado` para ranking e janelas, `busca_texto`, `acesso_externo` explícito e `atualizarSe` com coluna `versao` (C-10, C-15 a C-29; D-83, D-88). A grade lê por `varrerTudo` porque `listar` sempre paga `COUNT(*)` (C-27). `uso_eventos` é tabela `pessoal` (§5.23); histórico e registro congelado ligam ao cadastro por FK `restringir` (§5.1); as tabelas das áreas próprias são `restrito` e só as rotas da app as leem (§14). |
-| `barramento.md` | Eventos e Notificações | adota | 3 | Bloco `erros` (oito erros de operação, com `cadeia_mensal_parada`) e `eventos` (`lacuna_cadastro`, `continuar_coleta`, `analise_concluida`), listener `reagir` e inscrição do `curador` por escopo no `aoIniciar` (§13; C-08, C-13, C-47 a C-50; D-14, D-85). Erro só é visível ao admin, por isso a Operação lê estado em tela (C-48). |
+| `barramento.md` | Eventos e Notificações | adota | 3 | Bloco `erros` (oito erros de operação, com `cadeia_mensal_parada`) e `eventos` (`lacuna_cadastro`, `continuar_coleta`, `analise_concluida` e, na v0.6, `extracao_concluida`), listener `reagir` e inscrição do `curador` por escopo no `aoIniciar` (§13; C-08, C-13, C-47 a C-50; D-14, D-85). Erro só é visível ao admin, por isso a Operação lê estado em tela (C-48). |
 | `compatibilidade.md` | Compatibilidade e quebra retroativa | referência | 0 | Rege os dois pisos (`sdk_min: 100`, `shell_min: "0.56.37"`, §3.3; C-01, C-02) e o registro de obsolescências: a spec não usa nada do que está em obsolescência (C-03). |
 | `config-app.md` | Config da App | adota | 1 | Parâmetros declarativos de §4.3 (`bool`, `numero`, `string`, `texto_longo`; sem JSON nem lista, por isso `series_macro_config` virou tabela) e as abas nativas de §10.8 (C-07, C-84; D-90). Sem `telas_config`. |
 | `contas.md` | Segregação por Conta | não adota | — | App interna de colaborador, sem tenant: um território não é conta, e a 4ª camada de permissões cobre autor e responsável (§3.2, §14; C-82). |
 | `disparadores.md` | Disparadores | não adota | — | Nenhuma outra app da instância precisa acionar ação desta, nem esta de outra; o funil de âncoras fica no CRM (D-45). Reabre se um CRM no UrbiVerso quiser receber a ficha. |
-| `distribuicao.md` | Distribuição de Apps | adota | 0 | `identidade`, os dois pisos, regra única de versionamento com quatro gatilhos, bundle self-contained com bibliotecas puras (`fflate`, `h3-js` se medida pedir) e tag `-a` pelo `urbi-release` (§3.3, §4.1; C-09, C-74; D-93). Identidade `UP-Urbita/app-inteligencia-imobiliaria::inteligencia_imobiliaria`; release nasce prerelease, a Pinguim fica em `Releases` e a Laputa em `homologado`; downgrade é recusado, então conserto é release nova (§3.6). |
+| `distribuicao.md` | Distribuição de Apps | adota | 0 | `identidade`, os dois pisos, regra única de versionamento com quatro gatilhos, bundle self-contained com bibliotecas puras (`fflate`, `h3-js` se medida pedir) e tag `-a` pelo `urbi-release` (§3.3, §4.1; C-09, C-74; D-93). Identidade `rafaleandrog/inteligencia-real-estate::inteligencia_imobiliaria`; release nasce prerelease e a Pinguim fica em `Releases`; downgrade é recusado, então conserto é release nova (§3.6). |
 | `documentacao.md` | Documentação | referência | 0 | Convenção dos `docs/*.md` da app com `README.md` primeiro e doc no mesmo PR do código (§1.3, §3.1); o shell serve essa pasta em `/{appId}/docs`. |
 | `email.md` | Email | não adota | — | O framework é para público externo; notificação interna vai pelo barramento, e aviso de mercado por e-mail foi adiado (D-14, D-33). Sem `emails` no manifesto (§4.1). |
 | `faxina.md` | Faxina | não adota | — | Housekeeping interno do shell: "Apps não consomem este módulo". A retenção da app é a rotina própria `limpar_retencao` (§7.13). |
 | `guia-desenvolvimento.md` | Guia de Desenvolvimento de Apps | referência | 0 | Receita e checklist da Fase 0; o § 9 fixa que só o `fetch()` global passa pelo proxy de egresso da instância, o que tirou `proxy_saida_url` e `undici.ProxyAgent` da coleta (§8.2; C-34, D-79). O § 8 (todas as apps no mesmo processo Node) funda o orçamento de CPU da app (§8.3, §21.1). |
-| `ia.md` | IA | adota | 5 | Quatro slots custom de base `poder` e um de extração `barato` desligado (§4.1, §9; C-06; D-04), `consultarAsync` com evento de callback para o `202` (C-80, D-82), `estadoSlot` escondendo o que não resolve (C-43) e tokens da resposta para custo (C-44). O limite de requisições por minuto é por app (padrão 10): o admin da app o sobe para 30 na fase 5, e o lote mensal enfileira no máximo `ia_lote_por_fatia` por fatia (§4.3, §15.5). |
+| `ia.md` | IA | adota | 2, 5 | Quatro slots custom de base `poder` e um de extração `barato` desligado (§4.1, §9; C-06; D-04); na v0.6, `extracao_documento` de base `arquivos`, por `req.ia.extrairConteudo` com `slot`, desligado por parâmetro, para a prévia de arquivo de fonte manual (§11.1; D-133), `consultarAsync` com evento de callback para o `202` (C-80, D-82), `estadoSlot` escondendo o que não resolve (C-43) e tokens da resposta para custo (C-44). O limite de requisições por minuto é por app (padrão 10): o admin da app o sobe para 30 na fase 5, e o lote mensal enfileira no máximo `ia_lote_por_fatia` por fatia (§4.3, §15.5). |
 | `icones.md` | Ícones | adota | 1 | Sem declaração: o `icone` de cada folha do `nav` é classe FontAwesome (§4.1) e as telas usam `<urbi-icone>`; nenhum glyph custom `ubv`. |
 | `lixeira.md` | Lixeira | adota | 1 | Aba nativa da Config para o admin, porque toda tabela de cadastro tem `soft_delete` (§5.1, §10.8); é a lixeira manual que dispensa tela própria de restauração (C-84). A purga de anúncio com retrato e de área com ficha é recusada por desenho (FK `restringir`, §5.1). Ver pontos de atenção. |
 | `modulos-autoria.md` | Módulos, autoria | não adota | — | A app é app, não módulo: não publica `modulo.js`, entidades nem componentes expostos. |
@@ -613,7 +648,7 @@ motivo; **referência**: doc de processo ou de conceito que a app segue, sem ado
 | `nucleo.md` | Núcleo, dados compartilhados | referência | Futuro | Modelo e semântica de `imoveis` e `incorporacoes` para quando D-06 reabrir; o contrato de acesso do núcleo (`req.nucleo`, `dependencias_nucleo`) está em obsolescência e nunca entra (C-03). Sem `pessoas`, pela regra de dado pessoal (§22). |
 | `overview.md` | Visão geral (manifesto, exports, navegação, `urbiVerso.fetch`) | adota | 0 | Manifesto e exports reconhecidos (§4.1, §4.2; C-14), `nav` com onze folhas sob o teto de 20 (C-04, D-86), hooks `aoIniciar` e `aoEncerrar` (C-11, C-12), sub-rotas e erros do `api()` com teto de corpo de 100 kB (C-69, C-70, C-78; D-92). Início em `/`, a mesma tela do Home que o shell põe no menu (§4.1); como o `aoIniciar` roda depois do `listen`, as rotas aguardam a semente (§4.2); tags com prefixo `intel-imob-` e registro que tolera a reavaliação do bundle (§3.1). |
 | `paginas-publicas.md` | Páginas Públicas | não adota | — | App só autenticada (D-02); sem `rotas_publicas` nem `paginas_publicas`. A hipótese de mapa público em §15.7 não está desenhada. |
-| `permissoes.md` | Sistema de Permissões | adota | 1 | Permissão padrão nenhuma, níveis com papéis `curador` e `operador`, contrato método→nível, admin que autoatribui papel (§14; C-51, C-53, C-56; D-13, D-18), `rotasPessoais` para visões salvas (C-54, D-80) e 4ª camada "autor, responsável ou curador" nas áreas, declarada em `comum/regras-objeto.ts` e coberta por uma matriz rota × perfil (§18.1). Papel `estrategico` sob `leitura` para as áreas próprias (§4.1, §14) e `POST /pessoal/uso` em `rotasPessoais` (T6). |
+| `permissoes.md` | Sistema de Permissões | adota | 1 | Permissão padrão nenhuma, níveis com papéis `decisor` (v0.6), `curador` e `operador`, contrato método→nível, admin que autoatribui papel (§14; C-51, C-53, C-56; D-13, D-18), `rotasPessoais` para visões salvas (C-54, D-80) e 4ª camada "autor, responsável ou curador" nas áreas, declarada em `comum/regras-objeto.ts` e coberta por uma matriz rota × perfil (§18.1). Papel `estrategico` sob `leitura` para as áreas próprias (§4.1, §14) e `POST /pessoal/uso` em `rotasPessoais` (T6). |
 | `protocolo-distribuicao.md` | Protocolo de distribuição (urbihub v1) | não adota | — | Contrato de quem implementa servidor de instaláveis; a app é distribuída por release no GitHub e instalada pelo repositório (§3.1). |
 | `remessas.md` | Remessa Externa | adota | 3 | Sem código: os erros de §13 viram destino `webhook`, `slack`, `sentinela` ou `rotina_claude` se o admin da app configurar em Config › Eventos; é o caminho de Slack que a spec prevê (§3.2; C-48). |
 | `rotinas.md` | Rotinas | adota | 3 | Treze rotinas de §7 com fatiamento abaixo de 15 minutos e cursor (C-30, C-31), trava própria em `cursores_rotina` além do advisory lock (C-32, D-85), `fuso_organizacao` porque o `ctx` não tem relógio (C-33, D-84), sem encadeamento declarado (C-36) e carga por evento em vez de "Rodar agora" da app (C-05, D-91). Trava por classe (`coleta`, `carga`) contra o empilhamento do catch-up, `coleta_ativa` como off-switch de toda a coleta, guarda da cadeia mensal que vira `ok: false` e grade de horários sugerida, porque o default é 06:00 UTC para todas (§4.1, §4.3, §7). |
@@ -651,11 +686,11 @@ motivo; **referência**: doc de processo ou de conceito que a app segue, sem ado
   app corrente · Abre `/{appId}/docs`" e "Reportar bug / Fazer sugestão · `sentinela_config.ativo`
   naquele escopo". A spec não diz que `docs/` é lido pelo usuário dentro do app, nem se o admin
   liga o Sentinela da app para a equipe reportar defeito de coleta ou de número.
-- **IA para arquivo e voz não foi considerada.** `ia.md`: "O slot `arquivos` extrai conteúdo de
-  texto UTF-8, PDFs e imagens usando a API dedicada `extrairConteudo`" e "O slot `audio` é **STT de
-  gravação curta** — o microfone do chat, uma mensagem de voz". Os editais da Terracap em PDF (Fase
-  4B) e a observação de campo ditada (D-78, J7) são candidatos; dentro de D-04, seriam fallback
-  desligado por padrão, como o slot de extração de página.
+- **IA para arquivo e voz.** `ia.md`: "O slot `arquivos` extrai conteúdo de texto UTF-8, PDFs e
+  imagens usando a API dedicada `extrairConteudo`" e "O slot `audio` é **STT de gravação curta** —
+  o microfone do chat, uma mensagem de voz". *v0.6:* a parte de arquivo foi adotada pela D-133
+  (extração assistida de fonte manual, slot `extracao_documento`, desligado por padrão); os editais
+  da Terracap em PDF são o primeiro caso. A observação de campo ditada (D-78, J7) segue como ideia.
 - **O pipeline poderia avisar a app em vez de esperar a rotina mensal.** `wh.md`: "**`recorrente`** —
   URL estável que aceita N chamadas", com o handler recebendo `req.dados` e `req.eventos`. Um POST
   do GitHub Actions ao publicar versão nova poderia publicar o mesmo evento que a carga já usa
@@ -673,19 +708,25 @@ Pinguim, que recebe devs de fora. Regras (D-106):
    com teto de 5 s de espera por lock; índice novo em tabela que já tem dado (anúncios, retratos,
    células) só entra com nota no PR medindo a contagem de linhas na Pinguim, e `unico` novo só
    depois de conferir que o dado não o viola (senão a app fica `!saudavel`).
-2. **Cadência.** Releases são agrupadas, no máximo uma por dia útil, publicadas fora do horário
-   de uso, e a fase só publica release instalável quando o teste local passou. O horário exato é
-   item do checklist da fase −1 (§15.−1) `[PENDENTE P-48]`.
+2. **Cadência (v0.6).** Durante a construção, as releases seguem o ritmo dos PRs, sem número
+   fixo por dia: cada PR que entrega fatia instalável pode publicar a sua, desde que o teste local
+   tenha passado, a regra 1 de índices valha e a publicação não reinicie a instância em horário de
+   uso dos outros. Depois do MVP, release e promoção são por ordem do dono (D-135; fecha P-48).
 3. **Sem downgrade.** A plataforma recusa downgrade em todo caminho de instalação: release
    defeituosa se corrige com release nova (`z+1`), e a spec não promete rollback.
 4. **Aceitação.** A Pinguim fica com nível de aceitação `Releases` e auto-update ligado (a release
-   nasce prerelease pelo `urbi-release`); a Laputa fica em `homologado`, e a homologação
-   (`prerelease=false`) é ato humano (precedente: `reg360`, `docs/operacao.md`).
+   nasce prerelease pelo `urbi-release`; precedente: `reg360`, `docs/operacao.md`). É a única
+   instância do plano atual e é onde a equipe usa a app (D-128). A homologação
+   (`prerelease=false`) só importa quando o dono decidir por produção, depois do MVP.
 5. **Migração pesada fora do boot.** Migração de dados pesada roda fatiada por rotina e cursor,
    nunca no boot.
-6. **Coleta numa instância só.** A coleta nos portais roda na Laputa depois do corte da fase 3; na
-   Pinguim, `coleta_ativa` fica `false` fora da janela de QA de coleta (§15).
-7. **Sem dado sigiloso.** Áreas próprias, teses e cenários reais nunca entram na Pinguim (§15).
+6. **Um coletor por vez.** Até o corte da fase 3 coleta o Apps Script, e a app fica com
+   `coleta_ativa = false` fora da janela de QA de coleta; do corte em diante coleta só a app, na
+   Pinguim (§15; D-98).
+7. **Sigilo pela permissão.** Áreas próprias, teses e cenários reais ficam na Pinguim. Quem os
+   protege é a permissão por pessoa (`permissao_padrao = nenhuma`: dev de fora da equipe não vê a
+   app; D-13) mais o papel `estrategico` (D-107). O admin da instância vê tudo, pelo papel dele, e
+   isso é risco aceito e escrito (R-50; D-128).
 
 ---
 
@@ -698,7 +739,7 @@ Pinguim, que recebe devs de fora. Regras (D-106):
   "nome": "Inteligência Imobiliária",
   "versao": "0.1.0",
   "descricao": "Oferta, mercado e território do mercado imobiliário, com dado rastreável e análises por IA",
-  "identidade": "UP-Urbita/app-inteligencia-imobiliaria::inteligencia_imobiliaria",   // desde a 1ª release (C-03); fecha D-16
+  "identidade": "rafaleandrog/inteligencia-real-estate::inteligencia_imobiliaria",   // desde a 1ª release (C-03); D-125
   "shell_min": "0.56.37",
   "sdk_min": 100,
 
@@ -710,12 +751,16 @@ Pinguim, que recebe devs de fora. Regras (D-106):
       }
     },
     "escrita": {
+      "decisor": {
+        "descricao": "Registra decisão sobre uma área e muda o estágio a partir de iniciativa, inclusive o encerramento",
+        "sticker": { "icone": "fa-solid fa-gavel", "cor": "#B71C1C" }
+      },
       "curador": {
-        "descricao": "Cadastra e corrige anúncios, lançamentos, âncoras e contornos; aprova candidatos",
+        "descricao": "Insere e corrige dados: anúncios, lançamentos, âncoras, contornos e áreas próprias; aprova candidatos",
         "sticker": { "icone": "fa-solid fa-pen-ruler", "cor": "#2E7D32" }
       },
       "operador": {
-        "descricao": "Roda rotinas, gerencia fontes de portal, importa e carrega dados, resolve achados de qualidade",
+        "descricao": "Roda buscas, cargas e rotinas manuais, gerencia fontes, faz importações, resolve achados de qualidade",
         "sticker": { "icone": "fa-solid fa-gears", "cor": "#1565C0" }
       }
     }
@@ -757,7 +802,8 @@ Pinguim, que recebe devs de fora. Regras (D-106):
       "analise_mercado":    { "titulo": "Análise de mercado", "base": "poder", "descricao": "Leitura analítica do mercado da cidade no mês, sobre IVV, FipeZap, oferta e contexto macro" },
       "analise_tela":       { "titulo": "Análise do recorte em tela", "base": "poder", "descricao": "Leitura do recorte que o usuário está vendo (filtros do mapa ou do mercado)" },
       "analise_area":       { "titulo": "Análise de área de estudo", "base": "poder", "descricao": "Leitura de uma área desenhada: demanda, oferta, terra, comércio, hipóteses de produto e de âncora, sobre os achados calculados" },
-      "extracao_pagina":    { "titulo": "Extração de página (opcional)", "base": "barato", "descricao": "Fallback para extrair campos de uma página de lançamento sem dado estruturado; desligado por padrão" }
+      "extracao_pagina":    { "titulo": "Extração de página (opcional)", "base": "barato", "descricao": "Fallback para extrair campos de uma página de lançamento sem dado estruturado; desligado por padrão" },
+      "extracao_documento": { "titulo": "Extração de documento (opcional)", "base": "arquivos", "descricao": "Lê PDF ou imagem de uma carga manual e propõe linhas para o operador conferir; desligado por padrão" }
     }
   },
 
@@ -773,8 +819,8 @@ Observações:
   (`config_apps.permissao_padrao`, Admin › Instaláveis › Apps › Acesso, alçada `usuarios`). A spec
   pede que ela fique em **nenhuma** (D-13); a liberação é por pessoa. Conferir o valor é passo da
   instalação, escrito no README da app (C-56).
-- `identidade` é `UP-Urbita/app-inteligencia-imobiliaria::inteligencia_imobiliaria` (seção 3.1):
-  o `owner/repo` é o do repositório da app e o `slug` é igual ao nome da pasta. A obsolescência
+- `identidade` é `rafaleandrog/inteligencia-real-estate::inteligencia_imobiliaria` (seção 3.1):
+  o `owner/repo` é o deste repositório, onde a app mora, e o `slug` é igual ao nome da pasta. A obsolescência
   `manifesto-sem-identidade` tem `gate_apos` em 2026-10-28, e a partir daí o manifesto sem o
   campo, ou com forma errada, reprova no empacotamento, no CI e na instalação (C-03).
 - **Papel `estrategico` (v0.5).** Declarado sob `leitura`, para que a Direção o receba (um usuário
@@ -782,6 +828,10 @@ Observações:
   declarados). Áreas `tipo = propria` e o que pende delas só são lidas por quem tem `estrategico`
   ou `curador`, ou é o `responsavel_id` da área; para os demais elas somem das listas e o detalhe
   responde `404` (seção 14; D-107). Quem recebe o papel segue em P-06.
+- **Papel `decisor` (v0.6).** Declarado sob `escrita`. Mudar o estágio de uma área para
+  `iniciativa` ou além, ou para `encerrada`, exige `admin` ou `decisor`, e grava em `area_eventos`
+  quem decidiu e o motivo (seção 5.20; D-130). Não há comitê nem tabela de decisões. Como os
+  demais papéis, fica declarado para quando a equipe crescer; no MVP o admin faz tudo.
 - `rotas_publicas`, `paginas_publicas`, `dependencias`, `webhooks`, `wiki`, `emails` não são
   declarados.
 - `ui` fica ausente: a app está sob o framework de UI e é validada por ele. O tipo `Manifesto` do
@@ -829,7 +879,11 @@ Observações:
   Instaláveis › Apps › IA): slot custom só tem configuração própria por override local, e sem
   override cai na base. `barato` não tem cascata: sem ele configurado, o fallback de extração
   falha em vez de cair para `normal`. "Desligado por padrão" do `extracao_pagina` é o parâmetro
-  `usar_ia_extracao_lancamentos`, não uma propriedade do slot (C-06).
+  `usar_ia_extracao_lancamentos`, não uma propriedade do slot (C-06). O `extracao_documento` (v0.6)
+  pede o slot-base `arquivos` autorizado, que também não tem cascata ("Não tem cascata (semântica
+  distinta dos slots de texto)", `ia.md`), e é ligado pelo parâmetro `usar_ia_extracao_documentos`;
+  a chamada é `req.ia.extrairConteudo({ arquivo_id }, { instrucao, schema, slot:
+  'extracao_documento' })`, que só aceita slot custom de base `arquivos` (`ia.md` § 4; D-133).
 - O limite de requisições de IA por minuto é **por app** e é do admin da app (Config › IA ›
   Configurações, 1 a 600; padrão 10). O worker do modo assíncrono o respeita e transforma o estouro
   em `RATE_LIMIT` retentável com backoff, então pausa entre enfileiramentos não controla o ritmo.
@@ -846,7 +900,7 @@ Observações:
 | `rotinas` | Handlers das treze rotinas (seção 7) |
 | `aoIniciar` | Dispara a semente idempotente (v0.5: `garantirSemente(dados)` de `backend/semente.ts`, promise memoizada por processo). Como o `aoIniciar` roda depois do `listen`, um middleware no topo de `rotas` e de `rotasPessoais` aguarda a mesma promise, e listeners e rotinas também a aguardam antes de agir; falha zera a memoização e segue por `next(e)`, e o request seguinte tenta de novo (precedente: `nobi`, `backend/seed.ts`). Não há `503 APP_PREPARANDO`. A semente é pequena (1 cidade, 35 localidades), então o primeiro request espera menos de 1 s (D-112). Conteúdo: a cidade `distrito_federal` e as 35 localidades do tipo `ra` com códigos oficiais, **sem** geometria nem perfil (os dois vêm por importação). `faixas_programa` nasce vazia de propósito: valores de portaria não entram por semente, e a tela de Produto pede o cadastro. **Reconcilia** as inscrições do evento `lacuna_cadastro` com o papel `curador` (seção 13; C-49), sem bloquear request. Guarda o `ctx`, que é o mesmo `ContextoListener` das rotinas e dos listeners ("guardar a referência é legítimo e esperado", C-11, C-33) |
 | `aoEncerrar` | Sinaliza o `AbortController` do lote de coleta em voo. Não recebe `ctx` (usa o guardado no `aoIniciar`), tem um orçamento de 5 s compartilhado por todas as apps e nada garante que termine: o cursor e a `coleta` já estão gravados por fatia (seção 7), e o encerramento não grava nada (C-12) |
-| `reagir` | Dois listeners: `continuar_coleta`, que retoma a rotina indicada pelo cursor (seção 7; D-85), e `analise_concluida`, que grava o resultado de uma análise de IA pedida em modo assíncrono (seção 6.8; D-82) |
+| `reagir` | Três listeners: `continuar_coleta`, que retoma a rotina indicada pelo cursor (seção 7; D-85); `analise_concluida`, que grava o resultado de uma análise de IA pedida em modo assíncrono (seção 6.8; D-82); e, na v0.6, `extracao_concluida`, que grava a prévia de uma extração assistida de documento (seção 6.9; D-133) |
 
 Não exporta `rotasPublicas`, `webhooks` nem `disparadores`. A v0.1 dizia que `reagir` também
 não era exportado, mas a seção 7 já dependia dele para a continuação das rotinas fatiadas; a v0.2
@@ -870,8 +924,9 @@ domínio, então não contraria D-47.
 | `coleta_ativa` | bool | `true` | Off-switch de toda a coleta (v0.5). Desligado, nenhuma rotina de coleta externa nem continuação faz requisição: lidas no início de cada fatia, fecham a `coleta` como `pausada` e não reagendam; as rotas manuais de coleta respondem `409 COLETA_PAUSADA`. O toggle da aba Rotinas desliga uma rotina, mas não a cadeia de continuações já agendadas (precedente: `atendimento_ativo` do `nobi`; D-108) |
 | `fuso_organizacao` | string | `America/Sao_Paulo` | Fuso em que as rotinas cortam o dia e o mês (`intervaloDoDia(data, fuso)` do SDK). O `ctx` de rotina não traz fuso nem relógio; o fuso da organização só chega em `req.contexto.fuso`, em rota autenticada (D-84, C-33) |
 | `jitter_raio_m` | numero | `350` | Raio do deslocamento determinístico aplicado à coordenada aproximada |
-| `manifest_publico_url` | string | `https://raw.githubusercontent.com/rafaleandrog/inteligencia-real-estate/main/data/public/manifest.json` | De onde a rotina `carregar_dados_publicos` lê o manifest (o `padrao` é literal, C-07). O pipeline fica neste repositório, público porque só publica dado público, e a app privada o lê sem credencial (seção 15.0a); a mudança de dono segue em R-25 `[PENDENTE P-44]` |
+| `manifest_publico_url` | string | `https://raw.githubusercontent.com/rafaleandrog/inteligencia-real-estate/main/data/public/manifest.json` | De onde a rotina `carregar_dados_publicos` lê o manifest (o `padrao` é literal, C-07). O pipeline fica neste repositório, o mesmo da app, público; a app lê o manifest publicado sem credencial, como qualquer instalação (seção 15.0a; fecha P-44) |
 | `usar_ia_extracao_lancamentos` | bool | `false` | Liga o slot `extracao_pagina` como fallback na verificação de lançamentos |
+| `usar_ia_extracao_documentos` | bool | `false` | Liga o slot `extracao_documento`: na Operação › Importações, o anexo PDF ou imagem de uma fonte manual ganha o botão "Extrair com IA", que gera uma prévia para o operador conferir antes de gravar (v0.6; seção 11.1; D-133) |
 | `analise_minimo_meses_historico` | numero | `6` | Meses de histórico mínimos para a IA escrever sobre um recorte |
 | `ia_lote_por_fatia` | numero | `8` | Análises que `gerar_analises_mensais` enfileira por fatia; a fatia seguinte vem por `continuar_coleta` em +2 min, com folga no limite de requisições por minuto da app (v0.5, seção 4.1) |
 | `instrucoes_analise_territorio` | texto_longo | texto da seção 9.3 | Instruções de sistema da análise de localidade |
@@ -2099,10 +2154,13 @@ indicadores por RA `[PENDENTE P-01]`.
 | Coluna | Tipo | Observação |
 |---|---|---|
 | `tabela_alvo` | texto(60), obrig. | nome da tabela desta spec |
-| `arquivo` | arquivo (`text/csv`, `application/vnd.ms-excel`; até 50 MB, sob o cap da instância), obrig. | obrigatória: não expira no TTL (D-89) |
+| `fonte_codigo` | texto(60) | v0.6: a fonte de `comum/fontes.ts` que a carga alimenta; vazio na migração da planilha. É o que `verificar_frescor` lê como "última carga" de fonte manual (seção 23) |
+| `tipo_arquivo` | texto, `opcoes: ["csv", "pdf", "planilha", "imagem", "outro"]`, obrig. | v0.6. Só `csv` passa pelo importador; os demais ficam como anexo da carga |
+| `arquivo` | arquivo (`text/csv`, `application/vnd.ms-excel`, `application/pdf`, `application/vnd.openxmlformats-officedocument.spreadsheetml.sheet`, `application/vnd.oasis.opendocument.spreadsheet`, `image/png`, `image/jpeg`; até 50 MB, sob o cap da instância), obrig. | obrigatória: não expira no TTL (D-89). Na v0.6, além do CSV, guarda o arquivo original de uma fonte manual como **anexo da carga**, que fica como evidência da procedência |
+| `extracao` | json | v0.6: prévia da extração assistida por IA (D-133): linhas propostas no formato da `tabela_alvo`, `modelo`, `tokens_entrada`, `tokens_saida`, `mime_detectado` e quem a pediu. Nunca grava na tabela alvo sozinha |
 | `modo_duplicata` | texto, `opcoes: ["ignorar", "atualizar", "substituir_tudo", "falhar"]`, obrig. | seção 11.2 |
 | `mapeamento` | json | coluna do CSV → coluna da tabela, mais declarações de escala e de localidade |
-| `status` | texto, `opcoes: ["previa", "aplicando", "aplicada", "falhou", "cancelada", "desfeita"]`, obrig. | `desfeita` na v0.5 |
+| `status` | texto, `opcoes: ["previa", "anexada", "extraindo", "aplicando", "aplicada", "falhou", "cancelada", "desfeita"]`, obrig. | `desfeita` na v0.5; `anexada` (arquivo guardado, sem linhas) e `extraindo` (extração assistida em curso) na v0.6 |
 | `total_linhas`, `inseridas`, `atualizadas`, `ignoradas`, `rejeitadas` | inteiro | |
 | `relatorio` | json | por linha rejeitada: número, coluna, código, mensagem; resumo de conversões de escala |
 | `autor_id` | referencia → `shell.usuarios`, obrig., `campos_incluir` nome | |
@@ -2120,6 +2178,16 @@ ficaram; nunca apaga de vez. Linha `atualizada` (não criada) pela importação 
 modo `atualizar` não guarda o valor anterior, e a planilha somente leitura é a cópia de
 segurança. Como a importação é idempotente pela chave natural (seção 11.1), desfazer e
 reimportar dá o mesmo resultado. A rota é a da seção 6.9.
+
+**Anexo e extração assistida (v0.6).** Uma fonte manual nem sempre chega em CSV. PDF, planilha e
+imagem sobem pela mesma tela e viram uma `importacoes` com `tipo_arquivo` próprio e `status =
+anexada`: o arquivo fica guardado como anexo da carga, ligado à fonte. Quando o parâmetro
+`usar_ia_extracao_documentos` está ligado e o arquivo é PDF ou imagem, o operador pode pedir a
+extração: `req.ia.extrairConteudo` no slot `extracao_documento` devolve linhas no formato da
+`tabela_alvo`, gravadas em `extracao`, e a importação passa por `previa` com a mesma validação do
+CSV. O operador confere, corrige e só então aplica. Planilha (`.xlsx`, `.ods`) não é extraída: o
+`extrairConteudo` responde `MIME_NAO_SUPORTADO` para formato que não seja texto, PDF ou imagem; o
+operador a salva como CSV e importa, e a planilha original fica como anexo (seção 11.1; D-133).
 
 #### `achados_qualidade`
 
@@ -2507,7 +2575,7 @@ oferta regional do último retrato, rotulada "rateio da cidade"; sem nenhum dos 
 | `centroide_latitude`, `centroide_longitude` | decimal(10,7) | sim | |
 | `area_m2` | decimal(16,2) | não | polígono |
 | `raios_m` | texto(60) | não | CSV; vazio = `raios_padrao_m` |
-| `estagio` | texto, `opcoes: ["sinal", "hipotese", "oportunidade", "iniciativa", "projeto", "negocio_ativo", "encerrada"]` | sim | a escada de maturidade da UP (D-55); toda mudança grava `area_eventos`; quem decide a mudança e se ela exige decisão registrada `[PENDENTE P-42]` |
+| `estagio` | texto, `opcoes: ["sinal", "hipotese", "oportunidade", "iniciativa", "projeto", "negocio_ativo", "encerrada"]` | sim | a escada de maturidade da UP (D-55); toda mudança grava `area_eventos`; para `iniciativa` ou além, e para `encerrada`, só `admin` ou `decisor`, com motivo obrigatório (v0.6; D-130) |
 | `motivo_encerramento` | texto(300) | não | obrigatório quando `estagio = encerrada` |
 | `aprendizado` | texto_longo | não | o que a área ensinou, mesmo sem virar projeto (doc. 02, §8) |
 | `responsavel_id` | referencia → `shell.usuarios`, `anular` | não | |
@@ -2861,7 +2929,7 @@ Só uma `vigente` por área; publicar uma nova versão torna a anterior `substit
 | `frente` | texto, `opcoes` das frentes de diligência | |
 | `status` | texto, `opcoes: ["nao_verificada", "sustentada", "contrariada", "inconclusiva"]`, obrig. | |
 | `evidencias` | json | |
-| `verificar_ate` | data | condição vencida aparece no Início; aviso ao responsável antes do prazo `[PENDENTE P-43]` |
+| `verificar_ate` | data | informativo: condição vencida aparece no Início; não há alerta nem rotina de prazo (v0.6; D-131) |
 | `metrica_monitorada` | json | opcional: `{ chave, recorte, operador, limiar }`; `calcular_achados` reavalia todo mês e propõe mudança de status (achado `condicao_em_risco`, já na fase 4C) |
 | `hipotese_produto_id` | referencia → `hipoteses_produto`, `anular` | v0.5, opcional: a condição de que depende uma hipótese de produto (J2) |
 
@@ -2881,7 +2949,7 @@ partir de `comum/diligencia.ts` `[PENDENTE P-40]`.
 | `natureza_resposta` | texto, opções de `natureza` | |
 | `evidencias` | json | |
 | `responsavel_id` | referencia → `shell.usuarios`, `anular` | |
-| `prazo` | data | aviso ao responsável antes do prazo `[PENDENTE P-43]` |
+| `prazo` | data | informativo: diligência com prazo na semana aparece no Início; não há alerta nem rotina de prazo (v0.6; D-131) |
 
 **Pré-preenchimento pelo app.** Perguntas que o app responde ganham `status = respondida_app`,
 com a resposta e a evidência, e continuam abertas para um humano confirmar: zona do PDOT e área
@@ -2937,7 +3005,11 @@ As condições de uma hipótese de produto são linhas de `tese_condicoes` da te
 `area_eventos`: linha do tempo da área (`tipo`: `estagio_alterado`, `nota`, `ficha_gerada`,
 `analise_gerada`, `tese_publicada`, `condicao_alterada`, `observacao_campo`, `perimetro_alterado`;
 `dados` json; `autor_id`; `em`; `area_estudo_id` referencia → `areas_estudo`, `restringir`).
-Toda rota de escrita das tabelas desta seção grava aqui na mesma transação. Na v0.5 há também
+Toda rota de escrita das tabelas desta seção grava aqui na mesma transação. **Governança leve
+(v0.6, D-130):** o `estagio_alterado` para `iniciativa` ou além, ou para `encerrada`, leva em
+`dados` o estágio de antes e o de depois, o `motivo` (obrigatório) e o `decidido_como` (`admin` ou
+`decisor`), e a rota recusa a transição de quem não é nem um nem outro com `403 PAPEL_EXIGIDO`. Não
+há tabela de decisões nem comitê. Na v0.5 há também
 os tipos de **saída** de área própria (`ficha_exportada`, `pacote_gerado`, `exportacao`), além de
 `ficha_gerada` e `analise_gerada`, todos com o usuário (seção 5.16). O comentário da área é o
 `tipo = nota`, não editável. Ambas as tabelas são `acesso_externo: restrito`.
@@ -3108,8 +3180,8 @@ eventos `auditavel` de categoria fechada, sem PII e permanente, e a aba Utiliza�
 chamadas de IA. Por isso a tabela é da app (C-83; fecha P-38).
 
 **Frescor das fontes (D-71).** `comum/fontes.ts` declara, por fonte, a periodicidade e o
-`frescor_esperado_dias` (seção 23); quem responde por cada fonte manual
-`[PENDENTE P-44]`. A rotina `verificar_frescor` compara com a última carga e abre
+`frescor_esperado_dias` (seção 23), o **modo** (`automatica`, `manual` ou `ambas`; v0.6, D-132) e
+o responsável, que por padrão é o admin. A rotina `verificar_frescor` compara com a última carga e abre
 achado de qualidade `FONTE_ATRASADA` (aviso), que a tela mostra no rodapé de procedência de todo
 número daquela fonte.
 
@@ -3193,7 +3265,7 @@ Convenções:
   (`tese_id` → tese → área), e `escrever` é `escrita` mais `ler` da área, salvo quando a coluna
   Papel acrescenta "autor ou curador" (D-115). Teste:
   `testes/matriz-acesso.test.ts`, uma linha por rota × perfil (autor, responsável, curador,
-  `estrategico`, `escrita` sem relação, `leitura` sem `estrategico`) com o status esperado; a lista
+  `estrategico`, `decisor` (v0.6), `escrita` sem relação, `leitura` sem `estrategico`) com o status esperado; a lista
   de rotas é conferida contra a pilha dos Routers por **contagem exata**, então rota nova sem linha
   reprova (precedente: nobi, `testes/papeis.test.ts` `MATRIZ`). O QA repete a matriz na Pinguim
   com o pool de usuários de QA.
@@ -3382,6 +3454,8 @@ hora do pedido (seção 9.6, item 19).
 | GET | `/importacoes`, `/importacoes/:id` | leitura | |
 | POST | `/importacoes/previa` | operador | `{ tabela_alvo, upload_id, modo_duplicata, mapeamento? }` → grava a linha de `importacoes` com o arquivo na hora (o `upload_id` vale 10 min; C-38), lê o CSV, infere o mapeamento pelos cabeçalhos, valida tudo e devolve a prévia (contagens e primeiras 50 rejeições) **sem gravar dado na tabela alvo**; coluna derivada ou desconhecida é ignorada com aviso em `colunas_ignoradas` (motivo `derivada` ou `desconhecida`), nunca rejeita a linha (T9, seção 11.1) |
 | POST | `/importacoes/:id/aplicar` | operador | aplica a prévia numa transação por lote de 500 linhas |
+| POST | `/importacoes/anexo` | operador | v0.6: `{ tabela_alvo, fonte_codigo, upload_id }` para arquivo de fonte manual que não é CSV (PDF, planilha, imagem): grava a `importacoes` com `tipo_arquivo` detectado e `status = anexada`; o arquivo fica como anexo da carga e conta como carga da fonte para o frescor (seção 5.11) |
+| POST | `/importacoes/:id/extrair` | operador | v0.6, prévia de extração (D-133): só com `usar_ia_extracao_documentos = true` (senão `409 EXTRACAO_DESLIGADA`) e anexo PDF ou imagem (senão `422 EXTRACAO_FORMATO`); passa a `status = extraindo`, chama `req.ia.extrairConteudoAsync({ arquivo_id }, { instrucao, schema, slot: "extracao_documento" }, { evento: "extracao_concluida", dados: { importacao_id } })` e responde `202`; o listener grava as linhas propostas em `extracao`, valida como a prévia do CSV e deixa `status = previa`. Nada vai à tabela alvo antes do `aplicar`. A tela esconde o botão quando `estadoSlot("extracao_documento").efetivo === null`; falha da extração (inclusive `MIME_NAO_SUPORTADO`) volta pelo callback, deixa a carga `falhou` com o código e publica `importacao_falhou` |
 | POST | `/importacoes/:id/desfazer` | admin da app | remoção lógica (`PATCH …/remover`) das linhas criadas por esta importação que ninguém editou depois (`versao` igual à da criação); grava `relatorio_desfazer` com as removidas e as mantidas por edição; nunca apaga de vez (v0.5, item 5; seção 11.3.2) |
 | GET | `/importacoes/modelo/:tabela` | leitura | CSV só com o cabeçalho esperado pela tabela |
 | GET | `/qualidade?tabela&codigo&severidade&resolvido=false` | leitura | achados |
@@ -3408,10 +3482,11 @@ hora do pedido (seção 9.6, item 19).
 | GET | `/estudos?tipo&estagio&responsavel&q&pagina` | leitura | sem as áreas próprias que o usuário não lê (filtro antes da paginação) |
 | GET | `/estudos/:id` | leitura · obj. ler | área + resumo do último dossiê |
 | POST | `/estudos` | escrita (`tipo = propria`: curador) | cria por desenho (geometria do `urbi-mapa`) ou por ponto |
-| PATCH | `/estudos/:id` | escrita · obj. escrever (autor ou curador; `propria`: curador) | |
+| PATCH | `/estudos/:id` | escrita · obj. escrever (autor ou curador; `propria`: curador) | mudar `estagio` para `iniciativa` ou além, ou para `encerrada`, exige `admin` ou `decisor` e `motivo`, e grava `area_eventos` com quem decidiu (v0.6; D-130) |
 | POST | `/estudos/importar`, `/estudos/importar/:importacao_id/aplicar` | escrita (`tipo = propria`: curador) | KML/KMZ/GeoJSON, o mesmo fluxo de `contornos`: a prévia já grava a `importacao` (C-38) |
 | PATCH | `/estudos/:id/remover`, `/restaurar` | escrita · obj. escrever (autor ou curador) | soft-delete; `DELETE` é do admin no shell |
 | GET | `/estudos/:id/dossie?escalas&blocos` | leitura · obj. ler | `Dossie` (seção 6.21): blocos nas quatro escalas (regional, urbana, entorno, sítio), síntese aceita e agenda de decisão (D-56); usa o cache por bloco (D-69). O bundle não documenta timeout de rota: a tela pede os blocos em chamadas separadas (`?blocos=`) e monta o dossiê à medida que chegam, e nenhuma chamada passa do orçamento da seção 21.1 (C-80) |
+| GET | `/estudos/:id/ficha?formato=md\|csv\|json\|pacote&secoes` | leitura · obj. ler | v0.6: gera a ficha a partir do dossiê em cache e a devolve para baixar, sem gravar em `area_estudo_fichas`; é o "gerar ficha" de quem só tem `leitura` (seção 14). De área própria, grava `area_eventos` (`ficha_exportada`) com o usuário |
 | POST | `/estudos/:id/fichas` | escrita · obj. ler | congela o dossiê em `area_estudo_fichas` (formato e seções escolhidos); de área própria, grava `area_eventos` com o usuário |
 | GET | `/estudos/:id/fichas`, `/estudos/:id/fichas/:fid?formato=md\|csv\|json\|pacote` | leitura · obj. ler | baixar ficha de área própria em qualquer formato grava `area_eventos` com o usuário |
 | GET | `/estudos/:id/fichas/comparar?a&b` | leitura · obj. ler | v0.5, item 39: por chave estável de `conteudo` (chave do catálogo + recorte + período), os dois valores e a diferença; cada linha marcada "mudou o dado" quando a versão do conjunto e a `versao_metodo` das duas fichas coincidem, ou "mudou a medida" quando não, e aí sem variação calculada. A tela é a ação "Comparar com…" na lista de fichas (10.10) |
@@ -3677,7 +3752,7 @@ interface ResultadoViabilidade {
 | `METRICA_DESCONHECIDA` | 400 | chave fora do catálogo |
 | `METRICA_NAO_AGREGAVEL` | 422 | pedido só de métricas que não se agregam na área (em pedido misto, elas vão para `recusadas`) |
 | `FATO_SEM_EVIDENCIA` | 422 | item `fato` sem evidência |
-| `ESTAGIO_INVALIDO` | 422 | encerrar sem `motivo_encerramento`; voltar de `encerrada` sem reabrir |
+| `ESTAGIO_INVALIDO` | 422 | encerrar sem `motivo_encerramento`; voltar de `encerrada` sem reabrir; mudar para `iniciativa` ou além sem `motivo` (v0.6) |
 | `CENARIO_INCOMPLETO` | 422 | premissa obrigatória faltando; `detalhes` lista uma linha por campo (`string[]`, C-69) |
 | `CONFLITO_VERSAO` | 409 | edição concorrente (`atualizarSe` com `{ versao }` não casou); a tela refaz `GET /:id` (D-88) |
 | `REGISTRO_REMOVIDO` | 404 | `PATCH` em registro com `soft_delete` já removido (C-19) |
@@ -3689,6 +3764,8 @@ interface ResultadoViabilidade {
 | `FONTE_CONFIG_INVALIDA` | 422 | `url_base` ou `cabecalhos` de `fontes_portal` fora da regra da 8.2; `detalhes` lista uma linha por campo (v0.5) |
 | `COLETA_PAUSADA` | 409 | ação manual de coleta com `coleta_ativa = false` (v0.5, item 14) |
 | `COLETA_TIMEOUT` | 504 | ação síncrona de uma página passou de 20 s, contando os redirecionamentos (v0.5, T5) |
+| `EXTRACAO_DESLIGADA` | 409 | extração assistida pedida com `usar_ia_extracao_documentos = false` (v0.6; D-133) |
+| `EXTRACAO_FORMATO` | 422 | extração pedida para anexo que não é PDF nem imagem; planilha se importa como CSV (v0.6) |
 
 **Erros de plataforma que a tela traduz (v0.4).** Não são da app, mas chegam a ela e a tela os
 mostra com texto próprio, lendo `e.status` e `e.codigo` do `Error` de `urbiVerso.api()`:
@@ -4046,9 +4123,9 @@ requisição por vez por host, pausa mínima configurável, e nunca tenta contor
 login. Bloqueio é **estado**, não erro: fica registrado por fonte e por anúncio, aparece na
 tela de Operação, e não inativa anúncio. É a mesma postura do `Code.gs`, transcrita.
 
-A postura é técnica. Ainda não se validou se a coleta automática é compatível com os termos de
-uso de cada portal (DFImoveis, QuintoAndar, Wimoveis, Imovelweb, VivaReal)
-[PENDENTE P-45].
+A postura é técnica. O uso é interno, e o dono decidiu seguir sem parecer jurídico sobre os
+termos de uso de cada portal (DFImoveis, QuintoAndar, Wimoveis, Imovelweb, VivaReal): é risco
+aceito, registrado na D-134 e na R-53. O dado de portal nunca vai a página pública (D-02).
 
 ### 8.2 Cliente HTTP
 
@@ -4243,8 +4320,8 @@ quando é amostra). **Nada de texto de página de portal, nada de linha crua de 
 (seção 6). Valor suprimido pela regra de amostra (seção 5.1) vai como `null`, com o motivo
 `amostra_pequena` e o `n`, nunca como número. Variação de oferta (mês contra mês, 12 meses,
 crescimento de oferta) vem só do painel de buscas ou do `indice_oferta_mensal`; a mediana bruta
-de todos os anúncios entra como nível. Ainda não se validou o uso de IVV e FipeZap no contexto
-enviado ao provedor [PENDENTE P-45].
+de todos os anúncios entra como nível. IVV e FipeZap entram no contexto enviado ao provedor
+como dado de uso interno, com a fonte citada: risco aceito pelo dono, sem parecer (D-134).
 
 Os blocos, por tipo:
 
@@ -4397,8 +4474,9 @@ herda o sigilo da área (seção 6): só quem tem `estrategico` ou `curador`, ou
 `responsavel_id`, a pede, a vê na lista e a abre; para os demais o detalhe responde `404`. O pedido
 grava `area_eventos` com o usuário; a gerada pela rotina grava o evento sem usuário. O contexto
 segue a seção 22.2 e a R-38: nenhum dado pessoal, e a retenção pelo provedor fica sob a política
-do contrato do admin da instância com ele. Área própria real só existe na Laputa; na Pinguim, a
-análise de área roda sobre áreas de prospecção, referência ou fictícias.
+do contrato do admin da instância com ele. Área própria real fica na Pinguim, sob a permissão por
+pessoa e o papel `estrategico` (seção 14); o QA roda a análise de área só sobre áreas de
+prospecção, referência ou fictícias.
 
 ### 9.6 Quando não gerar
 
@@ -4823,7 +4901,10 @@ reler, carregar dados públicos) ficam desabilitados com esse motivo, em vez de 
   linha), aplicar; histórico com relatório. **Desfazer importação** (v0.5, admin da app):
   confirma com as contagens, faz remoção lógica das linhas criadas por aquela importação que
   ninguém editou depois e mostra no relatório as que ficaram por terem sido editadas; nunca
-  apaga de vez (11.3).
+  apaga de vez (11.3). **Carga manual** (v0.6): escolher a fonte (lista de `comum/fontes.ts` com
+  modo `manual` ou `ambas`), subir PDF, planilha ou imagem como anexo da carga; com
+  `usar_ia_extracao_documentos` ligado e slot resolvido, o botão "Extrair com IA" gera a prévia,
+  que o operador confere e corrige como a de um CSV antes de aplicar (11.1; D-133).
 - **Dados públicos:** manifest remoto × carregado por conjunto; "Carregar agora" (pede a carga
   por evento e mostra a `coleta` quando ela começa; D-91); arquivos com tamanho, hash, status;
   arquivos removidos pelo shell (`urbiverso.arquivos.removido`, com o motivo).
@@ -4905,8 +4986,8 @@ semana; os demais blocos chegam com a fase 5 e, até lá, mostram "disponível c
     "restrições não carregadas" e não mostra área líquida (v0.5).
   - **Síntese e agenda:** os cinco grupos com natureza e evidência; itens propostos pela IA para
     aceitar ou descartar; a agenda de decisão. O registro da decisão (quem decide, foro,
-    alternativas) e as transições da escada que a exigem são
-    `[PENDENTE P-42]`.
+    alternativas) é leve (v0.6, D-130): mudar o estágio para `iniciativa` ou além, ou encerrar,
+    é ação do `admin` ou do `decisor`, pede o motivo e grava em `area_eventos` quem decidiu.
   - **Tese:** os dez componentes, as condições necessárias e de interrupção com status, prazo e
     métrica monitorada; as hipóteses de produto (`hipoteses_produto`, fase 4C: tipologia, faixa de
     preço, unidades, cenário de viabilidade, natureza, status) a que as condições podem se ligar;
@@ -4919,7 +5000,8 @@ semana; os demais blocos chegam com a fase 5 e, até lá, mostram "disponível c
   - **Linha do tempo:** `area_eventos` e observações de campo. Comentário é `area_eventos` de
     `tipo = nota`, com autor e data, não editável; não há tabela de comentários (v0.5). A trilha
     de saídas (ficha, pacote, exportação, análise de IA de área própria) aparece aqui com o
-    usuário. Aviso de prazo ao responsável é `[PENDENTE P-43]`.
+    usuário. Prazo de condição e de diligência é informativo e aparece no Início; não há aviso
+    de prazo (v0.6, D-131).
   Cada bloco tem o rodapé "fonte · período · método · fração coberta" e, quando houver, a marca de
   fonte atrasada. Seletor de anel no topo.
 - **Modo campo (v0.3, D-78):** no celular, a área abre direto no mapa com anéis, perímetros e
@@ -5058,6 +5140,26 @@ exato). Fluxo em dois passos, como a importação do módulo `pessoas`:
    linha criada guarda `importacao_id` (referência → `importacoes`, `anular`), que é o que
    permite desfazer a importação (11.3.2).
 
+**Fonte manual em outro formato (v0.6, D-132, D-133).** Toda fonte é externa e pública, e cada uma
+declara em `comum/fontes.ts` um modo: `automatica` (uma rotina busca por URL pública), `manual`
+(alguém sobe o arquivo nesta tela) ou `ambas` (automática, com o upload como plano B quando a busca
+falha). Na carga manual a tela aceita, além do CSV:
+
+- **PDF, planilha (`.xlsx`, `.ods`) ou imagem**, guardado como **anexo da carga**
+  (`POST /importacoes/anexo`): a `importacoes` fica `anexada`, ligada à fonte por `fonte_codigo`,
+  e conta como carga para o frescor (seção 23). O dado em si entra por CSV ou à mão no Cadastro, e
+  o anexo fica como evidência da procedência.
+- **Extração assistida por IA**, quando o parâmetro `usar_ia_extracao_documentos` está ligado e o
+  anexo é PDF ou imagem: "Extrair com IA" (`POST /importacoes/:id/extrair`) chama
+  `req.ia.extrairConteudoAsync` no slot `extracao_documento` (base `arquivos`) com o schema das
+  colunas da `tabela_alvo`; as linhas propostas voltam como prévia, com a mesma validação do CSV, e
+  o operador confere e corrige antes de aplicar. A IA nunca grava direto: é a mesma regra do
+  `extracao_pagina` (D-04). Planilha não é extraída (o `extrairConteudo` só lê texto, PDF e imagem,
+  `ia.md` § 4): o operador a salva como CSV.
+
+O primeiro caso é o IVV publicado em PDF (fase 2); os editais da Terracap (4B) seguem o mesmo
+caminho.
+
 **Colunas que a app não grava (v0.5).** `comum/importacao-chaves.ts` declara, por tabela, as
 `colunas_derivadas`: as que a exportação acrescenta (`id`, `criado_em`, `atualizado_em`,
 `versao`, `preco_m2`, `orientacao`, `preco_m2_divergente`, `localidade_nome`, `h3_r9`, …). Na
@@ -5091,8 +5193,8 @@ colunas numéricas saem como número e não são tocadas. A importação retira 
 **Recorte de sigilo (v0.5).** A exportação aplica a mesma regra das telas: quem não vê áreas
 próprias (seção 14) recebe o CSV sem elas e sem o que pende delas, sem linha de aviso. Exportação,
 ficha, pacote e análise de IA de área própria gravam `area_eventos` com o usuário (trilha de
-saídas; seção 22). A saída de IVV e FipeZap em CSV e pacote depende de
-`[PENDENTE P-45]`.
+saídas; seção 22). IVV, FipeZap e dado de portal saem em CSV e pacote só para uso interno, e
+sempre com a fonte: o CSV de série publicada e de anúncio leva a coluna `fonte` (nome da publicação ou do portal), e o pacote leva o LEIAME com a citação (D-134).
 
 Além do CSV, o **pacote com proveniência** (D-28, seção 6) acompanha o modelo do Our World in
 Data: os dados, os metadados em JSON e um LEIAME com a citação, para o número sair do app com a
@@ -5148,7 +5250,7 @@ violariam "uma requisição por vez por host", 8.1).
 | Fase | Fonte de verdade de anúncios | Coletor | Site |
 |---|---|---|---|
 | 1 e 2 | planilha | Apps Script | no ar, sem mudança |
-| 3 em diante | app, a partir do dia em que as rotinas de coleta são ligadas na Laputa | rotinas da app | mostra o retrato congelado |
+| 3 em diante | app, a partir do dia em que as rotinas de coleta são ligadas na Pinguim | rotinas da app | mostra o retrato congelado |
 | 6 | app | rotinas da app | congelado por inteiro, marcado como legado |
 
 - Nas fases 1 e 2 a app recebe a planilha por **reimportação incremental**: novo retrato datado,
@@ -5192,16 +5294,17 @@ muda. A app é a **consumidora**: a rotina `carregar_dados_publicos` lê o manif
 traz os arquivos para dentro do banco (coluna `arquivo`); a app entrega ao frontend uma URL
 assinada (D-81), nunca os bytes.
 
-**Repositório do pipeline (v0.5).** O pipeline Python **não muda de repositório com a app**:
-continua em `rafaleandrog/inteligencia-real-estate`, com os workflows e as regras dele (R2.7,
-R2.8), publicando o manifest e os arquivos em `data/public/`, que é público porque deriva só de
-fonte pública. A app, num repositório privado próprio, lê esse manifest pela URL
-`raw.githubusercontent.com` declarada em `manifest_publico_url` (seção 4.3), sem credencial: a
-app não tem parâmetro `secret` (D-79). Mudança no pipeline é PR naquele repositório; mudança no
-contrato que a app lê (12.2) é PR nos dois, com a versão do manifest como amarra. Cada fase que
-precisa de conjunto novo (4A, 7) começa com o PR do pipeline mergeado e o conjunto publicado
-(seção 15). A transferência daquele repositório para uma org e o dono das credenciais seguem em
-R-25 `[PENDENTE P-44]`.
+**Repositório do pipeline (v0.6).** O pipeline Python e a app moram no mesmo repositório,
+`rafaleandrog/inteligencia-real-estate` (D-125). O pipeline segue com os workflows e as regras dele
+(R2.7, R2.8), publicando o manifest e os arquivos em `data/public/`, que é público porque deriva só
+de fonte pública. A app não lê esses arquivos do checkout: lê o manifest **publicado**, pela URL
+`raw.githubusercontent.com` declarada em `manifest_publico_url` (seção 4.3), sem credencial, como
+qualquer instalação (a app não tem parâmetro `secret`; D-79). Mudança no contrato que a app lê
+(12.2) pode ir num PR só, com a versão do manifest como amarra, mas o pipeline é publicado antes
+de a app passar a exigir a versão nova. Cada fase que precisa de conjunto novo (4A, 7) começa com o
+PR do pipeline mergeado e o conjunto publicado (seção 15). O pipeline fica aqui, e o responsável
+por ele e pelas credenciais (BigQuery, Earth Engine) é o admin, salvo indicação (fecha P-44;
+D-132).
 
 Por que não rodar o pipeline na app: ele precisa de Python, geopandas e de horas de CPU em
 rasters; a rotina do shell tem 15 minutos e Node. Por que não deixar os arquivos no GitHub e
@@ -5302,7 +5405,8 @@ em tela (Fontes, Execuções, Qualidade).
 "eventos": {
   "lacuna_cadastro":        { "descricao": "A coleta ou a análise por IA apontou um dado de cadastro que falta e precisa de preenchimento manual.", "campos": ["tabela", "registro_id", "nome", "campos"], "conteudo": "Lacuna em {nome}: faltam {campos}", "api": "{tabela}/{registro_id}", "rota": "cadastro/{tabela}" },
   "continuar_coleta":       { "descricao": "Uma rotina fatiada retomou o lote do dia, ou uma carga foi pedida pela Operação. Útil só para quem opera a coleta.", "campos": ["rotina", "coleta_id", "disparo"], "conteudo": "A rotina {rotina} retomou a coleta {coleta_id}", "api": "coletas/{coleta_id}", "rota": "operacao/execucoes" },
-  "analise_concluida":      { "descricao": "Uma análise por IA pedida pela app terminou (pronta ou com falha).", "campos": ["analise_id", "status", "dados", "codigo_erro", "mensagem_erro", "tentativas", "ia_chamada_id"], "conteudo": "Análise {analise_id} concluída: {status}", "api": "analises/{analise_id}", "rota": "analises" }
+  "analise_concluida":      { "descricao": "Uma análise por IA pedida pela app terminou (pronta ou com falha).", "campos": ["analise_id", "status", "dados", "codigo_erro", "mensagem_erro", "tentativas", "ia_chamada_id"], "conteudo": "Análise {analise_id} concluída: {status}", "api": "analises/{analise_id}", "rota": "analises" },
+  "extracao_concluida":     { "descricao": "A leitura por IA de um documento de carga manual terminou; a prévia espera a conferência do operador.", "campos": ["importacao_id", "status", "dados", "codigo_erro", "mensagem_erro", "tentativas", "ia_chamada_id"], "conteudo": "Extração da carga {importacao_id}: {status}", "api": "importacoes/{importacao_id}", "rota": "operacao/importacoes" }
 }
 ```
 
@@ -5321,8 +5425,8 @@ inscreve quem entrou (`inscreverUsuario(id, "lacuna_cadastro", {}, "forte", "cur
 cancela quem saiu (`cancelarInscricoesPorEscopo`). O shell não cancela a inscrição forte de quem
 perde o papel nem avisa a app quando um papel muda.
 
-**Não existe evento interno sem notificação** (C-08, D-85). `continuar_coleta` e
-`analise_concluida` são escutados por `export const reagir`, mas, como todo evento declarado,
+**Não existe evento interno sem notificação** (C-08, D-85). `continuar_coleta`,
+`analise_concluida` e `extracao_concluida` (v0.6) são escutados por `export const reagir`, mas, como todo evento declarado,
 aparecem em Preferências e quem tem `leitura` pode segui-los. Por isso o texto é honesto e escrito
 para quem opera, e `continuar_coleta` só é publicado quando há continuação de fato. A
 deduplicação nativa é só por usuário e evento na entrega; "uma vez por transição" é da app
@@ -5338,9 +5442,11 @@ Operação › Saúde mostra o elo parado (10.7), porque `curador` e `operador` 
 Sem isso, uma guarda que devolve `parcial` como sucesso esconde o mês perdido até o mês seguinte
 (precedente: charles3 `consulta_djen_falhou`, falha parcial com `ok: false`).
 
-Pendências do dono que mudariam esta seção: o evento de decisão registrada sobre uma área
-(`[PENDENTE P-42]`) e o aviso de prazo de diligência e condição ao
-responsável, que amplia a D-14 (`[PENDENTE P-43]`).
+**Alerta é de erro, não de prazo (v0.6, D-131; fecha P-43).** Não há prazos na pesquisa. Os
+alertas são os erros acima: busca que falhou, fonte bloqueada, parser degradado, carga que falhou
+e cadeia mensal parada, todos ao admin da app (D-14 confirmada). Prazo de condição e de diligência
+é campo informativo, visto no Início; não existe rotina nem notificação de prazo. A decisão sobre
+uma área também não vira evento: fica em `area_eventos` (D-130; fecha P-42).
 
 Erros que o shell injeta sem declaração (C-47), também só para o admin da app: `ia_chamada` e
 `override_ia_removido` (a app declara `ia`), `listener_falhou` (declara `eventos`),
@@ -5359,12 +5465,23 @@ só entra quando houver uso que peça. Para a inscrição por filtro valer, ele 
 | Nível | Quem | O que faz |
 |---|---|---|
 | (sem permissão) | todo usuário da instância: o admin da instância mantém `permissao_padrao = nenhuma` em Admin › Instaláveis › Apps › Acesso (alçada `usuarios`); a app não declara isso no manifesto (D-13, C-56) | não vê a app |
-| `leitura` | liberado individualmente pelo admin da instância | vê todas as telas, exceto as áreas `tipo = propria` e o que pende delas (abaixo), exporta CSV, abre análises; **salva, edita e apaga as próprias visões** pelas rotas pessoais (D-80); grava a própria telemetria por `POST /pessoal/uso` (`uso_eventos` é `pessoal`; v0.5) |
+| `leitura` | liberado individualmente pelo admin da instância | vê todas as telas, exceto as áreas `tipo = propria` e o que pende delas (abaixo), exporta CSV e pacote, **gera a ficha para baixar** (`GET /estudos/:id/ficha`, sem congelá-la; v0.6), abre análises; **salva, edita e apaga as próprias visões** pelas rotas pessoais (D-80); grava a própria telemetria por `POST /pessoal/uso` (`uso_eventos` é `pessoal`; v0.5) |
 | `leitura` + `estrategico` (v0.5) | a Direção; analistas que trabalham áreas próprias também. Quem recebe é a P-06 | tudo de `leitura` mais **ver** as áreas `tipo = propria` e o que pende delas; o papel não dá escrita. Declarado sob `leitura`, então pode ser dado a quem só lê (usuário `leitura` só recebe papéis de `leitura`, permissoes.md) |
 | `escrita` + `curador` | | cadastra e corrige anúncios, lançamentos, âncoras, contornos e localidades; aprova e rejeita candidatos; gera análises; e, na v0.2, empreendimentos, lotes Terracap, licenciamento, faixas de programa, lentes, grupos de anúncios, vínculos e as áreas `propria` (cuja lista oficial de origem é `[PENDENTE P-47]`); vê as áreas próprias |
-| `escrita` + `operador` | | gerencia fontes e buscas, roda verificações e buscas agora pelas rotas da app, importa CSV, pede a carga de dados públicos (D-91), mantém as séries macro (D-90), resolve achados; gera análises. Não tem o "Rodar agora" da aba Rotinas, que é do admin (C-05) |
+| `escrita` + `decisor` (v0.6) | | tudo de `escrita`, mais registrar decisão sobre uma área: mudar o estágio para `iniciativa` ou além e encerrar a área, com motivo gravado em `area_eventos` (D-130). Vê a área só se também a lê (área própria pede `estrategico`, `curador` ou ser o responsável) |
+| `escrita` + `operador` | | gerencia fontes e buscas, roda verificações e buscas agora pelas rotas da app, importa CSV, sobe anexo de fonte manual e pede a extração assistida (v0.6; D-133), pede a carga de dados públicos (D-91), mantém as séries macro (D-90), resolve achados; gera análises. Não tem o "Rodar agora" da aba Rotinas, que é do admin (C-05) |
 | `escrita` sem papel | | gera análises; cria e edita as **próprias** áreas de estudo (exceto `tipo = propria`) e, nelas e nas áreas em que é responsável, perímetros, síntese, tese, condições, diligências, hipóteses de âncora, cenários e observações; gera fichas. Rotas de cadastro e operação exigem o papel e respondem `403 PAPEL_EXIGIDO` |
-| `admin` | | tudo acima mais a Config (parâmetros, rotinas e "Rodar agora", IA, eventos e destinos, usuários e papéis, Lixeira), **desfazer importação** (11.3.2; v0.5) e os erros do barramento. `admin` sem `estrategico` nem `curador` não vê área própria de que não é responsável: a regra é por papel, não por nível. Como o shell não concede papéis ao admin automaticamente — "`nivelApp: 'admin'` não confere os papéis declarados sob `escrita`" (C-53) —, o admin que também cura atribui a si o papel |
+| `admin` | | tudo acima, inclusive registrar decisão e mudar o estágio de área sem o papel `decisor` (v0.6), mais a Config (parâmetros, rotinas e "Rodar agora", IA, eventos e destinos, usuários e papéis, Lixeira), **desfazer importação** (11.3.2; v0.5) e os erros do barramento. `admin` sem `estrategico` nem `curador` não vê área própria de que não é responsável: a regra é por papel, não por nível. Como o shell não concede papéis ao admin automaticamente — "`nivelApp: 'admin'` não confere os papéis declarados sob `escrita`" (C-53) —, o admin que também cura atribui a si o papel |
+
+**Na prática (v0.6, D-130; fecha P-42).** No dia a dia o admin faz tudo e os demais leem os
+resultados. Os papéis ficam declarados para quando a equipe crescer: `decisor` (decide sobre a
+área), `curador` (insere e corrige dados), `operador` (buscas, cargas, rotinas manuais,
+importações) e `estrategico` (vê áreas próprias). Gerar ficha para baixar e exportar ficam com
+`leitura`. Congelar a ficha no histórico da área (`POST /estudos/:id/fichas`) continua `escrita`,
+porque o contrato método → nível da plataforma exige `escrita` em `POST` e a app não pode afrouxá-lo
+(permissoes.md: "Apps não conseguem afrouxar essa regra"). A governança é leve: mudança de estágio
+para `iniciativa` ou além, e para `encerrada`, grava em `area_eventos` quem decidiu (`admin` ou
+`decisor`) e o motivo; não há tabela nova nem comitê.
 
 Gate de papel em código: `exigirPapel('curador')` lê `req.contexto.rolesApp` (`ContextoRequest`
 traz `usuario`, `nivelApp` e `rolesApp`; C-52). Um agente com token passa pelo mesmo gate e pelos
@@ -5381,9 +5498,11 @@ por quem tem `estrategico` ou `curador`, ou é o `responsavel_id` da área. Para
 some das listas, do portfólio, do Início, dos achados, do mapa e das exportações, e o detalhe
 responde `404 REGISTRO_NAO_ENCONTRADO` (não confirma que existe). Essas tabelas são `restrito`,
 então só as rotas da app as leem (a rota genérica não sabe de papel; `req.dados` ignora
-`acesso_externo`). Área própria real só existe na Laputa; na Pinguim, que recebe devs de fora, os
-testes usam áreas de prospecção, referência ou fictícias. O papel e a escrita sobre a decisão da
-área (decisor, transições da escada) dependem de `[PENDENTE P-42]`.
+`acesso_externo`). Área própria real fica na Pinguim, a única instância do plano atual (D-128).
+Quem a protege é a permissão por pessoa: com `permissao_padrao = nenhuma`, dev de fora da equipe
+que usa a Pinguim nem vê a app (D-13); dentro dela, o papel `estrategico` (D-107). O admin da
+instância vê tudo, pelo papel dele: é risco aceito (R-50). O QA usa só áreas de prospecção,
+referência ou fictícias, e o QA Principal não recebe `estrategico`.
 
 **Guarda por objeto (v0.5).** Cada tabela com regra por objeto a declara em
 `comum/regras-objeto.ts` (`autor`, `responsavel`, `curador`, `estrategico`, por operação). Toda
@@ -5391,8 +5510,8 @@ rota que recebe `:id` dessas tabelas busca o registro e chama `exigirAcessoObjet
 operacao)` antes de qualquer efeito: quem não pode ler recebe `404 REGISTRO_NAO_ENCONTRADO`;
 quem lê e não pode escrever, `403 OBJETO_SEM_PERMISSAO`. Id de objeto pai vindo no corpo
 (`area_estudo_id`, `tese_id`) passa pela mesma guarda. `testes/matriz-acesso.test.ts` tem uma
-linha por rota × perfil (autor, responsável, curador, estrategico, escrita sem relação, leitura
-sem `estrategico`) com o status esperado, e a lista de rotas é conferida contra a pilha dos
+linha por rota × perfil (autor, responsável, curador, estrategico, decisor, escrita sem relação,
+leitura sem `estrategico`) com o status esperado, e a lista de rotas é conferida contra a pilha dos
 Routers por contagem exata: rota nova sem linha reprova. O QA repete a matriz na Pinguim com o
 pool de usuários de QA (18.2).
 
@@ -5401,8 +5520,8 @@ pool de usuários de QA (18.2).
 ## 15. Fases de implementação
 
 Cada subfase termina numa release que a **Pinguim** instala sozinha e onde roda o QA; cada fase
-termina com a release instalada na **Laputa**, onde a equipe usa a app, e com a documentação em
-`docs/` da app atualizada. As fases mais distantes têm menos detalhe de propósito: o detalhe
+termina com a release em uso pela equipe na própria Pinguim e com a documentação em `docs/` da app
+atualizada. As fases mais distantes têm menos detalhe de propósito: o detalhe
 cresce quando a fase anterior mostra o que a realidade pede.
 
 **A unidade de planejamento é o PR, não a sessão (v0.5).** Cada fase vira uma sub-issue de uma
@@ -5414,34 +5533,39 @@ reestima as seguintes. As fases 1 e 3 já vêm divididas (1a a 1d, 3a a 3d); 4A,
 mesma regra quando chegarem (precedente: o `reg360` cresceu por versões pequenas, uma issue por
 mudança; D-99).
 
-**Pinguim testa, Laputa usa (v0.5).** A Pinguim é instância de teste: recebe toda release pelo
-auto-update (aceitação `Releases`) e é onde o QA de cada fase roda. A equipe usa a app na Laputa
-(produção da UP), com aceitação `homologado` e atualização manual pelo admin dela: a release de uma
-fase só vai à Laputa depois do QA na Pinguim e da homologação (`prerelease=false`). Como a
-Pinguim recebe devs de fora, **áreas próprias, teses e cenários reais nunca entram na Pinguim**:
-lá o golden set e os testes usam áreas de prospecção, referência ou fictícias. A primeira
-instalação na Laputa acontece ao fim da fase 1; `1.0.0` só depois do critério global de pronto
-(18.3). As regras de convivência com as outras apps da instância estão em 3.6 (precedente:
-`reg360`, `docs/operacao.md`; D-97).
+**Só Pinguim, por enquanto (v0.6, D-128).** A app roda na Pinguim como qualquer app externa: recebe
+toda release pelo auto-update (aceitação `Releases`; a release nasce prerelease pelo
+`urbi-release`, precedente `reg360`), é onde o QA de cada fase roda e é onde a equipe testa e usa a
+app até o MVP ficar pronto, e depois dele enquanto o dono não decidir outra coisa. Área própria,
+tese e cenário real ficam na Pinguim, protegidos pela permissão por pessoa (D-13) e pelo papel
+`estrategico` (D-107); o QA usa só áreas de prospecção, referência ou fictícias (seção 14). Produção
+sai do plano atual (a Laputa, `urbiverso.up.bsb.br`, fica como produção futura): a promoção é passo futuro, decidido pelo dono depois do MVP, com release feita
+por uma sessão sob ordem expressa dele. `1.0.0` só depois do critério global de pronto (18.3). As
+regras de convivência com as outras apps da instância estão em 3.6.
 
-**Portão entre fases (R-26, v0.5).** Uma fase só começa quando a anterior cumpriu três condições,
-registradas na sub-issue dela: (a) o "Pronto quando" conferido pelo QA na Pinguim (skill `qa`,
-relatório em `qa-relatorios/`); (b) a release instalada na Laputa; (c) uso real: cada jornada da
-seção 24 atribuída à fase feita por uma pessoa da equipe com dado real (data e quem), ou, nas
-fases sem jornada que feche nelas (1, 2, 3 e 4; a J6 só fecha inteira na 4B), duas semanas de uso
-na Laputa com a tela da fase aberta em pelo menos cinco dias distintos segundo `uso_eventos`. A
-fase 0 só tem a condição (a), porque a primeira instalação na Laputa é ao fim da fase 1. Cumpridas
-as condições, o dono dá o ok por escrito na sub-issue; sem o ok, a fase seguinte não começa.
-`uso_eventos` é evidência, não substitui o ok (D-104).
+**MVP (v0.6, D-129).** O MVP são as fases −1, 0, 1 e 2, mais a camada do núcleo no mapa
+([MVP-NUCLEO]: camada do núcleo, seção 15.1a). Pronto o MVP, vêm a release dele, o uso pela equipe
+na Pinguim e a decisão do dono sobre produção; as fases seguintes continuam na Pinguim até essa
+decisão.
+
+**Portão entre fases (R-26, v0.5; revisto na v0.6).** Uma fase só começa quando a anterior cumpriu
+três condições, registradas na sub-issue dela: (a) o "Pronto quando" conferido pelo QA na Pinguim (skill `qa`,
+relatório em `qa-relatorios/`, sem dado interno, porque o repositório é público); (b) uso real
+na Pinguim: cada jornada da seção 24 atribuída à fase feita por uma pessoa da equipe com dado real
+(data e quem), ou, nas fases sem jornada que feche nelas (1, 2, 3 e 4; a J6 só fecha inteira na
+4B), duas semanas de uso com a tela da fase aberta em pelo menos cinco dias distintos segundo
+`uso_eventos`; (c) o ok escrito do dono na sub-issue. A fase 0 só tem as condições (a) e (c),
+porque ainda não há tela de uso. Sem o ok, a fase seguinte não começa. `uso_eventos` é evidência,
+não substitui o ok (D-104).
 
 **Convivência com o site (v0.5).** Um coletor por vez, uma fonte de verdade por tabela (seção 2.1):
 nas fases 1 e 2 a planilha é a fonte e o Apps Script coleta, e a app recebe a planilha por
-reimportação incremental; na fase 3, no dia em que as rotinas de coleta são ligadas na Laputa, os
-gatilhos do Apps Script saem e as abas de anúncios ficam somente leitura; as demais abas mudam de
-fonte quando a fase que as carrega fica pronta; a fase 6 só congela o resto. A regra vale também
-entre instâncias: na Pinguim, `coleta_ativa` fica `false` fora da janela de QA de coleta, que é
-curta (um dia) e com lote reduzido; é a única sobreposição com o Apps Script, porque o corte só
-acontece depois do QA (D-98).
+reimportação incremental; na fase 3, no dia em que as rotinas de coleta são ligadas na Pinguim,
+os gatilhos do Apps Script saem e as abas de anúncios ficam somente leitura; as demais abas mudam
+de fonte quando a fase que as carrega fica pronta; a fase 6 só congela o resto. Um coletor por vez
+quer dizer app × Apps Script: antes do corte, `coleta_ativa` fica `false` fora da janela de QA de
+coleta, que é curta (um dia) e com lote reduzido; é a única sobreposição com o Apps Script, porque
+o corte só acontece depois do QA (D-98).
 
 Ordem: −1 → 0 → 1 → 2 → 3 → 4 → **4A** → **4B** → **4C** → 5 → 6, com a **7** podendo correr em
 paralelo à 6, porque depende sobretudo do pipeline, que anda na sua trilha (15.0a). Cada fase de
@@ -5457,36 +5581,47 @@ Responsável: o operador das instâncias (Urbiverso Ltda), acionado pelo dono da
 quem tem a alçada. O checklist vira `docs/ativacao.md` da app e é conferido item a item na fase 0
 (precedente: o checklist de ativação do `reg360`, `docs/operacao.md`; D-96).
 
-1. Criar o repositório privado `UP-Urbita/app-inteligencia-imobiliaria` (dono da org UP-Urbita).
-2. PAT *classic* `read:packages` da conta de serviço da UP em `URBIVERSO_PACKAGES_TOKEN`, no
-   ambiente das sessões e nos secrets do repositório (o registry não autentica fine-grained).
-3. Leitura do repositório para o usuário do PAT da Pinguim e da Laputa, ou a credencial do
-   repositório cadastrada no modal Instalar app.
-4. Na Pinguim (alçada `apps`): instalar do repositório, nível de aceitação `Releases`, auto-update
-   ligado. Sem `Releases`, a release prerelease não chega, e a falha é calada.
-5. Na Laputa (alçada `apps`), ao fim da fase 1: instalar do repositório, aceitação `homologado`,
-   atualização manual.
-6. `permissao_padrao = nenhuma` nas duas instâncias (alçada `usuarios`; C-56). Quem recebe
-   `leitura`, `estrategico`, `curador`, `operador` e `admin` na Laputa segue em `[PENDENTE P-06]`.
-7. Slots-base `poder` e `barato` autorizados para a app (alçada `integracoes`; C-06).
-8. Cap global de arquivo informado (C-15, C-35); ele é o teto do `arquivo_max_bytes` do pipeline.
-9. Cadência e horário das releases na Pinguim acertados (3.6)
-   `[PENDENTE P-48]`.
-10. Hosts do proxy de egresso só quando a medição da fase 3 pedir (alçada `sistema`; D-79).
+Não há repositório a criar: a app nasce neste (D-125).
 
-**Pronto quando:** os itens 1 a 4 e 6 a 9 estão feitos e registrados em `docs/ativacao.md`; o
-item 5 fica para o fim da fase 1, e o 10 só existe se a medição pedir.
+1. Acesso ao pacote `@urbiverso/sdk` (dono da app): PAT *classic* com `read:packages` (o registry não autentica
+   fine-grained) e o convite de acesso ao pacote aceito.
+2. Esse PAT como secret `URBIVERSO_PACKAGES_TOKEN` neste repositório (dono da app; Settings › Secrets and
+   variables › Actions), para o `release.yml` e o `ci.yml`, e como variável no ambiente das
+   sessões, para o `pnpm install`. Um não cobre o outro (`KIT.md`).
+3. Na Pinguim (alçada `apps`): instalar do repositório, nível de aceitação `Releases`, auto-update
+   ligado. Sem `Releases`, a release prerelease não chega, e a falha é calada. O repositório é
+   público, então a instância lê as releases sem credencial.
+4. Slots-base `poder`, `barato` e `arquivos` autorizados para a app (alçada `integracoes`; C-06;
+   `arquivos` para o `extracao_documento`, D-133).
+5. `permissao_padrao = nenhuma` na Pinguim (alçada `usuarios`; C-56): é o que impede dev de fora
+   da equipe de ver a app (D-13). Quem recebe `leitura`, `decisor`, `estrategico`, `curador`,
+   `operador` e `admin` segue em P-06; no começo, o admin.
+6. Cap global de arquivo informado (C-15, C-35); ele é o teto do `arquivo_max_bytes` do pipeline e
+   do anexo de carga manual.
+7. Hosts do proxy de egresso só quando a medição da fase 3 pedir (alçada `sistema`; D-79).
+
+**Pronto quando:** os itens 1 a 6 estão feitos e registrados em `docs/ativacao.md`; o 7 só existe
+se a medição pedir. A cadência de releases não é item de checklist: segue a regra 2 de 3.6
+(D-135).
 
 ### 15.0 Fase 0 — Preparação (1 a 2 PRs)
 
-- Instalar o kit no repositório criado na fase −1 (`npx @urbiverso/kit-apps`): `apps/`,
-  `pnpm-workspace.yaml` com catálogo, `release.yml`, `ci.yml`, `KIT.md`, skills. Dali em diante
-  vale o protocolo do kit (18.2).
-- Criar `apps/inteligencia_imobiliaria/` com `manifesto.json` mínimo, já com a `identidade`
-  `UP-Urbita/app-inteligencia-imobiliaria::inteligencia_imobiliaria`, `schema.json` vazio,
-  `backend/rotas.ts` com `rotas` vazio e o invólucro `rota(fn)`, `frontend/index.ts` com a tela
-  "em construção" em `/`, `docs/README.md` apontando para esta spec e `docs/ativacao.md` com o
-  checklist da fase −1.
+- **Primeiro** criar `apps/inteligencia_imobiliaria/` com `manifesto.json` mínimo, já com a
+  `identidade` `rafaleandrog/inteligencia-real-estate::inteligencia_imobiliaria`, `schema.json`
+  vazio, `backend/rotas.ts` com `rotas` vazio e o invólucro `rota(fn)`, `frontend/index.ts` com a
+  tela "em construção" em `/`, `docs/README.md` apontando para esta spec e `docs/ativacao.md` com
+  o checklist da fase −1. Ela tem de existir antes do kit: com `apps/` presente o kit não semeia
+  `apps/ola_mundo`, e o manifesto é o sinal que o deixa instalar sem `--confirmo` (3.1; D-126).
+- Converter a raiz em workspace pnpm: `pnpm-workspace.yaml` com `apps/*` e o catálogo,
+  `packageManager` pnpm no `package.json` do site (que mantém os scripts dele), `pnpm-lock.yaml`
+  gerado e versionado, `package-lock.json` removido, e o `validate.yml` do site trocado para pnpm
+  (`pnpm install --frozen-lockfile` e `pnpm test`, com o secret do item 2 da fase −1 porque o lockfile
+  da raiz inclui o SDK). O `validate.yml` continua verde no mesmo PR (R-52).
+- Depois, instalar o kit na raiz (`npx @urbiverso/kit-apps`): `release.yml`, `ci.yml`, `KIT.md`,
+  `.claude/preparar-sessao.sh` e as skills. Os arquivos de dois donos que já existem (`CLAUDE.md`,
+  `package.json`, `.npmrc`…) ele relata e não toca; a linha que o relatório pede no `CLAUDE.md`
+  entra no mesmo PR, junto com a delimitação de regras da seção 3.1, escrita também como nota de escopo no topo de `docs/ENGINEERING_RULES.md` e de `docs/AI_WORKFLOW.md` (D-127). Dali em diante vale o
+  protocolo do kit para a app (18.2).
 - `testes/infra.ts` com o `req.dados` falso e o teste de contrato dele (18.1), para que a fase 1
   nasça testável sem instância.
 - `scripts/exportar-planilha.mjs` e o primeiro retrato datado em `migracao/AAAA-MM-DD/` (11.3);
@@ -5502,18 +5637,16 @@ item 5 fica para o fim da fase 1, e o 10 só existe se a medição pedir.
 **Pronto quando:** a app aparece no menu da Pinguim com a tela vazia e `0.1.0`; o checklist da
 fase −1 está conferido; a fixture de paridade existe e o dono aprovou a lista.
 
-### 15.0a Trilha do pipeline (paralela, em outro repositório)
+### 15.0a Trilha do pipeline (paralela, no mesmo repositório)
 
-O pipeline Python **não muda de repositório com a app**: continua em
-`rafaleandrog/inteligencia-real-estate`, com os workflows e as regras dele (R2.7, R2.8), publicando
-o manifest e os arquivos em `data/public/`, que é público porque deriva só de fonte pública. A app
-lê esse manifest pela URL `raw.githubusercontent.com` de `manifest_publico_url` (4.3): a app
-privada não precisa de credencial para ler dado público. Mudança no pipeline é PR naquele
-repositório; mudança no contrato que a app lê (12.2) é PR nos dois, com a versão do manifest como
+O pipeline Python fica onde está, em `pipeline/` deste repositório, que agora também tem a app
+(D-125), com os workflows e as regras dele (R2.7, R2.8), publicando o manifest e os arquivos em
+`data/public/`, que é público porque deriva só de fonte pública. A app lê esse manifest publicado
+pela URL `raw.githubusercontent.com` de `manifest_publico_url` (4.3), sem credencial, e nunca do
+checkout. Mudança no contrato que a app lê (12.2) pode ir num PR só, com a versão do manifest como
 amarra. Cada fase que precisa de conjunto novo (4, 4A, 7) começa com o PR do pipeline mergeado e o
-conjunto publicado: é pré-requisito da fase, não entrega dela. A transferência daquele
-repositório e o dono das credenciais seguem em R-25 `[PENDENTE P-44]`
-(D-100).
+conjunto publicado: é pré-requisito da fase, não entrega dela. O pipeline fica neste repositório e
+o responsável por ele e pelas credenciais é o admin, salvo indicação (D-100, D-132; fecha P-44).
 
 ### 15.1 Fase 1 — Fundação: território, cadastro, mapa (4 PRs: 1a a 1d)
 
@@ -5559,8 +5692,7 @@ mesma data e cresce; reimportar o mesmo retrato não duplica nada; o mapa abre c
 filtros do site e o mesmo detalhe, e os 10 cenários de mapa da fixture de paridade conferem; um
 curador cria, edita e remove um anúncio e o evento e a alteração ficam registrados; um CSV
 exportado reabre na prévia da importação sem rejeição (colunas derivadas ignoradas com aviso). Ao
-fim da fase a release é homologada e instalada na Laputa, com a planilha ainda como fonte de
-verdade.
+fim da fase a equipe passa a usar a app na Pinguim, com a planilha ainda como fonte de verdade.
 
 **Acréscimos da v0.2:** nenhum de desenho; a legenda com classes já era exceção prevista. O
 roteador de sub-rotas já nasce com as rotas novas do `nav` apontando para "em construção".
@@ -5596,8 +5728,8 @@ coabitação por importação; `cv_frac` e `erro_padrao` na PDAD com o aviso de 
 
 ### 15.3 Fase 3 — Coleta, histórico e fechamento mensal (4 PRs: 3a a 3d)
 
-A coleta automática nos portais depende do parecer jurídico sobre os termos de uso
-`[PENDENTE P-45]`.
+A coleta automática nos portais segue sem parecer jurídico, por decisão do dono: uso interno,
+risco aceito (D-134, R-53).
 
 **Subfases (v0.5):**
 
@@ -5625,13 +5757,13 @@ item 8; comparáveis no detalhe do Mapa; situação do anúncio e "confirmado no
 **Docs:** `docs/coleta.md` com a postura, a classificação, os portões e o runbook do pedido de
 proxy de egresso ao admin da instância, com a lista de hosts (D-79).
 
-**Pronto quando:** é o único que termina na Laputa. **Na Pinguim**, na janela de QA (um dia,
-lote reduzido): cada rotina de coleta roda com log limpo ou bloqueio registrado por fonte; um
+**Pronto quando:** tem duas etapas, as duas na Pinguim. **Janela de QA** (um dia, lote reduzido,
+antes do corte): cada rotina de coleta roda com log limpo ou bloqueio registrado por fonte; um
 candidato descoberto é promovido pelo portão e outro fica pendente pelo motivo certo; duas
 continuações entregues em duplicata não processam o mesmo lote duas vezes (D-85); `coleta_ativa =
 false` para a cadeia de continuações na fatia seguinte; e a janela fecha com `coleta_ativa =
-false`. **Na Laputa**: o corte é feito no dia em que as rotinas de coleta são ligadas (gatilhos do
-Apps Script removidos, abas de anúncios somente leitura); a rotina diária roda sete dias seguidos
+false`. **Corte**: feito no dia em que as rotinas de coleta são ligadas de vez na Pinguim
+(gatilhos do Apps Script removidos, abas de anúncios somente leitura); a rotina diária roda sete dias seguidos
 com log limpo ou com bloqueio registrado por fonte (não com erro); o primeiro `fechar_mes` congela
 o mês e as métricas conferem com um recálculo manual de três grupos; a decisão de pedir o proxy de
 egresso (D-09, D-79) é tomada com o painel de Fontes como evidência.
@@ -5726,8 +5858,8 @@ matriz, benchmark); Terra e oferta futura; Cadastro de empreendimentos, lotes, l
 faixas; fila de vínculos; anéis de âncoras existentes no dossiê.
 
 **Pronto quando:** na Pinguim, o QA cadastra áreas de prospecção, referência ou fictícias e gera
-a ficha de uma página de cada uma; na Laputa, as áreas próprias da UP estão cadastradas
-`[PENDENTE P-47]` e cada uma tem uma ficha de uma página gerada e baixada
+a ficha de uma página de cada uma; fora do QA, as áreas próprias da UP estão cadastradas na
+Pinguim pela equipe `[PENDENTE P-47]` e cada uma tem uma ficha de uma página gerada e baixada
 em Markdown; uma pessoa sem `estrategico`, `curador` nem responsabilidade pela área não as vê; a
 capacidade de pagamento de uma localidade confere com uma planilha feita à mão para três faixas de
 renda; a mediana de R$/m² arrematado de uma localidade, por `destinacao_categoria`, confere com os
@@ -5748,17 +5880,18 @@ jornada J1.
 `area_eventos`, `observacoes_campo`; `achados_mercado`.
 
 **Backend:** rotas 6.17 e 6.18; semente de perguntas de diligência (`comum/diligencia.ts`) e o
-pré-preenchimento pelo app; agenda de decisão `[PENDENTE P-42]`; portfólio;
+pré-preenchimento pelo app; agenda de decisão, com a transição de estágio a partir de
+`iniciativa` restrita a `admin` e `decisor` e o motivo em `area_eventos` (D-130); portfólio;
 métrica monitorada nas condições; a rotina `calcular_achados` só com o tipo `condicao_em_risco` (os
 demais tipos entram na fase 5); comparação de duas fichas da mesma área (6.11).
 
 **Frontend:** abas Síntese e agenda, Tese, Diligência, Âncoras (sem simulação ainda), Linha do
 tempo; Portfólio; modo campo; perímetros no mapa; **Início mínimo** em `/`, com condições vencidas
 e diligências da semana (o Início completo é da fase 5); ação "Comparar com…" na lista de fichas.
-Aviso de prazo ao responsável fica fora até decisão `[PENDENTE P-43]`.
+Não há aviso de prazo: prazo é informativo e aparece no Início (D-131).
 
-**Pronto quando:** as jornadas J2 (sem a parte de âncora), J5 e J7 são feitas na Laputa por
-alguém da equipe, e o QA as repete na Pinguim com áreas fictícias; uma condição com métrica
+**Pronto quando:** as jornadas J2 (sem a parte de âncora), J5 e J7 são feitas na Pinguim por
+alguém da equipe, com dado real, e o QA as repete com áreas fictícias; uma condição com métrica
 monitorada muda de status sugerido depois de um `calcular_achados`; um item `fato` sem evidência é
 recusado com o erro certo.
 
@@ -5776,7 +5909,7 @@ Diagnóstico; `estadoSlot` escondendo o que não resolve.
 **Docs:** `docs/analises.md`, com o porquê do limite de requisições por minuto.
 
 **Instalação (v0.5):** o admin da app sobe o limite de requisições de IA por minuto de 10 para
-`30` (Config › IA › Configurações), na Pinguim e na Laputa; é passo do checklist da fase.
+`30` (Config › IA › Configurações) na Pinguim; é passo do checklist da fase.
 `gerar_analises_mensais` enfileira no máximo `ia_lote_por_fatia` análises por fatia (4.1).
 
 **Pronto quando:** a análise de mercado do mês e a de três localidades são geradas na Pinguim,
@@ -5902,9 +6035,9 @@ gravada na hipótese de âncora; seção de âncora na ficha detalhada; jornada 
 | D-11 | `FIPEZAP_LOCALITY_MONTHLY` não é tabela: derivada por `sql_declarado` | Importar a visão larga | Era materialização para contornar o GViz; o banco pareia na leitura |
 | D-12 | Uma escala só no banco (fração decimal), conversão declarada por fonte na importação | Guardar cada fonte na escala em que publica | Com duas escalas a regra do site era "nunca unificar"; no banco a unificação é feita uma vez, testada e registrada |
 | D-13 | Permissão padrão **nenhuma**; liberação por pessoa. *v0.4: é operação do admin da instância (`permissao_padrao`), não contrato do manifesto (C-56)* | `leitura` para toda a instância | Pedido do dono, por enquanto |
-| D-14 | Notificação só de erros de operação, mais o evento de lacuna de cadastro | Notificar candidato novo, reativação, queda de preço | Foco pedido; o resto entra quando houver uso |
+| D-14 | Notificação só de erros de operação, mais o evento de lacuna de cadastro. *v0.6: confirmada pela D-131; não há alerta de prazo* | Notificar candidato novo, reativação, queda de preço | Foco pedido; o resto entra quando houver uso |
 | D-15 | Sem modo demonstração nem dado fictício | Manter `demo.json` | A instância de destino é de testes e recebe o dado real por CSV |
-| D-16 | Repositório da app a decidir depois; a spec descreve a forma (`apps/<slug>/`) sem fixar onde. *v0.5: substituída pela D-95 (repositório na org UP-Urbita)* | Decidir agora | Pedido do dono: nesta rodada só a spec |
+| D-16 | Repositório da app a decidir depois; a spec descreve a forma (`apps/<slug>/`) sem fixar onde. *v0.5: substituída pela D-95 (repositório na org UP-Urbita); v0.6: a D-95 foi substituída pela D-125 (este repositório)* | Decidir agora | Pedido do dono: nesta rodada só a spec |
 | D-17 | `metricas_anuncios_mensais` materializada por rotina, com recálculo total disponível | Calcular na hora | Velocidade de tela e uma só implementação da estatística (o fechamento) |
 | D-18 | Papéis `curador` (dado) e `operador` (operação) sob `escrita` | Um papel só | Separa quem responde pelo dado de quem responde pela máquina; admin pode ter os dois |
 | D-19 | Tráfego e rodovias entram na V1 (fase 4) | Deixar para depois | Já está pronto na planilha e no site; portar custa menos que decidir de novo |
@@ -5983,18 +6116,18 @@ gravada na hipótese de âncora; seção de âncora na ficha detalhada; jornada 
 | D-92 | **Teto de transporte:** polyline na querystring até `polyline_max_vertices` (300); acima, área de estudo temporária; corpo JSON até 100 KB, então geometria colada ou importada vai sempre como arquivo | Polígono de centenas de vértices na URL e GeoJSON colado no corpo | C-77: o bundle não documenta teto de URL (a app assume 8 KB). C-78: "O corpo excede o teto de `100kb`" → `413`. C-20: sem teto de `json` documentado, cache e ficha guardam por bloco |
 | D-93 | **Bibliotecas puras no bundle; PDF e Word no Futuro.** ZIP do pacote por `fflate`; `h3-js` autorizada quando a medição pedir; ficha em Markdown, CSV e pacote | Pacote em três downloads; PDF da ficha na V1 | C-74: "dependência nativa fica fora", e biblioteca pura em JS ou WASM entra sem permissão. C-40: o SDK 100 não tem geração de documento. Fecha P-18 e P-20 |
 | D-94 | **"Ver tabela", legenda do mapa e posição do aparelho são da app:** `urbi-tabela` montado com os dados do gráfico; legenda como exceção registrada; `navigator.geolocation` com fallback de posição tocada, e foto por `<input type="file" capture>` | Esperar o primitivo oferecer | C-60, C-67, C-68 (ausentes no SDK) e C-71 (ambíguo): nenhum dos três existe no primitivo, e o modo campo precisa funcionar sem contrato de câmera e geolocalização. Fecha P-39 |
-| D-95 | A app nasce no repositório privado UP-Urbita/app-inteligencia-imobiliaria, identidade UP-Urbita/app-inteligencia-imobiliaria::inteligencia_imobiliaria; este repositório fica com o site e o pipeline | reorganizar o repositório atual ou usar um repositório pessoal | apps da UP moram na org da UP (UP-Urbita/app-radar-sei, UP-Urbita/urbigis); ENGINEERING_RULES R1.1 e R1.3 proíbem build e backend Node; gate de identidade em 2026-10-28 (substitui D-16; fecha P-04) |
-| D-96 | Fase −1 de ativação na plataforma, checklist de 10 itens com alçada por item, feita pelo operador das instâncias e registrada em docs/ativacao.md | deixar a ativação implícita na fase 0 | apps-em-repo-proprio.md § 7; checklist de ativação do reg360 |
-| D-97 | Pinguim é teste (Releases, auto-update, QA); a equipe usa na Laputa (homologado, atualização manual) a partir do fim da fase 1; dado sigiloso nunca na Pinguim | usar a Pinguim como instância de uso | apps-em-repo-proprio.md § 8; reg360 operacao.md; a Pinguim recebe devs de fora |
-| D-98 | Um coletor por vez também entre instâncias: na Pinguim coleta_ativa = false fora de uma janela curta de QA; os sete dias da fase 3 contam na Laputa depois do corte | coletar nas duas instâncias | §8.1 (uma requisição por vez por host); item 4 da revisão |
+| D-95 | A app nasce num repositório privado próprio da org da UP, com identidade nessa org; este repositório fica com o site e o pipeline. *v0.6: substituída pela D-125* | reorganizar o repositório atual ou usar um repositório pessoal | apps da UP moram na org da UP (app-radar-sei, urbigis); ENGINEERING_RULES R1.1 e R1.3 proíbem build e backend Node; gate de identidade em 2026-10-28 (substitui D-16; fecha P-04) |
+| D-96 | Fase −1 de ativação na plataforma, checklist de 10 itens com alçada por item (*v0.6: 7 itens, sem criar repositório nem instalar em produção; D-125, D-128*), feita pelo operador das instâncias e registrada em docs/ativacao.md | deixar a ativação implícita na fase 0 | apps-em-repo-proprio.md § 7; checklist de ativação do reg360 |
+| D-97 | Pinguim é teste (Releases, auto-update, QA); a equipe usa numa instância de produção (homologado, atualização manual) a partir do fim da fase 1; dado sigiloso nunca na Pinguim. *v0.6: substituída pela D-128* | usar a Pinguim como instância de uso | apps-em-repo-proprio.md § 8; reg360 operacao.md; a Pinguim recebe devs de fora |
+| D-98 | Um coletor por vez, app × Apps Script: antes do corte da fase 3, coleta_ativa = false fora de uma janela curta de QA; o corte e os sete dias da fase 3 são na Pinguim. *v0.6: a regra entre instâncias saiu, porque só há a Pinguim (D-128)* | coletar com a app e o Apps Script ao mesmo tempo | §8.1 (uma requisição por vez por host); item 4 da revisão |
 | D-99 | A unidade de planejamento é o PR (fatia vertical com release); fases como sub-issues de uma issue guarda-chuva; estimativa em PRs, recontada a cada fase | estimar em sessões | skill orquestrar; reg360 cresceu por versões pequenas |
-| D-100 | O pipeline fica neste repositório em trilha própria; a app lê o manifest público sem credencial; conjunto publicado é pré-requisito das fases 4, 4A e 7 | levar o pipeline para o repositório da app | apps-em-repo-proprio.md § 2; workflows do pipeline já existem aqui |
+| D-100 | O pipeline fica neste repositório em trilha própria; a app lê o manifest público sem credencial; conjunto publicado é pré-requisito das fases 4, 4A e 7. *v0.6: a app veio para o mesmo repositório (D-125); a app continua lendo o manifest publicado, nunca o checkout* | levar o pipeline para o repositório da app | apps-em-repo-proprio.md § 2; workflows do pipeline já existem aqui |
 | D-101 | req.dados falso tipado por Pick<HelperDados>, teste estático de sql_declarado, banco só via URBIVERSO_PG_TESTE_URL antes de release que muda sql_declarado | esperar dev-shell ou testar só na instância | apps-em-repo-proprio.md § 9 (não existe dev-shell); KIT.md; nobi testes/infra.ts |
 | D-102 | Paridade e golden set sobre retrato datado e entrada congelada versionados; o teste local bloqueia a fase, a Pinguim é informativa | comparar com a planilha viva ou com dado vivo | nobi atendimento-golden.test.ts; reg360 importacao.md |
-| D-103 | gerar-paridade.mjs recebe um checkout do site num commit fixado e grava o commit na fixture | copiar o código do site para o repositório da app | os repositórios são separados |
-| D-104 | A fase seguinte só começa com QA na Pinguim, release na Laputa e uso real (jornada, ou 5 dias distintos em 2 semanas), mais o ok escrito do dono | portão subjetivo "foi usada" | skill orquestrar; reg360 operacao.md |
+| D-103 | gerar-paridade.mjs recebe um checkout do site num commit fixado e grava o commit na fixture. *v0.6: o site está no mesmo repositório (D-125); o checkout é uma git worktree do commit fixado, para que mudar o site não mude a fixture sem PR* | copiar o código do site para o repositório da app | os repositórios eram separados; no mesmo repositório, o commit fixado continua sendo o que torna a fixture reproduzível |
+| D-104 | A fase seguinte só começa com QA na Pinguim, uso real na Pinguim (jornada, ou 5 dias distintos em 2 semanas) e o ok escrito do dono. *v0.6: sai a condição de release em outra instância (D-128)* | portão subjetivo "foi usada" | skill orquestrar; reg360 operacao.md |
 | D-105 | A 4C traz achados_mercado só com condicao_em_risco, o Início mínimo e hipoteses_produto; seção da ficha de fase posterior sai omitida com motivo | manter a 4C dependendo das fases 5 e 7 | o pronto quando da 4C usava o que só nascia na fase 5; a J1 usava lacunas da fase 7 |
-| D-106 | Índices nascem com a tabela; no máximo uma release por dia útil fora do horário de uso; sem downgrade; migração pesada fora do boot (§3.6) | releases livres | overview.md (instalar reinicia o shell); distribuicao.md (downgrade proibido) |
+| D-106 | Índices nascem com a tabela; no máximo uma release por dia útil fora do horário de uso; sem downgrade; migração pesada fora do boot (§3.6). *v0.6: a cadência mudou pela D-135; o resto fica* | releases livres | overview.md (instalar reinicia o shell); distribuicao.md (downgrade proibido) |
 | D-107 | Papel estrategico sob leitura abre as áreas próprias; os demais recebem 404 | sigilo só por curador, ou nenhum | permissoes.md (papel sob leitura); nobi papel gestor |
 | D-108 | Parâmetro bool coleta_ativa lido a cada fatia; desligado, para continuações e rotas manuais (409 COLETA_PAUSADA) | confiar no toggle da aba Rotinas | rotinas.md (o toggle não cancela agendamentos); nobi atendimento_ativo |
 | D-109 | Limite de IA sobe para 30 na fase 5; o lote mensal enfileira até ia_lote_por_fatia (8) por fatia, com intervalo de 2 min | pausa entre pedidos dentro da rotina | ia.md (o worker respeita requests_por_minuto); nobi integracoes.md |
@@ -6002,7 +6135,7 @@ gravada na hipótese de âncora; seção de âncora na ficha detalhada; jornada 
 | D-111 | Tags com prefixo intel-imob-, raiz app-inteligencia-imobiliaria, registro que só define a tag se ela ainda não existe | prefixo com o slug inteiro, ou @customElement direto | convenção de prefixo por app (radar-sei-*, charles3-*, reg360-*); o "Tentar novamente" do shell reavalia o bundle |
 | D-112 | Semente como promise memoizada, aguardada por middleware; sem 503 APP_PREPARANDO | responder 503 até o fim da semente | overview.md (aoIniciar roda depois do listen); nobi seed.ts |
 | D-113 | Sai agrupar_confianca_auto; grupo só conta sozinho com coordenada exata a ≤ 30 m, área ±1 m² e preço ±2% | limiar de confiança 0,90 | a app não guarda anunciante; 141 de 141 anúncios da semente têm coordenada por jitter |
-| D-114 | O repositório da app segue o KIT.md e as skills do kit; merge e release só por ordem expressa | replicar o protocolo deste repositório | KIT.md; o ci.yml do kit já empacota cada app |
+| D-114 | O repositório da app segue o KIT.md e as skills do kit; merge e release só por ordem expressa. *v0.6: a app está neste repositório; a delimitação por caminho é a D-127* | replicar o protocolo deste repositório | KIT.md; o ci.yml do kit já empacota cada app |
 | D-115 | Nas tabelas filhas de uma área de estudo, ler é o da área (resolvido pelo pai) e escrever é escrita + ler da área, salvo quando a coluna Papel acrescenta "autor ou curador" | regra própria por tabela filha | uma regra só, e a matriz de acesso fecha por contagem exata (T4, item 13) |
 | D-116 | O filtro de sigilo das áreas próprias entra na consulta antes da paginação e vale também para contagens | filtrar a página depois de lida | senão total e contagens revelam a área oculta, contra o 404 que não confirma existência (item 13) |
 | D-117 | Código próprio 422 FONTE_CONFIG_INVALIDA para url_base ou cabecalhos inválidos ao salvar fonte | reusar URL_FORA_DAS_FONTES | este significa host fora da lista; ao salvar a fonte o host define a lista |
@@ -6013,12 +6146,23 @@ gravada na hipótese de âncora; seção de âncora na ficha detalhada; jornada 
 | D-122 | dias_ate_sair_mediana mantém o nome e passa a ser mediana de Kaplan-Meier; S(30) em permanencia_30_dias_frac | renomear | não quebra referências |
 | D-123 | base_area vira dimensão de metricas_anuncios_mensais, R$/m² null na linha todas | colunas lado a lado | garante nunca misturar base de área |
 | D-124 | hipoteses_produto.status em hipotese, sustentada, descartada | reaproveitar status de hipoteses_ancora | hipótese de produto não tem fase de conversa |
+| D-125 | A app vive neste repositório, `rafaleandrog/inteligencia-real-estate`, pessoal e público, em `apps/inteligencia_imobiliaria/`; identidade `rafaleandrog/inteligencia-real-estate::inteligencia_imobiliaria`; não há repositório novo nem org UP-Urbita (substitui a D-95; P-04 segue fechada com a identidade nova) | repositório privado próprio na org UP-Urbita (D-95) | resposta do dono, 2026-10-17; precedente: a app `viabilidade` do mesmo dono roda na Pinguim a partir de repositório pessoal (`rafaleandrog/viabilidade-real-estate::viabilidade`) |
+| D-126 | A raiz vira workspace pnpm (`pnpm-workspace.yaml` com `apps/*` e catálogo, `packageManager` pnpm, `pnpm-lock.yaml`); o `package.json` do site fica na raiz com os scripts dele; o `validate.yml` passa a pnpm e o `package-lock.json` sai; a pasta da app nasce antes do `npx @urbiverso/kit-apps` | repositório separado só para a app; ou instalar o kit antes de criar a pasta | resposta do dono, 2026-10-17; o kit só semeia `apps/ola_mundo` onde não há `apps/` nem `modulos/`, recusa sem sinal de repositório de app e não toca arquivo de dois donos (`KIT.md`) |
+| D-127 | Regras delimitadas por caminho: `docs/ENGINEERING_RULES.md` e `docs/AI_WORKFLOW.md` (com a review do Codex) valem para o site (raiz, `src/`, `admin.html`, `pipeline/`); a app segue o `KIT.md` e as skills do kit; o `CLAUDE.md` deste repositório vale para tudo | revogar as regras do site; ou aplicar R1.x e R2.1 à app | resposta do dono, 2026-10-17; R1.1 e R1.3 proíbem build e backend Node, que a app tem por desenho; precedente: os repositórios de app do kit (reg360, urbigis) seguem o `KIT.md` |
+| D-128 | Só Pinguim até o MVP: a app roda lá como qualquer app externa, com aceitação `Releases`, e é onde a equipe testa e usa; área própria real fica lá, protegida pela permissão por pessoa (D-13) e pelo papel `estrategico` (D-107), com o admin da instância vendo tudo como risco aceito; produção é passo futuro, por decisão do dono depois do MVP (substitui a D-97) | Pinguim de teste e instância de produção para uso desde o fim da fase 1 (D-97) | resposta do dono, 2026-10-17; precedente: reg360 usa a Pinguim com `Releases` (`docs/operacao.md`) |
+| D-129 | MVP = fases −1, 0, 1 e 2 mais a camada do núcleo no mapa ([MVP-NUCLEO]); depois do MVP, release, uso na Pinguim e decisão do dono sobre produção | V1 inteira antes de qualquer marco de uso | resposta do dono, 2026-10-17; o uso real começa cedo e a promoção é decisão dele |
+| D-130 | Papéis padrão declarados para quando a equipe crescer: `decisor` e `curador` e `operador` sob `escrita`, `estrategico` sob `leitura`; gerar ficha para baixar e exportar com `leitura`; mudança de estágio para `iniciativa` ou além, e para `encerrada`, só por `admin` ou `decisor`, com quem decidiu e o motivo em `area_eventos`, sem tabela nova nem comitê (fecha P-42) | tabela `decisoes_area` e fluxo de aprovação | resposta do dono, 2026-10-17: no dia a dia o admin faz tudo e os demais leem os resultados; precedente: o papel por função do `nobi` e a trilha da área já existente (D-78) |
+| D-131 | Alerta é de erro (busca que falhou, fonte bloqueada, parser degradado, carga que falhou, cadeia mensal parada), ao admin; não há alerta nem rotina de prazo, e prazo de condição e de diligência é campo informativo visto no Início (confirma a D-14; fecha P-43) | aviso de prazo ao responsável por rotina diária | resposta do dono, 2026-10-17: não há prazos na pesquisa; precedente: o barramento manda erro só ao admin da app (C-48) |
+| D-132 | Toda fonte é externa e pública e fica fora do app; `comum/fontes.ts` declara o modo de cada uma (`automatica`, `manual` ou `ambas`) e o responsável, por padrão o admin; o pipeline fica neste repositório (fecha P-44) | responsável nomeado por fonte e pipeline numa org | resposta do dono, 2026-10-17; o caminho mais simples que a plataforma sustenta: `fetch` global em rotina (D-79) e upload pela Operação › Importações |
+| D-133 | Fonte manual sobe como anexo da carga (PDF, planilha, imagem), e PDF ou imagem pode ter extração assistida por IA pelo slot custom `extracao_documento` de base `arquivos` (`req.ia.extrairConteudo`), desligada por padrão pelo parâmetro `usar_ia_extracao_documentos`; a extração gera prévia que o operador confere antes de gravar | digitar à mão todo PDF; ou gravar a extração sem conferência | resposta do dono, 2026-10-17; `ia.md` § 4: "O slot `arquivos` extrai conteúdo de texto UTF-8, PDFs e imagens usando a API dedicada `extrairConteudo`", com slot custom de base `arquivos` por `slot`; precedente: o `extracao_pagina` desligado (D-04) |
+| D-134 | Uso interno sem parecer jurídico: coleta nos portais, IVV e FipeZap em exportação, pacote e contexto de IA são risco aceito; nunca em página pública (D-02); o pacote e o CSV exportado levam a fonte (fecha P-45) | parecer jurídico antes da fase 3 | resposta do dono, 2026-10-17; a app é só autenticada (D-02) e não redistribui fora da equipe |
+| D-135 | Cadência de release: durante a construção, no ritmo dos PRs, sem número fixo, com índices na criação e sem reiniciar a instância em horário de uso dos outros; depois do MVP, release e promoção por ordem do dono (fecha P-48; altera a cadência da D-106) | uma release por dia útil em horário acertado com o operador | resposta do dono, 2026-10-17; precedente: reg360 publica release por mudança pequena na Pinguim |
 
 ---
 
 ## 17. Pendências
 
-P-11 (a contradição sobre `reagir`) foi resolvida pela D-47 e não aparece abaixo. Na v0.5 fecharam P-04 e P-23 e entraram P-42 a P-48. Na v0.4 a
+P-11 (a contradição sobre `reagir`) foi resolvida pela D-47 e não aparece abaixo. Na v0.6 fecharam P-42, P-43, P-44, P-45 e P-48, e a P-04 ganhou a identidade nova. Na v0.5 fecharam P-04 e P-23 e entraram P-42 a P-48. Na v0.4 a
 conferência contra o SDK fechou P-05, P-16 a P-22, P-38 e P-39; elas ficam na tabela com a linha
 "Fechada em v0.4", para o histórico.
 
@@ -6027,9 +6171,9 @@ conferência contra o SDK fechou P-05, P-16 a P-22, P-38 e P-39; elas ficam na t
 | P-01 | O que são `EMPLOYMENT_PRELIMINARY`, `EMPLOYMENT_RA_PROFILE` e `WORKPLACE_RA_2018` (fonte, ano, unidade) | Decidir se viram linhas de `agregados_territoriais`, tabela própria ou morrem na migração |
 | P-02 | Texto padrão das instruções de IA dos quatro slots de análise | Fase 5 escreve a primeira versão; a equipe refina na Config |
 | P-03 | Cabeçalhos exatos de `PDAD_A_FIGURE_MAP`, `FIPEZAP_SOURCES`, `FIPEZAP_NOTES`, `PDAD_A_GUIDE`, `LISTINGS_COVERAGE`, `PDAD_A_COVERAGE` (não alcancei a planilha além da nona aba) | As tabelas `pdad_figuras` e `procedencias` têm `extras` justamente para absorver o que não está modelado; confirmar na primeira importação |
-| P-04 | **Fechada em v0.5:** repositório `UP-Urbita/app-inteligencia-imobiliaria` e identidade `UP-Urbita/app-inteligencia-imobiliaria::inteligencia_imobiliaria` (D-95) | — |
+| P-04 | **Fechada em v0.5** (D-95) e **refeita em v0.6:** a app mora neste repositório, `rafaleandrog/inteligencia-real-estate`, em `apps/inteligencia_imobiliaria/`, com identidade `rafaleandrog/inteligencia-real-estate::inteligencia_imobiliaria` (D-125) | — |
 | P-05 | **Fechada em v0.4:** o horário é do admin da app na aba Rotinas, por hora cheia no fuso da organização (dia do mês de 1 a 28); não há dependência entre rotinas, e a ordem mensal é por horas distintas mais guarda de pré-condição (C-05, C-36). O README da app sugere os horários; o fuso das rotinas é o parâmetro `fuso_organizacao` (D-84) | — |
-| P-06 | Quem são as pessoas da equipe que recebem `leitura`, `curador`, `operador`, `admin` na Pinguim | Liberação na instalação |
+| P-06 | Quem são as pessoas da equipe que recebem `leitura`, `decisor`, `estrategico`, `curador`, `operador`, `admin` na Pinguim; no começo, o admin acumula os papéis (D-130) | Liberação na instalação |
 | P-07 | Se o GitHub Pages continua no ar como arquivo depois da fase 6 | Fase 6 |
 | P-08 | Acesso ao ITBI da SEFAZ-DF (convênio ou LAI) | Sem o par pedido × declarado; fica no Futuro |
 | P-09 | Se a segunda cidade é Campinas/RMC e quando | A grade e o dossiê funcionam lá; as telas de mercado ficam vazias com motivo |
@@ -6064,13 +6208,13 @@ conferência contra o SDK fechou P-05, P-16 a P-22, P-38 e P-39; elas ficam na t
 | P-39 | **Fechada em v0.4:** sem contrato no SDK (C-68 ausente, C-71 ambíguo); o modo campo usa HTML puro para a foto e `navigator.geolocation` com fallback de posição tocada ou digitada (D-94) | se a instância restringir permissões, só o fallback (R-46) |
 | P-40 | Perguntas padrão de diligência por frente, revisadas com o doc. 05 e com o jurídico | A semente começa com as perguntas do doc. 05, §61 |
 | P-41 | Repertório oficial de modelos de parceria para hipóteses de âncora, a partir do doc. 03 | `modelo_parceria` fica texto livre |
-| P-42 | Quem decide sobre uma área e quais transições da escada exigem decisão registrada; recomendação: tabela `decisoes_area` e papel `decisor` para a Direção (precedente: aprovações do nobi) | A agenda de decisão não registra quem decidiu; a Direção, só com `leitura`, não registra nada |
-| P-43 | Se o aviso de prazo de diligência e de condição ao responsável pode ampliar a D-14; recomendação: notificação direta ao responsável por rotina diária (precedente: reg360 `checar_propostas_vencendo`) | Prazos só aparecem no Início, por consulta |
-| P-44 | Quem responde por cada fonte manual e se o pipeline vai para a org da UP; recomendação: responsável nomeado por fonte e pipeline em repositório público na `UP-Urbita` | Fonte manual atrasada sem ninguém para cobrar; o manifest depende de um repositório pessoal |
-| P-45 | Parecer sobre a coleta nos portais (termos de uso) e sobre IVV e FipeZap em exportação, pacote e IA; recomendação: parecer antes da fase 3 | Risco de violar termos de uso e de redistribuir dado licenciado |
+| P-42 | **Fechada em v0.6:** o admin faz tudo e os demais leem; papéis `decisor`, `curador`, `operador` e `estrategico` declarados para quando a equipe crescer; mudança de estágio para `iniciativa` ou além, e para `encerrada`, só por `admin` ou `decisor`, com quem decidiu e o motivo em `area_eventos`, sem tabela nova nem comitê (D-130) | — |
+| P-43 | **Fechada em v0.6:** não há prazos na pesquisa; alerta é de erro, ao admin (D-14 confirmada); prazo de condição e de diligência é campo informativo visto no Início, sem rotina nem notificação (D-131) | — |
+| P-44 | **Fechada em v0.6:** toda fonte é externa e pública; `comum/fontes.ts` declara o modo (`automatica`, `manual`, `ambas`) e o responsável, por padrão o admin; carga manual por anexo e extração assistida (D-132, D-133); o pipeline fica neste repositório | — |
+| P-45 | **Fechada em v0.6:** uso interno, sem parecer; IVV, FipeZap e dado de portal só para uso interno, nunca em página pública; o pacote e o CSV exportado levam a fonte; risco aceito (D-134, R-53) | — |
 | P-46 | Se lentes, Gi* e análise de tela, que não servem a nenhuma jornada, saem da V1 pela R-36; recomendação: mover para o Futuro e manter áreas gêmeas (J3) | Telas sem uso que custam construção e manutenção |
 | P-47 | Confirmar que a lista oficial de áreas próprias é a do Urbigis/Magis ("MATRÍCULAS › Atuais (UP)") e nomear o curador que a espelha; recomendação: importar por KMZ com o id de origem | Áreas próprias incompletas ou desatualizadas no Início, no portfólio e nas análises |
-| P-48 | Horário e cadência exata das releases na Pinguim, a acertar com o operador | release em horário de uso derruba as apps de outros na Pinguim |
+| P-48 | **Fechada em v0.6:** tudo na Pinguim; durante a construção, releases no ritmo dos PRs, com índices na criação e sem reiniciar a instância em horário de uso dos outros, sem número fixo; depois do MVP, release e promoção por ordem do dono (D-135) | — |
 
 ---
 
@@ -6166,8 +6310,8 @@ D-101):
   retomada por cursor no meio do arquivo.
 - **Gates (v0.2):** toda rota de cálculo é `GET` e responde para `leitura`; visões só do próprio
   usuário. **Matriz de acesso (v0.5):** `testes/matriz-acesso.test.ts` tem uma linha por rota ×
-  perfil (autor, responsável, curador, estrategico, escrita sem relação, leitura sem
-  `estrategico`) com o status esperado: quem não pode ler recebe `404 REGISTRO_NAO_ENCONTRADO`,
+  perfil (autor, responsável, curador, estrategico, decisor, escrita sem relação, leitura sem
+  `estrategico`) com o status esperado; a transição de estágio a partir de `iniciativa` tem linha para `admin`, `decisor` e `escrita` sem papel (v0.6): quem não pode ler recebe `404 REGISTRO_NAO_ENCONTRADO`,
   quem lê e não pode escrever recebe `403 OBJETO_SEM_PERMISSAO`, e área própria some das listas
   para quem não tem `estrategico`, `curador` nem é responsável. A lista de rotas é conferida contra
   a pilha dos Routers por contagem exata: rota nova sem linha reprova (precedente: `MATRIZ` do
@@ -6205,13 +6349,14 @@ Os testes **só leem a pasta da app** (regra do guia de apps em repositório pr�
 
 ### 18.2 Portas
 
-**Protocolo (v0.5).** No repositório da app vale o protocolo do kit, e a spec só aponta para ele:
-`KIT.md` e as skills `especificar` (ideia → issue-spec), `implementar` (issue → PR), `orquestrar`
-(arco de fases, seção 15), `revisar-pr-apps` (revisão contra o SDK instalado, nunca o monorepo) e
-`qa` (Pinguim, nunca sysadmin). Issues e PRs ficam no repositório da app; o protocolo de issues do
-`CLAUDE.md` deste repositório (labels, `logged-by-claude`) vale aqui, não lá, e se a equipe quiser
-as mesmas labels lá elas vão na seção "Deste repositório" do `CLAUDE.md` da app. Merge e release
-só por ordem expressa do dono na conversa (`KIT.md`; D-114).
+**Protocolo (v0.6).** Na app (`apps/inteligencia_imobiliaria/` e o que é dela na raiz) vale o
+protocolo do kit, e a spec só aponta para ele: `KIT.md` e as skills `especificar` (ideia →
+issue-spec), `implementar` (issue → PR), `orquestrar` (arco de fases, seção 15), `revisar-pr-apps`
+(revisão contra o SDK instalado, nunca o monorepo) e `qa` (Pinguim, nunca sysadmin). No site valem
+`docs/ENGINEERING_RULES.md` e `docs/AI_WORKFLOW.md`, com a review do Codex. O `CLAUDE.md` deste
+repositório vale para tudo: issue antes de implementar, labels `priority:*`, `type:*` e
+`logged-by-claude` (3.1; D-127). Issues e PRs da app e do site ficam neste repositório. Merge e
+release só por ordem expressa do dono na conversa (`KIT.md`; D-114).
 
 - O `ci.yml` do kit roda typecheck, build, testes e o empacotamento de cada app (passo
   "Empacotar (validação)") em todo PR; a app não repete o empacotamento no script `test` (C-73,
@@ -6234,22 +6379,24 @@ só por ordem expressa do dono na conversa (`KIT.md`; D-114).
   por operação e o alvo ao lado. A lista nunca contém rota com `homolog`, `upgrade`, `release` ou
   `atestado`. O QA de cada fase anexa o relatório ao PR (precedente: `qa-relatorios/simulador/` do
   `nobi`).
-- **Promoção.** Release só vai à Laputa depois do QA na Pinguim e da homologação
-  (`prerelease=false`), que é ato humano; releases respeitam a cadência e as regras de 3.6, e não
-  há downgrade.
+- **Promoção.** No plano atual não há promoção: a release prerelease chega à Pinguim, onde a
+  equipe usa a app. Produção, e com ela a homologação (`prerelease=false`), é decisão do dono
+  depois do MVP (D-128). Releases respeitam a cadência e as regras de 3.6, e não há downgrade.
 
 ### 18.3 Critério global de pronto da V1
 
-1. Todas as fases 0 a 7 (incluindo 4A, 4B e 4C) instaladas na Laputa pela release homologada, e
-   a Pinguim com aceitação `Releases` e auto-update ligado; só então a versão é `1.0.0`.
+1. Todas as fases 0 a 7 (incluindo 4A, 4B e 4C) instaladas na Pinguim, com aceitação `Releases`
+   e auto-update ligado, e em uso pela equipe; só então a versão é `1.0.0`. Se o dono tiver
+   decidido por produção, a mesma release está instalada lá.
 2. Migração conferida (seção 11.3), planilha congelada, Apps Script sem gatilhos.
 3. Paridade de 30 valores com o site (fase 2) e de 10 cenários de mapa (fase 1), sobre o retrato
    datado da fixture.
-4. Sete dias de rotinas na Laputa com log limpo ou bloqueio registrado.
+4. Sete dias de rotinas na Pinguim, depois do corte da fase 3, com log limpo ou bloqueio
+   registrado.
 5. Os "pronto quando" das fases 4A, 4B, 4C e 7 conferidos, incluindo as validações amostrais à
    mão (enriquecimento, capacidade, Terracap, contagem de comércio) e o golden set.
-6. As sete jornadas da seção 24 feitas por pessoas da equipe na Laputa, cada uma dentro da meta
-   de tempo.
+6. As sete jornadas da seção 24 feitas por pessoas da equipe na Pinguim, com dado real, cada uma
+   dentro da meta de tempo.
 7. Docs da app completos; esta spec marcada como implementada e as seções que viraram
    comportamento migradas para `docs/` da app (spec descreve o que ainda não existe).
 
@@ -6355,7 +6502,7 @@ fase acrescenta o que encontrar e marca o que resolveu.
 | R-22 | 5 | **IA confiante sobre achado fraco** | fator de amostra na pontuação; a IA cita o achado e a fonte; achado desconhecido é descartado |
 | R-23 | 4B, 7 | **Dado sensível saindo do app**: áreas próprias da UP em ficha e pacote | permissão padrão nenhuma (D-13); ficha registra quem gerou; pacote só para quem vê a área |
 | R-24 | 4B, 7 | **Dado pessoal**: CNPJ de MEI expõe parte do CPF; resultado de licitação e licença trazem nomes de pessoas | não guardar CPF, nome de pessoa física, arrematante nem responsável técnico; só categoria, porte e localização |
-| R-25 | 4, 4A, 7 | **Dependência do pipeline** num repositório pessoal, com credenciais de BigQuery e Earth Engine | manifest com versão e hash; carga recusa conjunto inválido; credenciais e dono do repositório decididos antes da fase 7 |
+| R-25 | 4, 4A, 7 | **Dependência do pipeline** num repositório pessoal, com credenciais de BigQuery e Earth Engine | manifest com versão e hash; carga recusa conjunto inválido; *v0.6:* pipeline e app no mesmo repositório pessoal por decisão (D-125), credenciais com o admin, salvo indicação (D-132) |
 | R-26 | 4B, 7 | **Escopo crescendo** além do que a equipe usa | cada fase tem "pronto quando" com validação à mão; uma fase só começa quando a anterior foi usada de verdade |
 | R-27 | futuro | **Segunda cidade sem RA, IVV nem FipeZap** | telas de mercado vazias com motivo, nunca zero; o dossiê funciona com grade, Censo, CNEFE, CNPJ e anúncios |
 | R-28 | 4B | **Área líquida pela grade erra em gleba pequena**: a célula tem cerca de 0,1 km² | só acima de `area_liquida_min_ha`; mostrada como faixa; rótulo de estimativa |
@@ -6378,9 +6525,13 @@ fase acrescenta o que encontrar e marca o que resolveu.
 | R-45 | 4A | **Carga de um milhão de linhas sem inserção em lote** não fecha no mês, e a continuação é entregue pelo menos uma vez (C-13, C-28, C-32) | cursor com compare-and-set e trava da app (D-85); throughput medido na 4A; fallback de só células habitadas e catálogo inicial (D-83) |
 | R-46 | 4C | **Câmera e geolocalização bloqueadas** por uma `Permissions-Policy` futura da instância, que o bundle não documenta (C-71) | foto por `<input type="file">` e posição tocada ou digitada como caminho sempre disponível (D-94) |
 | R-47 | 4B a 5 | **área própria vaza por agregado (portfólio, total, Início, achados, contexto de IA da cidade ou localidade) mesmo com o detalhe em 404** | filtro antes da paginação, achados de área própria fora de análises compartilhadas, matriz T4 com leitura sem estrategico em toda rota de área |
-| R-48 | 3 | **Apps Script e app, ou Pinguim e Laputa, coletando o mesmo portal ao mesmo tempo** | corte no dia da ligação na Laputa; coleta_ativa = false na Pinguim fora de janela curta de QA |
-| R-49 | todas | **cada release reinicia a Pinguim inteira; índice em tabela grande alonga o boot ou deixa a app !saudavel** | §3.6: índices na criação, uma release por dia útil |
-| R-50 | 4B, 4C | **área própria ou tese real cadastrada na Pinguim, que recebe devs de fora** | regra em §15 e §3.6; QA só com áreas de prospecção, referência ou fictícias |
+| R-48 | 3 | **Apps Script e app coletando o mesmo portal ao mesmo tempo** | corte no dia da ligação na Pinguim; antes dele, coleta_ativa = false fora de janela curta de QA (D-98) |
+| R-49 | todas | **cada release reinicia a Pinguim inteira; índice em tabela grande alonga o boot ou deixa a app !saudavel** | §3.6: índices na criação; release no ritmo dos PRs, nunca em horário de uso dos outros (D-135) |
+| R-50 | 4B, 4C | **área própria ou tese real na Pinguim, que recebe devs de fora** (*v0.6: é onde ela fica*, D-128) | `permissao_padrao = nenhuma`: sem permissão dada por pessoa, dev de fora não vê a app (D-13); área própria só com `estrategico`, `curador` ou responsável, e 404 para os demais (D-107); QA só com áreas de prospecção, referência ou fictícias, e o QA Principal sem `estrategico`. O admin da instância vê tudo: risco aceito, escrito no README da app |
+| R-51 | todas | **repositório público com dado interno ou segredo**: fixture de área própria, retrato da planilha, relatório de QA ou CSV exportado com dado de área, token em arquivo | nenhum dado interno nem segredo entra no repositório; dado entra pela instância (3.1); golden set com geometria fictícia para própria e prospecção (24.2); `qa-relatorios/` sem área própria; a varredura de secrets do `validate.yml` cobre `apps/`; o retrato datado só leva o que o site já publica |
+| R-52 | 0 | **site e app no mesmo workspace pnpm**: o `pnpm install` da raiz passa a resolver o `@urbiverso/sdk` privado, e o `validate.yml` do site quebra sem o token; um `test` da raiz pode rodar a suíte errada; regra do site aplicada à app ou o contrário | `validate.yml` com `URBIVERSO_PACKAGES_TOKEN` no mesmo PR que cria o workspace, e verde nele; scripts do site intactos no `package.json` da raiz e os da app no pacote dela; delimitação por caminho escrita em 3.1 e nas notas de escopo (D-126, D-127); um PR por lado |
+| R-53 | 3, 5 | **coleta nos portais e IVV, FipeZap e dado de portal usados sem parecer jurídico** | risco aceito pelo dono (D-134): uso interno, app só autenticada, nunca página pública (D-02), fonte no pacote e no CSV; postura de coleta de 8.1 (identificação honesta, sem contornar captcha nem login) |
+| R-54 | 2, 4B | **extração por IA lê errado um PDF e o número entra como fato** | desligada por padrão (D-133); gera só prévia, validada como CSV, que o operador confere e corrige antes de aplicar; o PDF fica como anexo da carga, para conferência; a importação pode ser desfeita (11.3.2) |
 
 ---
 
@@ -6398,9 +6549,9 @@ fase acrescenta o que encontrar e marca o que resolveu.
 | Gerar ficha | 10 s | congelar a partir do dossiê em cache |
 | Abrir o app no celular (primeira tela útil) | 3 s em 4G | carregar camadas sob demanda |
 
-A Pinguim é a instância de teste: os alvos são medidos lá com dado público e anúncios reais e
-com áreas de prospecção, referência ou fictícias, nunca áreas próprias (que só existem na
-Laputa; seção 14). O QA de cada fase mede os alvos das telas dela e registra no PR. A **fase 0**
+A Pinguim é a instância do plano atual: os alvos são medidos lá com dado público e anúncios
+reais e com áreas de prospecção, referência ou fictícias; o token do QA nunca lê área própria
+(seção 14). O QA de cada fase mede os alvos das telas dela e registra no PR. A **fase 0**
 confere na Pinguim o que o bundle não publica: o cap global de arquivo (C-15, C-35) e, na fase
 4A, o throughput da carga da grade (C-28).
 
@@ -6489,15 +6640,17 @@ apaga é `limpar_retencao` (7.13; C-41, R-44).
 | CNPJ de empresário individual e MEI | pipeline `comercio_cnpj` | só categoria, CNAE, porte e localização; sem nome nem documento |
 | Arrematante de licitação, responsável técnico de licença | editais, DODF, licenças | não é guardado |
 | Fotos de campo | `observacao_fotos.foto` | orientar a não fotografar pessoas; foto com pessoa identificável é apagada a pedido |
-| Áreas próprias e teses | `areas_estudo` (`tipo = propria`) e tudo que pende delas (seção 14) | sigilo comercial: só quem tem `estrategico` ou `curador`, ou é o responsável, vê; para os demais, `404` e ausência em listas e exportações (v0.5). Ficha e pacote marcados "uso interno". Só existem na Laputa, nunca na Pinguim. Lista oficial: `[PENDENTE P-47]` |
+| Áreas próprias e teses | `areas_estudo` (`tipo = propria`) e tudo que pende delas (seção 14) | sigilo comercial: só quem tem `estrategico` ou `curador`, ou é o responsável, vê; para os demais, `404` e ausência em listas e exportações (v0.5). Ficha e pacote marcados "uso interno". Ficam na Pinguim, protegidas pela permissão por pessoa e pelo papel `estrategico`; nunca no repositório, que é público (v0.6). Lista oficial: `[PENDENTE P-47]` |
 | Trilha de saídas de área própria | `area_eventos` (usuário, ação, data) | ficha, pacote, exportação e análise de IA de área própria gravam quem gerou; não há trilha de visualização, que seria telemetria nominal (R-35) |
 
 ### 22.2 Regras
 
 - Nenhum dado pessoal sai em exportação, pacote, ficha ou contexto de IA.
 - Área própria não sai para quem não a vê (seção 14), nem em exportação; quem a vê e a leva para
-  fora deixa o registro em `area_eventos`. Na Pinguim (instância de teste, com devs de fora) não
-  entra área própria, tese nem cenário real.
+  fora deixa o registro em `area_eventos`. Área própria, tese e cenário real ficam na Pinguim,
+  que também recebe devs de fora: eles não veem a app sem permissão dada por pessoa (D-13), e
+  dentro dela a área própria pede `estrategico` (D-107). O admin da instância vê tudo, e isso é
+  risco aceito (R-50). Nenhum desses dados entra no repositório, que é público (R-51).
 - O contexto enviado ao provedor de IA leva números, achados e textos de síntese, nunca nome de
   pessoa.
 - A ficha registra quem a gerou; o pacote leva o nome do arquivo e a data, não o usuário.
@@ -6512,8 +6665,9 @@ apaga é `limpar_retencao` (7.13; C-41, R-44).
   guarda metadados das chamadas; o doc não diz se guarda o contexto (R-38). A análise de IA de
   área própria segue as mesmas regras (sem dado pessoal; política de retenção do contrato do
   admin) e grava a saída em `area_eventos`.
-- O uso de IVV e FipeZap (dado de terceiro) em exportação, pacote e contexto de IA, e a coleta
-  automática nos portais, dependem de `[PENDENTE P-45]`.
+- O uso de IVV, FipeZap e dado de portal (dado de terceiro) em exportação, pacote e contexto de
+  IA, e a coleta automática nos portais, seguem sem parecer jurídico: uso interno, risco aceito
+  pelo dono (D-134). Nunca em página pública (D-02); o pacote e o CSV exportado levam a fonte.
 
 ---
 
@@ -6523,28 +6677,33 @@ Valores iniciais de `comum/fontes.ts`, a calibrar com a primeira carga de cada f
 fonte passa do frescor, o rodapé de procedência mostra "fonte atrasada" e o Início lista.
 A Operação › Saúde (10.7) lista as atrasadas junto com as bloqueadas e a cadeia mensal (v0.5).
 
-A coluna **Dono** (v0.5) nomeia quem responde por cada fonte: quem a carrega quando é manual
-(IVV de PDF, Terracap, licenciamento, faixas de programa) e quem acompanha o pipeline quando é
-pública. Hoje nenhuma tem responsável nomeado, e a escolha é do dono da app.
+Todas as fontes são externas e públicas e ficam fora do app. A coluna **Modo** (v0.6, D-132) diz
+como o dado chega: `automatica` (uma rotina busca por URL pública com `fetch`: o manifest do
+pipeline, a API do Banco Central, os portais), `manual` (alguém sobe o arquivo na Operação ›
+Importações: CSV pelo importador; PDF, planilha ou imagem como anexo da carga, com extração
+assistida por IA quando ligada; seção 11.1) ou `ambas` (automática, com o upload como plano B
+quando a busca falha). A coluna **Responsável** nomeia quem responde pela fonte: o admin, salvo
+indicação (fecha P-44). Carga manual atrasada aparece como fonte atrasada; não há alerta de prazo
+(D-131). O modo é declarado em `comum/fontes.ts` e pode mudar sem schema.
 
-| Fonte | Periodicidade | Frescor esperado | Observação | Dono |
-|---|---|---|---|---|
-| Anúncios (coleta) | diária | 2 dias | atraso = rotina parada ou fonte bloqueada | `[PENDENTE P-44]` |
-| IVV | mensal | 75 dias | publicação de terceiro; atraso não é erro da app | `[PENDENTE P-44]` |
-| FipeZap | mensal | 45 dias | | `[PENDENTE P-44]` |
-| Séries do Banco Central | mensal | 45 dias | | `[PENDENTE P-44]` |
-| CUB-DF | mensal | 60 dias | `[PENDENTE P-34]` | `[PENDENTE P-44]` |
-| Terracap | por edital | 120 dias | sem edital no período não é atraso; o aviso só diz "sem licitação recente" | `[PENDENTE P-44]` |
-| Licenciamento (CAP/SEDUH) | mensal | 60 dias | `[PENDENTE P-12]` | `[PENDENTE P-44]` |
-| CNPJ | mensal | 60 dias | | `[PENDENTE P-44]` |
-| OpenStreetMap | contínua | 90 dias | | `[PENDENTE P-44]` |
-| PDAD | cerca de bienal | 900 dias | a idade aparece em todo número | `[PENDENTE P-44]` |
-| Censo, Grade, CNEFE | decenal | — | a idade aparece em todo número; sem alerta | `[PENDENTE P-44]` |
-| AOP (Ipea) | pontual | — | marcado como base 2017–2019 e população de 2010 | `[PENDENTE P-44]` |
-| MapBiomas | anual | 450 dias | | `[PENDENTE P-44]` |
-| Open Buildings | pontual | — | até 2023 | `[PENDENTE P-44]` |
-| Tráfego do DER | conforme publicação | 120 dias | | `[PENDENTE P-44]` |
-| PDOT | por revisão do plano | — | a vigência aparece na ficha da zona | `[PENDENTE P-44]` |
+| Fonte | Periodicidade | Frescor esperado | Observação | Modo | Responsável (admin, salvo indicação) |
+|---|---|---|---|---|---|
+| Anúncios (coleta) | diária | 2 dias | atraso = rotina parada ou fonte bloqueada | `automatica` (rotinas de coleta; anúncio por URL no Cadastro) | admin |
+| IVV | mensal | 75 dias | publicação de terceiro; atraso não é erro da app | `manual` (PDF como anexo, com extração assistida) | admin |
+| FipeZap | mensal | 45 dias | | `manual` | admin |
+| Séries do Banco Central | mensal | 45 dias | | `automatica` (API pública do Banco Central) | admin |
+| CUB-DF | mensal | 60 dias | `[PENDENTE P-34]` | `manual` | admin |
+| Terracap | por edital | 120 dias | sem edital no período não é atraso; o aviso só diz "sem licitação recente" | `manual` (edital em PDF como anexo, com extração assistida) | admin |
+| Licenciamento (CAP/SEDUH) | mensal | 60 dias | `[PENDENTE P-12]` | `manual` | admin |
+| CNPJ | mensal | 60 dias | | `automatica` (manifest do pipeline) | admin |
+| OpenStreetMap | contínua | 90 dias | | `automatica` (manifest do pipeline) | admin |
+| PDAD | cerca de bienal | 900 dias | a idade aparece em todo número | `manual` | admin |
+| Censo, Grade, CNEFE | decenal | — | a idade aparece em todo número; sem alerta | `automatica` (manifest do pipeline) | admin |
+| AOP (Ipea) | pontual | — | marcado como base 2017–2019 e população de 2010 | `automatica` (manifest do pipeline) | admin |
+| MapBiomas | anual | 450 dias | | `automatica` (manifest do pipeline) | admin |
+| Open Buildings | pontual | — | até 2023 | `automatica` (manifest do pipeline) | admin |
+| Tráfego do DER | conforme publicação | 120 dias | | `manual` | admin |
+| PDOT | por revisão do plano | — | a vigência aparece na ficha da zona | `ambas` (manifest do pipeline; upload se o portal falhar) | admin |
 
 ---
 
@@ -6552,9 +6711,9 @@ pública. Hoje nenhuma tem responsável nomeado, e a escolha é do dono da app.
 
 ### 24.1 As sete jornadas
 
-Cada jornada é feita por uma pessoa da equipe, na **Laputa**, com dado real, e é o aceite das
-fases indicadas: a jornada feita, com data e quem, é a condição (c) do portão entre fases (seção
-15). Na Pinguim o QA repete as jornadas só com áreas de prospecção, referência ou fictícias. O
+Cada jornada é feita por uma pessoa da equipe, na **Pinguim**, com dado real, e é o aceite das
+fases indicadas: a jornada feita, com data e quem, é a condição (b) do portão entre fases (seção
+15). O QA repete as jornadas só com áreas de prospecção, referência ou fictícias. O
 tempo é uma meta de uso, não de desempenho.
 
 | # | Jornada | Persona | Passos | Saída esperada | Fases |
@@ -6573,7 +6732,9 @@ seriam candidatas a sair para o Futuro, o que depende de decisão `[PENDENTE P-4
 ### 24.2 Áreas de referência (golden set)
 
 Três áreas escolhidas pela equipe, uma de cada tipo (própria, prospecção, referência)
-`[PENDENTE P-37]`. Os aceites numéricos usam o **retrato datado** (`migracao/AAAA-MM-DD/`, com
+`[PENDENTE P-37]`. Como o repositório é público (v0.6), a fixture versionada da área própria e a
+da área de prospecção usam geometria fictícia com o mesmo perfil (mesma RA, mesmo porte e mesma
+mistura de restrições); a área real correspondente é conferida só na instância. Os aceites numéricos usam o **retrato datado** (`migracao/AAAA-MM-DD/`, com
 sha256), nunca a planilha viva nem o dado vivo da instância. Para cada área,
 `testes/fixtures/areas_referencia/<area>/` guarda a **entrada congelada** (geometria, extrato das
 células, métricas e pontos do maior anel, com `versoes_conjuntos` e data de corte) e o
@@ -6584,6 +6745,7 @@ entrada congelada, em `node --test`, sem instância: diferença acima de 2% em c
 5% em estatística de amostra, bloqueia a fase até ser explicada. Na Pinguim a conferência é
 informativa e só compara quando as versões dos conjuntos coincidem com as da fixture; versão nova
 de conjunto não reprova nada e pede, se quiserem, uma fixture nova com novo cálculo à mão. A área
-própria do golden set tem a entrada congelada no repositório privado, e nunca é carregada na
-Pinguim.
+própria real do golden set nunca entra no repositório: a entrada congelada dela é a da versão
+fictícia, e a conferência com a área real é feita na Pinguim por quem tem `estrategico`, como
+informação, sem gravar o resultado no repositório (R-51).
 
