@@ -1,7 +1,7 @@
-# Proposta de MVP — Inteligência Imobiliária no UrbiVerso
+# MVP — Inteligência Imobiliária no UrbiVerso
 
-**Status:** proposta para o dono fechar item a item ([#199](https://github.com/rafaleandrog/inteligencia-real-estate/issues/199)).
-**Base:** `docs/SPEC_URBIVERSO.md` v0.6, seção 15 e D-129. A spec continua cobrindo todas as fases;
+**Status:** **fechado pelo dono em 2026-10-17** ([#199](https://github.com/rafaleandrog/inteligencia-real-estate/issues/199)). Falta só a P-06 (quem recebe acesso na Pinguim).
+**Base:** `docs/SPEC_URBIVERSO.md` v0.7, seção 15 (15.1a, 15.1b) e D-129. A spec continua cobrindo todas as fases;
 este documento só recorta o que entra na primeira versão.
 **Instância:** Pinguim. **Repositório:** este, com a app em `apps/inteligencia_imobiliaria/` e o site
 antigo intacto e funcionando (D-126).
@@ -11,14 +11,17 @@ antigo intacto e funcionando (D-126).
 A equipe abre a app na Pinguim e encontra, com o dado importado da planilha, o **mapa** com
 anúncios, lançamentos, âncoras e contornos; o **cadastro** desses objetos com atributos próprios;
 o **Mercado** e o **Diagnóstico** iguais aos do site; e a **ligação de objetos ao imóvel do núcleo
-imobiliário**, com a ficha do imóvel mostrando o dado do núcleo ao lado do dado da pesquisa.
+imobiliário**, com a ficha do imóvel mostrando o dado do núcleo ao lado do dado da pesquisa; e
+as **áreas de estudo** cadastradas (desenho ou KMZ), ligadas ao núcleo e com atributos. Toda tabela
+de objeto tem **"Importar CSV" na própria tela**, e uma sessão do Claude também pode completar os
+dados pela API da app.
 
 O que o MVP **não** faz: coleta automática nos portais (o site e o Apps Script continuam coletando),
-dados públicos e grade, áreas de estudo com dossiê, IA, comércio e âncoras.
+dados públicos e grade, dossiê e ficha das áreas, IA, comércio e âncoras.
 
 ## 2. O que entra
 
-São cerca de 11 a 13 PRs, cada um com release na Pinguim.
+São cerca de 12 a 14 PRs, cada um com release na Pinguim.
 
 | # | Item | Fase / PR | O que a pessoa vê | Framework do UrbiVerso (doc do SDK) | Como validar na Pinguim |
 |---|---|---|---|---|---|
@@ -30,6 +33,9 @@ São cerca de 11 a 13 PRs, cada um com release na Pinguim.
 | 6 | Qualidade e migração | 1d | Operação › Qualidade; os passos 0 a 7 e 10 da migração | `banco-de-dados.md`; `lixeira.md` (restaurar pela Config) | os achados de qualidade da importação aparecem e se resolvem |
 | 7 | Núcleo imobiliário | 1a-N1 | Cadastro › Vínculos com o núcleo; camada Núcleo no mapa; ficha do objeto em duas seções (núcleo e pesquisa) | `modulos.md` (`dependencias`, `urbiVerso.modulo`); `nucleo.md` (rotas, filtros, paginação) | um contorno do Urbigis/Magis ligado a um lote do núcleo mostra `id_legivel`, área, quadra, parcelamento e matrícula iguais aos do cadastro |
 | 8 | Atributos extensíveis | 1a-N2 | Cadastro › Atributos; bloco "Atributos" em toda ficha; filtro por faixa | `banco-de-dados.md`; `config-app.md` (o que é parâmetro e o que é dado) | o admin cria um atributo numérico, o curador grava em três objetos e a lista filtra pela faixa |
+| 8a | Áreas de estudo mínimas | 1b (1 PR) | lista e mapa das áreas; criar por desenho ou KMZ; tipo, estágio e responsável; vínculo ao núcleo; atributos | `banco-de-dados.md`; `arquivos.md` (KMZ); `permissoes.md` (papel `estrategico` para áreas próprias); `modulos.md` | uma área importada do Urbigis/Magis aparece no mapa, ligada a um lote do núcleo e com um atributo gravado; quem não tem `estrategico` não vê área própria |
+| 8b | Importar CSV em toda tabela de objeto | 1 a 2 | botão "Importar CSV" e modelo de CSV na tela de cada cadastro; atributos como colunas `atr_<codigo>` | `arquivos.md` (upload em dois passos); `banco-de-dados.md` | um CSV importado pela tela de anúncios entra com prévia, aplica e se desfaz |
+| 8c | Carga por agente | 1 | nada novo na tela: uma sessão do Claude, com o token de um usuário de serviço "Carga", usa as mesmas rotas de importação | `tokens-api.md`; `permissoes.md` (papel `operador`); skill `instancia-urbiverso` para criar o usuário e o token | uma sessão importa um CSV pela API e a importação aparece na tela com o autor "Carga" |
 | 9 | Mercado | 2 | IVV, IVV regional, FipeZap, com séries e derivados | `banco-de-dados.md` (`sql_declarado` com janela); `ui-componentes-conteudo.md` (`urbi-grafico-*`, `urbi-kpi`) | os 30 valores da fixture de paridade conferem com o site |
 | 10 | Diagnóstico | 2 | perfil territorial, ranking, comparar, base de dados (PDAD) | `banco-de-dados.md`; `ui-componentes-layout.md` (`urbi-abas`) | mesmos números do site para o mesmo recorte; a Base de dados lista as fontes |
 | 11 | Base de qualquer tela | 0 a 2 | "Como ler" em cada tela; erros traduzidos; tela inicial em `/` com atalhos para o que já existe | `ajuda.md`; `documentacao.md` (`docs/` servido em `/{app}/docs`) | toda tela do MVP tem "Como ler" e procedência |
@@ -46,27 +52,23 @@ disponível para um agente ler, sem trabalho da app).
 | 3 | Coleta automática nos portais, histórico mensal, candidatos | o site e o Apps Script já coletam; a app recebe o retrato por reimportação; o corte só com ordem do dono | não: é a fase mais delicada (SSRF, travas, sete dias de rotina) |
 | 4 | Dados públicos do pipeline e tráfego | depende de o pipeline publicar e das rotinas | não |
 | 4A | Grade analítica H3 e enriquecimento | depende da fase 4 e de volume de anúncios com coordenada exata | não |
-| 4B | Áreas de estudo, dossiê, demanda e produto, Terracap | é a primeira tela "de decisão"; grande | **sim, em parte**: cadastro de área (polígono, tipo, estágio), vínculo ao núcleo e atributos, sem dossiê (ver decisão 2) |
+| 4B | Dossiê das áreas, fichas, demanda e produto, Terracap | é a primeira tela "de decisão"; grande | o cadastro mínimo de áreas **já entrou** no MVP (15.1b); a 4B estende a mesma tabela |
 | 4C | Tese, diligência e portfólio | depende da 4B | não |
 | 5 | Análises por IA | depende da camada de achados | não |
 | 6 | Fechamento da migração | congela a planilha; só depois de tudo | não |
 | 7 | Comércio e âncoras | depende do pipeline (CNPJ, OSM) | não |
-| Futuro | geometria oficial do lote (`geo`), isócronas, ITBI, ficha do lote, PDF | dependem de contrato ou de fonte que não existe ainda | não |
+| Futuro | geometria oficial do lote (`geo`), isócronas, ITBI, ficha do lote, PDF; e, por decisão do dono (P-46), lentes de aptidão, bolsões (Gi*) e análise de recorte em tela | dependem de contrato ou de fonte que não existe ainda, ou não servem a nenhuma jornada | não |
 
-## 4. Decisões para fechar
+## 4. Decisões do dono (2026-10-17)
 
-1. **O MVP é o da seção 2?** Fases −1, 0, 1 (1a a 1d), camada do núcleo e fase 2. Recomendo sim.
-2. **Antecipar áreas de estudo mínimas?** Cadastro de área (desenho ou KMZ do Urbigis/Magis, tipo,
-   estágio), vínculo ao núcleo e atributos, sem dossiê nem ficha. Custa 1 PR e torna o vínculo com
-   o núcleo mais útil para decidir sobre áreas. Recomendo sim.
-3. **Fase 2 inteira no MVP?** Mercado e Diagnóstico repetem o site e servem de prova de paridade.
-   Alternativa: só o Mercado. Recomendo inteira.
-4. **P-46, corte de escopo:** lentes de aptidão, bolsões (Gi*) e análise de tela saem da V1 e vão
-   para o Futuro? Não afetam o MVP, mas fecham a spec. Recomendo sim, mantendo as áreas gêmeas.
-5. **Atualização do dado no MVP:** sem coleta automática, a app se atualiza por reimportação do
-   retrato da planilha, feita pelo admin quando quiser (o script gera o retrato e a importação usa o
-   modo `atualizar`). Combinado?
-6. **Quem usa na Pinguim (P-06):** nomes de quem recebe `leitura` e de quem é admin da app.
+1. **MVP:** fases −1, 0, 1, camada do núcleo e fase 2. Sim.
+2. **Áreas de estudo mínimas no MVP:** sim (15.1b).
+3. **Fase 2:** inteira (Mercado e Diagnóstico).
+4. **P-46:** lentes, bolsões (Gi*) e análise de tela vão para o Futuro; áreas gêmeas ficam na V1.
+5. **Como os dados entram:** sem manter a página antiga nem a planilha atualizadas à mão. Toda
+   tabela de objeto tem "Importar CSV" na própria tela, e uma sessão do Claude completa os dados pela
+   API da app com o token de um usuário de serviço (spec 11.5).
+6. **Quem usa na Pinguim (P-06):** em aberto; não bloqueia o começo, só a liberação de acesso.
 
 ## 5. O que falta para começar, além da spec
 
@@ -80,7 +82,7 @@ disponível para um agente ler, sem trabalho da app).
    - o cap de arquivo informado.
 3. **Acesso à planilha** para gerar o retrato datado. O script lê por GViz, então a planilha
    precisa estar compartilhada para leitura, como hoje o site a lê.
-4. **Respostas às decisões da seção 4.**
+4. **P-06:** quem recebe acesso de leitura e quem é admin da app na Pinguim.
 
 Com isso, a primeira sessão de código faz a fase 0: a pasta da app, o workspace aditivo, o kit e o
 `0.1.0` instalado na Pinguim, sem mexer no site.
