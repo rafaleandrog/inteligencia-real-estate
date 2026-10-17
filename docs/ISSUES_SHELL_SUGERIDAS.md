@@ -37,8 +37,9 @@ Esta lista sai da conferência da spec v0.3/v0.4 contra o `@urbiverso/sdk` **100
 | S-29 | Documentar os limites de transporte do servidor (URL, cabeçalhos) | C-77 | `ausente_no_sdk` | media |
 | S-30 | Documentar teto de resposta e compressão HTTP para rotas de app | C-79 | `ambiguo` | media |
 | S-31 | Documentar o timeout de requisição HTTP para rotas de app | C-80 | `ausente_no_sdk` | media |
+| S-32 | Publicar no SDK o contrato do módulo `geo` e o `feicao_id` do imobiliário | P-49 (spec v0.6) | `ausente_no_sdk` | media |
 
-Total: 31 (alta 0 · media 18 · baixa 13).
+Total: 32 (alta 0 · media 19 · baixa 13). A S-32 entrou na spec v0.6, fora da conferência da #195.
 
 ---
 
@@ -350,4 +351,14 @@ Total: 31 (alta 0 · media 18 · baixa 13).
 - **Por que (spec):** §6.8 (`POST /analises/*` em `202`); §21.1 (dossiê 8 s, ficha 10 s); §6.11 (l. ~2503–2508, ~4510–4522).
 - **Plano B adotado na spec v0.4:** IA por `consultarAsync` com evento de callback declarado (`analise_concluida`) e resposta `202`; a rotina mensal enfileira em vez de esperar; dossiê calculado por bloco em chamadas separadas quando passar de ~8 s (D-82).
 - **Impacto de não ter o contrato:** rotas síncronas mais longas (dossiê) ficam sem garantia de não serem cortadas pelo proxy.
+- **Prioridade sugerida:** media.
+
+## S-32 — Publicar no SDK o contrato do módulo `geo` e o `feicao_id` do imobiliário
+
+- **Item:** P-49 da spec v0.6 (`ausente_no_sdk`); não vem da conferência da #195.
+- **Contexto:** o SDK 100 documenta o imobiliário 1.0.0, cujo supertipo de imóvel só tem `matricula_id` e `area` (`docs/nucleo.md` › Imóveis); o tipo `geometria` é só de módulo (`docs/banco-de-dados.md`). A geometria do lote mora no módulo `geo` (feições), e o imobiliário 1.3.0 guarda o `feicao_id`, mas a busca por `feicao_id` e por `geo` no bundle dá zero ocorrências. A Pinguim já roda `geo` 1.0/1.1 e `imobiliario` 1.3.0 (UP-Urbita/urbigis#18). O filtro `bbox` das listagens do imobiliário responde `501`.
+- **O que a app precisa:** a identidade e as entidades do `geo` que uma app pode declarar em `dependencias`, a rota de leitura da feição (por id e por caixa), o formato da geometria devolvida (GeoJSON, `[lng, lat]`, EPSG:4326) e o `feicao_id` no payload de lote, gleba e unidade do imobiliário, com a versão mínima de cada um.
+- **Por que (spec):** §1.3 e §5.1 (separação de origens; D-136), §5.25 (vínculo e cliente do núcleo; D-138, D-140), §10.2 (camada Núcleo) e §10.14 (ficha do objeto); D-141.
+- **Plano B adotado na spec v0.6:** a camada Núcleo desenha os objetos da app que têm vínculo pela geometria da própria app (polígono do contorno ou da área de estudo, ponto do lote Terracap ou do lançamento), com selo e legenda "traçado da pesquisa, não o oficial do lote"; não usa `bbox` do imobiliário nem componente `imobiliario-*`; o traçado oficial entra quando o contrato estiver publicado, lido ao vivo e nunca copiado.
+- **Impacto de não ter o contrato:** o mapa não mostra o lote registrado, e o polígono da pesquisa pode divergir dele sem que a tela mostre; a conferência entre os dois fica visual e fora da app.
 - **Prioridade sugerida:** media.

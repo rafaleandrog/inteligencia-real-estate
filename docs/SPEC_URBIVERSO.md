@@ -157,6 +157,31 @@ reg360, radar_sei, nobi e o Urbigis). Seis ficaram para o dono (P-42 a P-47). Em
   duas fichas da mesma área; `hipoteses_produto` (D-124) e a 4C sem depender das fases 5 e 7
   (D-105).
 
+### O que mudou da v0.5 para a v0.6
+
+A v0.6 incorpora as respostas do dono às pendências da v0.5 e corrige três premissas:
+
+- **Repositório e site (3.1, 15.0):** a app vive neste repositório, em
+  `apps/inteligencia_imobiliaria/`, com identidade
+  `rafaleandrog/inteligencia-real-estate::inteligencia_imobiliaria` (D-125, como a `viabilidade`
+  do mesmo dono); o site antigo fica intacto e funcional como referência, com a planilha e o Apps
+  Script, e o workspace da app é aditivo (D-126); as regras do site e as do kit valem por caminho
+  (D-127).
+- **Instância (3.6, 15):** só a Pinguim até o MVP (D-128); o MVP são as fases −1, 0, 1 e 2 mais a
+  camada do núcleo (15.1a; D-129); produção depois, por decisão do dono.
+- **Papéis e alertas (14, 13):** o admin faz tudo e os demais leem; papéis padrão declarados com
+  governança leve (D-130); alerta só de erro (D-131).
+- **Fontes (5.11, 6.9, 11.1, 23):** cada fonte é automática, manual ou ambas; upload de CSV, PDF e
+  outros arquivos como plano B, com extração assistida por IA desligada por padrão (D-132, D-133);
+  uso interno sem parecer jurídico, como risco aceito (D-134); releases no ritmo dos PRs (D-135).
+- **Objetos e núcleo (1.3, 5.24, 5.25, 10.14, 15.1a):** os objetos da pesquisa e seus atributos
+  vivem no esquema da app (D-136), com catálogo de atributos extensível sem release (D-137);
+  alguns se ligam ao imóvel do núcleo imobiliário por `vinculos_nucleo` (D-138); a dependência do
+  imobiliário entra no MVP com `versao_min` 1.0.0 (D-139, revê a D-06), por um cliente único no
+  frontend (D-140); a geometria oficial do lote, no módulo `geo`, entra quando o contrato estiver
+  no SDK (D-141, P-49).
+- Fecham P-42 a P-45, P-47 e P-48; entram P-49 e os riscos R-51 a R-58.
+
 ---
 
 ## Sumário
@@ -272,6 +297,14 @@ Estes princípios estão provados em produção há meses e entram na app sem mu
 - **A célula é a chave de junção (D-34).** Anúncio, lançamento, âncora, lote, licença e ponto
   comercial carregam `h3_r9`; dado público chega por célula; qualquer área desenhada vira um
   conjunto de células.
+- **Pesquisa na app, cadastro oficial no núcleo (v0.6, D-136).** Os objetos da pesquisa
+  (anúncios, lançamentos, âncoras, contornos, áreas de estudo, lotes Terracap e os demais pontos e
+  polígonos do mapa) vivem no schema da app. Ela é a fonte de verdade deles e dos seus atributos,
+  fixos e extensíveis (seção 5.24), e é onde eles ficam prontos e quantificáveis. O núcleo
+  imobiliário é o cadastro oficial: a app só o lê ao vivo pelo módulo e nunca o copia. A geometria
+  oficial do lote é do módulo `geo`, ligada ao imóvel pelo núcleo; a V1 ainda não a lê (P-49).
+  Alguns objetos da app se ligam a um registro do núcleo, não todos, e o vínculo é uma linha de
+  `vinculos_nucleo` (seção 5.25).
 
 ### 1.4 Quem usa e para quê (v0.3)
 
@@ -281,7 +314,7 @@ Estes princípios estão provados em produção há meses e entram na app sem mu
 | **Direção de Novos Negócios** | `leitura` + `estrategico` | lê os resultados: o que mudou no mês (Início), o portfólio das áreas, fichas para decidir, a agenda de decisão de cada área; gera ficha e exporta |
 | **Decisor** | `escrita` + `decisor` | registra decisão sobre uma área e muda o estágio a partir de `iniciativa`, inclusive o encerramento (v0.6) |
 | **Analista de Novos Negócios** | `escrita` (+ `estrategico` para quem trabalha áreas próprias) | triar glebas, montar o dossiê, registrar síntese, tese e condições, simular produto, âncora e viabilidade, gerar a ficha |
-| **Curador de dados** | `escrita` + `curador` | inserir e corrigir dados: cadastros, candidatos, grupos e vínculos, áreas próprias, faixas de programa |
+| **Curador de dados** | `escrita` + `curador` | inserir e corrigir dados: cadastros, candidatos, grupos e vínculos, áreas próprias, faixas de programa; na v0.6, o catálogo de atributos e os vínculos com o núcleo (5.24, 5.25) |
 | **Operador de dados** | `escrita` + `operador` | buscas, cargas, rotinas manuais, importações, saúde do parser, qualidade |
 | **Agente** (Claude ou outro) | o nível do token | ler o mesmo que as telas mostram, pelas mesmas rotas, para montar análises e documentos fora do app |
 
@@ -392,7 +425,8 @@ E, na v0.3:
 - Ficha do lote com parâmetros urbanísticos, ITBI e avisos de mudança relevante (D-52).
 - Fluxo de pessoas por celular, que não tem fonte pública no Brasil (D-46).
 - Modelo 2, base histórica multi-cidade (`warehouse/`), issue #154.
-- Dependência do módulo `imobiliario` do UrbiVerso (D-06).
+- Traçado oficial do lote pelo módulo `geo` (P-49). A dependência do módulo `imobiliario` saiu
+  daqui na v0.6 e entrou no MVP (seção 15.1a; D-139).
 - Páginas públicas.
 - Proxy de saída para os portais, só se a medição da fase 3 mostrar bloqueio: pedido ao admin da
   instância, no proxy de egresso dela (D-09, D-79).
@@ -411,10 +445,17 @@ sem ela). Não há repositório novo nem org UP-Urbita. Precedente: a app `viabi
 roda na Pinguim a partir de repositório pessoal (`rafaleandrog/viabilidade-real-estate::viabilidade`).
 O kit recusa `manifesto.json` na raiz, por isso a pasta fica sob `apps/` (D-125; substitui a D-95).
 
-**O que muda na raiz (v0.6, D-126).** A raiz vira workspace pnpm: `pnpm-workspace.yaml` com
-`apps/*` e o catálogo de versões, `packageManager` pnpm no `package.json` e `pnpm-lock.yaml`
-versionado; o `package-lock.json` sai. O `package.json` do site continua na raiz, com os scripts
-dele (`test`, `smoke`, `serve`…), e o `validate.yml` do site passa a instalar com pnpm. A ordem de
+**O site antigo fica intacto e funcional (v0.6, D-126).** Por decisão do dono, a construção da
+app não apaga nem muda nada do site: GitHub Pages, `index.html`, `admin.html`, `src/`, a conexão
+com a planilha do Google (GViz e Apps Script), o pipeline e os workflows dele seguem como hoje,
+como referência viva de visualização e de comportamento. Tudo o que a app acrescenta é **aditivo**
+e mora em espaço próprio: `apps/inteligencia_imobiliaria/` (a app), mais os arquivos de workspace
+na raiz — `pnpm-workspace.yaml` (só `apps/*` e o catálogo de versões), `pnpm-lock.yaml` e o campo
+`packageManager` no `package.json` da raiz, que o `ci.yml` do kit exige (`corepack enable`). Nada
+mais no `package.json` muda; o `package-lock.json` fica, e o `validate.yml` do site continua com
+npm. Os dois lockfiles convivem: o npm lê o `package-lock.json` e o pnpm lê o `pnpm-lock.yaml`
+(R-52). Qualquer remoção ou mudança de comportamento do site só com ordem expressa do dono,
+inclusive o corte da coleta do Apps Script na fase 3. A ordem de
 instalação do kit importa: `apps/inteligencia_imobiliaria/` (com o `manifesto.json` mínimo) nasce
 **antes** de rodar `npx @urbiverso/kit-apps`. O kit só semeia `apps/ola_mundo` onde não há `apps/`
 nem `modulos/`, e o manifesto da app é o sinal de onde ele está; sem ele, recusa e pede
@@ -447,11 +488,12 @@ Raiz do repositório (o que fica fora da pasta da app; o resto do site segue ond
 
 ```
 rafaleandrog/inteligencia-real-estate/
-├── package.json, pnpm-lock.yaml              # do site, agora com packageManager pnpm; package-lock.json sai
+├── package.json, package-lock.json          # do site, intactos (só ganha o campo packageManager)
+├── pnpm-lock.yaml                            # novo: lockfile do workspace da app
 ├── KIT.md, CLAUDE.md, pnpm-workspace.yaml   # KIT.md e pnpm-workspace.yaml do kit; o CLAUDE.md é deste repositório
 ├── .github/workflows/
 │   ├── ci.yml, release.yml                   # do kit (typecheck, build, test, empacotamento; release)
-│   ├── validate.yml, pipeline-tests.yml, …   # do site e do pipeline, como hoje (validate.yml com pnpm)
+│   ├── validate.yml, pipeline-tests.yml, …   # do site e do pipeline, intactos (npm, como hoje)
 │   └── sdk-noturna.yml                       # noturna contra o SDK novo, do repositório (18.2)
 ├── scripts/
 │   ├── exportar-planilha.mjs                 # retrato datado da planilha, aba por aba, por GViz (11.3)
@@ -561,13 +603,18 @@ quando o ganho justifica.
 | Arquivos | CSV de importação, anexo de carga manual (PDF, planilha, imagem; v0.6), shards dos dados públicos, KML/KMZ importado | colunas `arquivo` |
 | Permissões | níveis + papéis `curador`, `operador` e `estrategico` (v0.5) e `decisor` (v0.6; D-130); **rotas pessoais** para as visões salvas (D-80) e a telemetria de uso (`/pessoal/uso`) | `roles` + `export const rotasPessoais` |
 | Hooks de ciclo de vida | `aoIniciar` (dispara a semente memoizada, que as rotas aguardam, e reconcilia as inscrições) e `aoEncerrar` (cancela lote em voo) | exports |
+| Módulos (dependência, v0.6) | leitura ao vivo do núcleo imobiliário (`imoveis`, `parcelamentos`, `incorporacoes`, `matriculas`, `setores_habitacionais`), só no frontend, pelo cliente único `comum/nucleo-cliente.ts`; a app guarda só o vínculo em `vinculos_nucleo` (seções 5.25 e 15.1a; D-139, D-140) | `dependencias` |
 
-Não usa na V1: Segregação por conta (um território não é um tenant; C-82), Módulos (D-06; os
-contratos estão publicados e a forma exata do bloco `dependencias` está na seção 15.7), Páginas
+Não usa na V1: Segregação por conta (um território não é um tenant; C-82), Páginas
 públicas (D-02), Webhooks de entrada, Disparadores, Wiki, Email, Slack direto (a notificação por
 Slack, se vier, é destino de Remessa configurado pelo admin, sem código), Auditoria (`auditavel`
 é trilha permanente de categoria fechada, não telemetria; C-83). A **matriz completa**, framework
 a framework, com fase e motivo, está na seção 3.5.
+
+**Duas origens de dado (v0.6, D-136).** A pesquisa mora no schema da app, que é a fonte de verdade
+dos objetos e dos atributos. O núcleo imobiliário é o cadastro oficial, lido ao vivo pelo módulo e
+nunca copiado. A geometria oficial do lote é do módulo `geo`, via núcleo, e fica fora até o
+contrato estar no SDK (P-49). Entre as duas origens há só o vínculo (seção 5.25).
 
 O funil de prospecção de âncoras (quem foi contatado, status, próxima ação) **não** entra: é
 trabalho de CRM e continua no CRM da equipe (D-45). A app produz a ficha que o funil usa.
@@ -644,8 +691,8 @@ motivo; **referência**: doc de processo ou de conceito que a app segue, sem ado
 | `icones.md` | Ícones | adota | 1 | Sem declaração: o `icone` de cada folha do `nav` é classe FontAwesome (§4.1) e as telas usam `<urbi-icone>`; nenhum glyph custom `ubv`. |
 | `lixeira.md` | Lixeira | adota | 1 | Aba nativa da Config para o admin, porque toda tabela de cadastro tem `soft_delete` (§5.1, §10.8); é a lixeira manual que dispensa tela própria de restauração (C-84). A purga de anúncio com retrato e de área com ficha é recusada por desenho (FK `restringir`, §5.1). Ver pontos de atenção. |
 | `modulos-autoria.md` | Módulos, autoria | não adota | — | A app é app, não módulo: não publica `modulo.js`, entidades nem componentes expostos. |
-| `modulos.md` | Módulos, dependência | adota depois | Futuro | Ligar `lancamentos`, `empreendimentos` e áreas `propria` a `incorporacoes` e `imoveis` do `imobiliario` por referência lógica, porque o módulo não expõe tabela referenciável (§15.7; D-06, C-81). |
-| `nucleo.md` | Núcleo, dados compartilhados | referência | Futuro | Modelo e semântica de `imoveis` e `incorporacoes` para quando D-06 reabrir; o contrato de acesso do núcleo (`req.nucleo`, `dependencias_nucleo`) está em obsolescência e nunca entra (C-03). Sem `pessoas`, pela regra de dado pessoal (§22). |
+| `modulos.md` | Módulos, dependência | adota | 1 (15.1a) | *v0.6:* dependência de `urbiverso/modulos-urbiverso::imobiliario` com `versao_min: "1.0.0"` e `ler` em `imoveis`, `parcelamentos`, `incorporacoes`, `matriculas` e `setores_habitacionais`, sem `transacoes` (§4.1; D-139, C-81). O imobiliário vira pré-requisito: ausente ou abaixo de 1.0.0, a instalação recusa e a app não sobe (modulos.md:67-70). Leitura só no frontend, por `urbiVerso.modulo`, no cliente único (D-140); `req.modulos` não existe em rotina (modulos.md:296-301). Referência só lógica, sem `tabela_ref` (modulos.md:394), em `vinculos_nucleo` (§5.25; D-138). Flags ligadas pelo admin com alçada `nucleo` na aba Núcleo (§15.−1). |
+| `nucleo.md` | Núcleo, dados compartilhados | referência | 1 (15.1a) | *v0.6:* rotas, campos e filtros do imobiliário 1.0.0 que o cliente único lê: lote, gleba e unidade sob a flag `imoveis`, paginação até 200 e filtro fora da allowlist ignorado calado (nucleo.md:454, 459), por isso a conferência na volta (§5.25; R-55). Nunca o detalhe de matrícula nem `/pessoas`, que trazem dado pessoal (§22). O imobiliário 1.0.0 não tem geometria; o `geo` e o `feicao_id` não estão no SDK 100 (P-49). O contrato antigo (`req.nucleo`, `dependencias_nucleo`) está em obsolescência e nunca entra (C-03). |
 | `overview.md` | Visão geral (manifesto, exports, navegação, `urbiVerso.fetch`) | adota | 0 | Manifesto e exports reconhecidos (§4.1, §4.2; C-14), `nav` com onze folhas sob o teto de 20 (C-04, D-86), hooks `aoIniciar` e `aoEncerrar` (C-11, C-12), sub-rotas e erros do `api()` com teto de corpo de 100 kB (C-69, C-70, C-78; D-92). Início em `/`, a mesma tela do Home que o shell põe no menu (§4.1); como o `aoIniciar` roda depois do `listen`, as rotas aguardam a semente (§4.2); tags com prefixo `intel-imob-` e registro que tolera a reavaliação do bundle (§3.1). |
 | `paginas-publicas.md` | Páginas Públicas | não adota | — | App só autenticada (D-02); sem `rotas_publicas` nem `paginas_publicas`. A hipótese de mapa público em §15.7 não está desenhada. |
 | `permissoes.md` | Sistema de Permissões | adota | 1 | Permissão padrão nenhuma, níveis com papéis `decisor` (v0.6), `curador` e `operador`, contrato método→nível, admin que autoatribui papel (§14; C-51, C-53, C-56; D-13, D-18), `rotasPessoais` para visões salvas (C-54, D-80) e 4ª camada "autor, responsável ou curador" nas áreas, declarada em `comum/regras-objeto.ts` e coberta por uma matriz rota × perfil (§18.1). Papel `estrategico` sob `leitura` para as áreas próprias (§4.1, §14) e `POST /pessoal/uso` em `rotasPessoais` (T6). |
@@ -676,8 +723,8 @@ motivo; **referência**: doc de processo ou de conceito que a app segue, sem ado
   lixeira (§5.1; precedente: `nobi`, `docs/limpeza.md`).
 - **A identidade do módulo imobiliário mudou.** `obsolescencias.json` › `identidade-imobiliario-antiga`:
   "a identidade … passou a `urbiverso/modulos-urbiverso::imobiliario`", com `gate_apos`
-  2026-10-09, já vencido. Tratado em §15.7, que agora
-  traz o bloco `dependencias` com a chave nova (C-81).
+  2026-10-09, já vencido. Tratado em §4.1, que traz o bloco `dependencias` com a chave nova
+  e `versao_min: "1.0.0"` (C-81; v0.6, D-139).
 - **Token de agente sem modo somente leitura.** `tokens-api.md`: "**Modo somente leitura** — tokens
   com essa flag bloqueiam métodos mutáveis (POST, PUT, PATCH, DELETE) no middleware". Tratado em §22.2: o README
   recomenda emitir o token da persona Agente como `somente_leitura`.
@@ -807,6 +854,19 @@ Pinguim, que recebe devs de fora. Regras (D-106):
     }
   },
 
+  "dependencias": {   // v0.6, D-139; seção 15.1a
+    "urbiverso/modulos-urbiverso::imobiliario": {
+      "versao_min": "1.0.0",
+      "entidades": {
+        "imoveis": ["ler"],
+        "parcelamentos": ["ler"],
+        "incorporacoes": ["ler"],
+        "matriculas": ["ler"],
+        "setores_habitacionais": ["ler"]
+      }
+    }
+  },
+
   "parametros": { /* seção 4.3 */ },
   "eventos":    { /* seção 13 */ },
   "erros":      { /* seção 13 */ }
@@ -832,8 +892,16 @@ Observações:
   `iniciativa` ou além, ou para `encerrada`, exige `admin` ou `decisor`, e grava em `area_eventos`
   quem decidiu e o motivo (seção 5.20; D-130). Não há comitê nem tabela de decisões. Como os
   demais papéis, fica declarado para quando a equipe crescer; no MVP o admin faz tudo.
-- `rotas_publicas`, `paginas_publicas`, `dependencias`, `webhooks`, `wiki`, `emails` não são
-  declarados.
+- `rotas_publicas`, `paginas_publicas`, `webhooks`, `wiki`, `emails` não são declarados.
+- **`dependencias` (v0.6, D-139).** A app lê o núcleo imobiliário pela identidade nova
+  `urbiverso/modulos-urbiverso::imobiliario` (a antiga já passou do gate; C-81), com
+  `versao_min: "1.0.0"`: é a versão que o SDK 100 documenta e a que `reg360` e `nobi` declaram; a
+  1.2.0 só traz a tela `/imobiliario`, que a app não usa. Uma flag `ler` por entidade, sem
+  `transacoes`, cujas partes são pessoas, e sem `pessoas` (seção 22). `sdk_min ≥ 87` já está
+  coberto. Declarar a dependência torna o imobiliário **pré-requisito de instalação**: ausente ou
+  abaixo da versão, a instalação recusa com `422` e a app não sobe (modulos.md:67-70); a Pinguim
+  já roda o 1.3.0. As flags começam desligadas, e o admin com alçada `nucleo` as liga em Admin ›
+  Instaláveis › Apps › Inteligência Imobiliária › aba Núcleo (modulos.md:80; seção 15.−1, item 8).
 - `ui` fica ausente: a app está sob o framework de UI e é validada por ele. O tipo `Manifesto` do
   SDK não lista `ui` nem `parametros` (só o doc os descreve), então o `manifesto.json` não é
   conferido por `satisfies Manifesto` em TypeScript (C-09).
@@ -1043,6 +1111,13 @@ saída é da instância). O tamanho máximo de `texto_longo` não é documentado
 - Geometria é GeoJSON (`geometry`) em coluna `json`, sempre `[longitude, latitude]` em
   EPSG:4326, com as quatro colunas de caixa envolvente ao lado para filtro por área. Não existe
   PostGIS para app; filtro espacial fino é feito em código sobre o resultado do filtro de caixa.
+- **Duas origens que não se misturam (v0.6, D-136).** Toda tabela deste `schema.json` é da
+  pesquisa e é a fonte de verdade do que guarda. Nenhuma copia dado do núcleo imobiliário (nome,
+  `id_legivel`, área, quadra, matrícula, geometria): ele é lido ao vivo pelo cliente único do
+  frontend (seção 5.25; D-140), e a app guarda só o id lógico, em `vinculos_nucleo`. Referência ao
+  núcleo é coluna `inteiro` sem `tabela_ref`, porque `tabela_ref` para tabela de módulo reprova
+  (modulos.md:394). Parâmetro novo de um objeto da app entra pelo catálogo de atributos (seção
+  5.24); se for usado em cálculo, rotina ou índice, vira coluna fixa por release.
 - Colunas com vocabulário fechado usam `opcoes`. Vocabulário aberto por decisão (segmento de
   âncora, situação de regularização, qualidade) fica `texto`, e quem renderiza humaniza o termo
   desconhecido em vez de vazar o slug.
@@ -1060,7 +1135,8 @@ saída é da instância). O tamanho máximo de `texto_longo` não é documentado
   `ivv_regional`, `fipezap_mensal`, `pdad_observacoes`, `pdad_figuras`, `procedencias`,
   `trechos_rodoviarios`, `trecho_aliases`, `sentidos_oficiais`, `trafego_diario`, `corredores`,
   `corredor_diario`, `empreendimentos`, `terracap_lotes`, `licenciamento_obras`,
-  `faixas_programa` e `areas_estudo`. É o que permite **desfazer** uma importação:
+  `faixas_programa`, `areas_estudo` e, na v0.6, `atributos_valor`. É o que permite **desfazer**
+  uma importação:
   soft delete das linhas daquela importação cuja `versao` ainda é a da criação (precedente:
   reg360, importação idempotente com marcador por linha). `indices`: `(importacao_id)` em cada
   uma. Tabela importável sem `versao` (as séries publicadas) compara `atualizado_em` com
@@ -1207,6 +1283,15 @@ Não há outra tabela nova na v0.5; o resto são colunas: `buscas_portal.painel`
 `adiada` em `coletas`, `terracap_lotes.destinacao_categoria`, `importacoes.desfeita_em` e
 `desfeita_por_id`, e as colunas de liquidez por Kaplan-Meier em `metricas_anuncios_mensais`.
 
+E na v0.6:
+
+```
+atributos_def ── atributos_valor (objeto_tipo, objeto_id: qualquer objeto da pesquisa)
+
+vinculos_nucleo (objeto_tipo, objeto_id) ··> imobiliario: imoveis, incorporacoes,
+                                             parcelamentos, matriculas (só id lógico)
+```
+
 Toda tabela de fato com coordenada ganha `h3_r9` (texto, indexado). Não é chave estrangeira para
 `celulas`, de propósito: a célula pode chegar depois do anúncio, e o vínculo é resolvido na
 leitura.
@@ -1339,6 +1424,11 @@ menos quatro posições, três distintas, fechado; `LineString` com ao menos dua
 [-90, 90] denuncia inversão). A conferência pela faixa é obrigatória também para a geometria que
 vem do `urbi-mapa` (`urbi:mapa-geometria`), porque o doc do primitivo não escreve a ordem das
 coordenadas que ele emite (C-61).
+
+**Vínculo com o núcleo (v0.6).** Um contorno que traça um lote, uma gleba ou um parcelamento do
+núcleo (por exemplo, um polígono do Urbigis/Magis importado por KMZ) se liga a ele por uma linha de
+`vinculos_nucleo` (seção 5.25), nunca por coluna. A geometria do contorno continua sendo a da app;
+o traçado oficial do lote fica para quando o contrato do `geo` estiver no SDK (P-49).
 
 ### 5.4 Mercado secundário (anúncios)
 
@@ -2427,6 +2517,13 @@ rotulada "da RA <nome>, PDAD <ano>", com a fração do anel em cada RA quando el
 (`censo_2022_setores` com rendimento), com a fonte escrita. As métricas `terracap_*` são sempre
 por localidade × `destinacao_categoria` (seção 5.15), e `outra` nunca entra em mediana.
 
+**Atributos numéricos (v0.6, D-137).** Atributo extensível ativo de `tipo_valor = numero` (seção
+5.24) entra no catálogo como métrica dinâmica `atr:<codigo>`, com natureza `amostra`, unidade do
+catálogo de atributos, `unidade_nativa = ponto`, sentido `neutro` e fonte "app (atributo)". Ela
+aparece nos seletores de métrica de lista, mapa e dossiê, com a supressão por n da seção 5.1. Não
+entra em achado (D-21), em índice, no hexágono nem na ficha congelada: para isso o atributo é
+promovido a coluna fixa e ganha chave estática no `comum/metricas.ts`.
+
 #### `localidade_composicao` (D-36)
 
 `acesso_externo: somente_leitura`. Pesos que levam uma localidade antiga aos limites vigentes,
@@ -2522,6 +2619,8 @@ mínimo − 1). Lote não vendido entra em "ofertado sem venda", nunca na median
 Mediana de arrematado, ágio, o achado `terra_agio` e a comparação da viabilidade são sempre por
 localidade × `destinacao_categoria` (projeção residencial, lote comercial e institucional não se
 misturam); `outra` nunca entra em mediana. `indices`: `(localidade_id, destinacao_categoria)`.
+*v0.6:* quando o lote licitado também está no núcleo, ele se liga ao imóvel por `vinculos_nucleo`
+(seção 5.25); o preço e a situação continuam da app.
 
 #### `licenciamento_obras`
 
@@ -2568,7 +2667,7 @@ oferta regional do último retrato, rotulada "rateio da cidade"; sem nenhum dos 
 | Coluna | Tipo | Obrig. | Observação |
 |---|---|---|---|
 | `nome` | texto(200) | sim | |
-| `tipo` | texto, `opcoes: ["propria", "prospeccao", "referencia"]` | sim | `propria` = área da UP; só o `curador` cria ou muda para esse tipo; de onde vem a lista oficial `[PENDENTE P-47]`. Área `propria` é sigilosa (nota abaixo) |
+| `tipo` | texto, `opcoes: ["propria", "prospeccao", "referencia"]` | sim | `propria` = área da UP; só o `curador` cria ou muda para esse tipo; a lista vem do núcleo e do Urbigis/Magis, ligada por `vinculos_nucleo` (seção 5.25; P-47 fechada). Área `propria` é sigilosa (nota abaixo) |
 | `cidade_id` | referencia → `cidades`, `restringir` | sim | |
 | `geometria`, `geometria_tipo` | json, texto | sim | ponto ou polígono, como `contornos` |
 | `bbox_oeste`, `bbox_sul`, `bbox_leste`, `bbox_norte` | decimal(10,7) | sim | |
@@ -3185,6 +3284,159 @@ o responsável, que por padrão é o admin. A rotina `verificar_frescor` compara
 achado de qualidade `FONTE_ATRASADA` (aviso), que a tela mostra no rodapé de procedência de todo
 número daquela fonte.
 
+### 5.24 Atributos extensíveis (v0.6, D-137)
+
+A equipe cadastra parâmetros novos para os objetos da pesquisa ao longo do tempo, sem esperar
+release. As colunas fixas das seções 5.3 a 5.22 continuam; o catálogo acrescenta, por cima delas,
+atributos definidos na tela e valores por objeto. Os tipos de objeto (`objeto_tipo`) são um
+vocabulário fechado em `comum/objetos.ts`, cada um ligado à sua tabela: `anuncio`, `lancamento`,
+`ancora`, `contorno`, `area_estudo`, `terracap_lote`, `empreendimento`, `licenca_obra` e
+`ponto_comercial`. O vocabulário nasce completo; a rota só aceita o tipo cuja tabela já existe na
+fase em curso.
+
+#### `atributos_def`
+
+`acesso_externo: restrito` · `soft_delete` · `id_legivel: "{nome}"`
+
+| Coluna | Tipo | Obrig. | Observação |
+|---|---|---|---|
+| `codigo` | texto(60), `formato ^[a-z][a-z0-9_]*$` | sim | `snake_case`; não muda depois de criado, porque é a chave do filtro, da exportação e da importação |
+| `nome` | texto(120) | sim | rótulo em tela |
+| `descricao` | texto_longo | não | o que medir e como |
+| `tipo_valor` | texto, `opcoes: ["numero", "texto", "data", "booleano", "opcao"]` | sim | não muda depois que houver valor gravado |
+| `unidade` | texto(30) | não | obrigatória em `numero` (`m2`, `brl`, `brl_m2`, `frac`, `un`…); segue 5.1: percentual em fração decimal |
+| `opcoes` | json | não | lista de `{ valor, rotulo, ativo }`; obrigatória em `opcao`; só cresce: opção retirada fica `ativo: false`, para nenhum valor gravado ficar órfão |
+| `aplica_a` | json | sim | lista de `objeto_tipo`, ao menos um; pode crescer, e só encolhe se o tipo retirado não tiver valor |
+| `grupo` | texto(60) | não | agrupa o bloco na ficha (`urbanistico`, `comercial`, `juridico`…; vocabulário aberto) |
+| `ativo` | booleano, `padrao: true` | sim | inativo some do formulário, do filtro e da exportação; os valores ficam |
+| `promovido_para` | texto(120) | não | `tabela.coluna` fixa que substituiu o atributo (regra de promoção, abaixo) |
+| `versao` | inteiro, `padrao: 1` | sim | D-88 |
+
+`unicos`: `{ "colunas": ["codigo"], "onde": [{ "coluna": "removido_em", "operador": "nulo" }] }`
+(C-17). `indices`: `(ativo)`. Teto em código de 200 atributos ativos, para o formulário e o filtro
+continuarem legíveis.
+
+#### `atributos_valor`
+
+`acesso_externo: restrito`
+
+| Coluna | Tipo | Obrig. | Observação |
+|---|---|---|---|
+| `objeto_tipo` | texto, `opcoes` (os tipos acima) | sim | |
+| `objeto_id` | inteiro | sim | id do objeto na tabela da app; referência lógica, porque a linha aponta para tabelas diferentes |
+| `atributo_id` | referencia → `atributos_def`, `restringir` | sim | atributo com valor não sai por purga |
+| `valor_num` | decimal(18,6) | não | `numero`; é a coluna que filtra e agrega |
+| `valor_texto` | texto_longo | não | `texto`, e o `valor` da opção em `opcao` |
+| `valor_data` | data | não | `data` |
+| `valor_bool` | booleano | não | `booleano` |
+| `fonte` | texto(300) | não | de onde veio o valor (documento, campo, URL por `urlSegura()`) |
+| `observado_em` | data | não | data a que o valor se refere |
+| `autor_id` | referencia → `shell.usuarios`, `anular` | não | com `campos_incluir` (5.1) |
+| `importacao_id` | referencia → `importacoes`, `anular` | não | seção 5.1 |
+| `versao` | inteiro, `padrao: 1` | sim | D-88 |
+
+`unicos`: `(objeto_tipo, objeto_id, atributo_id)`. `indices`: `(atributo_id, valor_num)`,
+`(objeto_tipo, objeto_id)`, `(importacao_id)`.
+
+Regras:
+
+- **Um valor por tipo.** Só a coluna `valor_*` do `tipo_valor` é preenchida; as outras ficam
+  nulas. Valor que não casa com o tipo, com as `opcoes` ativas ou com a unidade responde `422
+  ATRIBUTO_VALOR_INVALIDO`; atributo cujo `aplica_a` não tem o tipo do objeto, `422
+  ATRIBUTO_NAO_APLICA`. Gravar valor nulo apaga a linha. Toda escrita grava
+  `alteracoes_cadastro`.
+- **Quem escreve.** Definição: admin ou `curador`, na tela, sem release. Valor: admin ou
+  `curador`; na área de estudo, também quem pode escrever na área (guarda por objeto, T4). Valor de
+  área `propria` herda o sigilo dela (seção 14).
+- **Quantificável.** As listas filtram por atributo: faixa sobre `valor_num` no numérico, igualdade
+  em `opcao`, `booleano` e `data` (seção 6.23). O filtro lê `atributos_valor` pelo índice
+  `(atributo_id, valor_num)` e aplica os ids ao objeto por array (`IN`, em lotes de 500; C-23). A
+  agregação (contagem, soma, mediana, P25–P75) é em código, como a da grade (D-83), com a supressão
+  por n de 5.1. O atributo numérico entra no catálogo de métricas como métrica dinâmica (5.13).
+- **Promoção a coluna fixa.** Atributo usado em cálculo de rotina, achado, índice, viabilidade,
+  ficha congelada ou `sql_declarado` vira coluna fixa por release, porque o reconciliador só cria
+  coluna pelo `schema.json` (C-16) e cálculo pede coluna tipada e indexada na tabela do objeto. O
+  release traz a coluna nova e uma migração que copia `valor_*` para ela (`varrerTudo`); depois
+  `promovido_para` é preenchido e o atributo fica `ativo = false`, com os valores antigos só para
+  consulta.
+- **Objeto removido.** Removido por soft delete, o objeto some das listas e os valores ficam;
+  restaurado, voltam. Valor de objeto que não existe mais (purgado na Lixeira) é apagado por
+  `limpar_retencao` (7.13).
+
+### 5.25 Vínculo com o núcleo imobiliário (v0.6, D-138)
+
+Alguns objetos da app se ligam a um registro do núcleo imobiliário, não todos (D-136). O vínculo é
+uma linha de junção da app; o registro do núcleo é lido ao vivo e nunca copiado.
+
+#### `vinculos_nucleo`
+
+`acesso_externo: restrito` · `soft_delete` · `id_legivel: "{objeto_tipo} {objeto_id} · {entidade} {nucleo_id}"`
+
+| Coluna | Tipo | Obrig. | Observação |
+|---|---|---|---|
+| `objeto_tipo` | texto, `opcoes: ["area_estudo", "contorno", "terracap_lote", "lancamento", "empreendimento"]` | sim | os objetos da app que podem se ligar ao núcleo |
+| `objeto_id` | inteiro | sim | id do objeto na tabela da app; referência lógica |
+| `entidade` | texto, `opcoes: ["imoveis", "incorporacoes", "parcelamentos", "matriculas"]` | sim | entidade do imobiliário (modulos.md:24) |
+| `nucleo_id` | inteiro | sim | id no imobiliário; referência lógica, sem `tabela_ref`, que reprova para tabela de módulo (modulos.md:394) |
+| `nucleo_subtipo` | texto, `opcoes: ["lote", "gleba", "unidade"]` | não | obrigatório quando `entidade = imoveis`; escolhe a rota de leitura (`/lotes/:id`, `/glebas/:id`, `/unidades/:id`) |
+| `vinculado_por_id` | referencia → `shell.usuarios`, `anular` | não | preenchido sempre na criação; com `campos_incluir` (5.1) |
+| `vinculado_em` | datahora | sim | |
+| `notas` | texto_longo | não | por que o vínculo existe (ex.: "polígono 12 do Magis = lote 3 da quadra 5") |
+
+`unicos`: `{ "colunas": ["objeto_tipo", "objeto_id", "entidade", "nucleo_id"], "onde": [{ "coluna": "removido_em", "operador": "nulo" }] }`
+(C-17). `indices`: `(objeto_tipo, objeto_id)`, `(entidade, nucleo_id)`.
+
+Regras:
+
+- **Combinações permitidas** (`comum/vinculos.ts`): área de estudo, inclusive `propria`, com
+  `imoveis`, `parcelamentos` e `matriculas`; contorno e lote Terracap com `imoveis` e
+  `parcelamentos`; lançamento e empreendimento com `incorporacoes`. Fora disso, ou imóvel sem
+  `nucleo_subtipo`, `422 VINCULO_NAO_PERMITIDO`. A relação é N:N: uma área cobre vários lotes, e um
+  lote pode estar em várias áreas.
+- **Quem cria.** Admin ou `curador`, por rota autenticada (seção 6.23), nunca por rotina nem
+  listener: `req.modulos` não existe ali (modulos.md:296-301). `vincular_empreendimentos` (7.8) não
+  propõe vínculo com o núcleo. A rota confere que o id existe por
+  `req.modulos.imobiliario.buscarPorChave(<tabela>, ['id'], [{ id }])` (só colunas cruas;
+  precedente `nobi`) e recusa `422 VINCULO_NUCLEO_INEXISTENTE`. Ligar um polígono a um lote é
+  trabalho manual, e não há importação CSV de vínculo na V1.
+- **Sigilo.** Vínculo de área `propria` só é lido por quem lê a área (seção 14).
+- **Nada é copiado.** A ficha mostra o que o núcleo devolve agora (seção 10.14); se o núcleo muda
+  a área do lote, a ficha mostra a nova. O vínculo nunca é apagado sozinho.
+- **Vínculos que não resolvem.** Cada vínculo é resolvido ao vivo pelo cliente, com um de três
+  estados: `resolve`, `nao_encontrado` (o núcleo responde `404`: imóvel removido ou id errado) e
+  `sem_permissao` (`403` de flag). Cadastro › Vínculos com o núcleo lista os que não resolvem, e o
+  curador corrige ou remove (R-56).
+
+#### Cliente do núcleo (`comum/nucleo-cliente.ts`, código; D-140)
+
+O backend só confere o id na criação do vínculo; toda leitura do núcleo para tela é do frontend,
+por um cliente único:
+
+- **Único ponto.** É o único arquivo que chama `urbiVerso.modulo('imobiliario', caminho)`; um teste
+  reprova outro arquivo da app que o chame.
+- **Paginação em laço.** `por_pagina = 200` (o máximo), página a página até a página incompleta,
+  com teto de 50 páginas (10 000 linhas); passou do teto, a tela diz "lista grande demais" em vez
+  de mostrar parcial. 6 200 lotes são 32 requisições.
+- **Allowlist de filtros datada.** `FILTROS_ACEITOS`, conferida no SDK 100 em 2026-10-17
+  (nucleo.md:459): `lotes` aceita `parcelamento_id`, `incorporacao_id` e `matricula_id`; `glebas`,
+  `matricula_id`; `unidades`, `incorporacao_id` e `matricula_id`; `parcelamentos`,
+  `setor_habitacional_id`. Filtro fora da lista não é enviado e se aplica no cliente.
+- **Conferência na volta.** Filtro fora da lista é ignorado calado pelo núcleo e devolve a lista
+  inteira (nucleo.md:454). Toda linha devolvida é conferida contra o filtro enviado; a que não casa
+  é descartada, e a tela mostra "o núcleo ignorou um filtro" (R-55).
+- **Cache de 60 s** por caminho, em memória da sessão: o núcleo não publica evento.
+- **Erros de flag.** `403 NUCLEO_FLAG_DESLIGADA` e `403 NUCLEO_FLAG_NAO_PEDIDA` viram banner
+  ("o admin da instância precisa ligar a leitura de <entidade> na aba Núcleo da app"), e a camada
+  e a seção da ficha ficam desabilitadas, sem quebrar a tela (6.22).
+- **Agregação no cliente.** Contagens e somas (lotes por parcelamento, área efetiva somada) são
+  feitas no frontend; não há leitura em lote por lista de ids. Matrícula é lida pela listagem,
+  paginada e cacheada, e escolhida por id.
+- **Nunca** o detalhe de matrícula (traz certidão e proprietários), `/pessoas` nem
+  `/:id/pessoas`, que são dado pessoal (seção 22); nunca `transacoes`; nunca o filtro `bbox` (o
+  imobiliário responde `501`) nem componente `imobiliario-*`. Busca textual do núcleo não ignora
+  acento, e a tela avisa.
+- **Não remonta** `id_legivel` nem `area_efetiva`: mostra o que o núcleo devolve.
+
 ---
 
 ## 6. API da app (`backend/rotas.ts`)
@@ -3766,6 +4018,12 @@ interface ResultadoViabilidade {
 | `COLETA_TIMEOUT` | 504 | ação síncrona de uma página passou de 20 s, contando os redirecionamentos (v0.5, T5) |
 | `EXTRACAO_DESLIGADA` | 409 | extração assistida pedida com `usar_ia_extracao_documentos = false` (v0.6; D-133) |
 | `EXTRACAO_FORMATO` | 422 | extração pedida para anexo que não é PDF nem imagem; planilha se importa como CSV (v0.6) |
+| `ATRIBUTO_DEF_INVALIDA` | 422 | definição incoerente: `codigo` fora de `snake_case`, `numero` sem unidade, `opcao` sem `opcoes`, `aplica_a` vazio (v0.6; 5.24) |
+| `ATRIBUTO_EM_USO` | 409 | mudar `codigo` ou `tipo_valor`, retirar tipo de `aplica_a` ou remover atributo que tem valor gravado; o caminho é inativar (v0.6) |
+| `ATRIBUTO_NAO_APLICA` | 422 | atributo cujo `aplica_a` não inclui o tipo do objeto (v0.6) |
+| `ATRIBUTO_VALOR_INVALIDO` | 422 | valor que não casa com `tipo_valor`, com as `opcoes` ativas ou com a unidade (v0.6) |
+| `VINCULO_NAO_PERMITIDO` | 422 | combinação objeto × entidade fora de `comum/vinculos.ts`, ou imóvel sem `nucleo_subtipo` (v0.6; 5.25) |
+| `VINCULO_NUCLEO_INEXISTENTE` | 422 | o id não existe no imobiliário (`buscarPorChave` não o achou) (v0.6) |
 
 **Erros de plataforma que a tela traduz (v0.4).** Não são da app, mas chegam a ela e a tela os
 mostra com texto próprio, lendo `e.status` e `e.codigo` do `Error` de `urbiVerso.api()`:
@@ -3780,8 +4038,32 @@ mostra com texto próprio, lendo `e.status` e `e.codigo` do `Error` de `urbiVers
 | `AUTH_TOKEN_SOMENTE_LEITURA` | 403 | token de agente somente leitura em mutação (C-55) | "este token só lê" |
 | `AUTH_METODO_NAO_PERMITIDO` | 405 | método fora do contrato método → nível (C-51) | erro genérico com o código |
 | `DADOS_VALOR_INVALIDO` | 422 | violação de `CHECK` (`23514`) que o invólucro `rota()` traduz (v0.5, T2) | o campo e a regra violada |
+| `NUCLEO_FLAG_DESLIGADA` | 403 | leitura do núcleo com a flag da entidade desligada na aba Núcleo (modulos.md:80; v0.6) | banner "o admin da instância precisa ligar a leitura de <entidade> na aba Núcleo da app" |
+| `NUCLEO_FLAG_NAO_PEDIDA` | 403 | entidade fora do bloco `dependencias` (v0.6) | banner "esta versão da app não pede <entidade>"; é defeito da app |
 
 Rotina que falha devolve `{ ok: false, erro: <mensagem> }`, nunca só `ok: false` (C-30).
+
+### 6.23 Atributos extensíveis e vínculos com o núcleo (v0.6, D-137, D-138)
+
+| Método | Rota | Papel | O quê |
+|---|---|---|---|
+| GET | `/atributos?aplica_a&ativo&grupo` | leitura | catálogo de atributos |
+| POST | `/atributos` | curador | cria definição (5.24); `422 ATRIBUTO_DEF_INVALIDA` |
+| PATCH | `/atributos/:id` | curador | nome, descrição, unidade, grupo, `ativo`, opções novas, `aplica_a` ampliado; `codigo` e `tipo_valor` com valor gravado não mudam (`409 ATRIBUTO_EM_USO`); com `versao` (D-88) |
+| POST | `/atributos/:id/remover`, `/atributos/:id/restaurar` | curador | soft delete; com valor gravado, `409 ATRIBUTO_EM_USO`, e o caminho é inativar |
+| GET | `/objetos/:tipo/:id/atributos` | leitura, obj. ler | valores do objeto com a definição, por `grupo` |
+| PUT | `/objetos/:tipo/:id/atributos` | curador (área de estudo: obj. escrever) | grava um lote de valores do objeto (`{ atributo_id, valor, fonte, observado_em, versao }`), cada um por `atualizarSe`; valor nulo apaga |
+| GET | `/atributos/:id/distribuicao?objeto_tipo&filtros` | leitura | contagem, mínimo, máximo, mediana e P25–P75 de `valor_num` no recorte, com a supressão por n (5.1); só `numero` |
+| GET | `/vinculos-nucleo?objeto_tipo&objeto_id&entidade&nucleo_id` | leitura (área própria: obj. ler) | vínculos; a resolução contra o núcleo é do frontend (5.25) |
+| POST | `/vinculos-nucleo` | curador | cria; confere a combinação e a existência do id por `buscarPorChave`; grava `alteracoes_cadastro` |
+| PATCH | `/vinculos-nucleo/:id` | curador | `notas`, com `versao` |
+| POST | `/vinculos-nucleo/:id/remover`, `/vinculos-nucleo/:id/restaurar` | curador | desfaz e refaz o vínculo (soft delete) |
+
+**Filtro por atributo nas listas.** Toda rota de lista de objeto da seção 5.24 aceita
+`atr_<codigo>_min` e `atr_<codigo>_max` (faixa sobre `valor_num`) e `atr_<codigo>=<valor>` (opção,
+booleano, data). Atributo desconhecido ou inativo responde `400 METRICA_DESCONHECIDA`. A exportação
+CSV da lista acrescenta uma coluna `atr_<codigo>` por atributo ativo que se aplica ao objeto, e a
+importação a ignora como derivada (11.1).
 
 ---
 
@@ -4744,6 +5026,18 @@ procedência que leva à Base de dados.
   camada fica desabilitada com "restrições não carregadas" ou "equipamentos não carregados"
   (v0.5); camadas internas da UP importadas por KMZ como `contornos` de papel restrição aparecem
   na mesma legenda, rotuladas com a origem.
+- **Camada 15, Núcleo (v0.6, MVP; seção 15.1a; D-141):** os objetos da app que têm vínculo em
+  `vinculos_nucleo` (contornos, lançamentos, áreas de estudo, lotes Terracap), desenhados pela
+  geometria **da própria app** (polígono do contorno ou da área, ponto do lote ou do lançamento),
+  com selo "no núcleo" e cor pela entidade ligada. O painel lista os atributos do núcleo de cada
+  um, lidos pelo cliente único (5.25), e o clique abre a ficha do objeto (10.14). A legenda diz
+  "traçado da pesquisa, não o oficial do lote". O traçado oficial, do módulo `geo`, entra quando
+  o contrato estiver no SDK (P-49). Flag desligada deixa a camada desabilitada com o banner do
+  cliente. O recorte por viewport é sobre a geometria da app: não usa o filtro `bbox` do
+  imobiliário (responde `501`) nem componente `imobiliario-*`.
+- **Filtro por atributo (v0.6, D-137):** a gaveta "Mais filtros" ganha "Atributo", com faixa no
+  numérico e escolha em opção e booleano, para anúncios, lançamentos, âncoras, contornos e lotes
+  Terracap (6.23). Atributo numérico pode colorir os pontos como métrica (5.13).
 
 ### 10.3 Mercado (`/mercado`)
 
@@ -4860,6 +5154,16 @@ do `nav` e abre com `urbi-abas`, uma aba por cadastro abaixo, cada uma na sua su
   `ivv_regional` (v0.5).
 - **Licenciamento de obras** (v0.2): idem, com importação de CSV.
 - **Faixas de programa** (v0.2): tabela editável com vigência e link da portaria.
+- **Atributos** (v0.6, `/cadastro/atributos`; D-137): `urbi-tabela` do catálogo com código, nome,
+  tipo, unidade, `aplica_a`, grupo, ativo e quantos valores tem; formulário de criar e editar para
+  admin e `curador`, sem release; "promovido para" mostrado quando houver. Atributo com valor não
+  muda código nem tipo e não se remove: inativa.
+- **Vínculos com o núcleo** (v0.6, `/cadastro/vinculos-nucleo`; D-138): lista dos vínculos com o
+  objeto da app, a entidade, o registro do núcleo resolvido ao vivo e o estado; filtro "vínculos que
+  não resolvem" (`nao_encontrado`, `sem_permissao`), com corrigir e remover. Criar vínculo é ação da
+  ficha do objeto (10.14).
+- **Bloco "Atributos" em toda ficha** (v0.6): a ficha de anúncio, lançamento, âncora, contorno,
+  empreendimento, lote Terracap e licença ganha o bloco da seção 10.14.
 
 ### 10.7 Operação (`/operacao/*`)
 
@@ -4963,8 +5267,8 @@ semana; os demais blocos chegam com a fase 5 e, até lá, mostram "disponível c
 
 - **Lista:** `urbi-inbox` por tipo e estágio, com mini-mapa; "Nova área" por desenho, por ponto
   ou por importação de KMZ. Área `tipo = propria` só aparece para quem tem `estrategico` ou
-  `curador`, ou é o responsável dela (10.1, seção 14); a lista oficial de onde elas vêm é
-  `[PENDENTE P-47]`.
+  `curador`, ou é o responsável dela (10.1, seção 14); elas vêm do núcleo e do Urbigis/Magis,
+  ligadas por vínculo (5.25; P-47 fechada).
 - **Dossiê (v0.3, D-56):** `urbi-2x1` com o mapa da área, dos anéis e dos perímetros à esquerda
   e, à direita, `urbi-abas` nas quatro escalas do método, mais as abas de trabalho:
   - **Regional:** contexto macro e de crédito, IVV e FipeZap da cidade, posição da localidade no
@@ -4984,6 +5288,10 @@ semana; os demais blocos chegam com a fase 5 e, até lá, mostram "disponível c
     e aparece com a faixa que vem da simplificação e da resolução da fonte, com a fonte escrita;
     a grade de células não entra nela. Sem `restricoes_sitio` carregado, o bloco diz
     "restrições não carregadas" e não mostra área líquida (v0.5).
+  - **Núcleo (v0.6):** os imóveis, parcelamentos e matrículas ligados à área por
+    `vinculos_nucleo`, em tabela com as colunas do núcleo e as contagens agregadas no cliente
+    (lotes, área efetiva somada), rotulada "cadastro oficial, lido agora"; cada linha abre a ficha
+    da 10.14. Sem vínculo, a aba diz "área sem vínculo com o núcleo" e oferece "Vincular" ao curador.
   - **Síntese e agenda:** os cinco grupos com natureza e evidência; itens propostos pela IA para
     aceitar ou descartar; a agenda de decisão. O registro da decisão (quem decide, foro,
     alternativas) é leve (v0.6, D-130): mudar o estágio para `iniciativa` ou além, ou encerrar,
@@ -5117,6 +5425,32 @@ semana; os demais blocos chegam com a fase 5 e, até lá, mostram "disponível c
   cenário vertical, e por R$/m² de gleba bruta no loteamento, com o aviso "a Terracap vende lote
   urbanizado, não gleba". Os valores padrão dos parâmetros seguem `[PENDENTE P-35]`.
 
+### 10.14 Ficha de objeto: núcleo e pesquisa (v0.6, D-136 a D-138)
+
+Todo objeto da pesquisa que tem atributo extensível ou vínculo com o núcleo mostra, no painel de
+detalhe que já tem (Mapa, Cadastro, Terra, Estudos), duas seções separadas e rotuladas pela
+origem. Nenhum valor de uma aparece na outra.
+
+- **Do núcleo imobiliário** (rótulo "cadastro oficial · lido agora"), uma linha por vínculo, lida
+  pelo cliente único (5.25):
+  - lote: `id_legivel`, `area_efetiva`, quadra, conjunto, parcelamento → setor habitacional e
+    matrícula (número e `confiabilidade`, pela listagem de matrículas, nunca pelo detalhe);
+  - gleba e unidade: `id_legivel` quando houver, nome, área e matrícula, pela mesma regra;
+  - parcelamento: nome, setor habitacional, `status` e `data_registro`;
+  - incorporação: o que a listagem traz; matrícula: número, CRI, `status`, área e
+    `confiabilidade`.
+  Estado do vínculo escrito (`nao_encontrado`, `sem_permissao`) em vez de seção vazia. O botão
+  "Vincular ao núcleo" (admin e `curador`) abre a busca por `id_legivel`, quadra ou parcelamento,
+  sobre a listagem paginada no cliente, e grava por `POST /vinculos-nucleo`.
+- **Da pesquisa** (rótulo "app"): as colunas fixas do objeto; o bloco **Atributos**, com os
+  extensíveis agrupados por `grupo`, cada um com unidade, fonte e data de observação, editável por
+  quem pode escrever no objeto (`PUT /objetos/:tipo/:id/atributos`, com `versao`); e, na área de
+  estudo, as decisões de `area_eventos`.
+
+Quando as duas origens têm um número parecido (a área do contorno, calculada pela app, e a
+`area_efetiva` do lote no núcleo), os dois aparecem lado a lado, cada um com a origem, sem
+"correção" de um pelo outro.
+
 ---
 
 ## 11. Importação, exportação e migração da planilha
@@ -5159,6 +5493,13 @@ falha). Na carga manual a tela aceita, além do CSV:
 
 O primeiro caso é o IVV publicado em PDF (fase 2); os editais da Terracap (4B) seguem o mesmo
 caminho.
+
+**Valores de atributo (v0.6, D-137).** `atributos_valor` é importável: CSV com `objeto_tipo`, a
+chave do objeto (`id` ou `id_legado`), `atributo` (o `codigo`), `valor`, `fonte` e
+`observado_em`. A prévia resolve o objeto e o atributo, confere `aplica_a`, `tipo_valor` e opções,
+e o modo `atualizar` sobrescreve pela chave `(objeto_tipo, objeto_id, atributo_id)`. A definição do
+atributo não se importa: nasce na tela (10.6). `vinculos_nucleo` não se importa na V1, porque cada
+vínculo é conferido contra o núcleo e ligar polígono a lote é trabalho manual (5.25).
 
 **Colunas que a app não grava (v0.5).** `comum/importacao-chaves.ts` declara, por tabela, as
 `colunas_derivadas`: as que a exportação acrescenta (`id`, `criado_em`, `atualizado_em`,
@@ -5467,7 +5808,7 @@ só entra quando houver uso que peça. Para a inscrição por filtro valer, ele 
 | (sem permissão) | todo usuário da instância: o admin da instância mantém `permissao_padrao = nenhuma` em Admin › Instaláveis › Apps › Acesso (alçada `usuarios`); a app não declara isso no manifesto (D-13, C-56) | não vê a app |
 | `leitura` | liberado individualmente pelo admin da instância | vê todas as telas, exceto as áreas `tipo = propria` e o que pende delas (abaixo), exporta CSV e pacote, **gera a ficha para baixar** (`GET /estudos/:id/ficha`, sem congelá-la; v0.6), abre análises; **salva, edita e apaga as próprias visões** pelas rotas pessoais (D-80); grava a própria telemetria por `POST /pessoal/uso` (`uso_eventos` é `pessoal`; v0.5) |
 | `leitura` + `estrategico` (v0.5) | a Direção; analistas que trabalham áreas próprias também. Quem recebe é a P-06 | tudo de `leitura` mais **ver** as áreas `tipo = propria` e o que pende delas; o papel não dá escrita. Declarado sob `leitura`, então pode ser dado a quem só lê (usuário `leitura` só recebe papéis de `leitura`, permissoes.md) |
-| `escrita` + `curador` | | cadastra e corrige anúncios, lançamentos, âncoras, contornos e localidades; aprova e rejeita candidatos; gera análises; e, na v0.2, empreendimentos, lotes Terracap, licenciamento, faixas de programa, lentes, grupos de anúncios, vínculos e as áreas `propria` (cuja lista oficial de origem é `[PENDENTE P-47]`); vê as áreas próprias |
+| `escrita` + `curador` | | cadastra e corrige anúncios, lançamentos, âncoras, contornos e localidades; aprova e rejeita candidatos; gera análises; e, na v0.2, empreendimentos, lotes Terracap, licenciamento, faixas de programa, lentes, grupos de anúncios, vínculos e as áreas `propria` (ligadas ao núcleo por vínculo; P-47 fechada); na v0.6, o catálogo de atributos, os valores e os vínculos com o núcleo (5.24, 5.25); vê as áreas próprias |
 | `escrita` + `decisor` (v0.6) | | tudo de `escrita`, mais registrar decisão sobre uma área: mudar o estágio para `iniciativa` ou além e encerrar a área, com motivo gravado em `area_eventos` (D-130). Vê a área só se também a lê (área própria pede `estrategico`, `curador` ou ser o responsável) |
 | `escrita` + `operador` | | gerencia fontes e buscas, roda verificações e buscas agora pelas rotas da app, importa CSV, sobe anexo de fonte manual e pede a extração assistida (v0.6; D-133), pede a carga de dados públicos (D-91), mantém as séries macro (D-90), resolve achados; gera análises. Não tem o "Rodar agora" da aba Rotinas, que é do admin (C-05) |
 | `escrita` sem papel | | gera análises; cria e edita as **próprias** áreas de estudo (exceto `tipo = propria`) e, nelas e nas áreas em que é responsável, perímetros, síntese, tese, condições, diligências, hipóteses de âncora, cenários e observações; gera fichas. Rotas de cadastro e operação exigem o papel e respondem `403 PAPEL_EXIGIDO` |
@@ -5504,6 +5845,11 @@ que usa a Pinguim nem vê a app (D-13); dentro dela, o papel `estrategico` (D-10
 instância vê tudo, pelo papel dele: é risco aceito (R-50). O QA usa só áreas de prospecção,
 referência ou fictícias, e o QA Principal não recebe `estrategico`.
 
+**Leitura do núcleo (v0.6, D-139).** A app não acrescenta gate à leitura do núcleo: quem vê a
+tela vê o que o núcleo devolve, se o admin com alçada `nucleo` ligou a flag da entidade na aba
+Núcleo; senão, a plataforma responde `403 NUCLEO_FLAG_DESLIGADA` e a tela mostra o banner (6.22).
+Criar e remover vínculo e definir atributo pedem admin ou `curador` (6.23).
+
 **Guarda por objeto (v0.5).** Cada tabela com regra por objeto a declara em
 `comum/regras-objeto.ts` (`autor`, `responsavel`, `curador`, `estrategico`, por operação). Toda
 rota que recebe `:id` dessas tabelas busca o registro e chama `exigirAcessoObjeto(req, registro,
@@ -5527,8 +5873,8 @@ cresce quando a fase anterior mostra o que a realidade pede.
 **A unidade de planejamento é o PR, não a sessão (v0.5).** Cada fase vira uma sub-issue de uma
 issue-spec guarda-chuva (skill `orquestrar` do kit) e se divide em subfases; cada subfase é um PR
 que entrega uma fatia vertical instalável (schema + rota + tela + teste + doc) e termina numa
-release que instala na Pinguim. A estimativa de cada fase é o número de PRs: a soma abaixo dá 28 a
-34 PRs, que é piso, e a contagem real é registrada na issue guarda-chuva a cada fase fechada e
+release que instala na Pinguim. A estimativa de cada fase é o número de PRs: a soma abaixo dá 29 a
+36 PRs (com a 15.1a, v0.6), que é piso, e a contagem real é registrada na issue guarda-chuva a cada fase fechada e
 reestima as seguintes. As fases 1 e 3 já vêm divididas (1a a 1d, 3a a 3d); 4A, 4B e 7 seguem a
 mesma regra quando chegarem (precedente: o `reg360` cresceu por versões pequenas, uma issue por
 mudança; D-99).
@@ -5543,8 +5889,8 @@ sai do plano atual (a Laputa, `urbiverso.up.bsb.br`, fica como produção futura
 por uma sessão sob ordem expressa dele. `1.0.0` só depois do critério global de pronto (18.3). As
 regras de convivência com as outras apps da instância estão em 3.6.
 
-**MVP (v0.6, D-129).** O MVP são as fases −1, 0, 1 e 2, mais a camada do núcleo no mapa
-([MVP-NUCLEO]: camada do núcleo, seção 15.1a). Pronto o MVP, vêm a release dele, o uso pela equipe
+**MVP (v0.6, D-129).** O MVP são as fases −1, 0, 1 e 2, mais a camada do núcleo (seção 15.1a:
+dependência do imobiliário, cliente do núcleo, vínculos, catálogo de atributos, camada e ficha). Pronto o MVP, vêm a release dele, o uso pela equipe
 na Pinguim e a decisão do dono sobre produção; as fases seguintes continuam na Pinguim até essa
 decisão.
 
@@ -5567,7 +5913,7 @@ quer dizer app × Apps Script: antes do corte, `coleta_ativa` fica `false` fora 
 coleta, que é curta (um dia) e com lote reduzido; é a única sobreposição com o Apps Script, porque
 o corte só acontece depois do QA (D-98).
 
-Ordem: −1 → 0 → 1 → 2 → 3 → 4 → **4A** → **4B** → **4C** → 5 → 6, com a **7** podendo correr em
+Ordem: −1 → 0 → 1 → **1a do núcleo** (15.1a) → 2 → 3 → 4 → **4A** → **4B** → **4C** → 5 → 6, com a **7** podendo correr em
 paralelo à 6, porque depende sobretudo do pipeline, que anda na sua trilha (15.0a). Cada fase de
 4A em diante fecha com as jornadas da seção 24 que lhe cabem e com o golden set. A fase 5 (IA) vem
 depois da 4B porque a análise de área e a camada de achados dependem dela; o que a 4C precisa dos
@@ -5599,9 +5945,15 @@ Não há repositório a criar: a app nasce neste (D-125).
 6. Cap global de arquivo informado (C-15, C-35); ele é o teto do `arquivo_max_bytes` do pipeline e
    do anexo de carga manual.
 7. Hosts do proxy de egresso só quando a medição da fase 3 pedir (alçada `sistema`; D-79).
+8. Núcleo imobiliário (v0.6, D-139): o módulo `imobiliario` ≥ 1.0.0 instalado na Pinguim antes da
+   app, porque declarar a dependência o torna pré-requisito (a Pinguim já roda o 1.3.0); depois da
+   instalação da release que traz o bloco `dependencias`, as cinco flags de leitura (`imoveis`,
+   `parcelamentos`, `incorporacoes`, `matriculas`, `setores_habitacionais`) ligadas em Admin ›
+   Instaláveis › Apps › Inteligência Imobiliária › aba Núcleo (alçada `nucleo`; começam
+   desligadas, modulos.md:80).
 
-**Pronto quando:** os itens 1 a 6 estão feitos e registrados em `docs/ativacao.md`; o 7 só existe
-se a medição pedir. A cadência de releases não é item de checklist: segue a regra 2 de 3.6
+**Pronto quando:** os itens 1 a 6 e 8 estão feitos e registrados em `docs/ativacao.md`; o 7 só
+existe se a medição pedir. A cadência de releases não é item de checklist: segue a regra 2 de 3.6
 (D-135).
 
 ### 15.0 Fase 0 — Preparação (1 a 2 PRs)
@@ -5612,11 +5964,10 @@ se a medição pedir. A cadência de releases não é item de checklist: segue a
   tela "em construção" em `/`, `docs/README.md` apontando para esta spec e `docs/ativacao.md` com
   o checklist da fase −1. Ela tem de existir antes do kit: com `apps/` presente o kit não semeia
   `apps/ola_mundo`, e o manifesto é o sinal que o deixa instalar sem `--confirmo` (3.1; D-126).
-- Converter a raiz em workspace pnpm: `pnpm-workspace.yaml` com `apps/*` e o catálogo,
-  `packageManager` pnpm no `package.json` do site (que mantém os scripts dele), `pnpm-lock.yaml`
-  gerado e versionado, `package-lock.json` removido, e o `validate.yml` do site trocado para pnpm
-  (`pnpm install --frozen-lockfile` e `pnpm test`, com o secret do item 2 da fase −1 porque o lockfile
-  da raiz inclui o SDK). O `validate.yml` continua verde no mesmo PR (R-52).
+- Acrescentar o workspace sem tocar no site: `pnpm-workspace.yaml` com `apps/*` e o catálogo,
+  `pnpm-lock.yaml` gerado e versionado, e só o campo `packageManager` no `package.json` da raiz. O
+  `package-lock.json`, os scripts do site e o `validate.yml` (npm) ficam como estão, e o PR confere
+  que o site abre e que o `validate.yml` segue verde (R-52; D-126).
 - Depois, instalar o kit na raiz (`npx @urbiverso/kit-apps`): `release.yml`, `ci.yml`, `KIT.md`,
   `.claude/preparar-sessao.sh` e as skills. Os arquivos de dois donos que já existem (`CLAUDE.md`,
   `package.json`, `.npmrc`…) ele relata e não toca; a linha que o relatório pede no `CLAUDE.md`
@@ -5701,6 +6052,42 @@ roteador de sub-rotas já nasce com as rotas novas do `nav` apontando para "em c
 de fase use uso real; `comum/tipos.ts` com `Procedencia` e `ValorMetrica`; regra de
 `CONFLITO_VERSAO` nos `PATCH` de cadastro; botão "Como ler" nas telas da fase; `comum/higienizar.ts`
 (a coleta da fase 3 já nasce com ele).
+
+### 15.1a Camada do núcleo (MVP; 1 ou 2 PRs; v0.6)
+
+Vem depois da fase 1, porque usa contornos, importação e mapa, e antes da 2. Fecha o MVP com a
+fase 2 (D-129).
+
+**Escopo:**
+
+- `dependencias` no manifesto (4.1; D-139), `versao` subindo, e o item 8 da fase −1 no
+  `docs/ativacao.md` e no README.
+- `comum/nucleo-cliente.ts` (5.25; D-140), com testes: paginação em laço com teto, conferência
+  da volta com uma resposta simulada que ignora o filtro, cache de 60 s, banner para os dois `403`
+  de flag e nenhuma chamada a `/pessoas`, `/:id/pessoas`, detalhe de matrícula ou `bbox`.
+- `vinculos_nucleo` com as rotas de 6.23 e Cadastro › Vínculos com o núcleo, inclusive os
+  vínculos que não resolvem (5.25; D-138). Na fase 1 os objetos são contornos e lançamentos; área
+  de estudo, lote Terracap e empreendimento entram quando a fase deles cria a tabela, sem mudar o
+  schema do vínculo.
+- `atributos_def` e `atributos_valor` com as rotas de 6.23, Cadastro › Atributos, o bloco
+  "Atributos" nas fichas, o filtro por faixa e a importação CSV de valores (5.24, 10.6, 11.1;
+  D-137).
+- Camada Núcleo no mapa (10.2) e a ficha de objeto em duas seções (10.14; D-141).
+
+**PRs:** **N1** dependência, cliente, vínculos, camada e ficha; **N2** catálogo de atributos. Os
+dois cabem num PR só se o diff ficar pequeno.
+
+**Pronto quando**, conferido na Pinguim: a app instala com o imobiliário 1.3.0 presente e as flags
+ligadas; com uma flag desligada, a tela mostra o banner e não quebra; o curador liga um contorno
+importado do Urbigis/Magis a um lote do núcleo, e a ficha mostra `id_legivel`, `area_efetiva`,
+quadra, parcelamento → setor e matrícula (número e confiabilidade) iguais aos do cadastro do
+núcleo, sem nenhuma coluna da app que os copie; um id inexistente é recusado com `422
+VINCULO_NUCLEO_INEXISTENTE`; a listagem de todos os lotes pagina em 200 e a segunda abertura em
+menos de 60 s não faz requisição; um vínculo para imóvel removido no núcleo aparece em "vínculos
+que não resolvem"; a camada Núcleo desenha os contornos vinculados com o selo; o admin cria um
+atributo numérico para `contorno`, o curador grava valor em três contornos, a lista filtra pela
+faixa e a distribuição aplica a supressão por n; um CSV de valores é importado e desfeito
+(11.3.2).
 
 ### 15.2 Fase 2 — Mercado e Diagnóstico (3 PRs)
 
@@ -5859,8 +6246,8 @@ faixas; fila de vínculos; anéis de âncoras existentes no dossiê.
 
 **Pronto quando:** na Pinguim, o QA cadastra áreas de prospecção, referência ou fictícias e gera
 a ficha de uma página de cada uma; fora do QA, as áreas próprias da UP estão cadastradas na
-Pinguim pela equipe `[PENDENTE P-47]` e cada uma tem uma ficha de uma página gerada e baixada
-em Markdown; uma pessoa sem `estrategico`, `curador` nem responsabilidade pela área não as vê; a
+Pinguim pela equipe, ligadas ao núcleo por vínculo (5.25; P-47 fechada), e cada uma tem uma
+ficha de uma página gerada e baixada em Markdown; uma pessoa sem `estrategico`, `curador` nem responsabilidade pela área não as vê; a
 capacidade de pagamento de uma localidade confere com uma planilha feita à mão para três faixas de
 renda; a mediana de R$/m² arrematado de uma localidade, por `destinacao_categoria`, confere com os
 editais lidos à mão; um empreendimento aparece com lançamento, alvará e anúncios vinculados. A
@@ -5972,26 +6359,14 @@ gravada na hipótese de âncora; seção de âncora na ficha detalhada; jornada 
   warehouse_*` e uma tela "Cidades"; previsão só publicada com backtest ao lado, como o
   `warehouse/README.md` já exige. A análise de IA de mercado ganharia o bloco de cidades
   comparadas.
-- **Módulo `imobiliario` (D-06):** ligar `lancamentos` e `empreendimentos` a `incorporacoes`, e
-  as `areas_estudo` de `tipo = propria` aos imóveis da UP, por referência lógica (só o id, sem
-  `tabela_ref`), quando a UP passar a cadastrar no núcleo. Os contratos estão publicados (C-81);
-  o bloco do manifesto é
-
-  ```jsonc
-  "dependencias": {
-    "urbiverso/modulos-urbiverso::imobiliario": {
-      "versao_min": "1.2.0",
-      "entidades": { "imoveis": ["ler"], "incorporacoes": ["ler"] }
-    }
-  }
-  ```
-
-  com a identidade nova (a antiga, `urbiverso/urbiverso::imobiliario`, já passou do gate), uma
-  flag por entidade, toggles ligados pelo admin na aba Núcleo e `sdk_min ≥ 87` (já coberto). A
-  leitura é por `req.modulos.imobiliario` ou `urbiVerso.modulo("imobiliario", …)` só em rota
-  autenticada, **nunca em rotina** — então `vincular_empreendimentos` (7.8) não chama o módulo; o
-  vínculo sai de uma rota que o curador aciona. O cadastro do núcleo tem tela própria em
-  `/imobiliario` (≥ 1.2.0). Fica no Futuro por decisão de produto, não por falta de contrato.
+- **Módulo `imobiliario` (D-06, revista pela D-139):** saiu do Futuro na v0.6 e entrou no MVP
+  (seção 15.1a). O bloco `dependencias` está em 4.1, com a identidade nova e `versao_min: "1.0.0"`:
+  a nota de C-81 da v0.5 citava `1.2.0`, que só traz a tela `/imobiliario`, que a app não usa, e
+  pedia só `imoveis` e `incorporacoes`; agora são cinco entidades, sem `transacoes`.
+- **Traçado oficial do lote (P-49, D-141):** a geometria do lote mora no módulo `geo` (feições), e
+  o imobiliário 1.3.0 guarda o `feicao_id`; nada disso está no SDK 100. Quando o contrato for
+  publicado (pedido em S-32, `docs/ISSUES_SHELL_SUGERIDAS.md`), a camada Núcleo ganha o traçado
+  oficial ao lado do da pesquisa, lido ao vivo e nunca copiado.
 - **Proxy de saída (D-09, revista pela D-79):** não é mais trabalho da app. Se a Pinguim medir
   bloqueio, a equipe pede ao admin da instância que inclua o host no proxy de egresso (Admin ›
   Variáveis); a infraestrutura do proxy (uma VPS mínima com `tinyproxy`, como o precedente do
@@ -6027,7 +6402,7 @@ gravada na hipótese de âncora; seção de âncora na ficha detalhada; jornada 
 | D-03 | Tudo dentro da app: banco da app é a fonte de verdade; planilha vira semente e depois congela | Planilha sincronizada com a app | Duas fontes de verdade foi o que gerou as divergências de versão do Apps Script |
 | D-04 | Coleta e parsing determinísticos, portados do script; IA só para análise (e um fallback opcional de extração, desligado) | IA para extrair campos de toda página | O script já faz isso de graça; token é para onde dá retorno |
 | D-05 | Pipeline Python segue no GitHub Actions como produtor; a app carrega os artefatos por rotina mensal e os serve do próprio banco | Reescrever o pipeline na app; apontar para o GitHub Pages | 15 minutos de rotina Node não rodam o pipeline; "tudo dentro do app" vale para o dado servido |
-| D-06 | Sem dependência de módulo do UrbiVerso na V1 | `dependencias` em `imobiliario` já na V1 | O módulo não expõe tabela referenciável e o dado da UP ainda não está lá |
+| D-06 | Sem dependência de módulo do UrbiVerso na V1 *v0.6: revista pela D-139: a dependência do `imobiliario` sai do Futuro e entra no MVP (15.1a)* | `dependencias` em `imobiliario` já na V1 | O módulo não expõe tabela referenciável e o dado da UP ainda não está lá |
 | D-07 | Localidade é entidade com as duas grafias de RA como colunas; `ra_crosswalk.json` morre | Manter `ra_geo_id` texto e uma ponte | A ponte existia porque a planilha não tinha chave; o banco tem |
 | D-08 | Modelo aberto a outras cidades desde o início (`cidades` + `localidades` tipadas) | Modelar só o DF | Custa pouco agora e evita migração de toda tabela de fato depois |
 | D-09 | Coleta direta da instância com proxy de saída **opcional**, decidido por medição. *v0.4: o mecanismo muda pela D-79 — o proxy é o de egresso da instância, por host, e não mais parâmetro da app; a decisão (direto, proxy só se medir bloqueio) fica* | Exigir proxy desde o início; ou não prever | O charles3 provou o caminho; só vale pagar a VPS se o bloqueio aparecer |
@@ -6119,7 +6494,7 @@ gravada na hipótese de âncora; seção de âncora na ficha detalhada; jornada 
 | D-95 | A app nasce num repositório privado próprio da org da UP, com identidade nessa org; este repositório fica com o site e o pipeline. *v0.6: substituída pela D-125* | reorganizar o repositório atual ou usar um repositório pessoal | apps da UP moram na org da UP (app-radar-sei, urbigis); ENGINEERING_RULES R1.1 e R1.3 proíbem build e backend Node; gate de identidade em 2026-10-28 (substitui D-16; fecha P-04) |
 | D-96 | Fase −1 de ativação na plataforma, checklist de 10 itens com alçada por item (*v0.6: 7 itens, sem criar repositório nem instalar em produção; D-125, D-128*), feita pelo operador das instâncias e registrada em docs/ativacao.md | deixar a ativação implícita na fase 0 | apps-em-repo-proprio.md § 7; checklist de ativação do reg360 |
 | D-97 | Pinguim é teste (Releases, auto-update, QA); a equipe usa numa instância de produção (homologado, atualização manual) a partir do fim da fase 1; dado sigiloso nunca na Pinguim. *v0.6: substituída pela D-128* | usar a Pinguim como instância de uso | apps-em-repo-proprio.md § 8; reg360 operacao.md; a Pinguim recebe devs de fora |
-| D-98 | Um coletor por vez, app × Apps Script: antes do corte da fase 3, coleta_ativa = false fora de uma janela curta de QA; o corte e os sete dias da fase 3 são na Pinguim. *v0.6: a regra entre instâncias saiu, porque só há a Pinguim (D-128)* | coletar com a app e o Apps Script ao mesmo tempo | §8.1 (uma requisição por vez por host); item 4 da revisão |
+| D-98 | Um coletor por vez, app × Apps Script: antes do corte da fase 3, coleta_ativa = false fora de uma janela curta de QA; o corte e os sete dias da fase 3 são na Pinguim. *v0.6: a regra entre instâncias saiu, porque só há a Pinguim (D-128)*  *O corte só acontece com ordem expressa do dono, e até lá o site e o Apps Script seguem funcionando (D-126).* | coletar com a app e o Apps Script ao mesmo tempo | §8.1 (uma requisição por vez por host); item 4 da revisão |
 | D-99 | A unidade de planejamento é o PR (fatia vertical com release); fases como sub-issues de uma issue guarda-chuva; estimativa em PRs, recontada a cada fase | estimar em sessões | skill orquestrar; reg360 cresceu por versões pequenas |
 | D-100 | O pipeline fica neste repositório em trilha própria; a app lê o manifest público sem credencial; conjunto publicado é pré-requisito das fases 4, 4A e 7. *v0.6: a app veio para o mesmo repositório (D-125); a app continua lendo o manifest publicado, nunca o checkout* | levar o pipeline para o repositório da app | apps-em-repo-proprio.md § 2; workflows do pipeline já existem aqui |
 | D-101 | req.dados falso tipado por Pick<HelperDados>, teste estático de sql_declarado, banco só via URBIVERSO_PG_TESTE_URL antes de release que muda sql_declarado | esperar dev-shell ou testar só na instância | apps-em-repo-proprio.md § 9 (não existe dev-shell); KIT.md; nobi testes/infra.ts |
@@ -6147,22 +6522,28 @@ gravada na hipótese de âncora; seção de âncora na ficha detalhada; jornada 
 | D-123 | base_area vira dimensão de metricas_anuncios_mensais, R$/m² null na linha todas | colunas lado a lado | garante nunca misturar base de área |
 | D-124 | hipoteses_produto.status em hipotese, sustentada, descartada | reaproveitar status de hipoteses_ancora | hipótese de produto não tem fase de conversa |
 | D-125 | A app vive neste repositório, `rafaleandrog/inteligencia-real-estate`, pessoal e público, em `apps/inteligencia_imobiliaria/`; identidade `rafaleandrog/inteligencia-real-estate::inteligencia_imobiliaria`; não há repositório novo nem org UP-Urbita (substitui a D-95; P-04 segue fechada com a identidade nova) | repositório privado próprio na org UP-Urbita (D-95) | resposta do dono, 2026-10-17; precedente: a app `viabilidade` do mesmo dono roda na Pinguim a partir de repositório pessoal (`rafaleandrog/viabilidade-real-estate::viabilidade`) |
-| D-126 | A raiz vira workspace pnpm (`pnpm-workspace.yaml` com `apps/*` e catálogo, `packageManager` pnpm, `pnpm-lock.yaml`); o `package.json` do site fica na raiz com os scripts dele; o `validate.yml` passa a pnpm e o `package-lock.json` sai; a pasta da app nasce antes do `npx @urbiverso/kit-apps` | repositório separado só para a app; ou instalar o kit antes de criar a pasta | resposta do dono, 2026-10-17; o kit só semeia `apps/ola_mundo` onde não há `apps/` nem `modulos/`, recusa sem sinal de repositório de app e não toca arquivo de dois donos (`KIT.md`) |
+| D-126 | O site antigo fica intacto e funcional; a app mora em `apps/inteligencia_imobiliaria/` e o workspace é aditivo: `pnpm-workspace.yaml` (`apps/*`), `pnpm-lock.yaml` e o campo `packageManager`; `package-lock.json`, scripts e `validate.yml` do site não mudam; a pasta da app nasce antes do `npx @urbiverso/kit-apps`; remover ou mudar o site só por ordem do dono | converter o site para pnpm e apagar o `package-lock.json`; ou repositório separado só para a app | resposta do dono, 2026-10-17 ("não quero apagar nada do app original"); o `ci.yml` do kit roda `corepack enable` e precisa do `packageManager`; o kit só semeia `apps/ola_mundo` onde não há `apps/` nem `modulos/` |
 | D-127 | Regras delimitadas por caminho: `docs/ENGINEERING_RULES.md` e `docs/AI_WORKFLOW.md` (com a review do Codex) valem para o site (raiz, `src/`, `admin.html`, `pipeline/`); a app segue o `KIT.md` e as skills do kit; o `CLAUDE.md` deste repositório vale para tudo | revogar as regras do site; ou aplicar R1.x e R2.1 à app | resposta do dono, 2026-10-17; R1.1 e R1.3 proíbem build e backend Node, que a app tem por desenho; precedente: os repositórios de app do kit (reg360, urbigis) seguem o `KIT.md` |
 | D-128 | Só Pinguim até o MVP: a app roda lá como qualquer app externa, com aceitação `Releases`, e é onde a equipe testa e usa; área própria real fica lá, protegida pela permissão por pessoa (D-13) e pelo papel `estrategico` (D-107), com o admin da instância vendo tudo como risco aceito; produção é passo futuro, por decisão do dono depois do MVP (substitui a D-97) | Pinguim de teste e instância de produção para uso desde o fim da fase 1 (D-97) | resposta do dono, 2026-10-17; precedente: reg360 usa a Pinguim com `Releases` (`docs/operacao.md`) |
-| D-129 | MVP = fases −1, 0, 1 e 2 mais a camada do núcleo no mapa ([MVP-NUCLEO]); depois do MVP, release, uso na Pinguim e decisão do dono sobre produção | V1 inteira antes de qualquer marco de uso | resposta do dono, 2026-10-17; o uso real começa cedo e a promoção é decisão dele |
+| D-129 | MVP = fases −1, 0, 1 e 2 mais a camada do núcleo (seção 15.1a); depois do MVP, release, uso na Pinguim e decisão do dono sobre produção | V1 inteira antes de qualquer marco de uso | resposta do dono, 2026-10-17; o uso real começa cedo e a promoção é decisão dele |
 | D-130 | Papéis padrão declarados para quando a equipe crescer: `decisor` e `curador` e `operador` sob `escrita`, `estrategico` sob `leitura`; gerar ficha para baixar e exportar com `leitura`; mudança de estágio para `iniciativa` ou além, e para `encerrada`, só por `admin` ou `decisor`, com quem decidiu e o motivo em `area_eventos`, sem tabela nova nem comitê (fecha P-42) | tabela `decisoes_area` e fluxo de aprovação | resposta do dono, 2026-10-17: no dia a dia o admin faz tudo e os demais leem os resultados; precedente: o papel por função do `nobi` e a trilha da área já existente (D-78) |
 | D-131 | Alerta é de erro (busca que falhou, fonte bloqueada, parser degradado, carga que falhou, cadeia mensal parada), ao admin; não há alerta nem rotina de prazo, e prazo de condição e de diligência é campo informativo visto no Início (confirma a D-14; fecha P-43) | aviso de prazo ao responsável por rotina diária | resposta do dono, 2026-10-17: não há prazos na pesquisa; precedente: o barramento manda erro só ao admin da app (C-48) |
 | D-132 | Toda fonte é externa e pública e fica fora do app; `comum/fontes.ts` declara o modo de cada uma (`automatica`, `manual` ou `ambas`) e o responsável, por padrão o admin; o pipeline fica neste repositório (fecha P-44) | responsável nomeado por fonte e pipeline numa org | resposta do dono, 2026-10-17; o caminho mais simples que a plataforma sustenta: `fetch` global em rotina (D-79) e upload pela Operação › Importações |
 | D-133 | Fonte manual sobe como anexo da carga (PDF, planilha, imagem), e PDF ou imagem pode ter extração assistida por IA pelo slot custom `extracao_documento` de base `arquivos` (`req.ia.extrairConteudo`), desligada por padrão pelo parâmetro `usar_ia_extracao_documentos`; a extração gera prévia que o operador confere antes de gravar | digitar à mão todo PDF; ou gravar a extração sem conferência | resposta do dono, 2026-10-17; `ia.md` § 4: "O slot `arquivos` extrai conteúdo de texto UTF-8, PDFs e imagens usando a API dedicada `extrairConteudo`", com slot custom de base `arquivos` por `slot`; precedente: o `extracao_pagina` desligado (D-04) |
 | D-134 | Uso interno sem parecer jurídico: coleta nos portais, IVV e FipeZap em exportação, pacote e contexto de IA são risco aceito; nunca em página pública (D-02); o pacote e o CSV exportado levam a fonte (fecha P-45) | parecer jurídico antes da fase 3 | resposta do dono, 2026-10-17; a app é só autenticada (D-02) e não redistribui fora da equipe |
 | D-135 | Cadência de release: durante a construção, no ritmo dos PRs, sem número fixo, com índices na criação e sem reiniciar a instância em horário de uso dos outros; depois do MVP, release e promoção por ordem do dono (fecha P-48; altera a cadência da D-106) | uma release por dia útil em horário acertado com o operador | resposta do dono, 2026-10-17; precedente: reg360 publica release por mudança pequena na Pinguim |
+| D-136 | Separação de origens: a pesquisa mora no schema da app, fonte de verdade dos objetos e dos atributos, que ficam prontos e quantificáveis ali; o núcleo imobiliário é o cadastro oficial, lido ao vivo pelo módulo e nunca copiado; a geometria oficial do lote é do módulo `geo`, via núcleo; entre os dois há só o vínculo | levar os objetos de pesquisa ao núcleo; ou copiar lote e matrícula para o schema da app | decisão do dono, 2026-10-17: os objetos da planilha vivem na app, e só alguns se ligam ao imóvel do núcleo; cópia vira segunda verdade que diverge (precedente: reg360, satélite com id lógico) |
+| D-137 | Catálogo de atributos extensível (`atributos_def`, `atributos_valor`), editável na tela por admin e `curador` sem release, com filtro por faixa sobre `valor_num`, agregação em código e métrica dinâmica no catálogo; atributo usado em cálculo, rotina ou índice é promovido a coluna fixa por release | coluna fixa para todo parâmetro; ou `json` livre por objeto | decisão do dono, 2026-10-17: a equipe cadastra parâmetros ao longo do tempo, e com coluna fixa cada um pediria release, schema e migração; `json` livre não se filtra por índice nem tem tipo e unidade; a promoção existe porque o reconciliador só cria coluna pelo `schema.json` (C-16) |
+| D-138 | `vinculos_nucleo`: junção da app com referência lógica (inteiro, sem `tabela_ref`) a `imoveis` (com subtipo), `incorporacoes`, `parcelamentos` e `matriculas`, N:N, criada por admin ou `curador` em rota autenticada e conferida por `buscarPorChave`, nunca por rotina; vale para áreas de estudo (inclusive `propria`), contornos, lotes Terracap, lançamentos e empreendimentos (fecha P-47) | uma coluna `imobiliario_id` em cada tabela; ou vínculo automático por rotina | `tabela_ref` para tabela de módulo reprova (modulos.md:394); `req.modulos` não existe em rotina (modulos.md:296-301); só alguns objetos têm vínculo, e um objeto pode ter vários; ligar polígono a lote é trabalho manual (precedente: Magis, UP-Urbita/urbigis#18) |
+| D-139 | Dependência de `urbiverso/modulos-urbiverso::imobiliario` com `versao_min: "1.0.0"` e `ler` em `imoveis`, `parcelamentos`, `incorporacoes`, `matriculas` e `setores_habitacionais`, sem `transacoes` nem `pessoas`; o imobiliário vira pré-requisito de instalação e as flags são passo da fase −1; entra no MVP (revê a D-06) | `versao_min: "1.2.0"` com só `imoveis` e `incorporacoes`, no Futuro (v0.5) | decisão do dono, 2026-10-17; 1.2.0 só traz a tela `/imobiliario`, que a app não usa; `reg360` e `nobi` declaram 1.0.0; a Pinguim já roda o 1.3.0; as partes de transação são pessoas (§22) |
+| D-140 | Cliente único do núcleo no frontend (`comum/nucleo-cliente.ts`): único que chama `urbiVerso.modulo`; paginação em laço de 200 com teto; allowlist de filtros datada e conferência das linhas na volta; cache de 60 s; banner para os `403` de flag; agregação no cliente; nunca detalhe de matrícula, `/pessoas`, `bbox` nem componente `imobiliario-*` | chamadas espalhadas pelas telas; ou leitura pelo backend | `req.modulos` só tem `batch`, `chamarSubrecurso`, `atualizar` e `buscarPorChave`, sem listar; filtro fora da allowlist é ignorado calado (nucleo.md:454); o núcleo não publica evento; precedente: reg360 (tradução de caminho num arquivo só, agregação no frontend) |
+| D-141 | A camada Núcleo desenha os objetos da app que têm vínculo pela geometria da própria app, com selo; o traçado oficial do lote, do módulo `geo`, fica para quando o contrato estiver no SDK (P-49) | ler o `geo` e o `feicao_id` do imobiliário 1.3.0 pelo que a Pinguim roda; ou filtrar o núcleo por `bbox` | o SDK 100 não tem `geo` nem `feicao_id` (zero ocorrências no bundle) e o que está fora do pacote não existe para a app (`KIT.md`); o `bbox` do imobiliário responde `501` |
 
 ---
 
 ## 17. Pendências
 
-P-11 (a contradição sobre `reagir`) foi resolvida pela D-47 e não aparece abaixo. Na v0.6 fecharam P-42, P-43, P-44, P-45 e P-48, e a P-04 ganhou a identidade nova. Na v0.5 fecharam P-04 e P-23 e entraram P-42 a P-48. Na v0.4 a
+P-11 (a contradição sobre `reagir`) foi resolvida pela D-47 e não aparece abaixo. Na v0.6 fecharam P-42, P-43, P-44, P-45, P-47 e P-48, entrou a P-49, e a P-04 ganhou a identidade nova. Na v0.5 fecharam P-04 e P-23 e entraram P-42 a P-48. Na v0.4 a
 conferência contra o SDK fechou P-05, P-16 a P-22, P-38 e P-39; elas ficam na tabela com a linha
 "Fechada em v0.4", para o histórico.
 
@@ -6194,7 +6575,7 @@ conferência contra o SDK fechou P-05, P-16 a P-22, P-38 e P-39; elas ficam na t
 | P-25 | Lista final de categorias de consumo, CNAEs e grupos da POF | Comércio começa por um conjunto mínimo (supermercado, farmácia, academia, escola, clínica) |
 | P-26 | Geocodificação do CNPJ: por CEP, por endereço ou casada ao CNEFE | Pontos por CEP ficam fora de distância e de célula |
 | P-27 | Calibração do expoente do Huff (sem dado de venda) | Simulação só serve para comparar cenários entre si |
-| P-28 | Quem cadastra as áreas próprias da UP e de onde vem a lista oficial *v0.5: a fonte provável é o Urbigis/Magis; ver P-47* | Áreas próprias incompletas ou desatualizadas no Início e nas análises |
+| P-28 | Quem cadastra as áreas próprias da UP e de onde vem a lista oficial *v0.5: a fonte provável é o Urbigis/Magis; ver P-47* *v0.6: ver P-47, fechada pela D-138* | Áreas próprias incompletas ou desatualizadas no Início e nas análises |
 | P-29 | Se o IPEDF publica erro padrão ou CV por indicador, e qual limiar usar | Aviso de cautela só pela cobertura amostral |
 | P-30 | Credencial do Earth Engine (ou alternativa) no Actions para MapBiomas e Open Buildings | Expansão urbana e novas edificações ficam fora da fase 7 |
 | P-31 | Fontes e licenças de UC, APP e hidrografia, e do modelo de elevação para declividade, no DF | Restrições do sítio ficam incompletas; área líquida não é estimada |
@@ -6213,8 +6594,9 @@ conferência contra o SDK fechou P-05, P-16 a P-22, P-38 e P-39; elas ficam na t
 | P-44 | **Fechada em v0.6:** toda fonte é externa e pública; `comum/fontes.ts` declara o modo (`automatica`, `manual`, `ambas`) e o responsável, por padrão o admin; carga manual por anexo e extração assistida (D-132, D-133); o pipeline fica neste repositório | — |
 | P-45 | **Fechada em v0.6:** uso interno, sem parecer; IVV, FipeZap e dado de portal só para uso interno, nunca em página pública; o pacote e o CSV exportado levam a fonte; risco aceito (D-134, R-53) | — |
 | P-46 | Se lentes, Gi* e análise de tela, que não servem a nenhuma jornada, saem da V1 pela R-36; recomendação: mover para o Futuro e manter áreas gêmeas (J3) | Telas sem uso que custam construção e manutenção |
-| P-47 | Confirmar que a lista oficial de áreas próprias é a do Urbigis/Magis ("MATRÍCULAS › Atuais (UP)") e nomear o curador que a espelha; recomendação: importar por KMZ com o id de origem | Áreas próprias incompletas ou desatualizadas no Início, no portfólio e nas análises |
+| P-47 | **Fechada em v0.6:** a lista de áreas próprias vem do núcleo e do Urbigis/Magis, por vínculo: a área de estudo `propria`, ou o contorno importado do Magis por KMZ, se liga a imóveis, parcelamentos ou matrículas do núcleo em `vinculos_nucleo`; os objetos são da app, e quem vincula é o admin até a equipe crescer (D-136, D-138, D-130) | — |
 | P-48 | **Fechada em v0.6:** tudo na Pinguim; durante a construção, releases no ritmo dos PRs, com índices na criação e sem reiniciar a instância em horário de uso dos outros, sem número fixo; depois do MVP, release e promoção por ordem do dono (D-135) | — |
+| P-49 | Contrato do módulo `geo` (feições) e do `feicao_id` do imobiliário 1.3.0 publicado no SDK; até lá a camada Núcleo usa a geometria da app (D-141); pedido ao shell em S-32 (`docs/ISSUES_SHELL_SUGERIDAS.md`) | Sem o traçado oficial do lote no mapa; o polígono da pesquisa pode divergir do lote registrado sem que a tela mostre |
 
 ---
 
@@ -6245,6 +6627,11 @@ D-101):
   formatos de `purchase_*`); vocabulário de URL do mapa (ida e volta); `urlSegura()` (só
   `http`/`https`, o resto vira `null`); supressão por amostra (mediana com n ≥ 5, P25/P75 com
   n ≥ 10, variação entre meses com n ≥ 20 nos dois, abaixo disso `null` com `amostra_pequena`).
+- **Núcleo e atributos (v0.6):** o cliente do núcleo com `urbiVerso.modulo` falso (laço até a
+  página incompleta e teto, descarte da linha que não casa com o filtro, cache de 60 s, banner
+  para os dois `403`, nenhum caminho proibido); um teste que reprova `urbiVerso.modulo` fora de
+  `comum/nucleo-cliente.ts`; combinações de `comum/vinculos.ts`; um valor por `tipo_valor`,
+  `aplica_a` e filtro por faixa em `atributos_valor`.
 - **Parser:** uma fixture real por fonte e por caso (ativo com JSON-LD, ativo só com meta,
   inativo por marcador, bloqueado por captcha, listagem com `ItemList`), resultado esperado em
   JSON ao lado; o teste roda o parser contra a fixture e compara. Uma fixture de 2 MB falha o
@@ -6411,6 +6798,12 @@ release só por ordem expressa do dono na conversa (`KIT.md`; D-114).
 - **Localidade:** unidade territorial tipada (RA, submercado, bairro, município, agregado) de
   uma cidade. Sucede "RA" como chave.
 - **Contorno:** geometria desenhável (limite de localidade, eixo rodoviário, área importada).
+- **Núcleo imobiliário:** o cadastro oficial de imóveis, parcelamentos, incorporações e
+  matrículas da instância, módulo `imobiliario`; a app só o lê ao vivo (D-136).
+- **Vínculo com o núcleo:** linha de `vinculos_nucleo` que liga um objeto da pesquisa a um
+  registro do núcleo pelo id, sem copiar nada (D-138).
+- **Atributo extensível:** parâmetro definido na tela, sem release, com tipo, unidade e os tipos de
+  objeto a que se aplica; promovido a coluna fixa quando entra em cálculo (D-137).
 - **Retrato mensal:** estado de um anúncio no fim de um mês. **Fechamento:** a rotina que o
   congela e recalcula as métricas.
 - **IVV:** índice de velocidade de vendas, fração decimal (vendidas / ofertadas) por mês.
@@ -6529,9 +6922,13 @@ fase acrescenta o que encontrar e marca o que resolveu.
 | R-49 | todas | **cada release reinicia a Pinguim inteira; índice em tabela grande alonga o boot ou deixa a app !saudavel** | §3.6: índices na criação; release no ritmo dos PRs, nunca em horário de uso dos outros (D-135) |
 | R-50 | 4B, 4C | **área própria ou tese real na Pinguim, que recebe devs de fora** (*v0.6: é onde ela fica*, D-128) | `permissao_padrao = nenhuma`: sem permissão dada por pessoa, dev de fora não vê a app (D-13); área própria só com `estrategico`, `curador` ou responsável, e 404 para os demais (D-107); QA só com áreas de prospecção, referência ou fictícias, e o QA Principal sem `estrategico`. O admin da instância vê tudo: risco aceito, escrito no README da app |
 | R-51 | todas | **repositório público com dado interno ou segredo**: fixture de área própria, retrato da planilha, relatório de QA ou CSV exportado com dado de área, token em arquivo | nenhum dado interno nem segredo entra no repositório; dado entra pela instância (3.1); golden set com geometria fictícia para própria e prospecção (24.2); `qa-relatorios/` sem área própria; a varredura de secrets do `validate.yml` cobre `apps/`; o retrato datado só leva o que o site já publica |
-| R-52 | 0 | **site e app no mesmo workspace pnpm**: o `pnpm install` da raiz passa a resolver o `@urbiverso/sdk` privado, e o `validate.yml` do site quebra sem o token; um `test` da raiz pode rodar a suíte errada; regra do site aplicada à app ou o contrário | `validate.yml` com `URBIVERSO_PACKAGES_TOKEN` no mesmo PR que cria o workspace, e verde nele; scripts do site intactos no `package.json` da raiz e os da app no pacote dela; delimitação por caminho escrita em 3.1 e nas notas de escopo (D-126, D-127); um PR por lado |
+| R-52 | 0 | **site e app no mesmo repositório**: dois lockfiles (npm e pnpm) divergem; o `ci.yml` do kit roda em PR do site; regra do site aplicada à app ou o contrário; um PR da app quebra o site | o site não muda (D-126); `pnpm-workspace.yaml` só com `apps/*`; o PR da fase 0 confere que o site abre e que o `validate.yml` segue verde; delimitação por caminho escrita em 3.1 (D-127); um PR por lado |
 | R-53 | 3, 5 | **coleta nos portais e IVV, FipeZap e dado de portal usados sem parecer jurídico** | risco aceito pelo dono (D-134): uso interno, app só autenticada, nunca página pública (D-02), fonte no pacote e no CSV; postura de coleta de 8.1 (identificação honesta, sem contornar captcha nem login) |
 | R-54 | 2, 4B | **extração por IA lê errado um PDF e o número entra como fato** | desligada por padrão (D-133); gera só prévia, validada como CSV, que o operador confere e corrige antes de aplicar; o PDF fica como anexo da carga, para conferência; a importação pode ser desfeita (11.3.2) |
+| R-55 | 15.1a | **filtro ignorado pelo núcleo devolve linhas demais**: filtro fora da allowlist volta como a lista inteira, sem erro, e a contagem ou a camada mostram imóveis que não são do recorte | allowlist datada no cliente único (D-140): filtro fora dela não é enviado e se aplica no cliente; toda linha devolvida é conferida contra o filtro, e a que não casa é descartada com aviso; teste com resposta simulada que ignora o filtro; a allowlist é reconferida a cada nível de SDK |
+| R-56 | 15.1a | **vínculo deixa de resolver**: o imóvel é removido ou renumerado no núcleo, ou a flag é desligada, e a ficha fica vazia como se não houvesse vínculo | estado resolvido ao vivo (`resolve`, `nao_encontrado`, `sem_permissao`) escrito na ficha; lista "vínculos que não resolvem" no Cadastro; o vínculo nunca é apagado sozinho, o curador decide (5.25) |
+| R-57 | 15.1a em diante | **catálogo de atributos vira planilha dentro do app**: atributos duplicados, sem unidade, de tipo errado ou sem uso, e números que não se somam | só admin e `curador` definem; `codigo` único em `snake_case`; tipo e unidade obrigatórios no numérico e imutáveis com valor gravado; `aplica_a` restringe o objeto; fonte e data por valor; teto de 200 ativos; promoção a coluna fixa quando o atributo entra em cálculo; atributo extensível não entra em achado, índice nem ficha congelada (5.24) |
+| R-58 | −1, 15.1a | **imobiliário ausente ou abaixo de 1.0.0**: a instalação recusa com `422` e a app não sobe; ou as flags ficam desligadas e a camada some calada | pré-requisito no item 8 da fase −1 e no README; hoje só a Pinguim, que roda o 1.3.0 (D-128); banner explícito para os `403` de flag (D-140) |
 
 ---
 
@@ -6640,8 +7037,9 @@ apaga é `limpar_retencao` (7.13; C-41, R-44).
 | CNPJ de empresário individual e MEI | pipeline `comercio_cnpj` | só categoria, CNAE, porte e localização; sem nome nem documento |
 | Arrematante de licitação, responsável técnico de licença | editais, DODF, licenças | não é guardado |
 | Fotos de campo | `observacao_fotos.foto` | orientar a não fotografar pessoas; foto com pessoa identificável é apagada a pedido |
-| Áreas próprias e teses | `areas_estudo` (`tipo = propria`) e tudo que pende delas (seção 14) | sigilo comercial: só quem tem `estrategico` ou `curador`, ou é o responsável, vê; para os demais, `404` e ausência em listas e exportações (v0.5). Ficha e pacote marcados "uso interno". Ficam na Pinguim, protegidas pela permissão por pessoa e pelo papel `estrategico`; nunca no repositório, que é público (v0.6). Lista oficial: `[PENDENTE P-47]` |
+| Áreas próprias e teses | `areas_estudo` (`tipo = propria`) e tudo que pende delas (seção 14) | sigilo comercial: só quem tem `estrategico` ou `curador`, ou é o responsável, vê; para os demais, `404` e ausência em listas e exportações (v0.5). Ficha e pacote marcados "uso interno". Ficam na Pinguim, protegidas pela permissão por pessoa e pelo papel `estrategico`; nunca no repositório, que é público (v0.6). Lista oficial: do núcleo e do Urbigis/Magis, por vínculo (5.25; P-47 fechada) |
 | Trilha de saídas de área própria | `area_eventos` (usuário, ação, data) | ficha, pacote, exportação e análise de IA de área própria gravam quem gerou; não há trilha de visualização, que seria telemetria nominal (R-35) |
+| Dado do núcleo imobiliário | lido ao vivo pelo cliente único (5.25), nunca gravado na app (v0.6) | só listagens e detalhe de lote, gleba, unidade, parcelamento e incorporação; nunca o detalhe de matrícula (certidão e proprietários), `/pessoas` nem `/:id/pessoas`; sem `transacoes`, cujas partes são pessoas (D-139, D-140) |
 
 ### 22.2 Regras
 
@@ -6653,6 +7051,9 @@ apaga é `limpar_retencao` (7.13; C-41, R-44).
   risco aceito (R-50). Nenhum desses dados entra no repositório, que é público (R-51).
 - O contexto enviado ao provedor de IA leva números, achados e textos de síntese, nunca nome de
   pessoa.
+- Nada do núcleo imobiliário é gravado na app nem sai em exportação, pacote ou ficha congelada
+  além do id do vínculo; proprietário de matrícula e parte de transação nunca são lidos (v0.6,
+  D-136, D-140).
 - A ficha registra quem a gerou; o pacote leva o nome do arquivo e a data, não o usuário.
 - Agente com token tem exatamente os gates de uma pessoa do mesmo nível, inclusive nas rotas
   pessoais; token `somente_leitura` recebe `403 AUTH_TOKEN_SOMENTE_LEITURA` em mutação, erro de
