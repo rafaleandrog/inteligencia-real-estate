@@ -1,9 +1,13 @@
 # Spec — Inteligência Imobiliária (app UrbiVerso)
 
-**Status:** rascunho em construção, versão 0.3 (2026-10-16). A v0.2 incorporou as três rodadas
-de pesquisa de referências (D-21 a D-54); a v0.3 traz o método de Novos Negócios da UP para dentro
-do app, a leitura do sítio, a viabilidade expedita e a camada de governança (D-55 a D-78).
-**Issue de registro:** [#193](https://github.com/rafaleandrog/inteligencia-real-estate/issues/193).
+**Status:** rascunho em construção, versão 0.4 (2026-10-17). A v0.2 incorporou as três rodadas
+de pesquisa de referências (D-21 a D-54); a v0.3 trouxe o método de Novos Negócios da UP para dentro
+do app, a leitura do sítio, a viabilidade expedita e a camada de governança (D-55 a D-78); a v0.4 é
+a **conferência contra o SDK publicado** (`@urbiverso/sdk` 100.0.0, shell 0.56.37): os 84 itens de
+`docs/CONFERENCIA_SDK.md`, as decisões D-79 a D-94, os riscos R-38 a R-46 e a matriz de adoção de
+frameworks (seção 3.5).
+**Issues de registro:** [#193](https://github.com/rafaleandrog/inteligencia-real-estate/issues/193) (v0.1),
+[#195](https://github.com/rafaleandrog/inteligencia-real-estate/issues/195) (v0.4).
 **Slug da app:** `inteligencia_imobiliaria`. **Nome exibido:** Inteligência Imobiliária.
 **Instância-alvo da primeira instalação:** Pinguim (`homolog.urbiverso.com.br`), instância de testes.
 
@@ -21,13 +25,14 @@ Convenções do texto:
 - Nomes de tabela, coluna, rota, rotina e parâmetro estão em **português**, `snake_case`, como
   manda a convenção do UrbiVerso. A coluna "origem" das tabelas aponta a aba e a coluna da
   planilha de onde o dado vem na migração.
-- Tudo o que o texto afirma sobre a plataforma vem dos docs de `docs/shell/` do UrbiVerso na
-  versão `0.56.37` do shell e no nível **SDK 100**. Onde a app depende de algo que entrou num
-  nível específico, o nível está citado.
-- **`[CONFIRMAR SDK P-nn]`** marca o que depende de um contrato que esta spec não conseguiu
-  ler no SDK publicado. Item marcado não é implementado antes de a pendência ser fechada contra
-  `node_modules/@urbiverso/sdk/docs/` (regra da skill `revisar-pr-apps`). Todo item marcado
-  tem uma alternativa já descrita que não depende do contrato.
+- Tudo o que o texto afirma sobre a plataforma foi **conferido contra o bundle publicado**
+  `node_modules/@urbiverso/sdk/` na versão **100.0.0** (shell espelhado `0.56.37`), item a item,
+  em `docs/CONFERENCIA_SDK.md`. Onde a app depende de algo que entrou num nível específico, o
+  nível está citado. Referência `C-nn` aponta o item da conferência que sustenta a afirmação.
+- Desde a v0.4 **não existe mais marcador `[CONFIRMAR SDK P-nn]`**: cada um foi substituído pela
+  decisão que a conferência permitiu tomar (D-79 a D-94) ou pela alternativa já escrita. A regra
+  continua: contrato novo da plataforma só entra na spec depois de lido no bundle instalado
+  (regra da skill `revisar-pr-apps`), nunca no `main` do monorepo.
 
 ### O que mudou da v0.1 para a v0.2
 
@@ -300,12 +305,12 @@ apps/inteligencia_imobiliaria/
 ├── package.json            # build canônico: esbuild frontend (--external:@urbiverso/ui) + backend self-contained
 ├── tsconfig.json
 ├── backend/
-│   ├── rotas.ts            # exports: rotas, rotinas, aoIniciar
+│   ├── rotas.ts            # exports: rotas, rotasPessoais, rotinas, reagir, aoIniciar, aoEncerrar
 │   ├── rotas/              # um arquivo por domínio (anuncios.ts, mercado.ts, territorio.ts, estudos.ts,
 │   │                       #   produto.ts, comercio.ts, terra.ts, empreendimentos.ts, inicio.ts,
 │   │                       #   metodo.ts, sitio.ts, viabilidade.ts, governanca.ts, …)
 │   ├── rotinas/            # um arquivo por rotina
-│   ├── coleta/             # parser dos portais, classificação de resposta, cliente HTTP com proxy opcional
+│   ├── coleta/             # parser dos portais, classificação de resposta, cliente HTTP (fetch global; D-79)
 │   ├── ia/                 # montagem de contexto, schemas de resposta, gravação das análises
 │   ├── importacao/         # leitura de CSV, mapeamento, validação por tabela
 │   └── metricas/           # mediana, percentil, agregação por natureza (fluxo/estoque/razão)
@@ -322,7 +327,7 @@ apps/inteligencia_imobiliaria/
 │   ├── versoes.ts          # VERSAO_METODO por domínio (D-70)
 │   ├── diligencia.ts       # perguntas padrão por frente (D-60)
 │   ├── higienizar.ts       # remoção de dado pessoal na coleta e nas cargas (D-74)
-│   └── ajuda/              # "Como ler" de cada tela, em Markdown (D-77)
+│   └── ajuda/              # "Como ler" de cada tela, em Markdown (D-77); gerado em ajuda/index.ts no build (C-72)
 ├── frontend/
 │   ├── index.ts            # app-inteligencia-imobiliaria: roteador de sub-rotas
 │   ├── telas/              # uma por sub-rota
@@ -339,12 +344,22 @@ apps/inteligencia_imobiliaria/
 │   ├── comercio.md         # categorias, potencial, lacunas, Huff, gêmeas, lentes
 │   ├── metodo.md           # escada de maturidade, escalas, síntese, tese, diligência (v0.3)
 │   ├── viabilidade.md      # método residual, premissas e limites (v0.3)
+│   ├── ui-excecoes.md      # registro de exceções de UI da app (C-58): Superfície · Por quê · O que pode
 │   └── importacao.md       # CSV
 └── testes/                 # node --test; fixtures de HTML de portal e de CSV
 ```
 
 O código puro (`comum/`) é importado pelo backend e pelo frontend por um único `../comum/`,
 que o shell aceita como import intra-app. Nenhum arquivo importa `../../shell` nem outra app.
+
+Três regras de forma que a conferência fixou (C-72, C-73, C-75): o build é o canônico do kit
+(`esbuild frontend/index.ts --bundle --external:@urbiverso/ui` e `esbuild backend/rotas.ts
+--bundle --platform=node --target=node20 --minify`), sem loaders extras — por isso os `.md` de
+`comum/ajuda/` são convertidos num `comum/ajuda/index.ts` (mapa tela → string) por um passo do
+`pnpm build` da app, antes do esbuild; o `.gitignore` cobre `backend/rotas.js`, `frontend/index.js`
+e `dist/` (gate de árvore limpa do kit); e o bundle não tem limite documentado de tamanho, mas o
+shell importa todos os bundles a cada boot, então `--minify` é obrigatório e dependência só entra
+quando o ganho justifica.
 
 ### 3.2 Frameworks do UrbiVerso que a app usa
 
@@ -357,30 +372,47 @@ que o shell aceita como import intra-app. Nenhum arquivo importa `../../shell` n
 | Config da app | parâmetros declarativos (seção 4.3); aba Rotinas nativa | `parametros` |
 | Eventos | erros de operação (incluindo `parser_degradado`), evento de lacuna e o evento interno de continuação (seção 13) | `eventos`, `erros` |
 | Arquivos | CSV de importação, shards dos dados públicos, KML/KMZ importado | colunas `arquivo` |
-| Permissões | níveis + papéis `curador` e `operador` | `roles` |
+| Permissões | níveis + papéis `curador` e `operador`; **rotas pessoais** para as visões salvas (D-80) | `roles` + `export const rotasPessoais` |
+| Hooks de ciclo de vida | `aoIniciar` (semente, reconciliação de inscrições) e `aoEncerrar` (cancela lote em voo) | exports |
 
-Não usa: Segregação por conta (um território não é um tenant), Módulos (D-06), Páginas públicas
-(D-02), Webhooks de entrada, Wiki, Email, Slack direto (a notificação por Slack, se vier, é
-destino de Remessa configurado pelo admin, sem código).
+Não usa na V1: Segregação por conta (um território não é um tenant; C-82), Módulos (D-06; os
+contratos estão publicados e a forma exata do bloco `dependencias` está na seção 15.7), Páginas
+públicas (D-02), Webhooks de entrada, Disparadores, Wiki, Email, Slack direto (a notificação por
+Slack, se vier, é destino de Remessa configurado pelo admin, sem código), Auditoria (`auditavel`
+é trilha permanente de categoria fechada, não telemetria; C-83). A **matriz completa**, framework
+a framework, com fase e motivo, está na seção 3.5.
 
 O funil de prospecção de âncoras (quem foi contatado, status, próxima ação) **não** entra: é
 trabalho de CRM e continua no CRM da equipe (D-45). A app produz a ficha que o funil usa.
 
-**Dependências de terceiros no bundle (D-48).** A app não depende de biblioteca H3 em tempo de
-execução. O pipeline publica cada célula com centroide, vizinhos e pai r8; a app decide a que
-célula um ponto pertence pelo centroide mais próximo entre as células da caixa, que na grade
-hexagonal coincide com a célula que contém o ponto. Se o kit aceitar a biblioteca no bundle
-`[CONFIRMAR SDK P-18]`, a função exata substitui a aproximação sem mudar schema.
+**Dependências de terceiros no bundle (D-48, D-93).** O contrato do bundle self-contained é
+literal: "as dependências de runtime da app (`express`, `lit`, `undici` etc.) vêm embutidas no
+bundle" e só "dependência nativa (binário compilado) fica fora" (C-74) — biblioteca pura em JS ou
+WASM entra sem permissão, e não há lista de proibidas. Mesmo assim a app **não** depende de
+biblioteca H3 em tempo de execução (D-48): o pipeline publica cada célula com centroide, vizinhos
+e pai r8, e a app decide a que célula um ponto pertence pelo centroide mais próximo entre as
+células da caixa, que na grade hexagonal coincide com a célula que contém o ponto. `h3-js` fica
+autorizada a entrar quando a medição da fase 4A mostrar que a aproximação erra na borda de
+projeção, sem mudar schema. O ZIP do pacote com proveniência (D-28) usa biblioteca pura embutida
+(`fflate`), sem plano B de três downloads.
 
 ### 3.3 Pisos
 
-- `sdk_min`: o major do `@urbiverso/sdk` contra o qual a app compila na primeira release. Hoje
-  o nível publicado é 99 e o `main` da plataforma está em 100; `urbi-mapa` exige ≥ 98, o bloco
-  `dependencias` não é usado, `formato`/`intervalo` no schema exigem ≥ 94. Regra prática do guia:
-  copiar o major instalado.
-- `shell_min`: a versão de shell espelhada por esse SDK (`npm view @urbiverso/sdk urbiverso`).
-  Não inventar número.
-- `versao` do manifesto nasce em `0.1.0` e avança a cada release que muda `schema.json`.
+- `sdk_min: 100`. O publicado em 2026-10-17 **é** o SDK 100 (`latest` = `100.0.0`), igual ao
+  `main` da plataforma — a v0.3 supunha um publicado atrasado em 99 e estava errada (C-01). Regra
+  prática do guia, literal: "copie o major do SDK contra o qual você compilou". Todos os pisos
+  parciais que a app usa ficam cobertos: `urbi-mapa` 98, `rotasPessoais` e `formato`/`intervalo`
+  94, `busca_texto` 92, `estadoSlot` 83, hooks de ciclo de vida 59 (C-02).
+- `shell_min: "0.56.37"`: a versão de shell espelhada pelo SDK 100. Ela **não** sai do registry —
+  "o metadata do GitHub Packages omite campos custom, então `npm view` não os exibe" (C-01); a
+  leitura certa é `node -p "require('@urbiverso/sdk/package.json').urbiverso"` na árvore da app
+  depois do `pnpm install`. Pisos de shell que a spec usa (`fetch()` 0.50.21, `padrao` vivo
+  0.53.20, único parcial 0.53.4, `sql_declarado` 0.53.3, `status`/`codigo`/`detalhes` no erro
+  0.53.15, rotas pessoais 0.56.25) ficam todos abaixo.
+- `versao` do manifesto nasce em `0.1.0` e avança a cada release que muda `schema.json`, traz
+  migração **ou mexe em `shell_min`/`sdk_min`** — são os quatro gatilhos da regra única de
+  versionamento (C-09). Subir o SDK compilado num release sem mudar código também sobe `sdk_min`
+  e, por tabela, `versao`.
 
 ### 3.4 Multi-local (D-08)
 
