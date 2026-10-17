@@ -21,7 +21,7 @@ dados públicos e grade, dossiê e ficha das áreas, IA, comércio e âncoras.
 
 ## 2. O que entra
 
-São cerca de 12 a 14 PRs, cada um com release na Pinguim.
+São cerca de 10 a 12 PRs, cada um com release na Pinguim (a importação por CSV e a carga por agente entram dentro dos PRs da fase 1).
 
 | # | Item | Fase / PR | O que a pessoa vê | Framework do UrbiVerso (doc do SDK) | Como validar na Pinguim |
 |---|---|---|---|---|---|
