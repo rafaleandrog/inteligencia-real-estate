@@ -1,20 +1,27 @@
 # Spec — Inteligência Imobiliária (app UrbiVerso)
 
-**Status:** rascunho em construção, versão 0.4 (2026-10-17). A v0.2 incorporou as três rodadas
+**Status:** rascunho em construção, versão 0.5 (2026-10-17). A v0.2 incorporou as três rodadas
 de pesquisa de referências (D-21 a D-54); a v0.3 trouxe o método de Novos Negócios da UP para dentro
 do app, a leitura do sítio, a viabilidade expedita e a camada de governança (D-55 a D-78); a v0.4 é
 a **conferência contra o SDK publicado** (`@urbiverso/sdk` 100.0.0, shell 0.56.37): os 84 itens de
 `docs/CONFERENCIA_SDK.md`, as decisões D-79 a D-94, os riscos R-38 a R-46 e a matriz de adoção de
-frameworks (seção 3.5).
+frameworks (seção 3.5); a v0.5 responde à revisão de prontidão para implementar: repositório e
+ativação, fases em PRs com portão entre elas, convivência com o site e com a instância, segurança
+da coleta e das áreas próprias, e o método dos números.
 **Issues de registro:** [#193](https://github.com/rafaleandrog/inteligencia-real-estate/issues/193) (v0.1),
-[#195](https://github.com/rafaleandrog/inteligencia-real-estate/issues/195) (v0.4).
+[#195](https://github.com/rafaleandrog/inteligencia-real-estate/issues/195) (v0.4),
+[#197](https://github.com/rafaleandrog/inteligencia-real-estate/issues/197) (v0.5).
 **Slug da app:** `inteligencia_imobiliaria`. **Nome exibido:** Inteligência Imobiliária.
-**Instância-alvo da primeira instalação:** Pinguim (`homolog.urbiverso.com.br`), instância de testes.
+**Repositório da app:** `UP-Urbita/app-inteligencia-imobiliaria`, privado; identidade
+`UP-Urbita/app-inteligencia-imobiliaria::inteligencia_imobiliaria` (seção 3.1).
+**Instâncias:** Pinguim (`homolog.urbiverso.com.br`) é a de **teste**: recebe toda release e é onde
+roda o QA de cada fase. Laputa (`urbiverso.up.bsb.br`), produção da UP, é onde a equipe **usa** a
+app, a partir do fim da fase 1 (seção 15).
 
 Este documento é a fonte de verdade do que o app vai ser. Ele substitui, para o app UrbiVerso,
 os papéis que `docs/PRODUCT_PLAN.md`, `docs/ARCHITECTURE.md` e `docs/DATA_CONTRACT.md` cumprem
 para o site estático. Esses três continuam valendo para o site enquanto ele existir; quando o
-app entrar em uso na Pinguim e a planilha for congelada, eles passam a ser históricos.
+app entrar em uso na Laputa e a planilha for congelada, eles passam a ser históricos.
 
 Convenções do texto:
 
@@ -111,6 +118,42 @@ ambíguos), nenhum bloqueante para a V1. Nenhuma decisão de produto mudou de se
 
 As 31 capacidades e documentações que a app gostaria de ter estão em
 `docs/ISSUES_SHELL_SUGERIDAS.md`, cada uma com o plano B já adotado aqui.
+
+### O que mudou da v0.4 para a v0.5
+
+A v0.4 conferiu a spec contra o SDK. A v0.5 responde a uma revisão de **prontidão para construir**
+em três frentes (encaixe na instância compartilhada, método e dado, e o que impede começar): 57
+itens, cada um resolvido pelo contrato do bundle `@urbiverso/sdk` 100.0.0 ou pelo precedente das
+apps que já rodam na plataforma (charles3 e contencioso_ciborgue em `urbiverso/apps-juridico`,
+reg360, radar_sei, nobi e o Urbigis). Seis ficaram para o dono (P-42 a P-47). Em termos de desenho:
+
+- **Onde e como nasce (3, 15, 18):** repositório privado `UP-Urbita/app-inteligencia-imobiliaria`
+  (D-95); fase −1 de ativação com checklist e alçada por item (D-96); a Pinguim testa e a Laputa
+  usa, e dado sigiloso nunca entra na Pinguim (D-97); o pipeline segue neste repositório em trilha
+  própria (D-100); a unidade de plano é o PR, com fases em sub-issues e portão de três condições
+  (D-99, D-104); teste sem instância por `req.dados` falso tipado e banco opcional (D-101);
+  aceite sobre retrato datado e entrada congelada (D-102, D-103); protocolo do kit (D-114).
+- **Convivência com o site e com a instância (2, 3.6, 11.3):** um coletor por vez, também entre
+  instâncias, com corte na fase 3 (D-98); migração com `importacao_id`, retrato datado e desfazer
+  (D-119); índices nascem com a tabela, uma release por dia útil, sem downgrade (D-106); trava por
+  classe de rotina (D-120), `coleta_ativa` (D-108), guarda da cadeia mensal com erro
+  `cadeia_mensal_parada`, cota de IA por fatia (D-109); semente aguardada (D-112); Início em "/"
+  (D-110); prefixo de tags (D-111).
+- **Segurança (6, 8, 10, 14, 22):** a coleta só busca hosts das fontes cadastradas, com guarda a
+  cada redirecionamento (SSRF); invólucro de erro em toda rota; links e conteúdo de terceiro
+  tratados como texto, e CSV protegido contra fórmula; guarda por objeto com matriz de acesso por
+  contagem exata (D-115); papel `estrategico` para áreas próprias, 404 para os demais e filtro antes
+  da paginação (D-107, D-116); histórico congelado protegido da purga (`restringir`); cálculo de
+  cidade inteira só em rotina.
+- **Método e dado (5, 7, 9, 10):** estatística suprimida abaixo do n mínimo; painel fixo de buscas
+  para variação e achados; índice estratificado com peso exógeno e teto de imputação (fecha P-23);
+  liquidez por Kaplan-Meier e R$/m² por base de área (D-122, D-123); agrupamento sem confiança
+  automática (D-113); viabilidade com preço de venda, custos indiretos, contrapartida e comparação
+  por m² computável; área líquida vetorial (mínimo 1 ha); matriz de produto em composição e fluxo;
+  absorção só com 12 meses de IVV e alvará com validade; lacuna comercial por bacia (D-121) e Gi*
+  com FDR; Huff com escala única de atratividade; capa da ficha sem falácia ecológica; comparar
+  duas fichas da mesma área; `hipoteses_produto` (D-124) e a 4C sem depender das fases 5 e 7
+  (D-105).
 
 ---
 
@@ -232,12 +275,15 @@ Estes princípios estão provados em produção há meses e entram na app sem mu
 
 | Persona | Nível e papel | O que precisa do app |
 |---|---|---|
-| **Direção de Novos Negócios** | `leitura` | o que mudou no mês (Início), o portfólio das áreas, fichas para decidir, a agenda de decisão de cada área |
-| **Analista de Novos Negócios** | `escrita` | triar glebas, montar o dossiê, registrar síntese, tese e condições, simular produto, âncora e viabilidade, gerar a ficha |
+| **Direção de Novos Negócios** | `leitura` + `estrategico` | o que mudou no mês (Início), o portfólio das áreas, fichas para decidir, a agenda de decisão de cada área |
+| **Analista de Novos Negócios** | `escrita` (+ `estrategico` para quem trabalha áreas próprias) | triar glebas, montar o dossiê, registrar síntese, tese e condições, simular produto, âncora e viabilidade, gerar a ficha |
 | **Curador de dados** | `escrita` + `curador` | manter cadastros, aprovar candidatos, confirmar grupos e vínculos, cadastrar as áreas próprias e as faixas de programa |
 | **Operador de dados** | `escrita` + `operador` | fontes, buscas, cargas públicas, importações, saúde do parser, qualidade |
 | **Admin** | `admin` | parâmetros, rotinas, IA, usuários e papéis |
 | **Agente** (Claude ou outro) | o nível do token | ler o mesmo que as telas mostram, pelas mesmas rotas, para montar análises e documentos fora do app |
+
+O papel `estrategico` (v0.5) é o que abre as áreas próprias e tudo o que pende delas; sem ele,
+nem `leitura` nem `escrita` as veem (seções 4.1 e 14).
 
 As sete jornadas que o app precisa servir de ponta a ponta estão na seção 24, cada uma com o
 critério de aceite. Elas, e não a lista de telas, são a medida de pronto do produto.
@@ -274,13 +320,24 @@ O app **instrumenta** o método: guarda, liga à evidência e lembra do que venc
 | Fechamento mensal (retrato + métricas) | Dentro da rotina diária do script | Rotina `fechar_mes` (mensal) + atualização do mês corrente na rotina diária |
 | Área admin (`admin.html`, token) | Token em `sessionStorage` | Telas de Cadastro e Operação, gate por nível e papel do shell |
 | Dados públicos (`data/public/`) | Arquivos no Pages, lidos pelo manifest | Tabelas `conjuntos_publicos` e `conjunto_arquivos` (coluna `arquivo`), carregadas pela rotina `carregar_dados_publicos` |
-| Pipeline Python | GitHub Actions deste repositório | Continua no GitHub Actions; publica artefatos; a app os consome (D-05) |
+| Pipeline Python | GitHub Actions deste repositório | Continua no GitHub Actions **deste** repositório, em trilha própria (seção 15.0a); publica artefatos públicos; a app, que mora em outro repositório, lê o manifest pela URL pública (D-05) |
 | Mapa | Leaflet vendorizado, canvas próprio | `urbi-mapa` (SDK ≥ 98), Leaflet em canvas, camadas GeoJSON |
 | Gráficos | SVG próprio (`chart-model` + `chart-layout`) | Família `urbi-grafico-*`, `urbi-kpi`, `urbi-mapa-de-calor` |
 | Estado na URL (`#mapa?ra=…`) | `url-state.js` | Sub-rota da app + querystring por `replaceState` |
 | DATA_QUALITY / CHANGE_LOG | Abas da planilha | `achados_qualidade` + `alteracoes_cadastro` + trilha do shell |
 | Modo demonstração (`data/demo.json`) | Existe | **Não existe** (D-15). A app nasce vazia e é povoada por CSV |
 | Acesso público | Site aberto | **Nenhum** (D-02). Só usuários da instância, sem permissão padrão |
+
+**Convivência até o corte (v0.5).** Regra: **um coletor por vez, uma fonte de verdade por
+tabela** (dois coletores no mesmo portal violariam "uma requisição por vez por host", 8.1). Nas
+fases 1 e 2 a planilha continua fonte de verdade e o Apps Script continua coletando; a app recebe a
+planilha por reimportação incremental (`modo_duplicata = atualizar` pela chave natural
+`id_legado`), quantas vezes for preciso, e o site segue no ar sem mudança (precedente: a
+reimportação idempotente do `reg360`). Na fase 3, no dia em que as rotinas de coleta da app são
+ligadas na Laputa, os gatilhos do Apps Script são removidos e as abas de anúncios (`LISTINGS*`,
+`LISTING_*`) ficam somente leitura: dali em diante a app é a fonte de verdade de anúncios e o site
+mostra o retrato congelado. As demais abas (IVV, FipeZap, PDAD, tráfego) migram de fonte quando a
+fase que as carrega fica pronta. A fase 6 só congela o resto e marca o site como legado (seção 15).
 
 ### 2.2 O que entra na V1 completa (todas as fases)
 
@@ -329,7 +386,7 @@ E, na v0.3:
 - Modelo 2, base histórica multi-cidade (`warehouse/`), issue #154.
 - Dependência do módulo `imobiliario` do UrbiVerso (D-06).
 - Páginas públicas.
-- Proxy de saída para os portais, só se o bloqueio aparecer na Pinguim: pedido ao admin da
+- Proxy de saída para os portais, só se a medição da fase 3 mostrar bloqueio: pedido ao admin da
   instância, no proxy de egresso dela (D-09, D-79).
 
 ---
@@ -338,11 +395,42 @@ E, na v0.3:
 
 ### 3.1 Forma do repositório da app
 
-A app é uma pasta `apps/inteligencia_imobiliaria/` num repositório que segue a convenção dos
-repositórios de app do UrbiVerso (`pnpm-workspace.yaml` com `apps/*`, catálogo de versões,
-`release.yml` e `ci.yml` do kit `@urbiverso/kit-apps`). **Onde essa pasta nasce** (este
-repositório, reorganizado, ou um repositório novo) é decisão adiada (D-16); a spec não depende
-dela. O que ela exige é:
+A app nasce num repositório novo e **privado** da org da UP, `UP-Urbita/app-inteligencia-imobiliaria`,
+com o kit instalado (`npx @urbiverso/kit-apps`: `pnpm-workspace.yaml` com `apps/*`, catálogo de
+versões, `release.yml`, `ci.yml`, `KIT.md` e skills) e a app em `apps/inteligencia_imobiliaria/`.
+A identidade é `UP-Urbita/app-inteligencia-imobiliaria::inteligencia_imobiliaria` e entra no
+`manifesto.json` desde a primeira release (o gate da `manifesto-sem-identidade` reprova, a partir
+de 2026-10-28, manifesto sem ela). Apps da UP moram na org da UP, um repositório privado por app
+(precedentes: `UP-Urbita/app-radar-sei::radar_sei`, `UP-Urbita/urbigis::magis`); o kit recusa
+`manifesto.json` na raiz, por isso a pasta fica sob `apps/`.
+
+Este repositório (`rafaleandrog/inteligencia-real-estate`) continua sendo o do site estático e do
+pipeline (seção 15.0a), com as regras dele intactas: reorganizá-lo exigiria revogar
+`docs/ENGINEERING_RULES.md` (R1.1 "sem build obrigatório", R1.3 "não introduza backend Node") de um
+site que continua no ar. A spec e o site são referência, como o `prototipo/` do Urbigis: o código
+do site não é reaproveitado por cópia, só portado com os testes de paridade (11.4). Fecha D-16 e
+P-04 (D-95).
+
+Raiz do repositório da app (o que fica fora da pasta da app):
+
+```
+UP-Urbita/app-inteligencia-imobiliaria/
+├── KIT.md, CLAUDE.md, pnpm-workspace.yaml   # do kit; o "Deste repositório" do CLAUDE.md é do dono
+├── .github/workflows/
+│   ├── ci.yml, release.yml                   # do kit (typecheck, build, test, empacotamento; release)
+│   └── sdk-noturna.yml                       # noturna contra o SDK novo, do repositório (18.2)
+├── scripts/
+│   ├── exportar-planilha.mjs                 # retrato datado da planilha, aba por aba, por GViz (11.3)
+│   └── gerar-paridade.mjs                    # fixture de paridade a partir do código do site (18.1)
+├── migracao/AAAA-MM-DD/                      # <aba>.csv + sha256 de cada arquivo (retrato datado)
+├── qa-relatorios/                            # relatórios do QA; medidor/p95.mjs (18.2)
+└── apps/inteligencia_imobiliaria/
+```
+
+`gerar-paridade.mjs` recebe por argumento um checkout do site num commit fixado e grava esse commit
+no arquivo que produz, para que a fixture diga de que código saiu (D-103).
+
+A pasta da app:
 
 ```
 apps/inteligencia_imobiliaria/
@@ -352,9 +440,11 @@ apps/inteligencia_imobiliaria/
 ├── tsconfig.json
 ├── backend/
 │   ├── rotas.ts            # exports: rotas, rotasPessoais, rotinas, reagir, aoIniciar, aoEncerrar
+│   ├── semente.ts          # garantirSemente(dados): promise memoizada por processo, aguardada pelas rotas (4.2)
 │   ├── rotas/              # um arquivo por domínio (anuncios.ts, mercado.ts, territorio.ts, estudos.ts,
 │   │                       #   produto.ts, comercio.ts, terra.ts, empreendimentos.ts, inicio.ts,
-│   │                       #   metodo.ts, sitio.ts, viabilidade.ts, governanca.ts, …)
+│   │                       #   metodo.ts, sitio.ts, viabilidade.ts, governanca.ts, …) e comum.ts,
+│   │                       #   com rota(fn), o invólucro de erro de toda rota (seção 6)
 │   ├── rotinas/            # um arquivo por rotina
 │   ├── coleta/             # parser dos portais, classificação de resposta, cliente HTTP (fetch global; D-79)
 │   ├── ia/                 # montagem de contexto, schemas de resposta, gravação das análises
@@ -373,9 +463,15 @@ apps/inteligencia_imobiliaria/
 │   ├── versoes.ts          # VERSAO_METODO por domínio (D-70)
 │   ├── diligencia.ts       # perguntas padrão por frente (D-60)
 │   ├── higienizar.ts       # remoção de dado pessoal na coleta e nas cargas (D-74)
+│   ├── importacao-chaves.ts # chave natural e colunas_derivadas por tabela (11.1)
+│   ├── regras-objeto.ts    # regra por objeto por tabela (autor, responsavel, curador, estrategico) (14)
+│   ├── url.ts              # urlSegura(): só http/https, senão null (10.1)
+│   ├── laco.ts             # cederAoLaco(): setImmediate a cada 1 000 iterações (orçamento de CPU, 21.1)
 │   └── ajuda/              # "Como ler" de cada tela, em Markdown (D-77); gerado em ajuda/index.ts no build (C-72)
 ├── frontend/
-│   ├── index.ts            # app-inteligencia-imobiliaria: roteador de sub-rotas
+│   ├── index.ts            # app-inteligencia-imobiliaria: roteador de sub-rotas; Início em "/";
+│   │                       #   rota desconhecida → urbi-estado-vazio "Página não encontrada"
+│   ├── registro.ts         # definir(tag, classe): só define se a tag ainda não existe; prefixo intel-imob-
 │   ├── telas/              # uma por sub-rota
 │   └── componentes/        # peças reutilizadas entre telas
 ├── migracoes/              # vazio no nascimento; migração de dados a partir da 2ª release com mudança de schema
@@ -391,9 +487,19 @@ apps/inteligencia_imobiliaria/
 │   ├── metodo.md           # escada de maturidade, escalas, síntese, tese, diligência (v0.3)
 │   ├── viabilidade.md      # método residual, premissas e limites (v0.3)
 │   ├── ui-excecoes.md      # registro de exceções de UI da app (C-58): Superfície · Por quê · O que pode
+│   ├── ativacao.md         # checklist da fase −1, conferido na fase 0 (15.−1)
 │   └── importacao.md       # CSV
 └── testes/                 # node --test; fixtures de HTML de portal e de CSV
+    ├── infra.ts            # req.dados falso em memória, tipado por Pick<HelperDados, …> (18.1)
+    └── fixtures/           # paridade/<data>.json, areas_referencia/<area>/, planilha/, portais/
 ```
+
+**Custom elements (v0.5).** A raiz é `app-inteligencia-imobiliaria`, derivada do slug. Toda outra
+tag leva o prefixo `intel-imob-` (curto e único na instância; o slug inteiro daria tags de mais de
+40 caracteres), como fazem `radar-sei-*`, `charles3-*` e `reg360-*`. O registro passa por
+`frontend/registro.ts`, que só chama `customElements.define` se `customElements.get(tag)` é
+`undefined`: o "Tentar novamente" do shell reavalia o bundle com cache-bust, e `define` de tag já
+definida lança. Um teste confere o prefixo de toda tag registrada (D-111).
 
 O código puro (`comum/`) é importado pelo backend e pelo frontend por um único `../comum/`,
 que o shell aceita como import intra-app. Nenhum arquivo importa `../../shell` nem outra app.
@@ -416,10 +522,10 @@ quando o ganho justifica.
 | Rotinas | treze rotinas (seção 7) | `rotinas` + `export const rotinas` |
 | IA | análises (seção 9): quatro slots custom com base `poder` (território, mercado, tela, área) e um slot opcional de extração com base `barato` | `ia.slots` |
 | Config da app | parâmetros declarativos (seção 4.3); aba Rotinas nativa | `parametros` |
-| Eventos | erros de operação (incluindo `parser_degradado`), evento de lacuna, o evento de continuação e o callback `analise_concluida` (seção 13; ambos visíveis, D-85, D-82) | `eventos`, `erros` |
+| Eventos | erros de operação (incluindo `parser_degradado` e `cadeia_mensal_parada`), evento de lacuna, o evento de continuação e o callback `analise_concluida` (seção 13; ambos visíveis, D-85, D-82) | `eventos`, `erros` |
 | Arquivos | CSV de importação, shards dos dados públicos, KML/KMZ importado | colunas `arquivo` |
-| Permissões | níveis + papéis `curador` e `operador`; **rotas pessoais** para as visões salvas (D-80) | `roles` + `export const rotasPessoais` |
-| Hooks de ciclo de vida | `aoIniciar` (semente, reconciliação de inscrições) e `aoEncerrar` (cancela lote em voo) | exports |
+| Permissões | níveis + papéis `curador`, `operador` e `estrategico` (v0.5); **rotas pessoais** para as visões salvas (D-80) e a telemetria de uso (`/pessoal/uso`) | `roles` + `export const rotasPessoais` |
+| Hooks de ciclo de vida | `aoIniciar` (dispara a semente memoizada, que as rotas aguardam, e reconcilia as inscrições) e `aoEncerrar` (cancela lote em voo) | exports |
 
 Não usa na V1: Segregação por conta (um território não é um tenant; C-82), Módulos (D-06; os
 contratos estão publicados e a forma exata do bloco `dependencias` está na seção 15.7), Páginas
@@ -484,39 +590,39 @@ motivo; **referência**: doc de processo ou de conceito que a app segue, sem ado
 | Doc do SDK | Framework | Adoção | Fase | Como a app usa, ou por que não |
 |---|---|---|---|---|
 | `ajuda.md` | Ajuda, Feedback e Sentinela | adota | 1 | Sem código: o widget "?" abre `/{appId}/docs` com o `docs/README.md` da app (§3.1) e mostra reporte de bug e sugestão se o admin ligar o Sentinela da app. Não substitui o "Como ler" por tela (D-77, §10.1), que fica onde o número está. |
-| `apps-em-repo-proprio.md` | Apps em repositório próprio | adota | 0 | Forma do repositório, catálogo, kit `@urbiverso/kit-apps`, build canônico com `--minify`, `.gitignore` dos bundles e testes que só exercitam a própria pasta (§3.1; C-72, C-73, C-75, C-76). Onde o repositório nasce segue em aberto (D-16, P-04). |
+| `apps-em-repo-proprio.md` | Apps em repositório próprio | adota | 0 | Forma do repositório, catálogo, kit `@urbiverso/kit-apps`, build canônico com `--minify`, `.gitignore` dos bundles e testes que só exercitam a própria pasta (§3.1; C-72, C-73, C-75, C-76). Repositório privado `UP-Urbita/app-inteligencia-imobiliaria` (§3.1; fecha D-16 e P-04), leitura dele concedida ao PAT das instâncias na fase −1 (§15.−1) e testes sem instância nem dev-shell, que não existe (§18.1). |
 | `arquivos.md` | Arquivos | adota | 1 | Colunas `arquivo` para CSV de importação, KML/KMZ, shards dos conjuntos públicos e foto de campo, com upload em dois passos (§5.10, §11.1; C-37, C-38). A app nunca serve bytes, só resolve `{ arquivo_id, sha256, url }` (C-39, D-81), e o TTL de anexo não obrigatório tem decisão explícita (C-41, D-89). |
-| `auditoria.md` | Auditoria | não adota | — | `auditavel` é trilha permanente de categoria fechada (autenticação, permissão, aprovação…), não telemetria de uso; o uso por tela fica em `uso_eventos` (§5.23; C-83, D-72). |
+| `auditoria.md` | Auditoria | não adota | — | `auditavel` é trilha permanente de categoria fechada (autenticação, permissão, aprovação…), não telemetria de uso; o uso por tela fica em `uso_eventos` (§5.23; C-83, D-72). Não há categoria de leitura, então "quem viu" uma área própria não cabe aqui; a trilha de saída fica em `area_eventos` (§22). Um registro de decisão sobre área usaria a categoria `aprovacao` `[PENDENTE P-42]`. |
 | `autenticacao.md` | Autenticação | adota | 1 | A app não faz auth: lê `req.contexto` (`usuario.id`, `nivelApp`, `rolesApp`) e nunca `tipo` nem `natureza`, que chegam redigidos (§14; C-52). |
-| `banco-de-dados.md` | Dados | adota | 1 | Todo o `schema.json` (§5), `req.dados`, `sql_declarado` para ranking e janelas, `busca_texto`, `acesso_externo` explícito e `atualizarSe` com coluna `versao` (C-10, C-15 a C-29; D-83, D-88). A grade lê por `varrerTudo` porque `listar` sempre paga `COUNT(*)` (C-27). |
-| `barramento.md` | Eventos e Notificações | adota | 3 | Bloco `erros` (sete erros de operação) e `eventos` (`lacuna_cadastro`, `continuar_coleta`, `analise_concluida`), listener `reagir` e inscrição do `curador` por escopo no `aoIniciar` (§13; C-08, C-13, C-47 a C-50; D-14, D-85). Erro só é visível ao admin, por isso a Operação lê estado em tela (C-48). |
+| `banco-de-dados.md` | Dados | adota | 1 | Todo o `schema.json` (§5), `req.dados`, `sql_declarado` para ranking e janelas, `busca_texto`, `acesso_externo` explícito e `atualizarSe` com coluna `versao` (C-10, C-15 a C-29; D-83, D-88). A grade lê por `varrerTudo` porque `listar` sempre paga `COUNT(*)` (C-27). `uso_eventos` é tabela `pessoal` (§5.23); histórico e registro congelado ligam ao cadastro por FK `restringir` (§5.1); as tabelas das áreas próprias são `restrito` e só as rotas da app as leem (§14). |
+| `barramento.md` | Eventos e Notificações | adota | 3 | Bloco `erros` (oito erros de operação, com `cadeia_mensal_parada`) e `eventos` (`lacuna_cadastro`, `continuar_coleta`, `analise_concluida`), listener `reagir` e inscrição do `curador` por escopo no `aoIniciar` (§13; C-08, C-13, C-47 a C-50; D-14, D-85). Erro só é visível ao admin, por isso a Operação lê estado em tela (C-48). |
 | `compatibilidade.md` | Compatibilidade e quebra retroativa | referência | 0 | Rege os dois pisos (`sdk_min: 100`, `shell_min: "0.56.37"`, §3.3; C-01, C-02) e o registro de obsolescências: a spec não usa nada do que está em obsolescência (C-03). |
 | `config-app.md` | Config da App | adota | 1 | Parâmetros declarativos de §4.3 (`bool`, `numero`, `string`, `texto_longo`; sem JSON nem lista, por isso `series_macro_config` virou tabela) e as abas nativas de §10.8 (C-07, C-84; D-90). Sem `telas_config`. |
 | `contas.md` | Segregação por Conta | não adota | — | App interna de colaborador, sem tenant: um território não é conta, e a 4ª camada de permissões cobre autor e responsável (§3.2, §14; C-82). |
 | `disparadores.md` | Disparadores | não adota | — | Nenhuma outra app da instância precisa acionar ação desta, nem esta de outra; o funil de âncoras fica no CRM (D-45). Reabre se um CRM no UrbiVerso quiser receber a ficha. |
-| `distribuicao.md` | Distribuição de Apps | adota | 0 | `identidade`, os dois pisos, regra única de versionamento com quatro gatilhos, bundle self-contained com bibliotecas puras (`fflate`, `h3-js` se medida pedir) e tag `-a` pelo `urbi-release` (§3.3, §4.1; C-09, C-74; D-93). |
+| `distribuicao.md` | Distribuição de Apps | adota | 0 | `identidade`, os dois pisos, regra única de versionamento com quatro gatilhos, bundle self-contained com bibliotecas puras (`fflate`, `h3-js` se medida pedir) e tag `-a` pelo `urbi-release` (§3.3, §4.1; C-09, C-74; D-93). Identidade `UP-Urbita/app-inteligencia-imobiliaria::inteligencia_imobiliaria`; release nasce prerelease, a Pinguim fica em `Releases` e a Laputa em `homologado`; downgrade é recusado, então conserto é release nova (§3.6). |
 | `documentacao.md` | Documentação | referência | 0 | Convenção dos `docs/*.md` da app com `README.md` primeiro e doc no mesmo PR do código (§1.3, §3.1); o shell serve essa pasta em `/{appId}/docs`. |
 | `email.md` | Email | não adota | — | O framework é para público externo; notificação interna vai pelo barramento, e aviso de mercado por e-mail foi adiado (D-14, D-33). Sem `emails` no manifesto (§4.1). |
 | `faxina.md` | Faxina | não adota | — | Housekeeping interno do shell: "Apps não consomem este módulo". A retenção da app é a rotina própria `limpar_retencao` (§7.13). |
-| `guia-desenvolvimento.md` | Guia de Desenvolvimento de Apps | referência | 0 | Receita e checklist da Fase 0; o § 9 fixa que só o `fetch()` global passa pelo proxy de egresso da instância, o que tirou `proxy_saida_url` e `undici.ProxyAgent` da coleta (§8.2; C-34, D-79). |
-| `ia.md` | IA | adota | 5 | Quatro slots custom de base `poder` e um de extração `barato` desligado (§4.1, §9; C-06; D-04), `consultarAsync` com evento de callback para o `202` (C-80, D-82), `estadoSlot` escondendo o que não resolve (C-43) e tokens da resposta para custo (C-44). |
+| `guia-desenvolvimento.md` | Guia de Desenvolvimento de Apps | referência | 0 | Receita e checklist da Fase 0; o § 9 fixa que só o `fetch()` global passa pelo proxy de egresso da instância, o que tirou `proxy_saida_url` e `undici.ProxyAgent` da coleta (§8.2; C-34, D-79). O § 8 (todas as apps no mesmo processo Node) funda o orçamento de CPU da app (§8.3, §21.1). |
+| `ia.md` | IA | adota | 5 | Quatro slots custom de base `poder` e um de extração `barato` desligado (§4.1, §9; C-06; D-04), `consultarAsync` com evento de callback para o `202` (C-80, D-82), `estadoSlot` escondendo o que não resolve (C-43) e tokens da resposta para custo (C-44). O limite de requisições por minuto é por app (padrão 10): o admin da app o sobe para 30 na fase 5, e o lote mensal enfileira no máximo `ia_lote_por_fatia` por fatia (§4.3, §15.5). |
 | `icones.md` | Ícones | adota | 1 | Sem declaração: o `icone` de cada folha do `nav` é classe FontAwesome (§4.1) e as telas usam `<urbi-icone>`; nenhum glyph custom `ubv`. |
-| `lixeira.md` | Lixeira | adota | 1 | Aba nativa da Config para o admin, porque toda tabela de cadastro tem `soft_delete` (§5.1, §10.8); é a lixeira manual que dispensa tela própria de restauração (C-84). Ver pontos de atenção. |
+| `lixeira.md` | Lixeira | adota | 1 | Aba nativa da Config para o admin, porque toda tabela de cadastro tem `soft_delete` (§5.1, §10.8); é a lixeira manual que dispensa tela própria de restauração (C-84). A purga de anúncio com retrato e de área com ficha é recusada por desenho (FK `restringir`, §5.1). Ver pontos de atenção. |
 | `modulos-autoria.md` | Módulos, autoria | não adota | — | A app é app, não módulo: não publica `modulo.js`, entidades nem componentes expostos. |
 | `modulos.md` | Módulos, dependência | adota depois | Futuro | Ligar `lancamentos`, `empreendimentos` e áreas `propria` a `incorporacoes` e `imoveis` do `imobiliario` por referência lógica, porque o módulo não expõe tabela referenciável (§15.7; D-06, C-81). |
 | `nucleo.md` | Núcleo, dados compartilhados | referência | Futuro | Modelo e semântica de `imoveis` e `incorporacoes` para quando D-06 reabrir; o contrato de acesso do núcleo (`req.nucleo`, `dependencias_nucleo`) está em obsolescência e nunca entra (C-03). Sem `pessoas`, pela regra de dado pessoal (§22). |
-| `overview.md` | Visão geral (manifesto, exports, navegação, `urbiVerso.fetch`) | adota | 0 | Manifesto e exports reconhecidos (§4.1, §4.2; C-14), `nav` com onze folhas sob o teto de 20 (C-04, D-86), hooks `aoIniciar` e `aoEncerrar` (C-11, C-12), sub-rotas e erros do `api()` com teto de corpo de 100 kB (C-69, C-70, C-78; D-92). |
+| `overview.md` | Visão geral (manifesto, exports, navegação, `urbiVerso.fetch`) | adota | 0 | Manifesto e exports reconhecidos (§4.1, §4.2; C-14), `nav` com onze folhas sob o teto de 20 (C-04, D-86), hooks `aoIniciar` e `aoEncerrar` (C-11, C-12), sub-rotas e erros do `api()` com teto de corpo de 100 kB (C-69, C-70, C-78; D-92). Início em `/`, a mesma tela do Home que o shell põe no menu (§4.1); como o `aoIniciar` roda depois do `listen`, as rotas aguardam a semente (§4.2); tags com prefixo `intel-imob-` e registro que tolera a reavaliação do bundle (§3.1). |
 | `paginas-publicas.md` | Páginas Públicas | não adota | — | App só autenticada (D-02); sem `rotas_publicas` nem `paginas_publicas`. A hipótese de mapa público em §15.7 não está desenhada. |
-| `permissoes.md` | Sistema de Permissões | adota | 1 | Permissão padrão nenhuma, níveis com papéis `curador` e `operador`, contrato método→nível, admin que autoatribui papel (§14; C-51, C-53, C-56; D-13, D-18), `rotasPessoais` para visões salvas (C-54, D-80) e 4ª camada "autor, responsável ou curador" nas áreas. |
+| `permissoes.md` | Sistema de Permissões | adota | 1 | Permissão padrão nenhuma, níveis com papéis `curador` e `operador`, contrato método→nível, admin que autoatribui papel (§14; C-51, C-53, C-56; D-13, D-18), `rotasPessoais` para visões salvas (C-54, D-80) e 4ª camada "autor, responsável ou curador" nas áreas, declarada em `comum/regras-objeto.ts` e coberta por uma matriz rota × perfil (§18.1). Papel `estrategico` sob `leitura` para as áreas próprias (§4.1, §14) e `POST /pessoal/uso` em `rotasPessoais` (T6). |
 | `protocolo-distribuicao.md` | Protocolo de distribuição (urbihub v1) | não adota | — | Contrato de quem implementa servidor de instaláveis; a app é distribuída por release no GitHub e instalada pelo repositório (§3.1). |
 | `remessas.md` | Remessa Externa | adota | 3 | Sem código: os erros de §13 viram destino `webhook`, `slack`, `sentinela` ou `rotina_claude` se o admin da app configurar em Config › Eventos; é o caminho de Slack que a spec prevê (§3.2; C-48). |
-| `rotinas.md` | Rotinas | adota | 3 | Treze rotinas de §7 com fatiamento abaixo de 15 minutos e cursor (C-30, C-31), trava própria em `cursores_rotina` além do advisory lock (C-32, D-85), `fuso_organizacao` porque o `ctx` não tem relógio (C-33, D-84), sem encadeamento declarado (C-36) e carga por evento em vez de "Rodar agora" da app (C-05, D-91). |
+| `rotinas.md` | Rotinas | adota | 3 | Treze rotinas de §7 com fatiamento abaixo de 15 minutos e cursor (C-30, C-31), trava própria em `cursores_rotina` além do advisory lock (C-32, D-85), `fuso_organizacao` porque o `ctx` não tem relógio (C-33, D-84), sem encadeamento declarado (C-36) e carga por evento em vez de "Rodar agora" da app (C-05, D-91). Trava por classe (`coleta`, `carga`) contra o empilhamento do catch-up, `coleta_ativa` como off-switch de toda a coleta, guarda da cadeia mensal que vira `ok: false` e grade de horários sugerida, porque o default é 06:00 UTC para todas (§4.1, §4.3, §7). |
 | `slack.md` | Integração Slack | não adota | — | Sem `req.slack.notificar`: a app não tem canal próprio a notificar, e o Slack, se vier, é destino de Remessa sem código (§3.2, §13). |
 | `tokens-api.md` | Tokens de API | adota | 1 | A persona Agente (§1.4) entra por token Bearer, que herda nível, papéis e gates de uma pessoa do mesmo nível, sem ramo na app (§22; C-55). |
-| `ui-componentes-conteudo.md` | Componentes de conteúdo | adota | 1 | `urbi-mapa` (SDK 98) com `EstiloFeicao` do SDK e ordem pelo array de camadas, família `urbi-grafico-*`, `urbi-kpi`, `urbi-tabela`, `urbi-markdown` (§10; C-02, C-61 a C-66, C-72; D-87). Legenda, "ver tabela" e geolocalização são da app (C-60, C-67, C-68; D-94). |
+| `ui-componentes-conteudo.md` | Componentes de conteúdo | adota | 1 | `urbi-mapa` (SDK 98) com `EstiloFeicao` do SDK e ordem pelo array de camadas, família `urbi-grafico-*`, `urbi-kpi`, `urbi-tabela`, `urbi-markdown` (§10; C-02, C-61 a C-66, C-72; D-87). Legenda, "ver tabela" e geolocalização são da app (C-60, C-67, C-68; D-94). Conteúdo bruto de portal e JSON de diagnóstico só em `urbi-navegador-json` ou `<pre>`; `unsafeHTML` é proibido na app (§10.1). |
 | `ui-componentes-layout.md` | Componentes de layout | adota | 1 | `urbi-shell-page`, `urbi-2x1` e `urbi-3-colunas` para mapa com painel, `urbi-abas` para as folhas de Cadastro e Operação e para as escalas do dossiê (§10.1; C-57; D-86). |
 | `ui.md` | UI do Shell | adota | 1 | Toda tela de primitivos `urbi-*` e tokens semânticos, sem CSS estrutural nem cor no módulo (§1.2, §10.1; C-59); exceção nomeada no `docs/ui-excecoes.md` no mesmo PR (C-58). |
-| `upgrade-e-migracoes.md` | Upgrade e Migrações | adota | 1 | O reconciliador converge o `schema.json` a cada boot e a app segue as regras de aperto e poda para não ficar `!saudavel` (§5.1; C-16, C-18, C-21); `migracoes/` nasce vazia e só recebe backfill ou renomeação de dado, por helpers. |
+| `upgrade-e-migracoes.md` | Upgrade e Migrações | adota | 1 | O reconciliador converge o `schema.json` a cada boot e a app segue as regras de aperto e poda para não ficar `!saudavel` (§5.1; C-16, C-18, C-21); `migracoes/` nasce vazia e só recebe backfill ou renomeação de dado, por helpers. Índices nascem com a tabela e não há downgrade (§3.6). |
 | `variaveis.md` | Variáveis de Configuração | não adota | — | "Apps não leem env do shell". O proxy de egresso para os portais, se a medição pedir, é configurado ali pelo admin com a alçada `sistema`, e o README da app lista os hosts candidatos (§8.2; C-34, D-79). |
 | `wh.md` | Webhooks de Entrada | não adota | — | A V1 não recebe dado de fonte externa por POST: o pipeline publica artefatos e a rotina mensal os busca (§12; D-05). Ver pontos de atenção. |
 | `wiki.md` | Wiki | não adota | — | Não há wiki corporativo no fluxo da equipe; dossiê e ficha vivem na própria app (§10.10). |
@@ -528,7 +634,11 @@ motivo; **referência**: doc de processo ou de conceito que a app segue, sem ado
   atualiza `atualizado_em`", e "Fora de escopo …: audit trail de quem restaurou/hard-deletou". O
   restauro pela aba não passa pela rota `/restaurar` da app, então não grava `alteracoes_cadastro`,
   não sobe a coluna `versao` (D-88) e não passa pelo gate de `curador`. Tratado em §10.8: é aceito,
-  porque só o admin da app vê a aba e o shell registra a ação.
+  porque só o admin da app vê a aba e o shell registra a ação. A **purga** (hard-delete) tem
+  outro risco: ela dispara a cascata das FKs `cascata` e levaria retratos congelados e fichas. Na
+  v0.5 histórico e registro congelado ligam ao cadastro por `restringir`, então a purga de anúncio
+  com retrato e de área com ficha responde `409 DADOS_DEPENDENCIA_EXISTE` e o registro fica na
+  lixeira (§5.1; precedente: `nobi`, `docs/limpeza.md`).
 - **A identidade do módulo imobiliário mudou.** `obsolescencias.json` › `identidade-imobiliario-antiga`:
   "a identidade … passou a `urbiverso/modulos-urbiverso::imobiliario`", com `gate_apos`
   2026-10-09, já vencido. Tratado em §15.7, que agora
@@ -552,6 +662,31 @@ motivo; **referência**: doc de processo ou de conceito que a app segue, sem ado
   (D-91), sem esperar o mês. A V1 não o adota (o pipeline publica e a rotina busca, D-05); fica
   como melhoria depois da fase 4, sem decisão.
 
+### 3.6 Convivência na instância (v0.5)
+
+Instalar ou atualizar uma app reinicia o shell inteiro, e com auto-update isso acontece sem
+ninguém clicar (overview.md › Restart): cada release da app derruba por segundos todas as apps da
+Pinguim, que recebe devs de fora. Regras (D-106):
+
+1. **Índices nascem com a tabela.** Cada tabela nasce com todos os `indices` e `unicos` que a spec
+   lhe dá, na release que a cria. O reconciliador cria índice também em tabela existente, no boot,
+   com teto de 5 s de espera por lock; índice novo em tabela que já tem dado (anúncios, retratos,
+   células) só entra com nota no PR medindo a contagem de linhas na Pinguim, e `unico` novo só
+   depois de conferir que o dado não o viola (senão a app fica `!saudavel`).
+2. **Cadência.** Releases são agrupadas, no máximo uma por dia útil, publicadas fora do horário
+   de uso, e a fase só publica release instalável quando o teste local passou. O horário exato é
+   item do checklist da fase −1 (§15.−1) `[PENDENTE P-48]`.
+3. **Sem downgrade.** A plataforma recusa downgrade em todo caminho de instalação: release
+   defeituosa se corrige com release nova (`z+1`), e a spec não promete rollback.
+4. **Aceitação.** A Pinguim fica com nível de aceitação `Releases` e auto-update ligado (a release
+   nasce prerelease pelo `urbi-release`); a Laputa fica em `homologado`, e a homologação
+   (`prerelease=false`) é ato humano (precedente: `reg360`, `docs/operacao.md`).
+5. **Migração pesada fora do boot.** Migração de dados pesada roda fatiada por rotina e cursor,
+   nunca no boot.
+6. **Coleta numa instância só.** A coleta nos portais roda na Laputa depois do corte da fase 3; na
+   Pinguim, `coleta_ativa` fica `false` fora da janela de QA de coleta (§15).
+7. **Sem dado sigiloso.** Áreas próprias, teses e cenários reais nunca entram na Pinguim (§15).
+
 ---
 
 ## 4. Manifesto
@@ -563,11 +698,17 @@ motivo; **referência**: doc de processo ou de conceito que a app segue, sem ado
   "nome": "Inteligência Imobiliária",
   "versao": "0.1.0",
   "descricao": "Oferta, mercado e território do mercado imobiliário, com dado rastreável e análises por IA",
-  "identidade": "<owner>/<repo>::inteligencia_imobiliaria",   // acertado quando o repositório for decidido (D-16); obrigatório antes da 1ª release (C-03)
+  "identidade": "UP-Urbita/app-inteligencia-imobiliaria::inteligencia_imobiliaria",   // desde a 1ª release (C-03); fecha D-16
   "shell_min": "0.56.37",
   "sdk_min": 100,
 
   "roles": {
+    "leitura": {
+      "estrategico": {
+        "descricao": "Vê as áreas próprias da UP e o que pende delas: teses, condições, diligências, síntese, cenários, fichas",
+        "sticker": { "icone": "fa-solid fa-lock", "cor": "#6A1B9A" }
+      }
+    },
     "escrita": {
       "curador": {
         "descricao": "Cadastra e corrige anúncios, lançamentos, âncoras e contornos; aprova candidatos",
@@ -581,7 +722,7 @@ motivo; **referência**: doc de processo ou de conceito que a app segue, sem ado
   },
 
   "nav": [
-    { "titulo": "Início", "rota": "/inicio", "icone": "fa-solid fa-house" },
+    { "titulo": "Início", "rota": "/", "icone": "fa-solid fa-house" },
     { "titulo": "Mapa", "rota": "/mapa", "icone": "fa-solid fa-map-location-dot" },
     { "titulo": "Mercado", "rota": "/mercado", "icone": "fa-solid fa-chart-line" },
     { "titulo": "Diagnóstico", "rota": "/diagnostico", "icone": "fa-solid fa-city" },
@@ -632,9 +773,15 @@ Observações:
   (`config_apps.permissao_padrao`, Admin › Instaláveis › Apps › Acesso, alçada `usuarios`). A spec
   pede que ela fique em **nenhuma** (D-13); a liberação é por pessoa. Conferir o valor é passo da
   instalação, escrito no README da app (C-56).
-- `identidade` com placeholder só vale até o repositório ser decidido (D-16): a obsolescência
+- `identidade` é `UP-Urbita/app-inteligencia-imobiliaria::inteligencia_imobiliaria` (seção 3.1):
+  o `owner/repo` é o do repositório da app e o `slug` é igual ao nome da pasta. A obsolescência
   `manifesto-sem-identidade` tem `gate_apos` em 2026-10-28, e a partir daí o manifesto sem o
   campo, ou com forma errada, reprova no empacotamento, no CI e na instalação (C-03).
+- **Papel `estrategico` (v0.5).** Declarado sob `leitura`, para que a Direção o receba (um usuário
+  com nível `leitura` só recebe papéis de `leitura`; e `nivelApp: 'admin'` não confere os papéis
+  declarados). Áreas `tipo = propria` e o que pende delas só são lidas por quem tem `estrategico`
+  ou `curador`, ou é o `responsavel_id` da área; para os demais elas somem das listas e o detalhe
+  responde `404` (seção 14; D-107). Quem recebe o papel segue em P-06.
 - `rotas_publicas`, `paginas_publicas`, `dependencias`, `webhooks`, `wiki`, `emails` não são
   declarados.
 - `ui` fica ausente: a app está sob o framework de UI e é validada por ele. O tipo `Manifesto` do
@@ -646,29 +793,58 @@ Observações:
   Operação) vira uma folha cuja tela abre com `urbi-abas`, uma aba por sub-rota; as sub-rotas
   continuam no path (`/diagnostico/ranking`, `/operacao/fontes`…), então link de notificação e
   favorito abrem a aba certa. Sobram nove itens de margem para o futuro.
+- **Início é a raiz (v0.5).** O shell põe **Home** como primeiro item do menu, e o Home da app
+  abre a sub-rota `/`. Por isso a tela Início mora em `/` e o `nav` a declara com `"rota": "/"`: o
+  Home do shell e o Início do `nav` abrem a mesma tela, em vez de duas telas lado a lado. `/inicio`
+  não existe como tela; links de notificação e visões salvas usam `/`. Rota desconhecida cai num
+  `urbi-estado-vazio` "Página não encontrada" com link para Início, sem redirecionar em silêncio
+  (precedentes: `radar_sei`, `charles3` e `reg360` declaram a tela de entrada em `/`;
+  D-110). As folhas continuam onze.
 - A ordem do `nav` põe as telas de decisão (Início, Estudos de área, Produto, Comércio e âncoras,
   Terra e oferta futura) logo depois das telas de leitura, e o Cadastro e a Operação no fim.
-- A ordem das rotinas mensais importa e é configurada pelo admin na aba Rotinas, por **hora cheia
-  distinta** no mesmo dia do mês (1 a 28): `fechar_mes` → `carregar_series_macro` →
-  `calcular_achados` → `gerar_analises_mensais`. Não existe dependência entre rotinas
-  (`RotinaManifesto` só tem `titulo`, `descricao` e `frequencia`), e o catch-up depois de
-  indisponibilidade não garante a ordem; por isso cada rotina dependente confere a pré-condição
-  (mês `M` fechado, achados de `M` calculados) e, se ela não vale, termina como `parcial` sem
-  gravar (C-05, C-36; fecha P-05).
+- A ordem das rotinas importa e é configurada pelo admin na aba Rotinas, por **hora cheia
+  distinta** no fuso da organização. O default de fábrica é 06:00 UTC para todas, que poria as
+  treze no mesmo slot; por isso o README da app traz a **grade de horários sugerida** (ex.: 01h
+  `descobrir_anuncios`, 02h `verificar_anuncios`, 03h `agrupar_anuncios`, 04h
+  `verificar_lancamentos`; mensais no dia 1: 05h `fechar_mes`, 06h `carregar_series_macro`, 07h
+  `calcular_achados`, 08h `gerar_analises_mensais`), aplicada em cada instância na release que
+  declara a rotina. Não existe dependência entre rotinas (`RotinaManifesto` só tem `titulo`,
+  `descricao` e `frequencia`), e o catch-up depois de indisponibilidade dispara de uma vez todas
+  as rotinas com slot perdido, sem ordem (C-05, C-36; fecha P-05). Duas defesas (v0.5):
+  - **Trava por classe.** `cursores_rotina` ganha classe: `coleta` (`verificar_anuncios`,
+    `descobrir_anuncios`, `verificar_lancamentos` e as continuações delas) e `carga`
+    (`fechar_mes`, `carregar_dados_publicos`, `recalcular_derivados`, `calcular_achados`,
+    `agrupar_anuncios`). No máximo uma execução por classe ao mesmo tempo, pelo mesmo
+    compare-and-set da D-85; quem não obtém a trava grava a `coleta` como `adiada`, agenda
+    `continuar_coleta` para +10 min e devolve `ok: true` com "adiada: <rotina> em curso". As
+    rotinas leves ficam fora (seção 7).
+  - **Guarda da cadeia mensal que não falha calada.** `calcular_achados` e
+    `gerar_analises_mensais` conferem a pré-condição (mês `M` fechado, achados de `M` calculados).
+    Falsa, devolvem `ok: true` com "aguardando fechar_mes de M" e reagendam por `continuar_coleta`
+    em +60 min, até 6 vezes; esgotadas as tentativas, ou passados 3 dias de `M`, devolvem
+    `ok: false` e publicam `cadeia_mensal_parada` (seção 13). A aba Rotinas mostra `Falhou`, e a
+    Operação › Saúde mostra o estado de cada elo por mês. Rotina mensal com `ok: true` só roda de
+    novo no mês seguinte, por isso "parcial" como sucesso esconderia o mês perdido.
 - O admin da instância precisa **autorizar os slots-base `poder` e `barato`** para a app (Admin ›
   Instaláveis › Apps › IA): slot custom só tem configuração própria por override local, e sem
   override cai na base. `barato` não tem cascata: sem ele configurado, o fallback de extração
   falha em vez de cair para `normal`. "Desligado por padrão" do `extracao_pagina` é o parâmetro
   `usar_ia_extracao_lancamentos`, não uma propriedade do slot (C-06).
+- O limite de requisições de IA por minuto é **por app** e é do admin da app (Config › IA ›
+  Configurações, 1 a 600; padrão 10). O worker do modo assíncrono o respeita e transforma o estouro
+  em `RATE_LIMIT` retentável com backoff, então pausa entre enfileiramentos não controla o ritmo.
+  A fase 5 sobe o limite para `30` na instalação, e `gerar_analises_mensais` enfileira no máximo
+  `ia_lote_por_fatia` análises por fatia, com a próxima por `continuar_coleta` em +2 min, deixando
+  folga para os pedidos de usuário no mesmo minuto (D-109).
 
 ### 4.2 Exports do `backend/rotas.ts`
 
 | Export | Conteúdo |
 |---|---|
 | `rotas` | Router autenticado, montado em `/api/inteligencia_imobiliaria/` (seção 6) |
-| `rotasPessoais` | Router das visões salvas, montado pelo shell em `/api/inteligencia_imobiliaria/pessoal/*`, onde `POST`/`PATCH`/`DELETE` exigem só `leitura` e o shell impõe `usuario_id` (D-80, C-54; seção 6.16) |
+| `rotasPessoais` | Router das visões salvas e da telemetria de uso (`POST /pessoal/uso`, que grava `uso_eventos`), montado pelo shell em `/api/inteligencia_imobiliaria/pessoal/*`, onde `POST`/`PATCH`/`DELETE` exigem só `leitura` e o shell impõe `usuario_id` (D-80, C-54; seções 5.23, 6.16) |
 | `rotinas` | Handlers das treze rotinas (seção 7) |
-| `aoIniciar` | Semente idempotente: a cidade `distrito_federal` e as 35 localidades do tipo `ra` com códigos oficiais, **sem** geometria nem perfil (os dois vêm por importação). `faixas_programa` nasce vazia de propósito: valores de portaria não entram por semente, e a tela de Produto pede o cadastro. **Reconcilia** as inscrições do evento `lacuna_cadastro` com o papel `curador` (seção 13; C-49). Guarda o `ctx`, que é o mesmo `ContextoListener` das rotinas e dos listeners ("guardar a referência é legítimo e esperado", C-11, C-33) |
+| `aoIniciar` | Dispara a semente idempotente (v0.5: `garantirSemente(dados)` de `backend/semente.ts`, promise memoizada por processo). Como o `aoIniciar` roda depois do `listen`, um middleware no topo de `rotas` e de `rotasPessoais` aguarda a mesma promise, e listeners e rotinas também a aguardam antes de agir; falha zera a memoização e segue por `next(e)`, e o request seguinte tenta de novo (precedente: `nobi`, `backend/seed.ts`). Não há `503 APP_PREPARANDO`. A semente é pequena (1 cidade, 35 localidades), então o primeiro request espera menos de 1 s (D-112). Conteúdo: a cidade `distrito_federal` e as 35 localidades do tipo `ra` com códigos oficiais, **sem** geometria nem perfil (os dois vêm por importação). `faixas_programa` nasce vazia de propósito: valores de portaria não entram por semente, e a tela de Produto pede o cadastro. **Reconcilia** as inscrições do evento `lacuna_cadastro` com o papel `curador` (seção 13; C-49), sem bloquear request. Guarda o `ctx`, que é o mesmo `ContextoListener` das rotinas e dos listeners ("guardar a referência é legítimo e esperado", C-11, C-33) |
 | `aoEncerrar` | Sinaliza o `AbortController` do lote de coleta em voo. Não recebe `ctx` (usa o guardado no `aoIniciar`), tem um orçamento de 5 s compartilhado por todas as apps e nada garante que termine: o cursor e a `coleta` já estão gravados por fatia (seção 7), e o encerramento não grava nada (C-12) |
 | `reagir` | Dois listeners: `continuar_coleta`, que retoma a rotina indicada pelo cursor (seção 7; D-85), e `analise_concluida`, que grava o resultado de uma análise de IA pedida em modo assíncrono (seção 6.8; D-82) |
 
@@ -691,14 +867,16 @@ domínio, então não contraria D-47.
 | `orcamento_rotina_ms` | numero | `600000` | Orçamento de tempo por execução (10 min; o shell corta em 15) |
 | `intervalo_min_por_host_ms` | numero | `1500` | Pausa mínima entre duas requisições ao mesmo host |
 | `user_agent_coleta` | string | `ImobIntelligence/1.0 (+UrbiVerso; public-data-collector)` | Cabeçalho de identificação |
+| `coleta_ativa` | bool | `true` | Off-switch de toda a coleta (v0.5). Desligado, nenhuma rotina de coleta externa nem continuação faz requisição: lidas no início de cada fatia, fecham a `coleta` como `pausada` e não reagendam; as rotas manuais de coleta respondem `409 COLETA_PAUSADA`. O toggle da aba Rotinas desliga uma rotina, mas não a cadeia de continuações já agendadas (precedente: `atendimento_ativo` do `nobi`; D-108) |
 | `fuso_organizacao` | string | `America/Sao_Paulo` | Fuso em que as rotinas cortam o dia e o mês (`intervaloDoDia(data, fuso)` do SDK). O `ctx` de rotina não traz fuso nem relógio; o fuso da organização só chega em `req.contexto.fuso`, em rota autenticada (D-84, C-33) |
 | `jitter_raio_m` | numero | `350` | Raio do deslocamento determinístico aplicado à coordenada aproximada |
-| `manifest_publico_url` | string | `https://raw.githubusercontent.com/rafaleandrog/inteligencia-real-estate/main/data/public/manifest.json` | De onde a rotina `carregar_dados_publicos` lê o manifest (o `padrao` é literal, C-07) |
+| `manifest_publico_url` | string | `https://raw.githubusercontent.com/rafaleandrog/inteligencia-real-estate/main/data/public/manifest.json` | De onde a rotina `carregar_dados_publicos` lê o manifest (o `padrao` é literal, C-07). O pipeline fica neste repositório, público porque só publica dado público, e a app privada o lê sem credencial (seção 15.0a); a mudança de dono segue em R-25 `[PENDENTE P-44]` |
 | `usar_ia_extracao_lancamentos` | bool | `false` | Liga o slot `extracao_pagina` como fallback na verificação de lançamentos |
 | `analise_minimo_meses_historico` | numero | `6` | Meses de histórico mínimos para a IA escrever sobre um recorte |
+| `ia_lote_por_fatia` | numero | `8` | Análises que `gerar_analises_mensais` enfileira por fatia; a fatia seguinte vem por `continuar_coleta` em +2 min, com folga no limite de requisições por minuto da app (v0.5, seção 4.1) |
 | `instrucoes_analise_territorio` | texto_longo | texto da seção 9.3 | Instruções de sistema da análise de localidade |
 | `instrucoes_analise_mercado` | texto_longo | texto da seção 9.3 | Instruções de sistema da análise de mercado |
-| `instrucoes_analise_tela` | texto_longo | texto da seção 9.3 | Instruções de sistema da análise de recorte |
+| `instrucoes_analise_tela` | texto_longo | texto da seção 9.3 | Instruções de sistema da análise de recorte. A análise de tela não aparece em jornada nenhuma `[PENDENTE P-46]` |
 | `faixas_area_m2` | string | `50,80,120,180` | Cortes das faixas de área das métricas mensais |
 | `raios_padrao_m` | string | `1000,3000,5000` | Anéis padrão de áreas de estudo, fichas e simulações (D-23) |
 | `hex_zoom_min` | numero | `12` | Zoom a partir do qual a camada hexagonal desenha células r9; abaixo, o pai r8 |
@@ -706,9 +884,9 @@ domínio, então não contraria D-47.
 | `agrupar_tolerancia_area_frac` | numero | `0.02` | Diferença máxima de área para sugerir que dois anúncios são o mesmo imóvel (D-26) |
 | `agrupar_tolerancia_preco_frac` | numero | `0.05` | Diferença máxima de preço para a mesma sugestão |
 | `agrupar_distancia_max_m` | numero | `150` | Distância máxima quando os dois têm coordenada exata |
-| `agrupar_confianca_auto` | numero | `0.90` | Acima disso, o grupo sugerido já conta como um imóvel nas métricas até o curador decidir |
-| `indice_ano_base` | numero, `nullable` | `null` | Ano cujos pesos o índice estratificado fixa (D-40). `null` = primeiro ano civil completo de anúncios, resolvido no código (C-07) `[PENDENTE P-23]` |
-| `indice_n_minimo_estrato` | numero | `5` | Estrato com menos anúncios entra com o valor do mês anterior e é marcado |
+| `indice_n_minimo_estrato` | numero | `5` | Estrato com menos anúncios repete o valor do mês anterior, marcado, por até `indice_imputacao_max_meses` |
+| `indice_imputacao_max_meses` | numero | `3` | Meses seguidos em que um estrato pode repetir o mês anterior; depois ele sai e os pesos se renormalizam (v0.5) |
+| `indice_peso_imputado_max_frac` | numero | `0.30` | Peso máximo de estratos imputados ou ausentes; acima disso o índice do mês é `null` com motivo (v0.5) |
 | `saude_parser_janela_execucoes` | numero | `7` | Execuções que formam a linha de base da saúde do parser (D-27) |
 | `queda_itens_max_frac` | numero | `0.30` | Queda de itens lidos contra a linha de base que marca a fonte como degradada |
 | `aumento_nulos_max_frac` | numero | `0.20` | Aumento absoluto da taxa de nulos de um campo que marca a fonte como degradada |
@@ -720,7 +898,7 @@ domínio, então não contraria D-47.
 | `faixas_preco_brl` | string | `300000,500000,800000,1200000,2000000` | Cortes das colunas da matriz de produto |
 | `huff_expoente_distancia` | numero | `2` | Expoente de distância do modelo de Huff (D-43) `[PENDENTE P-27]` |
 | `huff_raio_max_m` | numero | `10000` | Distância além da qual a célula de demanda não entra na simulação |
-| `lacuna_comercial_razao_min` | numero | `1.5` | Gasto potencial por estabelecimento contra a mediana da cidade que vira achado de lacuna |
+| `lacuna_comercial_razao_min` | numero | `1.5` | Gasto potencial por estabelecimento, somado na bacia da categoria (`raio_bacia_m` declarado por categoria em `comum/comercio/categorias.ts`, não por célula isolada), contra a mediana da cidade, que vira achado de lacuna (v0.5) |
 | `similaridade_max_resultados` | numero | `10` | Resultados das áreas gêmeas |
 | `achados_max_por_recorte` | numero | `12` | Achados entregues por recorte à tela e à IA (D-21) |
 | `achado_janela_meses` | numero | `24` | Janela histórica da regra de mudança incomum |
@@ -732,9 +910,9 @@ domínio, então não contraria D-47.
 | `cache_ttl_dias` | numero | `30` | Validade máxima de um cálculo em cache, mesmo sem mudança de versão (D-69) |
 | `uso_retencao_dias` | numero | `180` | Retenção da telemetria de uso (D-72) |
 | `bruto_rejeitados_retencao_dias` | numero | `90` | Retenção do conteúdo bruto de candidatos rejeitados (D-74) |
-| `area_liquida_min_ha` | numero | `5` | Abaixo disso a área líquida não é estimada pela grade, porque o erro da célula domina (R-28) |
+| `area_liquida_min_ha` | numero | `1` | Abaixo disso a área líquida não é estimada. Desde a v0.5 ela é vetorial (polígono − restrições, em SIRGAS 2000 / UTM 23S), não pela grade, cuja célula tem ≈ 10,5 ha (R-28) |
 | `app_largura_padrao_m` | numero | `30` | Faixa de APP assumida para curso d'água sem largura conhecida, como premissa declarada (D-61) `[PENDENTE P-32]` |
-| `declividade_restritiva_frac` | numero | `0.30` | Declividade a partir da qual a célula conta como restrita na área líquida |
+| `declividade_restritiva_frac` | numero | `0.30` | Declividade a partir da qual o terreno conta como restrito; o pipeline vetoriza a declividade com esse corte (5.21) |
 | `faixas_area_lote_m2` | string | `250,450,800,1500,5000` | Cortes das faixas de área do mercado de lotes (D-64) |
 | `viab_eficiencia_privativa_frac` | numero | `0.70` | Área privativa ÷ área computável, ponto de partida (D-63) `[PENDENTE P-35]` |
 | `viab_fator_custo_sobre_cub` | numero | `1.35` | Multiplicador do CUB para chegar ao custo de obra total `[PENDENTE P-35]` |
@@ -742,6 +920,20 @@ domínio, então não contraria D-47.
 | `viab_impostos_frac` | numero | `0.04` | Tributos sobre a receita (referência: RET da incorporação) `[PENDENTE P-35]` |
 | `viab_margem_alvo_frac` | numero | `0.15` | Margem do incorporador sobre o VGV `[PENDENTE P-35]` |
 | `viab_aproveitamento_loteavel_frac` | numero | `0.55` | Área de lotes ÷ área líquida no método de loteamento `[PENDENTE P-35]` |
+| `viab_desconto_pedido_venda_frac` | numero | `0.10` | Desconto do preço pedido para o de venda no VGV, usado só sem IVV do recorte (com IVV: 1 − venda ÷ pedido, últimos 12 meses), como premissa declarada (v0.5) `[PENDENTE P-35]` |
+| `viab_custos_indiretos_frac` | numero | `0.10` | Custos indiretos (projetos, aprovação, legalização, administração) sobre o custo de obra (v0.5) `[PENDENTE P-35]` |
+| `viab_aquisicao_frac` | numero | `0.04` | ITBI + registro na aquisição do terreno: residual líquido = residual bruto ÷ (1 + fração) (v0.5) `[PENDENTE P-35]` |
+| `alvara_validade_meses` | numero | `48` | Alvará sem habite-se e sem lançamento vinculado há mais que isso sai do pipeline de oferta e vai para "alvará antigo sem habite-se"; premissa declarada a conferir no Código de Obras do DF (v0.5) |
+
+`indice_ano_base` saiu na v0.5 (fecha P-23): a base do índice estratificado (D-40) são os
+primeiros 12 meses corridos com índice publicável, resolvidos no código, e não um ano civil, que só
+fecharia no fim de 2027 (seção 5.4).
+
+`agrupar_confianca_auto` saiu na v0.5 (D-113): a app não guarda
+anunciante, e com coordenada por jitter um limiar de confiança contaria plantas iguais do mesmo
+prédio como um imóvel. A contagem automática como um imóvel, sem curador, fica presa a uma regra
+fixa no código (coordenada exata nos dois a ≤ 30 m, área igual a ±1 m² e preço a ±2%); qualquer
+outro grupo só conta depois de `confirmado` (seção 7.7).
 
 O padrão é vivo: mudar um `padrao` num release vale em toda instância que não personalizou
 (`shell_min` 0.53.20, coberto). As instruções de IA ficam como parâmetro justamente para que a
@@ -780,7 +972,7 @@ saída é da instância). O tamanho máximo de `texto_longo` não é documentado
   exibição (D-88, C-22). Levam `versao` as tabelas editáveis por mais de uma pessoa: cadastros
   (anúncios, lançamentos, âncoras, contornos, localidades, empreendimentos, lotes Terracap,
   licenças, faixas de programa), `areas_estudo`, `area_sintese_itens`, `teses`, `tese_condicoes`,
-  `diligencias`, `hipoteses_ancora` e `cenarios_viabilidade`.
+  `diligencias`, `hipoteses_ancora`, `hipoteses_produto` (v0.5) e `cenarios_viabilidade`.
 - **Referência a `shell.usuarios` cujo nome aparece em tela** declara
   `campos_incluir: ["nome as <coluna>_nome", "avatar_url as <coluna>_avatar"]`: o framework faz o
   `LEFT JOIN` e o nome do autor chega em `listar`, `buscar` e na rota genérica. Não há leitura de
@@ -805,6 +997,39 @@ saída é da instância). O tamanho máximo de `texto_longo` não é documentado
   é o comportamento de `unico: true` (NULLs distintos); não precisa de único parcial (C-17).
 - `extras` (`json`) aparece nas tabelas de série publicada: guarda as colunas publicadas que o
   app não modela como coluna própria, verbatim, para nada se perder na importação.
+- **Rastro da importação (v0.5).** Toda tabela que a importação CSV alcança (seção 11.1) tem a
+  coluna `importacao_id` (referencia → `importacoes`, `anular`, não obrigatória), preenchida na
+  linha **criada** por uma importação e nunca reescrita depois; linha criada por rota, rotina ou
+  coleta fica com `null`. São elas: `localidades`, `localidade_perfis`, `contornos`,
+  `fontes_portal`, `buscas_portal`, `anuncios`, `lancamentos`, `ancoras`, `ivv_mensal`,
+  `ivv_regional`, `fipezap_mensal`, `pdad_observacoes`, `pdad_figuras`, `procedencias`,
+  `trechos_rodoviarios`, `trecho_aliases`, `sentidos_oficiais`, `trafego_diario`, `corredores`,
+  `corredor_diario`, `empreendimentos`, `terracap_lotes`, `licenciamento_obras`,
+  `faixas_programa` e `areas_estudo`. É o que permite **desfazer** uma importação:
+  soft delete das linhas daquela importação cuja `versao` ainda é a da criação (precedente:
+  reg360, importação idempotente com marcador por linha). `indices`: `(importacao_id)` em cada
+  uma. Tabela importável sem `versao` (as séries publicadas) compara `atualizado_em` com
+  `importacoes.aplicada_em`.
+- **Histórico não sai por purga (v0.5).** FK de tabela de histórico ou de registro congelado
+  para um cadastro com `soft_delete` é **`restringir`**, nunca `cascata`: `anuncio_retratos`,
+  `anuncio_eventos`, `lancamento_eventos`, `area_estudo_fichas`, `teses`, `tese_condicoes`,
+  `diligencias`, `area_sintese_itens`, `hipoteses_ancora`, `hipoteses_produto`, `area_eventos`
+  e `observacoes_campo`. Com isso o hard-delete da Lixeira responde `409
+  DADOS_DEPENDENCIA_EXISTE` para anúncio com retrato e para área com ficha, e o registro fica na
+  lixeira; a remoção lógica continua livre (precedente: nobi, `tarefas_transicoes` e
+  `lancamentos_financeiros` em `restringir` sob cadastro `soft_delete`). `cascata` fica só para
+  vínculo e cache sem valor histórico: `celula_metricas`, `conjunto_arquivos`, `fonte_saude`,
+  `area_perimetros`, `observacao_fotos` e as tabelas `pessoal`. `restringir` em coluna
+  obrigatória não gera aviso do validador (o aviso é só para coluna anulável). O README da app
+  diz ao admin que a purga de anúncio ou área com histórico é recusada por desenho.
+- **Supressão por amostra (v0.5).** Vale para tabela materializada, rota, achado e contexto de
+  IA: mediana só com n ≥ 5; P25, P75 e dispersão só com n ≥ 10; variação entre dois meses só
+  quando os dois têm n ≥ 20. Abaixo disso o campo é `null` com o motivo `amostra_pequena` e o `n`
+  ao lado, nunca o valor com aviso. Oferta por célula ou por anel só usa anúncios com `h3_r9`;
+  quando a fração de anúncios ativos do recorte com coordenada exata é menor que 0,5, o bloco de
+  oferta do entorno usa a estatística da localidade, rotulada "da RA, não do anel" (seção 10.10).
+  Não há meta de volume como portão de fase: a Operação mostra n por localidade × tipologia como
+  fila de coleta (R-16).
 
 **Tradução da notação desta spec para o `schema.json` (C-15).** As tabelas abaixo usam uma
 notação curta; o `schema.json` usa a forma do framework de dados:
@@ -913,6 +1138,19 @@ areas_estudo ─┬─ area_perimetros        teses ── tese_condicoes
 
 equipamentos_publicos   cache_calculos   uso_eventos
 ```
+
+E na v0.5:
+
+```
+areas_estudo ── hipoteses_produto ── tese_condicoes (hipotese_produto_id, opcional)
+
+importacoes ── importacao_id em toda tabela importável (seção 5.1)
+```
+
+Não há outra tabela nova na v0.5; o resto são colunas: `buscas_portal.painel` e `painel_desde`,
+`anuncios.busca_origem_id`, `cursores_rotina.classe` e `agendamento_id`, status `pausada` e
+`adiada` em `coletas`, `terracap_lotes.destinacao_categoria`, `importacoes.desfeita_em` e
+`desfeita_por_id`, e as colunas de liquidez por Kaplan-Meier em `metricas_anuncios_mensais`.
 
 Toda tabela de fato com coordenada ganha `h3_r9` (texto, indexado). Não é chave estrangeira para
 `celulas`, de propósito: a célula pode chegar depois do anúncio, e o vínculo é resolvido na
@@ -1060,10 +1298,10 @@ coordenadas que ele emite (C-61).
 | `tipo` | texto, `opcoes: ["portal", "agregador", "manual"]` | sim | `source_type` | |
 | `ativa` | booleano | sim | `active` | fonte inativa não é lida nem verificada |
 | `frequencia` | texto, `opcoes: ["diaria", "semanal", "manual"]` | sim | `collection_frequency` | |
-| `url_base` | texto(500) | sim | `base_url` | o host dela é a unidade do intervalo mínimo entre requisições |
+| `url_base` | texto(500) | sim | `base_url` | o host dela é a unidade do intervalo mínimo entre requisições e a base da guarda de destino da coleta (seção 8.2); só `http`/`https` na porta padrão; IP literal, `localhost` e host terminado em `.local` ou `.internal` são recusados ao salvar; host com ponto inicial (`.dfimoveis.com.br`) cobre os subdomínios |
 | `parser` | texto, `opcoes: ["generico_html", "generico_json", "quintoandar", "dfimoveis", "wimoveis", "imovelweb", "vivareal"]` | sim | `parser_key` | seção 8.3 |
 | `config_parser` | json | não | `parser_config_json` | `items_path`, `field_map` |
-| `cabecalhos` | json | não | `request_headers_json` | cabeçalhos extras |
+| `cabecalhos` | json | não | `request_headers_json` | cabeçalhos extras, só de uma lista fechada (`Accept`, `Accept-Language`, `Referer`); `Host`, `Cookie`, `Authorization` e `Proxy-*` são recusados ao salvar (seção 8.2) |
 | `notas` | texto_longo | não | `notes` | |
 | `estado` | texto, `opcoes: ["ok", "bloqueada", "instavel", "sem_dado"]` | sim | derivado | atualizado por execução (seção 8.4) |
 | `bloqueada_desde` | datahora | não | — | |
@@ -1090,8 +1328,20 @@ vírgula, e o que o repositório chamava de `LISTING_SEARCHES`).
 | `ultimo_status` | texto, `opcoes: ["ok", "bloqueada", "erro", "sem_resultados"]` | não | |
 | `candidatos_gerados` | inteiro | sim, padrão 0 | acumulado |
 | `autor_id` | referencia → `shell.usuarios` | não | quem cadastrou |
+| `painel` | booleano | sim, padrão `false` | a busca faz parte do **painel fixo** de coleta: só anúncios de buscas do painel entram em variação temporal (v0.5) |
+| `painel_desde` | data | não | mês em que a busca entrou no painel; entrar ou sair do painel marca quebra de série naquele mês |
 
 `unicos`: `(fonte_id, url)`.
+
+**Painel de coleta (v0.5).** A amostra de anúncios reflete quais buscas existem, não o mercado
+(na semente, sete localidades têm exatamente 12 anúncios cada, sinal de teto de resultados da
+busca). Série temporal comparável pede painel constante, como o FipeZap fixa amostra e pesos.
+Por isso toda **variação** de oferta (achados `variacao_periodo` e `mudanca_incomum`, variação
+mensal e em 12 meses na tela, contexto da IA) é calculada só sobre anúncios cuja
+`busca_origem_id` é de busca do painel ativa nos dois meses comparados, e usa o
+`indice_oferta_mensal` quando ele é publicável; a mediana bruta de todos os anúncios é **nível**,
+nunca variação. `destoa_cidade` sobre oferta só compara localidades com `qualidade_cobertura =
+boa` (seção 9.7, R-02).
 
 #### `anuncios`
 
@@ -1121,7 +1371,7 @@ vírgula, e o que o repositório chamava de `LISTING_SEARCHES`).
 | `area_m2` | decimal(12,2) | não | `area_m2` | |
 | `base_area` | texto(40) | não | `area_basis` | `portal_area_unspecified`, `privativa`, `total` |
 | `preco_m2_informado_brl` | decimal(12,2) | não | `asking_price_brl_m2` | só quando a fonte informa; o calculado é derivado em leitura |
-| `quartos`, `suites`, `vagas` | inteiro | não | `bedrooms`, `suites`, `parking_spaces` | `quartos` obrigatório hoje (141/141); passa a opcional porque a descoberta pode não achar |
+| `quartos`, `suites`, `vagas` | inteiro | não | `bedrooms`, `suites`, `parking_spaces` | `quartos` obrigatório hoje (141/141, semente do repositório de 2026-09-19; a planilha viva tinha 158 na mesma data); passa a opcional porque a descoberta pode não achar |
 | `condominio_brl`, `iptu_brl` | decimal(12,2) | não | `condo_fee_brl`, `iptu_brl` | |
 | `dias_publicado`, `visualizacoes`, `interessados` | inteiro | não | `published_days`, `views_count`, `interested_count` | |
 | `qualidade` | texto(80) | sim | `quality_flag` | |
@@ -1147,11 +1397,13 @@ vírgula, e o que o repositório chamava de `LISTING_SEARCHES`).
 | `grupo_id` | referencia → `anuncio_grupos`, `anular` | não | — | grupo do mesmo imóvel (D-26) |
 | `empreendimento_id` | referencia → `empreendimentos`, `anular` | não | — | anúncio de unidade nova de um empreendimento (D-38) |
 | `preco_inicial_brl` | decimal(14,2) | não | primeiro `preco_pedido_brl` observado | nunca reescrito; base da redução de preço (D-25) |
+| `busca_origem_id` | referencia → `buscas_portal`, `anular` | não | `candidatos.busca_id` na promoção | busca que primeiro trouxe o anúncio; base do painel de coleta (v0.5). `null` nos importados e nos cadastrados por URL |
+| `importacao_id` | referencia → `importacoes`, `anular` | não | — | seção 5.1 |
 
 `unicos`: `(fonte_id, id_externo)` onde `id_externo` não nulo e `removido_em` nulo; `url_fonte`
 onde `removido_em` nulo. `indices`: `(localidade_id, status)`, `(status, visto_em)`,
 `(tipo_imovel, tipo_transacao)`, `(latitude, longitude)`, `(primeiro_visto_em)`, `(h3_r9)`,
-`(grupo_id)`.
+`(grupo_id)`, `(busca_origem_id)`, `(importacao_id)`.
 `busca_texto`: `titulo`, `endereco`, `localidade_texto`.
 
 Derivados **em código**, nunca gravados: `orientacao` (`vertical` para apartamento, prédio e
@@ -1166,7 +1418,7 @@ calculado), `divergencia_preco_m2_frac` e `preco_m2_divergente` (acima de
 
 | Coluna | Tipo | Origem (`LISTING_EVENTS.`) |
 |---|---|---|
-| `anuncio_id` | referencia → `anuncios`, `cascata`, obrig. | `listing_id` |
+| `anuncio_id` | referencia → `anuncios`, `restringir`, obrig. | `listing_id` |
 | `tipo` | texto, `opcoes: ["criado", "reativado", "preco_alterado", "preco_nao_confirmado", "inativo_confirmado", "bloqueado", "corrigido_manualmente", "removido", "restaurado"]`, obrig. | `event_type` |
 | `ocorrido_em` | datahora, obrig. | `event_at` |
 | `status_anterior`, `status_novo` | texto(20) | `old_status`, `new_status` |
@@ -1189,7 +1441,7 @@ anterior (seção 7.4).
 | Coluna | Tipo | Origem (`LISTINGS_HISTORY_MONTHLY.`) | Observação |
 |---|---|---|---|
 | `mes_referencia` | data (dia 1º), obrig. | `reference_month` | |
-| `anuncio_id` | referencia → `anuncios`, `cascata`, obrig. | `listing_id` | |
+| `anuncio_id` | referencia → `anuncios`, `restringir`, obrig. | `listing_id` | histórico não sai por purga (seção 5.1) |
 | `status_fim_mes` | texto(20), obrig. | `status_at_month_end` | |
 | `preco_pedido_brl`, `area_m2`, `preco_m2_brl` | decimal | `asking_price_brl`, `area_m2`, `asking_price_brl_m2` | |
 | `quartos`, `suites`, `vagas` | inteiro | idem | |
@@ -1219,33 +1471,45 @@ Sucede `LISTINGS_MONTHLY_METRICS`. Materializada pela rotina (seção 7.4), nunc
 | `tipo_imovel`, `tipo_transacao` | texto | `property_type`, `transaction_type` | |
 | `quartos` | inteiro | `bedrooms` | |
 | `faixa_area` | texto(12), obrig. | `area_band` (`0-49`, `50-79`, `80-119`, `120-179`, `180+`, `todas`) | |
+| `base_area` | texto, `opcoes: ["privativa", "total", "nao_especificada", "todas"]`, obrig. | derivado de `anuncios.base_area` | v0.5: R$/m² **nunca** mistura bases de área; na linha `todas` as colunas de R$/m² ficam `null` e só preço, contagem e liquidez são preenchidos. A tela escreve a base no rótulo ("R$/m², área não especificada pelo portal"). Hoje a semente é 100% `nao_especificada` |
 | `ativos`, `novos`, `inativados` | inteiro, obrig. | `active_ads_count`, `new_ads_count`, `inactive_ads_count` | |
-| `preco_mediano_brl`, `preco_medio_brl`, `preco_p25_brl`, `preco_p75_brl` | decimal(14,2) | `median_price`, `average_price`, `p25_price`, `p75_price` | |
-| `preco_m2_mediano_brl`, `preco_m2_medio_brl` | decimal(12,2) | `median_price_m2`, `average_price_m2` | |
+| `preco_mediano_brl`, `preco_medio_brl`, `preco_p25_brl`, `preco_p75_brl` | decimal(14,2) | `median_price`, `average_price`, `p25_price`, `p75_price` | mediana `null` com n < 5; P25 e P75 `null` com n < 10 (supressão, seção 5.1) |
+| `preco_m2_mediano_brl`, `preco_m2_medio_brl` | decimal(12,2) | `median_price_m2`, `average_price_m2` | idem |
 | `area_mediana_m2` | decimal(12,2) | `median_area_m2` | |
 | `vagas_mediana` | decimal(5,2) | `median_parking_spaces` | |
-| `variacao_preco_mom_frac`, `variacao_estoque_mom_frac` | decimal(8,5) | `price_change_mom_pct` ÷ 100, `inventory_change_mom_pct` ÷ 100 | |
+| `variacao_preco_mom_frac`, `variacao_estoque_mom_frac` | decimal(8,5) | `price_change_mom_pct` ÷ 100, `inventory_change_mom_pct` ÷ 100 | v0.5: só sobre anúncios de buscas do **painel** ativas nos dois meses (seção 5.4, `buscas_portal`) e só quando os dois meses têm n ≥ 20; senão `null` com motivo |
 | `fontes_qtd` | inteiro | `source_count` | |
 | `qualidade_cobertura` | texto, `opcoes: ["boa", "fonte_unica", "so_historico_inativo", "amostra_pequena"]` | `coverage_quality` | |
-| `amostra_n` | inteiro, obrig. | derivado | tamanho da amostra de preço; abaixo de 5 a tela mostra "amostra pequena" |
-| `imoveis_n` | inteiro | derivado | imóveis distintos: grupo confirmado (ou sugerido acima de `agrupar_confianca_auto`) conta uma vez (D-26) |
+| `amostra_n` | inteiro, obrig. | derivado | anúncios na amostra de preço; abaixo de 5 a mediana é `null` com motivo `amostra_pequena` e o `n` ao lado (seção 5.1), nunca o valor com aviso |
+| `imoveis_n` | inteiro | derivado | imóveis distintos, publicado sempre ao lado de `amostra_n`: grupo `confirmado` conta uma vez; grupo `sugerido` só conta uma vez quando passa a regra automática de `anuncio_grupos` (coordenada exata, ≤ 30 m, área ±1 m², preço ±2%) (D-26) |
 | `com_reducao_preco_frac` | decimal(6,5) | derivado | ativos com `preco_pedido_brl` abaixo de `preco_inicial_brl` (D-25) |
 | `reducao_mediana_frac` | decimal(8,5) | derivado | mediana de `1 − preco_pedido / preco_inicial` entre os que reduziram |
-| `idade_estoque_mediana_dias` | inteiro | derivado | mediana de dias desde `primeiro_visto_em` entre os ativos no fim do mês |
-| `dias_ate_sair_mediana` | inteiro | derivado | mediana de dias entre `primeiro_visto_em` e `inativo_em` dos que saíram no mês |
-| `saidas_ate_30_dias_frac` | decimal(6,5) | derivado | fração dos que saíram no mês com até 30 dias de anúncio |
+| `idade_estoque_mediana_dias` | inteiro | derivado | mediana de dias desde `primeiro_visto_em` entre os ativos no fim do mês; é **idade do estoque**, nunca tempo até sair (viés de duração), e a tela diz isso |
+| `dias_ate_sair_mediana` | inteiro | derivado | v0.5: mediana de **Kaplan-Meier** do tempo de anúncio (método abaixo); `null` com menos de 20 eventos no grupo |
+| `permanencia_30_dias_frac` | decimal(6,5) | derivado | v0.5: S(30) de Kaplan-Meier, fração estimada de anúncios ainda ativos aos 30 dias; substitui `saidas_ate_30_dias_frac`; `null` com menos de 20 eventos |
+| `saidas_eventos_n`, `censurados_n` | inteiro | derivado | eventos (inativação confirmada) e observações censuradas usados no Kaplan-Meier |
 | `preco_m2_saida_mediano_brl` | decimal(12,2) | derivado | mediana do **último preço pedido** dos que saíram no mês; rótulo "último preço pedido antes de sair", nunca "venda" (D-50) |
 | `calculado_em` | datahora, obrig. | `calculated_at` | |
 
-`unicos`: `{ colunas: [mes_referencia, cidade_id, localidade_id, tipo_imovel, tipo_transacao, quartos, faixa_area], nulos_distintos: false }`.
+`unicos`: `{ colunas: [mes_referencia, cidade_id, localidade_id, tipo_imovel, tipo_transacao, quartos, faixa_area, base_area], nulos_distintos: false }`.
+
+**Tempo de anúncio por Kaplan-Meier (v0.5).** Quem continua ativo é observação censurada, e a
+mediana só de quem saiu no mês sobre-representa as saídas rápidas (R-08). Entrada:
+`primeiro_visto_em`, ou a data de publicação quando `dias_publicado` existe. Evento: inativação
+confirmada, com a data no meio do intervalo entre o último `visto_em` e a primeira falha de
+verificação (o dado é intervalar). Ativos no fim do mês e anúncios `bloqueada` entram
+censurados. Importados sem data de publicação entram com truncamento à esquerda (risco a partir
+de `primeiro_visto_em`, não de zero). Mediana e S(30) só com ≥ 20 eventos no grupo; abaixo,
+`null` com motivo `amostra_pequena`. O cálculo é em código (`comum/oferta/liquidez.ts`), nunca
+em `sql_declarado`.
 
 #### `indice_oferta_mensal`
 
 `acesso_externo: somente_leitura` · `id_legivel: "{mes_referencia} {tipo_transacao}"`
 
 Índice de preço de oferta estratificado (D-40), no método do FipeZap: mediana do R$/m² por
-estrato (localidade × quartos), agregada com **pesos fixos** do ano-base. Separa variação de
-preço de mudança de composição da amostra. A tela sempre o mostra ao lado da mediana bruta.
+estrato, agregada com **pesos fixos e exógenos**. Separa variação de preço de mudança de
+composição da amostra. A tela sempre o mostra ao lado da mediana bruta.
 
 | Coluna | Tipo | Observação |
 |---|---|---|
@@ -1253,15 +1517,29 @@ preço de mudança de composição da amostra. A tela sempre o mostra ao lado da
 | `cidade_id` | referencia → `cidades`, obrig. | |
 | `localidade_id` | referencia → `localidades`, `anular` | `null` = índice da cidade |
 | `tipo_imovel`, `tipo_transacao` | texto | `tipo_imovel` nulo = todos |
-| `indice` | decimal(12,6) | base 100 no ano-base |
+| `indice` | decimal(12,6) | base 100 na janela-base; `null` quando o mês não é publicável |
 | `variacao_mom_frac`, `variacao_12m_frac` | decimal(8,5) | |
 | `mediana_bruta_brl_m2` | decimal(12,2) | para a comparação lado a lado |
-| `estratos_total`, `estratos_imputados` | inteiro | imputado = estrato abaixo de `indice_n_minimo_estrato`, que repete o mês anterior |
-| `ano_base`, `pesos` | inteiro, json | os pesos usados, para auditoria |
+| `estratos_total`, `estratos_imputados`, `estratos_ausentes` | inteiro | imputado = estrato abaixo de `indice_n_minimo_estrato` que repete o mês anterior (no máximo `indice_imputacao_max_meses` seguidos); ausente = estrato que passou desse limite e saiu |
+| `peso_imputado_frac` | decimal(6,5) | soma dos pesos dos estratos imputados ou ausentes |
+| `publicavel` | booleano, obrig. | `peso_imputado_frac ≤ indice_peso_imputado_max_frac` |
+| `motivo_nao_publicado` | texto(60) | `peso_imputado_acima`, `janela_base_aberta`, … |
+| `base_de`, `base_ate` | data | a janela-base de 12 meses usada |
+| `pesos` | json | os pesos usados, para auditoria |
 | `calculado_em` | datahora, obrig. | |
 
-Peso do estrato = domicílios do Censo 2022 da localidade × fração de anúncios com aquele número
-de quartos no ano-base `[PENDENTE P-23]`. Mudar o ano-base recalcula a série inteira.
+**Método do índice (v0.5; fecha P-23).** Estrato = localidade × orientação (`vertical`,
+`horizontal`); quartos entra como subestrato só quando o estrato tem n ≥ 5 em pelo menos 80%
+dos meses (com a semente, 141 anúncios em 9 RAs, localidade × quartos não tem estrato com n ≥ 5).
+Peso = domicílios da localidade no Censo 2022 × distribuição de dormitórios dos domicílios da
+PDAD, fixo; **nenhuma parte do peso vem dos anúncios**, que são a amostra cuja composição o
+índice neutraliza. Base = os primeiros 12 meses corridos com índice publicável, não o ano civil
+(o ano civil só fecharia no fim de 2027). Imputação repete o mês anterior por no máximo
+`indice_imputacao_max_meses` (3); depois o estrato sai e os pesos se renormalizam. O mês só é
+publicado com `peso_imputado_frac ≤ indice_peso_imputado_max_frac` (0,30); senão `indice` é
+`null` com motivo. O índice é calculado desde a fase 3 e só aparece na tela quando a primeira
+janela-base fechar. Mudar o método recalcula a série inteira e sobe `VERSAO_METODO.indice`
+(seção 5.23). Os parâmetros moram na seção 4.3 (`indice_ano_base` deixa de existir).
 
 #### `anuncio_grupos`
 
@@ -1282,8 +1560,18 @@ O mesmo imóvel anunciado em mais de um portal ou por mais de um anunciante (D-2
 
 Regra de sugestão: mesma localidade, mesmo `tipo_imovel` e `tipo_transacao`, mesmos quartos, área
 dentro de `agrupar_tolerancia_area_frac`, preço dentro de `agrupar_tolerancia_preco_frac`,
-distância até `agrupar_distancia_max_m` quando os dois têm coordenada exata, e fonte **ou**
-anunciante diferente.
+distância até `agrupar_distancia_max_m` quando os dois têm coordenada exata, e fonte diferente
+**ou** mesma fonte com `id_externo` diferente (outro anunciante no mesmo portal gera outro
+código). A app não guarda anunciante (D-74, seção 22.1), então a condição não pode ser
+"anunciante diferente".
+
+**Contagem automática (v0.5).** Um grupo `sugerido` só conta como um imóvel, sem curador, quando
+os dois anúncios têm coordenada exata (`exata_fonte`) a até 30 m, área igual a ±1 m² e preço a
+±2%; qualquer outro grupo só conta depois de `confirmado`. O motivo: com todos os anúncios da
+semente por jitter a checagem de distância nunca roda, e em Águas Claras e Noroeste há plantas
+idênticas no mesmo prédio que casam unidades diferentes nas tolerâncias de sugestão. Isto
+substitui a regra por `agrupar_confianca_auto` (seção 4.3); a `confianca` continua só ordenando
+a fila do curador.
 
 #### `candidatos`
 
@@ -1329,7 +1617,7 @@ a execução; esta tabela guarda os **contadores de domínio**, que o shell não
 | `tipo` | texto, `opcoes: ["verificacao_anuncios", "descoberta_anuncios", "verificacao_lancamentos", "fechamento_mes", "dados_publicos", "analises_ia", "importacao", "agrupamento_anuncios", "vinculo_empreendimentos", "series_macro", "achados", "recalculo", "frescor", "retencao"]` | sim | derivado |
 | `disparo` | texto, `opcoes: ["agendado", "manual", "continuacao"]` | sim | — |
 | `iniciado_em`, `finalizado_em` | datahora | sim / não | `started_at`, `finished_at` |
-| `status` | texto, `opcoes: ["executando", "sucesso", "parcial", "falha", "interrompida"]` | sim | `status` |
+| `status` | texto, `opcoes: ["executando", "sucesso", "parcial", "falha", "interrompida", "pausada", "adiada"]` | sim | `status`; `pausada` = a fatia achou `coleta_ativa = false` e saiu sem requisição nem reagendamento; `adiada` = não obteve a trava da classe e agendou continuação (v0.5) |
 | `candidatos_lidos`, `candidatos_processados`, `candidatos_rejeitados` | inteiro | sim, padrão 0 | `candidate_*` |
 | `paginas_pedidas`, `paginas_lidas`, `paginas_bloqueadas` | inteiro | sim, padrão 0 | `source_pages_*` |
 | `novos`, `atualizados`, `reativados`, `precos_alterados` | inteiro | sim, padrão 0 | `new_listings`, … |
@@ -1366,7 +1654,10 @@ de rota grava `disparo = manual` (C-11).
 
 `acesso_externo: restrito`. Uma linha por rotina: `rotina` (texto(60), único), `cursor` (json),
 `versao` (inteiro), `em_execucao_desde` (datahora, nulo = livre), `coleta_id` (referencia →
-`coletas`, `anular`), `atualizado_em`. Guarda a posição do lote entre execuções (o que o script
+`coletas`, `anular`), `atualizado_em`. Na v0.5, mais duas colunas: `classe` (texto,
+`opcoes: ["coleta", "carga", "leve"]`, obrig.) e `agendamento_id` (inteiro, o `id` devolvido por
+`req.eventos.agendar` para a próxima fatia; desligar `coleta_ativa` não precisa cancelá-lo,
+porque a fatia que acordar sai sem agir). Guarda a posição do lote entre execuções (o que o script
 guardava em `PropertiesService`) e é a **trava** da rotina (D-85, C-32): o advisory lock do shell
 só impede duas execuções da mesma rotina, e a continuação corre num listener, fora dele. Quem vai
 tocar o lote — rotina agendada, "Rodar agora", catch-up ou listener `continuar_coleta` — adquire a
@@ -1374,6 +1665,18 @@ trava com `atualizarSe` (`em_execucao_desde` nulo ou mais velho que 15 min), gra
 `versao` lida a cada fatia (compare-and-set) e a libera ao fim. Quem não adquire devolve
 `{ ok: true, resultado: { resumo: "outra execução em curso" } }`. O `ctx` não tem `definir`: todo
 estado de rotina mora aqui (C-33).
+
+**Trava por classe (v0.5).** O advisory lock do shell é por rotina, e o catch-up do boot
+dispara juntas todas as rotinas que perderam o slot. Por isso, além da trava da própria rotina,
+há no máximo **uma execução por classe** ao mesmo tempo: `coleta` (`verificar_anuncios`,
+`descobrir_anuncios`, `verificar_lancamentos` e as continuações delas) e `carga` (`fechar_mes`,
+`carregar_dados_publicos`, `recalcular_derivados`, `calcular_achados`, `agrupar_anuncios`). A
+trava da classe é uma linha de `cursores_rotina` com `rotina = "classe:<classe>"`, adquirida com
+o mesmo compare-and-set (D-85). Quem não a obtém não falha: grava a `coleta` com status
+`adiada`, agenda `continuar_coleta` para +10 min e devolve `ok: true` com o resumo
+"adiada: <rotina> em curso". As rotinas `leve` (`verificar_frescor`, `limpar_retencao`,
+`vincular_empreendimentos`, `carregar_series_macro`, `gerar_analises_mensais`) não usam trava de
+classe (seção 7).
 
 ### 5.5 Lançamentos
 
@@ -1424,7 +1727,8 @@ estado de rotina mora aqui (C-33).
 
 #### `lancamento_eventos`
 
-Mesma forma de `anuncio_eventos` com `lancamento_id` no lugar de `anuncio_id` e tipos
+Mesma forma de `anuncio_eventos` com `lancamento_id` (referencia → `lancamentos`, `restringir`,
+obrig.; seção 5.1) no lugar de `anuncio_id` e tipos
 `criado`, `atualizado_pela_coleta`, `preco_alterado`, `lacuna_detectada`, `corrigido_manualmente`,
 `removido`, `restaurado`.
 
@@ -1798,12 +2102,24 @@ indicadores por RA `[PENDENTE P-01]`.
 | `arquivo` | arquivo (`text/csv`, `application/vnd.ms-excel`; até 50 MB, sob o cap da instância), obrig. | obrigatória: não expira no TTL (D-89) |
 | `modo_duplicata` | texto, `opcoes: ["ignorar", "atualizar", "substituir_tudo", "falhar"]`, obrig. | seção 11.2 |
 | `mapeamento` | json | coluna do CSV → coluna da tabela, mais declarações de escala e de localidade |
-| `status` | texto, `opcoes: ["previa", "aplicando", "aplicada", "falhou", "cancelada"]`, obrig. | |
+| `status` | texto, `opcoes: ["previa", "aplicando", "aplicada", "falhou", "cancelada", "desfeita"]`, obrig. | `desfeita` na v0.5 |
 | `total_linhas`, `inseridas`, `atualizadas`, `ignoradas`, `rejeitadas` | inteiro | |
 | `relatorio` | json | por linha rejeitada: número, coluna, código, mensagem; resumo de conversões de escala |
 | `autor_id` | referencia → `shell.usuarios`, obrig., `campos_incluir` nome | |
 | `aplicada_em` | datahora | |
 | `coleta_id` | referencia → `coletas`, `anular` | a execução registrada |
+| `retrato_data` | data | data do retrato da planilha (`migracao/AAAA-MM-DD/`) de onde veio o CSV, na migração (seção 11.3) |
+| `arquivo_sha256` | texto(64) | sha256 do CSV, conferido contra o do retrato datado |
+| `desfeita_em` | datahora | v0.5: quando o admin da app desfez a importação |
+| `desfeita_por_id` | referencia → `shell.usuarios`, `anular`, `campos_incluir` nome | |
+| `relatorio_desfazer` | json | linhas removidas (soft delete) e linhas mantidas por terem sido editadas depois (`versao` diferente da criação), com id e tabela |
+
+**Desfazer importação (v0.5).** Faz soft delete (`req.dados.remover`) das linhas com aquele
+`importacao_id` (seção 5.1) que ninguém editou depois, e lista em `relatorio_desfazer` as que
+ficaram; nunca apaga de vez. Linha `atualizada` (não criada) pela importação não é tocada: o
+modo `atualizar` não guarda o valor anterior, e a planilha somente leitura é a cópia de
+segurança. Como a importação é idempotente pela chave natural (seção 11.1), desfazer e
+reimportar dá o mesmo resultado. A rota é a da seção 6.9.
 
 #### `achados_qualidade`
 
@@ -1826,7 +2142,7 @@ Sucede `DATA_QUALITY`.
 | `resolvido_por_id` | referencia → `shell.usuarios`, `anular` |
 | `importacao_id`, `coleta_id` | referencias, `anular` |
 
-`indices`: `(tabela, resolvido_em)`, `(codigo)`.
+`indices`: `(tabela, resolvido_em)`, `(codigo)`, `(importacao_id)`.
 
 #### `alteracoes_cadastro`
 
@@ -1886,8 +2202,8 @@ nenhuma consulta toca `shell.*` (C-29). Piso de shell 0.53.3, coberto.
 | `cobertura_anuncios` | RA × tipo × quartos × faixa de preço com contagem (o antigo `LISTINGS_COVERAGE`) |
 | `cobertura_pdad` | RA × indicador com status (o antigo `PDAD_A_COVERAGE`) |
 | `contagem_por_celula` | contagem por `h3_r9` de anúncios (por imóvel), lançamentos, âncoras, pontos comerciais e licenças, para a camada hexagonal |
-| `mediana_terracap_por_localidade` | mediana por posição do R$/m² arrematado (terreno e potencial) e do ágio por localidade e ano, só lotes vendidos |
-| `pipeline_oferta_localidade` | unidades licenciadas sem habite-se e lançamentos em obra sem alvará vinculado, por localidade, sem dupla contagem |
+| `mediana_terracap_por_localidade` | mediana por posição do R$/m² arrematado (terreno e potencial) e do ágio por localidade, `destinacao_categoria` (sem `outra`) e ano, só lotes vendidos |
+| `pipeline_oferta_localidade` | unidades residenciais licenciadas sem habite-se (alvará com até `alvara_validade_meses`) e lançamentos em obra sem alvará vinculado, por localidade, sem dupla contagem; à parte, a contagem de "alvará antigo sem habite-se" |
 
 Percentil fino (P10, P90) e qualquer estatística fora disso são calculados **em código** sobre
 as linhas filtradas, no backend, nunca no frontend com dado parcial.
@@ -1978,7 +2294,7 @@ Sucede e amplia o `comum/indicadores.ts` (D-22, D-35). Cada métrica declara:
 | Campo | Valores | Para quê |
 |---|---|---|
 | `chave`, `titulo`, `unidade`, `fonte`, `formula` | | rótulo e procedência |
-| `natureza` | `contagem`, `razao`, `media`, `amostra`, `indice`, `categorica`, `nao_agregavel` | como se agrega; `amostra` = estatística recalculada sobre os **pontos** dentro da área (mediana, percentil), nunca agregada de células (D-67) |
+| `natureza` | `contagem`, `razao`, `media`, `amostra`, `indice`, `categorica`, `nao_agregavel` | como se agrega; `amostra` = estatística recalculada sobre os **pontos** dentro da área (mediana, percentil), nunca agregada de células (D-67), e sujeita à supressão por n da seção 5.1 (`null` com `amostra_pequena` e o `n` ao lado) |
 | `numerador`, `denominador` | chaves de métrica | razão é sempre recalculada de numerador e denominador somados; nunca média de razões |
 | `peso_rateio` | `domicilios`, `populacao`, `estabelecimentos`, `area`, `nenhum` | como a métrica se reparte quando a área corta a unidade da fonte |
 | `unidade_nativa` | `celula`, `setor`, `localidade`, `ponto` | o que o rateio precisa saber |
@@ -2001,7 +2317,7 @@ repete por categoria de consumo; com `<ano>`, por ano publicado.
 | `formacao_domiciliar_anual` | Domicílios novos por ano, 2010–2022 | contagem (Δ ÷ 12) | — | alta_favoravel | IBGE Grade | célula |
 | `densidade_domicilios_km2` | Domicílios por km² | razão | — | neutro | IBGE Grade | célula |
 | `enderecos_nao_residenciais` | Endereços não residenciais | contagem | — | neutro | CNEFE 2022 | célula |
-| `renda_domiciliar_media_brl` | Renda domiciliar média | média | domicílios | alta_favoravel | PDAD | localidade |
+| `renda_domiciliar_media_brl` | Renda domiciliar média | média | domicílios | alta_favoravel | PDAD | localidade (nunca mostrada como valor do anel na capa da ficha; R-04) |
 | `domicilios_faixa_renda_<k>_frac` | Domicílios por faixa de renda | média | domicílios | neutro | PDAD | localidade |
 | `moradores_por_domicilio` | Moradores por domicílio | média | domicílios | neutro | PDAD | localidade |
 | `domicilios_alugados_frac` | Domicílios alugados | média | domicílios | neutro | PDAD | localidade |
@@ -2014,26 +2330,34 @@ repete por categoria de consumo; com `<ano>`, por ano publicado.
 | `imoveis_ativos_venda`, `imoveis_ativos_locacao` | Imóveis anunciados (por imóvel) | contagem | — | neutro | app | ponto |
 | `preco_m2_mediano_venda`, `preco_m2_mediano_locacao` | R$/m² pedido mediano | amostra | — | neutro | app | ponto |
 | `preco_m2_lote_mediano` | R$/m² pedido de lote | amostra | — | neutro | app | ponto |
-| `dias_ate_sair_mediana` | Dias até sair do anúncio | amostra | — | alta_desfavoravel | app | ponto |
+| `dias_ate_sair_mediana` | Tempo de anúncio (mediana Kaplan-Meier) | amostra (≥ 20 eventos) | — | alta_desfavoravel | app | ponto |
+| `permanencia_30_dias_frac` | Anúncios ainda ativos aos 30 dias, S(30) | amostra (≥ 20 eventos) | — | neutro | app | ponto |
 | `com_reducao_preco_frac` | Anúncios com redução de preço | amostra | — | alta_desfavoravel | app | ponto |
 | `lancamentos_estoque_unidades` | Unidades em estoque de lançamentos | contagem | — | neutro | app | ponto |
 | `pipeline_unidades` | Unidades no pipeline de oferta | contagem | — | alta_desfavoravel (pressão) | app | ponto |
-| `terracap_preco_m2_terreno` | R$/m² arrematado de terreno | amostra | — | neutro | Terracap | ponto |
-| `terracap_preco_m2_potencial` | R$/m² arrematado de potencial | amostra | — | neutro | Terracap | ponto |
-| `terracap_agio_frac` | Ágio sobre o mínimo | amostra | — | neutro | Terracap | ponto |
+| `terracap_preco_m2_terreno` | R$/m² arrematado de terreno, por `destinacao_categoria` | amostra | — | neutro | Terracap | ponto |
+| `terracap_preco_m2_potencial` | R$/m² arrematado de potencial, por `destinacao_categoria` | amostra | — | neutro | Terracap | ponto |
+| `terracap_agio_frac` | Ágio sobre o mínimo, por `destinacao_categoria` | amostra | — | neutro | Terracap | ponto |
 | `estabelecimentos_<cat>` | Estabelecimentos da categoria | contagem | — | neutro | CNPJ, OSM | célula |
 | `gasto_potencial_<cat>_brl_ano` | Gasto potencial anual da categoria | contagem | — | alta_favoravel | POF × Grade | célula |
-| `gasto_por_estabelecimento_<cat>` | Gasto potencial por estabelecimento | razão | — | alta_favoravel (lacuna) | derivado | célula |
+| `gasto_por_estabelecimento_<cat>` | Gasto potencial por estabelecimento **na bacia da categoria** | razão (somas no raio `raio_bacia_m`) | — | alta_favoravel (lacuna) | derivado | célula (bacia) |
 | `equipamentos_<tipo>` | Escolas, unidades de saúde, … | contagem | — | alta_favoravel | INEP, CNES, OSM | ponto |
 | `area_urbanizada_frac_<ano>` | Fração urbanizada | razão | — | neutro | MapBiomas | célula |
 | `edificacoes_n_<ano>` | Edificações | contagem | — | neutro | Open Buildings | célula |
 | `novas_edificacoes_2016_2023` | Edificações novas | contagem | — | neutro | Open Buildings | célula |
 | `altura_media_edificacoes_m` | Altura média das edificações | média | edificações | neutro | Open Buildings | célula |
-| `frac_restrita_total` | Fração restrita (APP, UC, declividade) | razão | — | alta_desfavoravel | pipeline (seção 5.21) | célula |
+| `frac_restrita_total` | Fração restrita (APP, UC, declividade) | razão | — | alta_desfavoravel | pipeline (seção 5.21) | célula (mapa e achados; nunca alimenta a área líquida de uma gleba) |
 | `zona_pdot` | Zona do PDOT | categórica | área | — | IPEDF | polígono |
 
 Métrica `categorica` numa área devolve a distribuição por área (ex.: 70% Zona Urbana Consolidada,
 30% Zona de Contenção), nunca um valor único.
+
+Regras da v0.5 sobre o catálogo: métrica de `unidade_nativa = localidade` (PDAD) nunca aparece
+como valor do anel na capa da ficha; ali entra a distribuição de domicílios por faixa de renda,
+rotulada "da RA <nome>, PDAD <ano>", com a fração do anel em cada RA quando ele cruza mais de uma
+(seção 10.10). Valor de renda do anel só entra com fonte por setor ou célula
+(`censo_2022_setores` com rendimento), com a fonte escrita. As métricas `terracap_*` são sempre
+por localidade × `destinacao_categoria` (seção 5.15), e `outra` nunca entra em mediana.
 
 #### `localidade_composicao` (D-36)
 
@@ -2114,6 +2438,8 @@ pipeline `[PENDENTE P-13]`.
 | `area_terreno_m2` | decimal(12,2) | sim | |
 | `area_construcao_m2` | decimal(12,2) | não | potencial declarado no edital |
 | `destinacao` | texto(300) | não | uso do edital, verbatim |
+| `destinacao_categoria` | texto, `opcoes: ["residencial_unifamiliar", "residencial_multifamiliar", "comercial_servicos", "misto", "institucional", "industrial", "rural", "outra"]` | sim | v0.5: a importação propõe a categoria a partir do verbatim por tabela em `comum/terra/destinacoes.ts` e o operador confirma o mapeamento, como o de `ivv_regional` (R-09) |
+| `importacao_id` | referencia → `importacoes`, `anular` | não | seção 5.1 |
 | `preco_minimo_brl` | decimal(14,2) | sim | **nunca** é tratado como preço (D-50) |
 | `valor_arrematado_brl` | decimal(14,2) | não | nulo = não vendido ou resultado ainda não publicado |
 | `situacao` | texto, `opcoes: ["ofertado", "vendido", "deserto", "cancelado", "aguardando_resultado"]` | sim | |
@@ -2125,6 +2451,9 @@ pipeline `[PENDENTE P-13]`.
 `unicos`: `(edital, item)`. Derivados em código: `preco_m2_terreno` (arrematado ÷ área do
 terreno), `preco_m2_potencial` (arrematado ÷ área de construção), `agio_frac` (arrematado ÷
 mínimo − 1). Lote não vendido entra em "ofertado sem venda", nunca na mediana de arrematado.
+Mediana de arrematado, ágio, o achado `terra_agio` e a comparação da viabilidade são sempre por
+localidade × `destinacao_categoria` (projeção residencial, lote comercial e institucional não se
+misturam); `outra` nunca entra em mediana. `indices`: `(localidade_id, destinacao_categoria)`.
 
 #### `licenciamento_obras`
 
@@ -2150,9 +2479,17 @@ mínimo − 1). Lote não vendido entra em "ofertado sem venda", nunca na median
 automática ser confirmada `[PENDENTE P-12]`.
 
 **Pipeline de oferta (derivado).** Unidades em obra = empreendimentos com alvará e sem habite-se
-+ lançamentos `em_construcao` sem alvará vinculado (para não contar duas vezes). Meses de
-absorção futura = unidades no pipeline ÷ média de vendas dos últimos 12 meses do IVV (cidade) ou
-do IVV regional (localidade), quando houver.
++ lançamentos `em_construcao` sem alvará vinculado (para não contar duas vezes). Só alvarás de
+uso residencial contam unidades. Alvará sem habite-se e sem lançamento vinculado emitido há mais
+de `alvara_validade_meses` (seção 4.3; padrão 48, premissa declarada a conferir no Código de
+Obras do DF) **sai do pipeline** e vai para "alvará antigo sem habite-se", listado à parte, para
+obra caducada ou parada não ficar no pipeline para sempre.
+
+**Absorção (v0.5).** Meses de absorção futura = unidades no pipeline ÷ vendas mensais médias.
+Na cidade, as vendas são os últimos 12 meses do `ivv_mensal`. Na localidade, `ivv_regional` só é
+usado quando houver ≥ 12 meses da série (hoje há um mês só, mai/2026, que é sazonal e não tem
+média); até lá, vendas da cidade (12 meses do `ivv_mensal`) × participação da localidade na
+oferta regional do último retrato, rotulada "rateio da cidade"; sem nenhum dos dois, `null`.
 
 ### 5.16 Áreas de estudo (D-23)
 
@@ -2163,14 +2500,14 @@ do IVV regional (localidade), quando houver.
 | Coluna | Tipo | Obrig. | Observação |
 |---|---|---|---|
 | `nome` | texto(200) | sim | |
-| `tipo` | texto, `opcoes: ["propria", "prospeccao", "referencia"]` | sim | `propria` = área da UP; só o `curador` cria ou muda para esse tipo |
+| `tipo` | texto, `opcoes: ["propria", "prospeccao", "referencia"]` | sim | `propria` = área da UP; só o `curador` cria ou muda para esse tipo; de onde vem a lista oficial `[PENDENTE P-47]`. Área `propria` é sigilosa (nota abaixo) |
 | `cidade_id` | referencia → `cidades`, `restringir` | sim | |
 | `geometria`, `geometria_tipo` | json, texto | sim | ponto ou polígono, como `contornos` |
 | `bbox_oeste`, `bbox_sul`, `bbox_leste`, `bbox_norte` | decimal(10,7) | sim | |
 | `centroide_latitude`, `centroide_longitude` | decimal(10,7) | sim | |
 | `area_m2` | decimal(16,2) | não | polígono |
 | `raios_m` | texto(60) | não | CSV; vazio = `raios_padrao_m` |
-| `estagio` | texto, `opcoes: ["sinal", "hipotese", "oportunidade", "iniciativa", "projeto", "negocio_ativo", "encerrada"]` | sim | a escada de maturidade da UP (D-55); toda mudança grava `area_eventos` |
+| `estagio` | texto, `opcoes: ["sinal", "hipotese", "oportunidade", "iniciativa", "projeto", "negocio_ativo", "encerrada"]` | sim | a escada de maturidade da UP (D-55); toda mudança grava `area_eventos`; quem decide a mudança e se ela exige decisão registrada `[PENDENTE P-42]` |
 | `motivo_encerramento` | texto(300) | não | obrigatório quando `estagio = encerrada` |
 | `aprendizado` | texto_longo | não | o que a área ensinou, mesmo sem virar projeto (doc. 02, §8) |
 | `responsavel_id` | referencia → `shell.usuarios`, `anular` | não | |
@@ -2178,8 +2515,19 @@ do IVV regional (localidade), quando houver.
 | `contorno_id` | referencia → `contornos`, `anular` | não | quando veio de KMZ já importado |
 | `arquivo_origem` | arquivo (KML, KMZ, GeoJSON, `octet-stream`; até 20 MB, sob o cap da instância) | não | expira no TTL da instância (D-89); a geometria fica na linha |
 | `notas` | texto_longo | não | |
+| `importacao_id` | referencia → `importacoes`, `anular` | não | seção 5.1 |
 
-#### `area_estudo_fichas`
+**Sigilo das áreas próprias (v0.5).** Área `tipo = propria` e tudo que pende dela
+(`area_estudo_fichas`, `area_perimetros`, `area_sintese_itens`, `teses`, `tese_condicoes`,
+`diligencias`, `hipoteses_ancora`, `hipoteses_produto`, `cenarios_viabilidade`,
+`observacoes_campo`, `observacao_fotos`, `area_eventos` e `analises_ia` com `area_estudo_id`)
+só é lido por quem tem o papel `estrategico` ou `curador` (seção 4.1) ou é o `responsavel_id` da
+área. Por isso **todas essas tabelas são `restrito`**, sem exceção: só as rotas da app as leem,
+e a regra fica nelas (seções 6.11, 6.17 e 14; precedentes: nobi, reg360). Para os demais, a área
+própria some de listas, portfólio, Início, achados, mapa e exportações, e o detalhe responde
+`404`. Não há trilha de visualização (seria telemetria nominal, R-35); há trilha de **saída**:
+ficha, pacote, exportação e análise de IA de área própria gravam `area_eventos` com o usuário.
+Área própria real só existe na instância de produção, nunca na de teste.
 
 `acesso_externo: restrito` · `id_legivel: "{titulo_area} · {formato}"` (o template não resolve
 referência nem formata data; o nome da área é gravado na ficha; C-19)
@@ -2190,15 +2538,21 @@ Markdown pronto e os **números-chave** por bloco em `conteudo`, não o dossiê 
 
 | Coluna | Tipo | Observação |
 |---|---|---|
-| `area_estudo_id` | referencia → `areas_estudo`, `cascata`, obrig. | |
+| `area_estudo_id` | referencia → `areas_estudo`, `restringir`, obrig. | ficha é registro congelado: não sai por purga (seção 5.1) |
 | `titulo_area` | texto(200), obrig. | nome da área no momento da geração |
 | `formato` | texto, `opcoes: ["uma_pagina", "detalhada"]`, obrig. | |
-| `secoes` | json, obrig. | as escolhidas, na ordem escolhida |
-| `conteudo` | json, obrig. | números-chave, método e fonte por bloco |
+| `secoes` | json, obrig. | as escolhidas, na ordem escolhida; seção cuja fonte é de fase posterior sai omitida com o motivo ("disponível com Comércio e âncoras"), nunca vazia nem zero |
+| `conteudo` | json, obrig. | números-chave, método e fonte por bloco. Na v0.5 cada número tem **chave estável** = chave do catálogo + recorte + período, com o valor, a versão do conjunto de origem e o `n` quando houver; é o que permite comparar duas fichas |
 | `versoes_conjuntos` | json, obrig. | código → versão e hash de cada conjunto usado |
 | `markdown` | texto_longo, obrig. | a ficha pronta |
 | `analise_ia_id` | referencia → `analises_ia`, `anular` | |
 | `gerada_por_id`, `gerada_em` | referência, datahora | |
+
+**Comparar duas fichas (v0.5).** `GET /estudos/:id/fichas/comparar?a&b` (seção 6.11) devolve,
+por chave de `conteudo`, os dois valores e a diferença, e marca cada linha "mudou o dado" quando a
+versão do conjunto e a `versao_metodo` das duas fichas coincidem, ou "mudou a medida" quando não,
+sem calcular variação nesse caso. A tela é a ação "Comparar com…" na lista de fichas da área
+(seção 10.10), sem entrada nova no `nav`.
 
 ### 5.17 Demanda e produto (D-44)
 
@@ -2229,11 +2583,27 @@ da localidade, rateada para a área quando a área é desenhada. A saída é a d
 domicílios por faixa de preço alcançável, com a taxa usada e a origem dela.
 
 **Matriz de produto** (`comum/produto/matriz.ts`): linhas por tipologia (quartos 1, 2, 3, 4+, e
-orientação), colunas pelas faixas de `faixas_preco_brl`. Por célula da matriz: `demanda_frac`
-(domicílios por faixa alcançável × distribuição de tamanho de domicílio convertida em quartos
-por uma tabela declarada em código), `oferta_frac` (anúncios por imóvel + estoque de
-lançamentos), `absorcao` (IVV regional quando houver; senão `dias_ate_sair_mediana`) e `lacuna`
-= demanda − oferta. A tabela "moradores → quartos" é uma hipótese, e a tela diz isso.
+orientação), colunas pelas faixas de `faixas_preco_brl`. A demanda por célula da matriz vem dos
+domicílios por faixa alcançável × distribuição de tamanho de domicílio convertida em quartos por
+uma tabela declarada em código. A tabela "moradores → quartos" é uma hipótese, e a tela diz
+isso.
+
+Na v0.5 a matriz tem **duas leituras, nomeadas**, porque diferença de participações mede
+descompasso de composição, nunca quantidade (a v0.4 subtraía frações de universos diferentes):
+
+- **Composição.** `demanda_frac` e `oferta_frac` são a participação de cada célula da matriz na
+  demanda e na oferta do recorte, cada uma somando 1. `descompasso_pp` = diferença em pontos
+  percentuais, rotulada "composição, não quantidade". O achado `lacuna_produto` usa
+  `descompasso_pp ≥ 10` (seção 9.7).
+- **Fluxo.** Demanda anual = `formacao_domiciliar_anual` × distribuição alcançável; oferta
+  anual = unidades lançadas nos últimos 12 meses mais o pipeline com entrega em até 12 meses
+  (seção 5.15). `lacuna_unidades_ano` = demanda anual − oferta anual, e só aparece nesta
+  leitura.
+
+A oferta é só venda, separada em "usado (anúncios, por imóvel)" e "novo (lançamentos,
+unidades)", nunca somadas numa coluna só. `absorcao` segue a regra da seção 5.15 (IVV regional
+só com ≥ 12 meses; senão rateio da cidade; senão `dias_ate_sair_mediana` de Kaplan-Meier,
+rotulado como tempo de anúncio, não de venda).
 
 Tabela inicial moradores → quartos (`comum/produto/tipologia.ts`, com `versao_metodo`), a
 calibrar com o cruzamento de moradores por dormitórios da PDAD, por localidade `[PENDENTE P-36]`:
@@ -2256,21 +2626,34 @@ Cada categoria (supermercado, atacarejo, farmácia, padaria, academia, escola pa
 restaurante, pet, vestuário, serviços financeiros, …) declara: os CNAEs que a compõem, as
 etiquetas do OSM, o grupo de despesa da POF/IBGE que alimenta o potencial de consumo, a
 `categoria` de âncora correspondente e `huff` (se entra na simulação com pontos individuais)
-`[PENDENTE P-25]`.
+`[PENDENTE P-25]`. Na v0.5 cada categoria declara também `raio_bacia_m` (a bacia em que se
+somam gasto e estabelecimentos para a lacuna comercial) e `classes_porte` (a área de vendas
+imputada por classe, que dá a escala comum de atratividade do Huff).
 
 Categorias iniciais (os códigos CNAE são subclasses a conferir na CONCLA antes da carga):
 
-| Chave | CNAE (subclasse) | Grupo de despesa (POF) | Categoria de âncora | Huff |
-|---|---|---|---|---|
-| `supermercado` | 4711-3/01, 4711-3/02 | alimentação no domicílio | `supermercado_atacarejo` | sim |
-| `farmacia` | 4771-7/01, 4771-7/02, 4771-7/03 | assistência à saúde (remédios) | — | sim |
-| `padaria` | 4721-1/02 | alimentação no domicílio | — | não |
-| `academia` | 9313-1/00 | recreação e cultura | — | sim |
-| `escola_particular` | 8512-1/00, 8513-9/00, 8520-1/00 | educação | `escola` | sim |
-| `clinica` | 8630-5/02, 8630-5/03 | assistência à saúde | `saude` | sim |
-| `restaurante` | 5611-2/01 | alimentação fora do domicílio | — | não |
-| `pet` | 4789-0/04 | outras despesas correntes | — | não |
-| `vestuario` | 4781-4/00 | vestuário | `shopping_center` | não |
+| Chave | CNAE (subclasse) | Grupo de despesa (POF) | Categoria de âncora | Huff | `raio_bacia_m` |
+|---|---|---|---|---|---|
+| `supermercado` | 4711-3/01, 4711-3/02 | alimentação no domicílio | `supermercado_atacarejo` | sim | 1 500 |
+| `farmacia` | 4771-7/01, 4771-7/02, 4771-7/03 | assistência à saúde (remédios) | — | sim | 800 |
+| `padaria` | 4721-1/02 | alimentação no domicílio | — | não | 800 |
+| `academia` | 9313-1/00 | recreação e cultura | — | sim | 1 500 |
+| `escola_particular` | 8512-1/00, 8513-9/00, 8520-1/00 | educação | `escola` | sim | 2 000 |
+| `clinica` | 8630-5/02, 8630-5/03 | assistência à saúde | `saude` | sim | 2 000 |
+| `restaurante` | 5611-2/01 | alimentação fora do domicílio | — | não | 1 000 |
+| `pet` | 4789-0/04 | outras despesas correntes | — | não | 1 500 |
+| `vestuario` | 4781-4/00 | vestuário | `shopping_center` | não | 3 000 |
+
+Os raios de supermercado (1 500 m) e farmácia (800 m) são os do método; os demais são ponto de
+partida declarado, a conferir junto com a P-25. Classes de porte de partida, por exemplo em
+`supermercado`: CNAE 4711-3/01 (hipermercado) = 5 000 m², 4711-3/02 (supermercado) = 1 500 m²,
+mercado de vizinhança = 300 m².
+
+**Lacuna comercial (v0.5).** É calculada sobre a **bacia** da categoria, não sobre a célula
+isolada (a compra atravessa células, e a divisão por estabelecimentos de uma célula de 10 ha
+divide por zero ou por um): gasto potencial e estabelecimentos somados no raio `raio_bacia_m` em
+torno da célula. Célula sem estabelecimento na bacia é "sem oferta", fora da razão. Só entram
+células habitadas com gasto potencial ≥ P25 da cidade (seção 9.7, `lacuna_comercial`).
 
 Métricas por célula, em `celula_metricas` (conjuntos `comercio_cnpj`, `comercio_osm`,
 `cnefe_2022`, `potencial_consumo`): `estabelecimentos_<categoria>`,
@@ -2322,6 +2705,13 @@ centroide da célula à loja com piso de 200 m, λ = `huff_expoente_distancia`, 
 `huff_raio_max_m`. Saída: participação e gasto capturado por anel. É simulação com parâmetros
 declarados, rotulada assim; não é previsão de vendas.
 
+**Escala única de atratividade (v0.5).** Numa rodada de Huff todas as lojas usam a mesma
+escala, senão a unidade decide o resultado (`pontos_comerciais` só tem porte fiscal do CNPJ, e
+`ancoras.atratividade` é m²): (a) classe de porte da categoria (`classes_porte`), aplicada também
+à âncora simulada pelo porte escolhido; ou (b) A = 1 para todas. A área medida de uma âncora só
+entra se todas as concorrentes da rodada tiverem área medida. O resultado diz a escala usada e a
+fração de concorrentes com atratividade imputada (R-12; o expoente segue em P-27).
+
 **Áreas gêmeas** (`comum/espacial/similaridade.ts`): vetor das métricas com `similaridade =
 true`, padronizado (z) na cidade, distância euclidiana ponderada; referência = área de estudo,
 localidade ou célula; resultado = os `similaridade_max_resultados` mais próximos, cada um com as
@@ -2329,7 +2719,12 @@ três métricas que mais aproximam e as três que mais afastam.
 
 **Bolsões** (`comum/espacial/gi.ts`): Gi* sobre métricas de célula (R$/m² mediano das células
 com ao menos 5 imóveis, gasto potencial, crescimento domiciliar), vizinhança = a célula e o anel
-1; classes descritivas em |z| ≥ 1,96 e ≥ 2,58. Sem regressão, sem previsão.
+1. Sem regressão, sem previsão. Na v0.5: só células habitadas entram; a significância é por
+**FDR de Benjamini-Hochberg** (q = 0,05) sobre os p-valores de todas as células, no lugar de
+|z| ≥ 1,96 fixo, que sobre ~20 mil células daria ~1 000 falsos positivos por acaso (Caldas de
+Castro e Singer, 2006); o achado `bolsao` só sai para grupo de ≥ 3 células contíguas
+significativas (seção 9.7). O Gi* de R$/m² fica **desligado** até haver ≥ 200 células com ≥ 5
+imóveis (hoje nenhum anúncio tem célula).
 
 ### 5.19 Contexto, achados e acompanhamento (D-21, D-31, D-33)
 
@@ -2389,6 +2784,10 @@ Quais séries entram de partida continua sendo decisão da equipe `[PENDENTE P-2
 
 `unicos`: `(mes_referencia, recorte_tipo, recorte_id, tipo, metrica)`.
 
+A tabela e a rotina `calcular_achados` entram na fase 4C só com o tipo `condicao_em_risco`
+(a 4C precisa reavaliar condições monitoradas); os demais tipos entram na fase 5 (v0.5, seção
+15.4C). Achado sobre recorte de área própria segue o sigilo da seção 5.16.
+
 #### `visoes_salvas`
 
 `acesso_externo: restrito` · `pessoal: true` · `id_legivel: "{nome}"`
@@ -2433,7 +2832,7 @@ ou `premissa`; `fato` exige evidência (D-57).
 
 | Coluna | Tipo | Observação |
 |---|---|---|
-| `area_estudo_id` | referencia → `areas_estudo`, `cascata`, obrig. | |
+| `area_estudo_id` | referencia → `areas_estudo`, `restringir`, obrig. | seção 5.1 |
 | `grupo` | texto, `opcoes: ["forca", "restricao", "dependencia", "incerteza", "opcao"]`, obrig. | doc. 05, §44 |
 | `escala` | texto, `opcoes: ["regional", "urbana", "entorno", "sitio"]` | doc. 05, §28 |
 | `texto` | texto(1000), obrig. | |
@@ -2446,24 +2845,25 @@ ou `premissa`; `fato` exige evidência (D-57).
 
 #### `teses` e `tese_condicoes` (D-58)
 
-`teses`: `area_estudo_id` (cascata), `versao` (inteiro), `status` (`rascunho`, `vigente`,
+`teses` (`acesso_externo: restrito`): `area_estudo_id` (referencia → `areas_estudo`, `restringir`; seção 5.1), `versao` (inteiro), `status` (`rascunho`, `vigente`,
 `substituida`), `componentes` (json com as dez chaves do doc. 05, §48.1: `situacao_atual`,
 `transformacao`, `mecanismo`, `participantes`, `ativos`, `sequencia`, `posicao_up`,
 `captura_valor`, `opcoes`, `limites`, cada uma com texto e evidências), `autor_id`, `criada_em`.
 Só uma `vigente` por área; publicar uma nova versão torna a anterior `substituida`.
 
-`tese_condicoes`:
+`tese_condicoes` (`acesso_externo: restrito`):
 
 | Coluna | Tipo | Observação |
 |---|---|---|
-| `tese_id` | referencia → `teses`, `cascata`, obrig. | |
+| `tese_id` | referencia → `teses`, `restringir`, obrig. | seção 5.1 |
 | `tipo` | texto, `opcoes: ["necessaria", "interrupcao"]`, obrig. | doc. 05, §50 e §51 |
 | `texto` | texto(1000), obrig. | "a demanda por lote de 450 m² no entorno precisa ser maior que o pipeline" |
 | `frente` | texto, `opcoes` das frentes de diligência | |
 | `status` | texto, `opcoes: ["nao_verificada", "sustentada", "contrariada", "inconclusiva"]`, obrig. | |
 | `evidencias` | json | |
-| `verificar_ate` | data | condição vencida aparece no Início |
-| `metrica_monitorada` | json | opcional: `{ chave, recorte, operador, limiar }`; `calcular_achados` reavalia todo mês e propõe mudança de status |
+| `verificar_ate` | data | condição vencida aparece no Início; aviso ao responsável antes do prazo `[PENDENTE P-43]` |
+| `metrica_monitorada` | json | opcional: `{ chave, recorte, operador, limiar }`; `calcular_achados` reavalia todo mês e propõe mudança de status (achado `condicao_em_risco`, já na fase 4C) |
+| `hipotese_produto_id` | referencia → `hipoteses_produto`, `anular` | v0.5, opcional: a condição de que depende uma hipótese de produto (J2) |
 
 #### `diligencias` (D-60)
 
@@ -2472,7 +2872,7 @@ partir de `comum/diligencia.ts` `[PENDENTE P-40]`.
 
 | Coluna | Tipo | Observação |
 |---|---|---|
-| `area_estudo_id` | referencia → `areas_estudo`, `cascata`, obrig. | |
+| `area_estudo_id` | referencia → `areas_estudo`, `restringir`, obrig. | seção 5.1 |
 | `frente` | texto, `opcoes: ["fundiaria", "urbanistica", "ambiental", "fisica", "infraestrutural", "social", "mercadologica"]`, obrig. | |
 | `pergunta` | texto(500), obrig. | |
 | `impacto` | json (lista) | o que a resposta pode mudar: `preco`, `estrutura`, `prazo`, `uso`, `posicao`, `decisao` |
@@ -2481,13 +2881,16 @@ partir de `comum/diligencia.ts` `[PENDENTE P-40]`.
 | `natureza_resposta` | texto, opções de `natureza` | |
 | `evidencias` | json | |
 | `responsavel_id` | referencia → `shell.usuarios`, `anular` | |
-| `prazo` | data | |
+| `prazo` | data | aviso ao responsável antes do prazo `[PENDENTE P-43]` |
 
 **Pré-preenchimento pelo app.** Perguntas que o app responde ganham `status = respondida_app`,
 com a resposta e a evidência, e continuam abertas para um humano confirmar: zona do PDOT e área
 de regularização (urbanística), fração restrita por APP, UC e declividade (ambiental), edificações
 existentes (física), acesso e distância a equipamentos (infraestrutural), oferta, preço,
 pipeline e concorrência (mercadológica). Fundiária e social nunca são respondidas pelo app.
+Enquanto o conjunto `restricoes_sitio` não estiver carregado (seção 12.4), a ambiental fica
+`aberta`, sem pré-preenchimento e com a nota "restrições não carregadas", nunca "sem
+restrição"; o mesmo vale para a infraestrutural sem `equipamentos_publicos`.
 
 #### `hipoteses_ancora` (D-65)
 
@@ -2495,10 +2898,10 @@ pipeline e concorrência (mercadológica). Fundiária e social nunca são respon
 
 | Coluna | Tipo | Observação |
 |---|---|---|
-| `area_estudo_id` | referencia → `areas_estudo`, `cascata`, obrig. | |
+| `area_estudo_id` | referencia → `areas_estudo`, `restringir`, obrig. | seção 5.1 |
 | `categoria_consumo` | texto(60), obrig. | |
-| `porte` | texto(80) | e `atratividade` usada na simulação |
-| `simulacao` | json | parâmetros e resultado do Huff congelados |
+| `porte` | texto(80) | classe de porte do catálogo (`classes_porte`), que dá a `atratividade` usada na simulação |
+| `simulacao` | json | parâmetros e resultado do Huff congelados, com a escala de atratividade usada (`classe_porte` ou `unitaria`) e a fração de concorrentes com atratividade imputada (seção 5.18) |
 | `ancora_traz` | json (lista) | demanda, emprego, fluxo, reputação, serviço… (doc. 03) |
 | `up_traz` | json (lista) | terra, infraestrutura, articulação, capital, operação… |
 | `modelo_parceria` | texto(120) | candidato, do repertório do doc. 03 `[PENDENTE P-41]` |
@@ -2506,14 +2909,40 @@ pipeline e concorrência (mercadológica). Fundiária e social nunca são respon
 | `natureza` | texto, opções de `natureza`, obrig. | nasce `hipotese` |
 | `status` | texto, `opcoes: ["hipotese", "em_conversa", "descartada", "compromisso"]`, obrig. | a conversa em si fica no CRM (D-45) |
 
+#### `hipoteses_produto` (v0.5)
+
+`acesso_externo: restrito` · `soft_delete` · `id_legivel: "{tipologia} {faixa_preco}"`
+
+A J2 pede "registrar duas hipóteses de produto com condições", e a v0.4 só tinha hipótese de
+âncora. Entra na fase 4C.
+
+| Coluna | Tipo | Observação |
+|---|---|---|
+| `area_estudo_id` | referencia → `areas_estudo`, `restringir`, obrig. | seção 5.1 |
+| `tipologia` | texto(40), obrig. | linha da matriz de produto (quartos e orientação, seção 5.17) |
+| `faixa_preco` | texto(40), obrig. | coluna da matriz (faixa de `faixas_preco_brl`) |
+| `unidades` | inteiro | quantas unidades a hipótese supõe |
+| `cenario_viabilidade_id` | referencia → `cenarios_viabilidade`, `anular` | o cenário que a testa |
+| `natureza` | texto, opções de `natureza`, obrig. | nasce `hipotese` |
+| `status` | texto, `opcoes: ["hipotese", "sustentada", "descartada"]`, obrig. | |
+| `evidencias` | json | lista de evidências (forma da seção 5.20) |
+| `autor_id` | referencia → `shell.usuarios`, `campos_incluir` nome | |
+| `versao` | inteiro, obrig., padrão 1 | concorrência (D-88) |
+
+As condições de uma hipótese de produto são linhas de `tese_condicoes` da tese da área com
+`hipotese_produto_id` preenchido.
+
 #### `area_eventos` e `observacoes_campo` (D-78)
 
 `area_eventos`: linha do tempo da área (`tipo`: `estagio_alterado`, `nota`, `ficha_gerada`,
 `analise_gerada`, `tese_publicada`, `condicao_alterada`, `observacao_campo`, `perimetro_alterado`;
-`dados` json; `autor_id`; `em`). Toda rota de escrita das tabelas desta seção grava aqui na
-mesma transação.
+`dados` json; `autor_id`; `em`; `area_estudo_id` referencia → `areas_estudo`, `restringir`).
+Toda rota de escrita das tabelas desta seção grava aqui na mesma transação. Na v0.5 há também
+os tipos de **saída** de área própria (`ficha_exportada`, `pacote_gerado`, `exportacao`), além de
+`ficha_gerada` e `analise_gerada`, todos com o usuário (seção 5.16). O comentário da área é o
+`tipo = nota`, não editável. Ambas as tabelas são `acesso_externo: restrito`.
 
-`observacoes_campo`: `area_estudo_id` (cascata), `texto` (texto_longo), `latitude`, `longitude`,
+`observacoes_campo`: `area_estudo_id` (referencia → `areas_estudo`, `restringir`), `texto` (texto_longo), `latitude`, `longitude`,
 `precisao_m` (nulo quando a posição foi tocada no mapa ou digitada; seção 10.10), `registrada_em`,
 `autor_id` (`campos_incluir` nome).
 
@@ -2531,16 +2960,29 @@ declarada), unidade de conservação de proteção integral, unidade de conserva
 sustentável, declividade acima de `declividade_restritiva_frac`, e áreas de regularização do PDOT
 (ARIS, ARINE). Também a união das restritivas (`frac_restrita_total`), sem dupla contagem
 `[PENDENTE P-31]`. Tudo entra em `celula_metricas` (conjunto `restricoes_sitio`) e numa camada
-vetorial para o mapa.
+vetorial para o mapa. O produtor é o pipeline (linha `restricoes_sitio` da seção 12.4). Na v0.5
+o pipeline publica as restrições também como **polígonos por tipo**, simplificados a 5 m (a
+declividade vetorizada do modelo de elevação). Camadas internas da UP (por exemplo as do Urbigis
+para Colorado–Sobradinho: Rebio da Contagem, linha de alta tensão, matrículas com restrição ou
+servidão) entram por KMZ como `contornos` de papel restrição, rotuladas com a origem. Enquanto o
+conjunto não existe, o bloco Sítio mostra "restrições não carregadas" e a diligência ambiental
+fica sem pré-preenchimento, nunca "sem restrição".
 
-**Área líquida estimada** de um polígono = Σ (área da célula dentro do polígono × (1 −
-`frac_restrita_total`)). É estimativa na resolução da célula, só calculada acima de
-`area_liquida_min_ha`, mostrada como faixa (± a área das células de borda) e sempre rotulada
-"estimativa pela grade; não substitui levantamento".
+**Área líquida (v0.5, vetorial).** Área líquida de um polígono = área do polígono − área de
+(polígono ∩ união das camadas restritivas), calculada em `comum/geo.ts` com biblioteca pura de
+recorte de polígonos no bundle (D-93), em SIRGAS 2000 / UTM 23S (precedente: o Urbigis mede área
+oficial nessa projeção, por geometria). A célula H3 r9 tem ≈ 10,5 ha, então a grade não serve
+para glebas menores que algumas células. A faixa mostrada vem da tolerância de simplificação e da
+resolução da fonte (± perímetro × 15 m para declividade de 30 m), não das células de borda. Só é
+calculada acima de `area_liquida_min_ha` (seção 4.3; 1 ha na v0.5) e sempre rotulada "estimativa
+sobre camadas públicas; não substitui levantamento". `frac_restrita_total` por célula continua
+para mapa e achados e **nunca** alimenta a área líquida de uma gleba (R-28).
 
 #### `equipamentos_publicos`
 
-`acesso_externo: somente_leitura`. Carregada pelo pipeline.
+`acesso_externo: somente_leitura`. Carregada pelo pipeline (linha `equipamentos_publicos` da
+seção 12.4, fase 4). Enquanto o conjunto não existe, a tela diz "equipamentos não carregados", e
+a diligência infraestrutural fica sem pré-preenchimento.
 
 | Coluna | Tipo |
 |---|---|
@@ -2568,30 +3010,50 @@ laudo (R-29).
 
 | Coluna | Tipo | Observação |
 |---|---|---|
-| `area_estudo_id` | referencia → `areas_estudo`, `anular` | sem área, é cenário solto (terreno digitado) |
+| `area_estudo_id` | referencia → `areas_estudo`, `anular` | sem área, é cenário solto (terreno digitado); cenário de área própria segue o sigilo da seção 5.16 |
 | `nome` | texto(200), obrig. | |
 | `metodo` | texto, `opcoes: ["vertical", "loteamento"]`, obrig. | |
 | `premissas` | json, obrig. | cada premissa com `valor`, `origem` (`parametro`, `benchmark`, `serie`, `manual`) e `natureza = premissa` |
 | `resultados` | json | VGV, custos por linha, valor residual total e por m² de terreno, sensibilidade |
-| `comparacao` | json | Terracap (mediana da localidade), anúncios de terreno no entorno, ambos com amostra |
+| `comparacao` | json | Terracap (mediana da localidade × `destinacao_categoria`), anúncios de terreno no entorno, ambos com amostra e com a base de comparação escrita (abaixo) |
 | `versao_metodo` | texto(20), obrig. | |
 | `autor_id`, `versao` | referencia (`campos_incluir` nome), inteiro | `versao` para a concorrência (D-88) |
 
+**Preço de venda, não pedido (v0.5).** Benchmark de lançamentos e mediana de anúncios são
+preços **pedidos** (D-50). O VGV usa preço de venda = preço pedido × (1 −
+`viab_desconto_pedido_venda_frac`), com o desconto tirado do IVV do recorte (1 −
+`preco_venda_m2_brl` ÷ `preco_pedido_m2_brl`, últimos 12 meses) e, sem IVV, do parâmetro
+(premissa declarada). Preço manual é declarado pelo usuário como pedido ou venda.
+
 **Vertical:** área computável = área do terreno × coeficiente (do PDOT/LUOS quando houver, senão
 manual); área privativa = computável × `viab_eficiencia_privativa_frac`; VGV = privativa ×
-preço de venda por m² (benchmark de lançamentos da área, mediana de anúncios novos, ou manual);
-custo de obra = área construída × CUB-DF da série `custo_construcao` × `viab_fator_custo_sobre_cub`
-`[PENDENTE P-34]`; despesas = VGV × (`viab_despesas_comerciais_frac` + `viab_impostos_frac`);
-margem = VGV × `viab_margem_alvo_frac`; **valor residual do terreno** = VGV − custo de obra −
-despesas − margem.
+preço de **venda** por m² (acima); custo de obra = área construída × CUB-DF da série
+`custo_construcao` × `viab_fator_custo_sobre_cub` `[PENDENTE P-34]`; **custos indiretos**
+(projetos, aprovação, legalização, administração) = custo de obra × `viab_custos_indiretos_frac`;
+**contrapartida urbanística** (ODIR e ONALT) em R$, entrada manual sem padrão, zero só se
+declarada "não incide"; despesas = VGV × (`viab_despesas_comerciais_frac` + `viab_impostos_frac`);
+margem = VGV × `viab_margem_alvo_frac`; **residual bruto** = VGV − custo de obra − custos
+indiretos − contrapartida − despesas − margem; **valor residual do terreno** = residual bruto ÷
+(1 + `viab_aquisicao_frac`), que desconta ITBI e registro da aquisição.
 
 **Loteamento:** área de lotes = área líquida × `viab_aproveitamento_loteavel_frac`; receita =
-área de lotes × preço do m² de lote (mercado de lotes da área ou manual); custo de infraestrutura
-= área loteada × custo por m² (entrada obrigatória, sem padrão); despesas e margem como acima;
-valor residual idem.
+área de lotes × preço de venda do m² de lote (mercado de lotes da área, com o mesmo desconto, ou
+manual); custo de infraestrutura = área loteada × custo por m² (entrada obrigatória, sem padrão);
+custos indiretos, contrapartida, despesas, margem e aquisição como acima; valor residual idem.
+
+Os parâmetros novos (`viab_desconto_pedido_venda_frac`, `viab_custos_indiretos_frac`,
+`viab_aquisicao_frac`) moram na seção 4.3, com os padrões marcados `[PENDENTE P-35]`.
+
+**Comparação (v0.5).** Vertical: residual por m² de **área computável** contra
+`terracap_preco_m2_potencial` da localidade × `destinacao_categoria`, que é a base comparável
+entre terrenos de potencial diferente. Loteamento: residual por m² de gleba bruta, com o aviso
+"a Terracap vende lote urbanizado, não gleba". Nunca residual por m² de terreno contra
+arrematado por m² de terreno (R-29, R-30).
 
 **Sensibilidade:** grade 3 × 3 de preço (−10%, 0, +10%) por custo (−10%, 0, +10%). **Custo de
 espera** opcional (doc. 05, §64): meses até o lançamento × taxa mensal sobre o valor do terreno.
+O método é **estático** e diz isso na tela: o tempo só entra pelo custo de espera (método
+involutivo simplificado, NBR 14653-2).
 
 **Mercado de lotes (D-64):** `metricas_anuncios_mensais` com `tipo_imovel = terreno` passa a usar
 as faixas de `faixas_area_lote_m2` em vez de `faixas_area_m2`; a tela de lotes junta pedido de
@@ -2625,15 +3087,29 @@ invalida o cache sem precisar saber quais cálculos ela afeta (R-34).
 
 #### `uso_eventos` (D-72)
 
-`acesso_externo: restrito`. Telemetria mínima para decidir fases pelo uso (R-26): `usuario_id`,
-`sub_rota`, `acao` (`abrir`, `exportar`, `gerar_ficha`, `gerar_analise`, `salvar_area`,
-`simular`), `em`. Agregada por tela na Operação; apagada depois de `uso_retencao_dias`. O shell
+`acesso_externo: restrito` · `pessoal: true`. Telemetria mínima para decidir fases pelo uso
+(R-26): `usuario_id` (referencia → `shell.usuarios`, `cascata`, obrig.; dado pessoal no
+inventário da seção 22.1), `sub_rota`, `acao` (`abrir`, `exportar`, `gerar_ficha`,
+`gerar_analise`, `salvar_area`, `simular`), `em`.
+
+**Tabela pessoal (v0.5).** Pelo contrato método → nível, `POST` exige `escrita`, e quem só tem
+`leitura` não conseguiria registrar a abertura de uma tela. Por isso a tabela é `pessoal: true`
+e a abertura é gravada por `POST /pessoal/uso` em `rotasPessoais` (`{ sub_rota, acao }`,
+`req.dados.criar`; o shell preenche `usuario_id`), como `visoes_salvas` (D-80). As ações que já
+passam por rota da app com `escrita` (exportar, gerar ficha, gerar análise) gravam o evento no
+próprio handler, sem o POST. O frontend agrupa aberturas (no máximo uma chamada por troca de
+sub-rota) e ignora falha do POST. Fora da rota pessoal a tabela é comum: a agregação da seção
+6.20 lê a tabela inteira pela rota normal, e `limpar_retencao` apaga por `deletarVarios` no `ctx`
+da rotina.
+
+Agregada por tela na Operação; apagada depois de `uso_retencao_dias`. O shell
 não registra uso por tela nem expõe telemetria de navegação à app: a Auditoria é trilha de
 eventos `auditavel` de categoria fechada, sem PII e permanente, e a aba Utilização da IA só conta
 chamadas de IA. Por isso a tabela é da app (C-83; fecha P-38).
 
 **Frescor das fontes (D-71).** `comum/fontes.ts` declara, por fonte, a periodicidade e o
-`frescor_esperado_dias` (seção 23). A rotina `verificar_frescor` compara com a última carga e abre
+`frescor_esperado_dias` (seção 23); quem responde por cada fonte manual
+`[PENDENTE P-44]`. A rotina `verificar_frescor` compara com a última carga e abre
 achado de qualidade `FONTE_ATRASADA` (aviso), que a tela mostra no rodapé de procedência de todo
 número daquela fonte.
 
@@ -2644,8 +3120,8 @@ número daquela fonte.
 Todas as rotas são relativas e montadas pelo shell em `/api/inteligencia_imobiliaria/`. Toda
 rota autenticada recebe `req.contexto` com nível e papéis; o gate uniforme do shell já exige
 `leitura` para `GET`, `escrita` para `POST`/`PATCH`/`PUT` e `admin` para `DELETE`. A app
-acrescenta o gate de **papel** onde indicado (`curador`, `operador`) e **nunca** afrouxa o do
-shell.
+acrescenta o gate de **papel** onde indicado (`curador`, `operador`, `estrategico`), a **guarda
+por objeto** onde a coluna Papel diz `obj.` (T4, abaixo) e **nunca** afrouxa o do shell.
 
 Convenções:
 
@@ -2655,6 +3131,16 @@ Convenções:
 - Erro responde `{ erro: true, codigo, mensagem, detalhes? }`, e o frontend lê `e.status`,
   `e.codigo` e `e.detalhes` do `Error` que `urbiVerso.api()` lança. **`detalhes` chega
   normalizado como `string[]`** (C-69): só linhas de texto acionáveis, nunca objeto.
+- **Invólucro de erro (v0.5, T2).** Toda rota é registrada por `rota(fn)`
+  (`backend/rotas/comum.ts`), que aguarda o handler e, em exceção, decide: `ErroApp` (código da
+  6.22) vira `{ erro: true, codigo, mensagem, detalhes }` com o status dele; erro da plataforma
+  que traz `status` e `codigo` (`ErroArquivoRecusado`, `CONFLITO`; violação de `CHECK` `23514` →
+  `422 DADOS_VALOR_INVALIDO`) segue com o status dele; o resto vai a `next(erro)`, e o shell
+  responde `500 ERRO_INTERNO` com o `id` da ocorrência. O SDK usa Express 4, que não captura
+  promessa rejeitada: exceção que escapa do handler deixa a request sem resposta (modulos.md).
+  Nenhum handler escreve `try/catch` só para responder 500. Teste: um percorre a pilha de cada
+  Router exportado e reprova rota registrada sem `rota()`; outro prova que exceção num handler
+  resolve a request (precedente: nobi, `try { … } catch (e) { next(e) }`).
 - Toda rota de escrita de cadastro grava `alteracoes_cadastro` e o evento de domínio
   (`anuncio_eventos`/`lancamento_eventos`) **na mesma transação** (`req.dados.transaction`:
   `READ COMMITTED`, `ROLLBACK` automático, mesmo helper dentro do callback; C-25). Só tabelas
@@ -2666,7 +3152,10 @@ Convenções:
 - Exportação CSV: toda rota de lista aceita `?formato=csv` e responde `text/csv; charset=utf-8`
   com BOM, separador `;` (Excel pt-BR), **sem** paginação, teto de 50 000 linhas (acima disso
   responde `413 EXPORTACAO_GRANDE` e manda estreitar o filtro). O frontend baixa com
-  `urbiVerso.fetch(...).blob()`.
+  `urbiVerso.fetch(...).blob()`. **Injeção de fórmula (v0.5, T3):** célula de texto que começa
+  com `=`, `+`, `-`, `@`, tabulação ou retorno sai com `'` na frente; coluna numérica sai como
+  número e não é tocada. A importação retira esse `'` inicial e ignora com aviso as colunas
+  derivadas que a exportação acrescenta (seção 11.1, T9), para o ida e volta não rejeitar linha.
 - **Pacote com proveniência (D-28):** toda rota de lista e de tela de decisão aceita também
   `?formato=pacote` e responde um ZIP com `dados.csv`, `metadados.json` (colunas com unidade e
   natureza do catálogo, fontes com versão e hash, filtros aplicados, data) e `LEIAME.md` com a
@@ -2693,6 +3182,61 @@ Convenções:
   depois, responde `409 CONFLITO_VERSAO` com uma linha de texto em `detalhes`; a tela, ao receber
   `e.codigo === "CONFLITO_VERSAO"`, refaz `GET /:id` para obter a versão atual e mostra as duas
   (C-22, C-69). Nenhuma escrita sobrescreve em silêncio a de outra pessoa.
+- **Guarda por objeto (v0.5, T4).** Cada tabela com regra por objeto a declara em
+  `comum/regras-objeto.ts` (`autor`, `responsavel`, `curador`, `estrategico`, por operação `ler` e
+  `escrever`). Toda rota que recebe `:id` dessas tabelas, ou id de objeto pai no corpo ou na
+  querystring (`area_estudo_id`, `tese_id`), busca o registro e chama
+  `exigirAcessoObjeto(req, registro, operacao)` antes de qualquer efeito: quem não pode ler recebe
+  `404 REGISTRO_NAO_ENCONTRADO` (não confirma que existe); quem lê e não pode escrever recebe
+  `403 OBJETO_SEM_PERMISSAO`. Na coluna Papel, `obj. ler` e `obj. escrever` marcam essa guarda.
+  Nas tabelas que pendem de uma área de estudo, `ler` é o da área, resolvido pelo pai
+  (`tese_id` → tese → área), e `escrever` é `escrita` mais `ler` da área, salvo quando a coluna
+  Papel acrescenta "autor ou curador" (D-115). Teste:
+  `testes/matriz-acesso.test.ts`, uma linha por rota × perfil (autor, responsável, curador,
+  `estrategico`, `escrita` sem relação, `leitura` sem `estrategico`) com o status esperado; a lista
+  de rotas é conferida contra a pilha dos Routers por **contagem exata**, então rota nova sem linha
+  reprova (precedente: nobi, `testes/papeis.test.ts` `MATRIZ`). O QA repete a matriz na Pinguim
+  com o pool de usuários de QA.
+- **Sigilo das áreas próprias (v0.5, item 13).** Área `tipo = propria` e tudo que pende dela
+  (seções 5.16 a 5.22, `analises_ia` de área incluída) só é lido por quem tem `estrategico` ou
+  `curador`, ou é o `responsavel_id` da área (regra `ler` de `areas_estudo`). Para os demais, a
+  área some de toda lista, do portfólio, do Início, dos achados, do mapa, da comparação e das
+  exportações, e o detalhe responde `404`. O filtro entra **na consulta, antes da paginação**,
+  para que `total` e contagens não denunciem a área (D-116). Toda
+  **saída** de área própria (gerar ficha, baixar ficha em qualquer formato, pacote, CSV, pedir
+  análise de IA) grava `area_eventos` com o usuário; não há trilha de visualização, que seria
+  telemetria nominal (R-35).
+- **Supressão por amostra (v0.5, item 21).** Rota que devolve estatística de amostra aplica a
+  regra da seção 5.1: mediana só com n ≥ 5; P25, P75 e dispersão só com n ≥ 10; variação entre
+  dois meses só quando os dois têm n ≥ 20. Abaixo disso o campo vem `null` com
+  `indisponivel: { motivo: 'amostra_pequena', n }` (6.21), nunca o valor com aviso. A mesma função
+  de `backend/metricas/` serve rota, rotina, achado e contexto de IA.
+- **Variação de oferta (v0.5, item 22).** Variação temporal de oferta (mês contra mês, 12 meses)
+  em qualquer rota é calculada só sobre anúncios de buscas do **painel** ativas nos dois meses, ou
+  pelo `indice_oferta_mensal` quando ele é publicável; a mediana bruta de todos os anúncios é
+  nível, nunca variação.
+- **Campo de fase futura (v0.5, T10).** Os contratos da 6.21 valem desde a fase 1. Bloco ou campo
+  que depende de tabela de fase posterior vem `null` com
+  `indisponivel: { motivo: 'fase_futura', fase: '3' }` no mesmo nível (nunca omitido, nunca 0); a
+  fase que cria a tabela troca o `null` pelo valor sem mudar a forma da resposta.
+- **Orçamento de CPU (v0.5, item 12).** Todas as apps rodam no processo do shell (guia de
+  desenvolvimento § 8), então nenhum trecho síncrono de rota passa de ~50 ms. O que varre a cidade
+  inteira (Gi*, lacunas comerciais por célula, `celula_metricas`, quantis de classe, achados) só
+  roda em rotina e grava resultado; a rota lê o resultado e nunca recalcula para o DF. Cálculo por
+  pedido (enriquecimento, Huff, matriz, viabilidade, comparação) é limitado pelos tetos da seção
+  21.2 e por `hex_max_celulas_resposta`, passa pelo cache (D-69) e, em laço acima de 1 000 itens,
+  cede ao event loop com `await cederAoLaco()` (`comum/`, `setImmediate` a cada 1 000 iterações).
+  Mediana e percentil ordenam só a amostra do recorte, nunca a tabela. Sem `worker_threads` na
+  V1: o bundle é arquivo único e o SDK não o documenta.
+- **Coleta pausada (v0.5, item 14).** Rota manual que faz requisição externa
+  (`/anuncios/por-url`, `/anuncios/:id/verificar`, `/lancamentos/:id/verificar`,
+  `/candidatos/:id/reler`, `/fontes/:id/diagnosticar`, `/buscas/:id/executar`,
+  `/dados-publicos/carregar`) lê o parâmetro `coleta_ativa` antes de tudo e, desligado, responde
+  `409 COLETA_PAUSADA`.
+- **Dado de terceiro (v0.5, T3).** Toda URL que vem de dado de terceiro (anúncio, fonte,
+  procedência, conjunto) passa por `urlSegura()` de `comum/` ao gravar: só `http` e `https`,
+  senão `null`. `bruto`, HTML de portal e JSON de diagnóstico saem como dado, e a tela os mostra
+  como texto, nunca como HTML (seções 8.3 e 10.1).
 
 ### 6.1 Território
 
@@ -2717,32 +3261,41 @@ Convenções:
 |---|---|---|---|
 | GET | `/anuncios?cidade&localidade&tipo_imovel&tipo_transacao&quartos_min&quartos_max&preco_min&preco_max&area_min&area_max&orientacao&situacao_regularizacao&status=ativo\|todos&portal&q&bbox&ordenar&pagina` | leitura | lista com os derivados (`preco_m2`, `orientacao`, `preco_m2_divergente`) |
 | GET | `/anuncios/mapa?<mesmos filtros>` | leitura | versão enxuta para o mapa: `id`, `latitude`, `longitude`, `preco_m2`, `tipo_imovel`, `status`, `precisao_coordenada`; teto 5 000 pontos, acima disso responde `agrupado: true` com contagens por localidade |
-| GET | `/anuncios/kpis?<filtros>` | leitura | contagem, mediana de preço e de preço/m², P25/P75, `sem_coordenada_exata`, `amostra_n`; `null` quando a amostra é vazia |
-| GET | `/anuncios/comparaveis?anuncio_id&raio_m` | leitura | amostra comparável (mesma tipologia e quartos, mesma localidade), régua P25–P50–P75 e posição do anúncio contra a mediana; devolve `qualidade_amostra` |
-| GET | `/anuncios/:id` | leitura | detalhe em três níveis (essencial, complementar, técnico) + eventos + retratos |
+| GET | `/anuncios/kpis?<filtros>` | leitura | contagem, mediana de preço e de preço/m², P25/P75, `sem_coordenada_exata`, `amostra_n`; estatística abaixo do n mínimo vem `null` com `indisponivel` (supressão por amostra, v0.5) |
+| GET | `/anuncios/comparaveis?anuncio_id&raio_m` | leitura | amostra comparável (mesma tipologia e quartos, mesma localidade), régua P25–P50–P75 (só com n ≥ 10) e posição do anúncio contra a mediana; devolve `qualidade_amostra` |
+| GET | `/anuncios/:id` | leitura | detalhe em três níveis (essencial, complementar, técnico) + eventos + retratos; na fase 1, retratos, grupo, liquidez e `preco_inicial_brl` vêm `null` com `indisponivel: { motivo: 'fase_futura', fase: '3' }` (T10) |
 | POST | `/anuncios` | curador | cria por formulário (`origem_cadastro = manual_formulario`) |
-| POST | `/anuncios/por-url` | curador | recebe `{ url }`, lê a página com o parser (seção 8.3) e devolve o **candidato** preenchido para revisão; não grava ainda |
+| POST | `/anuncios/por-url` | curador | recebe `{ url }`, lê a página com o parser (seção 8.3) e devolve o **candidato** preenchido para revisão; não grava ainda. Host fora das fontes ativas → `422 URL_FORA_DAS_FONTES`, sem requisição (guarda de destino, 8.2) |
 | POST | `/anuncios/por-url/confirmar` | curador | grava o anúncio a partir do candidato revisado (`origem_cadastro = manual_url`) |
 | PATCH | `/anuncios/:id` | curador | edita; `preco_m2_informado_brl` só por aqui; `status` manual é respeitado pela rotina (nunca sobrescrito) |
 | PATCH | `/anuncios/:id/remover`, `/restaurar` | curador | soft-delete |
-| POST | `/anuncios/:id/verificar` | operador | verifica agora este anúncio (fora da rotina), devolve o resultado da classificação |
+| POST | `/anuncios/:id/verificar` | operador | verifica agora este anúncio (fora da rotina), devolve o resultado da classificação; ação síncrona de uma página (6.3) |
 | GET | `/anuncios/:id/eventos` | leitura | |
-| GET | `/anuncios/:id/retratos` | leitura | série mensal do anúncio |
+| GET | `/anuncios/:id/retratos` | leitura | série mensal do anúncio; na fase 1, lista vazia com `indisponivel: { motivo: 'fase_futura', fase: '3' }` (T10) |
 
 ### 6.3 Candidatos, fontes e buscas
 
 | Método | Rota | Papel | O quê |
 |---|---|---|---|
 | GET | `/candidatos?status&fonte&busca&pagina` | leitura | |
-| GET | `/candidatos/:id` | leitura | com `bruto` |
+| GET | `/candidatos/:id` | leitura | com `bruto`, entregue como dado e mostrado como texto (T3) |
 | POST | `/candidatos/:id/aprovar` | curador | promove a anúncio (seção 8.7); corpo pode trazer correções dos campos |
 | POST | `/candidatos/:id/rejeitar` | curador | `{ motivo }` |
-| POST | `/candidatos/:id/reler` | operador | lê a página de novo agora |
+| POST | `/candidatos/:id/reler` | operador | lê a página de novo agora; ação síncrona de uma página |
 | GET | `/fontes` | leitura | |
-| POST / PATCH | `/fontes`, `/fontes/:id` | operador | |
-| POST | `/fontes/:id/diagnosticar` | operador | um anúncio por fonte: código HTTP, classificação e amostra do HTML (primeiros 4 KB), sem gravar nada |
-| GET / POST / PATCH | `/buscas`, `/buscas/:id` | leitura / operador | |
-| POST | `/buscas/:id/executar` | operador | lê esta busca agora e gera candidatos |
+| POST / PATCH | `/fontes`, `/fontes/:id` | operador | `url_base` com esquema fora de `http(s)`, porta não padrão, host IP literal, `localhost` ou terminado em `.local`/`.internal`, ou `cabecalhos` com nome fora da lista fechada (8.2), responde `422 FONTE_CONFIG_INVALIDA` (D-117) |
+| POST | `/fontes/:id/diagnosticar` | operador | um anúncio por fonte: código HTTP, classificação e amostra do HTML (primeiros 4 KB, como texto), sem gravar nada; ação síncrona de uma página |
+| GET / POST / PATCH | `/buscas`, `/buscas/:id` | leitura / operador | `painel` e `painel_desde` mudam por aqui; entrar ou sair do painel marca quebra de série no mês (item 22) |
+| POST | `/buscas/:id/executar` | operador | pede a leitura desta busca **sem rodá-la no request** (v0.5, T5): cria a linha de `coletas` (`disparo = manual`), publica `continuar_coleta` com `{ rotina: 'descobrir_anuncios', busca_id, coleta_id, disparo: 'manual' }` por `agendar(…, { em: new Date() })` e responde `202 { coleta_id }`; o listener adquire a trava da classe `coleta`, lê só esta busca e fecha a `coleta`; a tela acompanha por `GET /coletas/:id` |
+
+**Ações síncronas de uma página (v0.5, T5, item 11).** Só leem no request as ações de **uma**
+página: `/anuncios/por-url`, `/anuncios/:id/verificar`, `/lancamentos/:id/verificar`,
+`/candidatos/:id/reler` e `/fontes/:id/diagnosticar`. Todas passam pela guarda de destino (8.2),
+têm teto de 20 s no cliente HTTP contando os saltos de redirecionamento, respondem
+`504 COLETA_TIMEOUT` com texto legível quando estouram (D-118) e obedecem
+`coleta_ativa`. O que lê mais de uma página (busca, lote, carga) vai por evento e responde `202`,
+como a D-91: uma busca percorre até `max_paginas_busca_por_execucao` páginas com
+`intervalo_min_por_host_ms` entre elas, o que leva minutos.
 
 ### 6.4 Lançamentos e âncoras
 
@@ -2751,7 +3304,7 @@ Convenções:
 | GET | `/lancamentos?cidade&localidade&estagio_vendas&orientacao&q&pagina` | leitura | |
 | GET | `/lancamentos/:id` | leitura | + eventos + lacunas |
 | POST / PATCH | `/lancamentos`, `/lancamentos/:id` | curador | |
-| POST | `/lancamentos/:id/verificar` | operador | lê a página agora |
+| POST | `/lancamentos/:id/verificar` | operador | lê a página agora; ação síncrona de uma página (6.3) |
 | PATCH | `/lancamentos/:id/remover`, `/restaurar` | curador | |
 | GET | `/ancoras?categoria&grupo&segmento&bbox&q&pagina` | leitura | |
 | GET | `/ancoras/:id` | leitura | |
@@ -2770,7 +3323,7 @@ Convenções:
 | GET | `/mercado/fipezap?cidade&segmento&tipo_transacao&escopo&localidade&de&ate` | leitura | série; `total` e `localidade` separados |
 | GET | `/mercado/fipezap/localidades?cidade&segmento` | leitura | localidades disponíveis com classificação e rótulo desambiguado (submercado dentro de RA) |
 | GET | `/mercado/fipezap/pareado?cidade&segmento&localidade&de&ate` | leitura | venda × locação do mesmo mês (`sql_declarado serie_pareada_fipezap`) + yield |
-| GET | `/mercado/anuncios/metricas?cidade&localidade&tipo_imovel&tipo_transacao&quartos&faixa_area&de&ate` | leitura | `metricas_anuncios_mensais` |
+| GET | `/mercado/anuncios/metricas?cidade&localidade&tipo_imovel&tipo_transacao&quartos&faixa_area&de&ate` | leitura | `metricas_anuncios_mensais`, com a supressão por amostra; as variações vêm só do painel (item 22) |
 
 ### 6.6 Diagnóstico
 
@@ -2806,16 +3359,19 @@ transcrito. A rota `/diagnostico/catalogo` o devolve para a tela não duplicar.
 
 | Método | Rota | Papel | O quê |
 |---|---|---|---|
-| GET | `/analises?tipo&localidade&mes&pagina` | leitura | últimas análises (a vigente de cada recorte, com `substituida_por_id` nulo) |
-| GET | `/analises/:id` | leitura | texto, estrutura, indicadores usados, custo |
+| GET | `/analises?tipo&localidade&mes&pagina` | leitura | últimas análises (a vigente de cada recorte, com `substituida_por_id` nulo); análise de área própria só para quem lê a área (sigilo, v0.5) |
+| GET | `/analises/:id` | leitura · obj. ler (análise de área) | texto, estrutura, indicadores usados, custo |
 | POST | `/analises/territorio` | escrita | `{ localidade_id, mes_referencia? }` gera agora: cria a linha de `analises_ia` com `status = gerando`, chama `req.ia.consultarAsync({ …, aoConcluir: { evento: "analise_concluida", dados: { analise_id } } })` e responde `202 { id }`; o listener `analise_concluida` grava o resultado, e a tela acompanha por `GET /analises/:id` (D-82, C-80) |
 | POST | `/analises/mercado` | escrita | `{ cidade, mes_referencia? }` |
-| POST | `/analises/tela` | escrita | `{ tela, filtros }` para o recorte em tela |
-| POST | `/analises/area` | escrita | `{ area_estudo_id, mes_referencia? }` |
+| POST | `/analises/tela` | escrita | `{ tela, filtros }` para o recorte em tela [PENDENTE P-46] |
+| POST | `/analises/area` | escrita · obj. ler | `{ area_estudo_id, mes_referencia? }`; de área própria, grava `area_eventos` com o usuário (item 13) |
 | GET | `/analises/estado` | leitura | `req.ia.estadoSlot` dos quatro slots de análise, devolvido como `{ [slot]: { pedido, efetivo, backup } }` (`EstadoSlotIA`; `efetivo` e `backup` são `{ slot, origem }` ou `null`, nunca provedor ou modelo). A tela esconde o botão quando `efetivo === null` e avisa "sem failsafe: uma queda de cota derruba a chamada" quando `backup === null` (C-43) |
 
 As três outras rotas `POST /analises/*` seguem o mesmo fluxo assíncrono da primeira. O bundle
-não documenta timeout de rota HTTP síncrona; a IA nunca roda dentro do request (C-80).
+não documenta timeout de rota HTTP síncrona; a IA nunca roda dentro do request (C-80), e pedido
+síncrono não existe na app. `RATE_LIMIT` no worker assíncrono do shell não é falha: o worker
+retenta no próprio backoff, a análise fica `gerando` mais tempo e a tela mostra "na fila" com a
+hora do pedido (seção 9.6, item 19).
 
 ### 6.9 Operação
 
@@ -2824,22 +3380,24 @@ não documenta timeout de rota HTTP síncrona; a IA nunca roda dentro do request
 | GET | `/coletas?tipo&status&pagina` | leitura | execuções com contadores |
 | GET | `/coletas/:id` | leitura | |
 | GET | `/importacoes`, `/importacoes/:id` | leitura | |
-| POST | `/importacoes/previa` | operador | `{ tabela_alvo, upload_id, modo_duplicata, mapeamento? }` → grava a linha de `importacoes` com o arquivo na hora (o `upload_id` vale 10 min; C-38), lê o CSV, infere o mapeamento pelos cabeçalhos, valida tudo e devolve a prévia (contagens e primeiras 50 rejeições) **sem gravar dado na tabela alvo** |
+| POST | `/importacoes/previa` | operador | `{ tabela_alvo, upload_id, modo_duplicata, mapeamento? }` → grava a linha de `importacoes` com o arquivo na hora (o `upload_id` vale 10 min; C-38), lê o CSV, infere o mapeamento pelos cabeçalhos, valida tudo e devolve a prévia (contagens e primeiras 50 rejeições) **sem gravar dado na tabela alvo**; coluna derivada ou desconhecida é ignorada com aviso em `colunas_ignoradas` (motivo `derivada` ou `desconhecida`), nunca rejeita a linha (T9, seção 11.1) |
 | POST | `/importacoes/:id/aplicar` | operador | aplica a prévia numa transação por lote de 500 linhas |
+| POST | `/importacoes/:id/desfazer` | admin da app | remoção lógica (`PATCH …/remover`) das linhas criadas por esta importação que ninguém editou depois (`versao` igual à da criação); grava `relatorio_desfazer` com as removidas e as mantidas por edição; nunca apaga de vez (v0.5, item 5; seção 11.3.2) |
 | GET | `/importacoes/modelo/:tabela` | leitura | CSV só com o cabeçalho esperado pela tabela |
 | GET | `/qualidade?tabela&codigo&severidade&resolvido=false` | leitura | achados |
 | PATCH | `/qualidade/:id/resolver` | operador | |
 | GET | `/dados-publicos/estado` | leitura | manifest remoto × carregado: por conjunto, hash remoto, hash local, arquivos faltando |
-| POST | `/dados-publicos/carregar` | operador | pede a carga agora **sem rodá-la no request** (D-91): publica `continuar_coleta` com `{ rotina: "carregar_dados_publicos", disparo: "manual" }` por `agendar(…, { em: new Date() })` e responde `202`; o listener roda a carga com a trava de `cursores_rotina` e registra a `coleta` como `manual`. Não existe verbo para a app disparar a própria rotina, e chamar o handler em linha correria fora do lock, do log da aba Rotinas e do corte de 15 min (C-11). O admin da app tem também o "Rodar agora" nativo |
+| POST | `/dados-publicos/carregar` | operador | pede a carga agora **sem rodá-la no request** (D-91): publica `continuar_coleta` com `{ rotina: "carregar_dados_publicos", disparo: "manual" }` por `agendar(…, { em: new Date() })` e responde `202`; o listener roda a carga com a trava de `cursores_rotina` (classe `carga`) e registra a `coleta` como `manual`. Com `coleta_ativa = false`, `409 COLETA_PAUSADA`. Não existe verbo para a app disparar a própria rotina, e chamar o handler em linha correria fora do lock, do log da aba Rotinas e do corte de 15 min (C-11). O admin da app tem também o "Rodar agora" nativo |
+| GET | `/operacao/saude?meses` | leitura | painel do que pode parar calado (v0.5, itens 14 a 16): valor de `coleta_ativa` e desde quando; por classe (`coleta`, `carga`), a execução em curso e as `adiada`/`pausada` recentes, com a continuação agendada; e, por mês, o estado de cada elo da cadeia mensal (`fechar_mes`, `carregar_series_macro`, `calcular_achados`, `gerar_analises_mensais`) lido de `coletas`: concluído, aguardando (com a tentativa, até 6), adiado, falhou ou parado; e as fontes bloqueadas, de parser degradado e atrasadas (8.4, 8.4.1, seção 23). É o que a aba Saúde da Operação (10.7) mostra, porque `erros.cadeia_mensal_parada` só o admin vê |
 
 ### 6.10 Grade e enriquecimento (D-34 a D-37)
 
 | Método | Rota | Papel | O quê |
 |---|---|---|---|
 | GET | `/territorio/catalogo` | leitura | catálogo de métricas (seção 5.13) |
-| GET | `/territorio/celulas?cidade&bbox&metrica&ano&zoom` | leitura | **só valores**: `{ h3, valor, classe, qualidade }` das células da caixa (`classe` por quantis da cidade); abaixo de `hex_zoom_min` ou acima de `hex_max_celulas_resposta`, responde o pai r8 somado em código (`agregado: "r8"`). A geometria não vai junto (C-79) |
+| GET | `/territorio/celulas?cidade&bbox&metrica&ano&zoom` | leitura | **só valores**: `{ h3, valor, classe, qualidade }` das células da caixa (`classe` pelos quantis da cidade gravados na carga, nunca recalculados no pedido; item 12); abaixo de `hex_zoom_min` ou acima de `hex_max_celulas_resposta`, responde o pai r8 somado em código (`agregado: "r8"`). A geometria não vai junto (C-79) |
 | GET | `/territorio/celulas/geometria?bloco` | leitura | a geometria dos hexágonos de um bloco (pai r8 ou quadrante da caixa), estática por versão de `celulas`; o frontend a memoiza por `h3` e só pede os blocos que ainda não tem. Quando a caixa cruza blocos demais, a tela pede por partes. O bundle não documenta teto de resposta nem compressão |
-| GET | `/territorio/enriquecer?ponto=lat,lng&raios=…` \| `?poligono=<polyline>` \| `?area_estudo_id` `&metricas&ano` | leitura | células que entram, fração coberta, e cada métrica agregada pela natureza dela, com método de rateio e fonte; dado por localidade vem rateado e marcado |
+| GET | `/territorio/enriquecer?ponto=lat,lng&raios=…` \| `?poligono=<polyline>` \| `?area_estudo_id` `&metricas&ano` | leitura (com `area_estudo_id`: obj. ler) | células que entram, fração coberta, e cada métrica agregada pela natureza dela, com método de rateio e fonte; dado por localidade vem rateado e marcado |
 | GET | `/territorio/composicao?localidade` | leitura | pesos de `localidade_composicao` que chegam a ela e saem dela |
 | GET | `/territorio/serie?localidade&metrica&integracao=nominal\|padronizada` | leitura | série com a quebra de limite marcada |
 
@@ -2847,16 +3405,17 @@ não documenta timeout de rota HTTP síncrona; a IA nunca roda dentro do request
 
 | Método | Rota | Papel | O quê |
 |---|---|---|---|
-| GET | `/estudos?tipo&estagio&responsavel&q&pagina` | leitura | |
-| GET | `/estudos/:id` | leitura | área + resumo do último dossiê |
+| GET | `/estudos?tipo&estagio&responsavel&q&pagina` | leitura | sem as áreas próprias que o usuário não lê (filtro antes da paginação) |
+| GET | `/estudos/:id` | leitura · obj. ler | área + resumo do último dossiê |
 | POST | `/estudos` | escrita (`tipo = propria`: curador) | cria por desenho (geometria do `urbi-mapa`) ou por ponto |
-| PATCH | `/estudos/:id` | escrita (autor ou curador; `propria`: curador) | |
-| POST | `/estudos/importar`, `/estudos/importar/:importacao_id/aplicar` | escrita | KML/KMZ/GeoJSON, o mesmo fluxo de `contornos`: a prévia já grava a `importacao` (C-38) |
-| PATCH | `/estudos/:id/remover`, `/restaurar` | escrita (autor ou curador) | soft-delete; `DELETE` é do admin no shell |
-| GET | `/estudos/:id/dossie?escalas&blocos` | leitura | `Dossie` (seção 6.21): blocos nas quatro escalas (regional, urbana, entorno, sítio), síntese aceita e agenda de decisão (D-56); usa o cache por bloco (D-69). O bundle não documenta timeout de rota: a tela pede os blocos em chamadas separadas (`?blocos=`) e monta o dossiê à medida que chegam, e nenhuma chamada passa do orçamento da seção 21.1 (C-80) |
-| POST | `/estudos/:id/fichas` | escrita | congela o dossiê em `area_estudo_fichas` (formato e seções escolhidos) |
-| GET | `/estudos/:id/fichas`, `/estudos/:id/fichas/:fid?formato=md\|csv\|json\|pacote` | leitura | |
-| GET | `/estudos/comparar?ids=a,b,c` | leitura | 2 a 6 áreas lado a lado, mesmas métricas |
+| PATCH | `/estudos/:id` | escrita · obj. escrever (autor ou curador; `propria`: curador) | |
+| POST | `/estudos/importar`, `/estudos/importar/:importacao_id/aplicar` | escrita (`tipo = propria`: curador) | KML/KMZ/GeoJSON, o mesmo fluxo de `contornos`: a prévia já grava a `importacao` (C-38) |
+| PATCH | `/estudos/:id/remover`, `/restaurar` | escrita · obj. escrever (autor ou curador) | soft-delete; `DELETE` é do admin no shell |
+| GET | `/estudos/:id/dossie?escalas&blocos` | leitura · obj. ler | `Dossie` (seção 6.21): blocos nas quatro escalas (regional, urbana, entorno, sítio), síntese aceita e agenda de decisão (D-56); usa o cache por bloco (D-69). O bundle não documenta timeout de rota: a tela pede os blocos em chamadas separadas (`?blocos=`) e monta o dossiê à medida que chegam, e nenhuma chamada passa do orçamento da seção 21.1 (C-80) |
+| POST | `/estudos/:id/fichas` | escrita · obj. ler | congela o dossiê em `area_estudo_fichas` (formato e seções escolhidos); de área própria, grava `area_eventos` com o usuário |
+| GET | `/estudos/:id/fichas`, `/estudos/:id/fichas/:fid?formato=md\|csv\|json\|pacote` | leitura · obj. ler | baixar ficha de área própria em qualquer formato grava `area_eventos` com o usuário |
+| GET | `/estudos/:id/fichas/comparar?a&b` | leitura · obj. ler | v0.5, item 39: por chave estável de `conteudo` (chave do catálogo + recorte + período), os dois valores e a diferença; cada linha marcada "mudou o dado" quando a versão do conjunto e a `versao_metodo` das duas fichas coincidem, ou "mudou a medida" quando não, e aí sem variação calculada. A tela é a ação "Comparar com…" na lista de fichas (10.10) |
+| GET | `/estudos/comparar?ids=a,b,c` | leitura · obj. ler de cada id | 2 a 6 áreas lado a lado, mesmas métricas; id que o usuário não lê responde `404` para o pedido inteiro |
 
 ### 6.12 Produto (D-44)
 
@@ -2864,7 +3423,7 @@ não documenta timeout de rota HTTP síncrona; a IA nunca roda dentro do request
 |---|---|---|---|
 | GET | `/produto/demanda?localidade\|area_estudo_id` | leitura | domicílios, população, faixas etárias, composição, renda por faixa, aluguel × próprio, déficit e coabitação, crescimento domiciliar |
 | GET | `/produto/capacidade?localidade\|area_estudo_id&programa` | leitura | domicílios por faixa de preço alcançável, com a taxa usada e a origem dela |
-| GET | `/produto/matriz?localidade\|area_estudo_id&tipo_transacao` | leitura | matriz tipologia × faixa de preço (seção 5.17) |
+| GET | `/produto/matriz?localidade\|area_estudo_id&tipo_transacao` | leitura | matriz tipologia × faixa de preço nas duas leituras nomeadas, composição e fluxo (seção 5.17, item 26) |
 | GET | `/produto/benchmark?localidade\|area_estudo_id&raio_m&quartos&estagio` | leitura | lançamentos comparáveis com área, R$/m², estágio, estoque e IVV regional; régua P25–P50–P75 |
 | GET | `/faixas-programa` | leitura | |
 | POST / PATCH | `/faixas-programa`, `/faixas-programa/:id` | curador | |
@@ -2875,12 +3434,12 @@ não documenta timeout de rota HTTP síncrona; a IA nunca roda dentro do request
 |---|---|---|---|
 | GET | `/comercio/categorias` | leitura | catálogo de categorias de consumo |
 | GET | `/comercio/potencial?localidade\|area_estudo_id\|ponto&raios&categoria` | leitura | gasto potencial e estabelecimentos por anel e por categoria |
-| GET | `/comercio/lacunas?cidade\|area_estudo_id&categoria&escala=celula\|localidade` | leitura | gasto potencial por estabelecimento contra a mediana da cidade; acima de `lacuna_comercial_razao_min` vira achado |
-| GET | `/comercio/simular?ponto&categoria&atratividade&expoente` | leitura | modelo de Huff para uma âncora hipotética no ponto |
+| GET | `/comercio/lacunas?cidade\|area_estudo_id&categoria&escala=celula\|localidade` | leitura | gasto potencial e estabelecimentos somados na **bacia** da categoria (`raio_bacia_m`), contra a mediana da cidade; célula sem estabelecimento na bacia é "sem oferta", fora da razão; só células habitadas com gasto ≥ P25 da cidade (item 30). Com `cidade`, lê o resultado gravado por `calcular_achados`, nunca recalcula (item 12); acima de `lacuna_comercial_razao_min` vira achado |
+| GET | `/comercio/simular?ponto&categoria&escala=porte\|unitaria\|medida&porte&expoente` | leitura | modelo de Huff para uma âncora hipotética no ponto; todas as lojas da rodada na mesma escala de atratividade (item 29): classe de porte da categoria, aplicada à âncora pelo `porte` escolhido; A = 1 para todas; ou área medida, só se todas as concorrentes a tiverem |
 | GET | `/comercio/gemeas?referencia=area:<id>\|localidade:<id>\|celula:<h3>&escala&n` | leitura | áreas gêmeas |
-| GET | `/comercio/bolsoes?cidade&metrica` | leitura | Gi* por célula |
-| GET | `/comercio/lentes`, `/comercio/lentes/:id/score?bbox&escala` | leitura | score e decomposição |
-| POST / PATCH | `/comercio/lentes`, `/comercio/lentes/:id` | curador | |
+| GET | `/comercio/bolsoes?cidade&metrica` | leitura | Gi* por célula, lido do resultado gravado pela rotina (só células habitadas, significância por FDR; seção 9.7) [PENDENTE P-46] |
+| GET | `/comercio/lentes`, `/comercio/lentes/:id/score?bbox&escala` | leitura | score e decomposição [PENDENTE P-46] |
+| POST / PATCH | `/comercio/lentes`, `/comercio/lentes/:id` | curador | [PENDENTE P-46] |
 | GET | `/pontos-comerciais?bbox&categoria&fonte` | leitura | |
 
 ### 6.14 Terra e oferta futura (D-39)
@@ -2888,7 +3447,7 @@ não documenta timeout de rota HTTP síncrona; a IA nunca roda dentro do request
 | Método | Rota | Papel | O quê |
 |---|---|---|---|
 | GET | `/terra/lotes?cidade&localidade&situacao&de&ate&destinacao&bbox&pagina` | leitura | com os derivados (R$/m² de terreno e de potencial, ágio) |
-| GET | `/terra/resumo?cidade&ano` | leitura | por localidade: medianas de R$/m², ágio, propostas, fração vendida (`sql_declarado mediana_terracap_por_localidade`) |
+| GET | `/terra/resumo?cidade&ano` | leitura | por localidade × `destinacao_categoria`: medianas de R$/m², ágio, propostas, fração vendida (`sql_declarado mediana_terracap_por_localidade`); `outra` nunca entra em mediana (T12) |
 | POST / PATCH | `/terra/lotes`, `/terra/lotes/:id` | curador | |
 | GET | `/licenciamento?cidade&localidade&tipo_ato&uso&de&ate&pagina` | leitura | |
 | POST / PATCH | `/licenciamento`, `/licenciamento/:id` | curador | |
@@ -2911,8 +3470,9 @@ não documenta timeout de rota HTTP síncrona; a IA nunca roda dentro do request
 | Método | Rota | Papel | O quê |
 |---|---|---|---|
 | GET | `/mercado/macro?papel&de&ate` | leitura | `series_macro` |
-| GET | `/achados?recorte_tipo&recorte_id&mes&tipo` | leitura | ranqueados por `pontuacao` |
-| GET | `/inicio/resumo?cidade&mes` | leitura | achados de maior pontuação da cidade e das áreas próprias, estado das fontes, análises novas, visões fixadas |
+| GET | `/achados?recorte_tipo&recorte_id&mes&tipo` | leitura | ranqueados por `pontuacao`; achado de área própria só para quem lê a área (com `recorte_id` de área: obj. ler) |
+| GET | `/inicio/resumo?cidade&mes` | leitura | achados de maior pontuação da cidade e das áreas próprias **que o usuário lê**, estado das fontes, análises novas, visões fixadas |
+| POST | `/pessoal/uso` | leitura | v0.5, T6: `{ sub_rota, acao }` grava `uso_eventos` por `req.dados.criar` em `rotasPessoais`; o shell preenche `usuario_id`. Quem só tem `leitura` pode chamar. O frontend manda no máximo uma chamada por troca de sub-rota e ignora falha; as ações que já passam por rota com `escrita` (exportar, gerar ficha, gerar análise) gravam o evento no próprio handler |
 | GET | `/pessoal/visoes` | leitura | as do próprio usuário (`rotasPessoais`; D-80) |
 | POST / PATCH / DELETE | `/pessoal/visoes`, `/pessoal/visoes/:id` | leitura | só as próprias, imposto pelo shell; `DELETE` apaga (C-54) |
 | GET | `/mercado/macro/config` | leitura | as séries macro configuradas (`series_macro_config`; D-90) |
@@ -2923,29 +3483,31 @@ não documenta timeout de rota HTTP síncrona; a IA nunca roda dentro do request
 
 | Método | Rota | Papel | O quê |
 |---|---|---|---|
-| GET | `/estudos/portfolio?tipo&estagio` | leitura | uma linha por área: estágio, perímetro, seis indicadores-chave, condições necessárias por status, diligências abertas por frente, último achado, última ficha (D-66) |
-| GET | `/estudos/:id/agenda` | leitura | a agenda de decisão: síntese aceita por prioridade, diligências abertas de maior impacto, condições vencidas ou contrariadas |
-| GET | `/estudos/:id/linha-do-tempo` | leitura | `area_eventos` |
-| GET / POST | `/estudos/:id/perimetros` | leitura / escrita | |
-| PATCH | `/perimetros/:pid`, `/perimetros/:pid/remover` | escrita (autor ou curador) | |
-| GET | `/estudos/:id/sintese?grupo&escala&status` | leitura | |
-| POST | `/estudos/:id/sintese` | escrita | `fato` sem evidência → `422 FATO_SEM_EVIDENCIA` |
-| PATCH | `/sintese/:item`, `/sintese/:item/aceitar`, `/sintese/:item/descartar` | escrita | |
-| POST | `/analises/:id/propor-sintese` | escrita | transforma os itens da análise de área em itens `proposto`, `origem = ia`, natureza `hipotese` (D-57) |
-| GET | `/estudos/:id/teses`, `/teses/:tid` | leitura | |
-| POST | `/estudos/:id/teses`, `/teses/:tid/publicar` | escrita | publicar torna a vigente anterior `substituida` |
-| POST / PATCH | `/teses/:tid/condicoes`, `/condicoes/:cid` | escrita | |
-| GET | `/estudos/:id/diligencias?frente&status` | leitura | |
-| POST / PATCH | `/estudos/:id/diligencias`, `/diligencias/:did` | escrita | pergunta extra; resposta, status, responsável, prazo |
-| GET / POST | `/estudos/:id/hipoteses-ancora` | leitura / escrita | o corpo pode trazer a `simulacao` devolvida por `/comercio/simular` |
-| PATCH | `/hipoteses-ancora/:hid` | escrita | |
-| POST | `/estudos/:id/observacoes` | escrita | `{ texto, upload_id?, latitude?, longitude?, precisao_m? }` |
+| GET | `/estudos/portfolio?tipo&estagio` | leitura | uma linha por área: estágio, perímetro, seis indicadores-chave, condições necessárias por status, diligências abertas por frente, último achado, última ficha (D-66); sem as áreas próprias que o usuário não lê |
+| GET | `/estudos/:id/agenda` | leitura · obj. ler | a agenda de decisão: síntese aceita por prioridade, diligências abertas de maior impacto, condições vencidas ou contrariadas |
+| GET | `/estudos/:id/linha-do-tempo` | leitura · obj. ler | `area_eventos` |
+| GET / POST | `/estudos/:id/perimetros` | leitura · obj. ler / escrita · obj. ler | |
+| PATCH | `/perimetros/:pid`, `/perimetros/:pid/remover` | escrita · obj. escrever (autor ou curador) | |
+| GET | `/estudos/:id/sintese?grupo&escala&status` | leitura · obj. ler | |
+| POST | `/estudos/:id/sintese` | escrita · obj. ler | `fato` sem evidência → `422 FATO_SEM_EVIDENCIA` |
+| PATCH | `/sintese/:item`, `/sintese/:item/aceitar`, `/sintese/:item/descartar` | escrita · obj. ler | |
+| POST | `/analises/:id/propor-sintese` | escrita · obj. ler | transforma os itens da análise de área em itens `proposto`, `origem = ia`, natureza `hipotese` (D-57) |
+| GET | `/estudos/:id/teses`, `/teses/:tid` | leitura · obj. ler | |
+| POST | `/estudos/:id/teses`, `/teses/:tid/publicar` | escrita · obj. ler | publicar torna a vigente anterior `substituida` |
+| POST / PATCH | `/teses/:tid/condicoes`, `/condicoes/:cid` | escrita · obj. ler | |
+| GET | `/estudos/:id/diligencias?frente&status` | leitura · obj. ler | |
+| POST / PATCH | `/estudos/:id/diligencias`, `/diligencias/:did` | escrita · obj. ler | pergunta extra; resposta, status, responsável, prazo |
+| GET / POST | `/estudos/:id/hipoteses-ancora` | leitura · obj. ler / escrita · obj. ler | o corpo pode trazer a `simulacao` devolvida por `/comercio/simular` |
+| PATCH | `/hipoteses-ancora/:hid` | escrita · obj. ler | |
+| GET / POST | `/estudos/:id/hipoteses-produto` | leitura · obj. ler / escrita · obj. ler | v0.5, item 40 (fase 4C): tipologia, faixa de preço, unidades, `cenario_viabilidade_id`, natureza, status, evidências |
+| PATCH | `/hipoteses-produto/:pid` | escrita · obj. ler | |
+| POST | `/estudos/:id/observacoes` | escrita · obj. ler | `{ texto, upload_id?, latitude?, longitude?, precisao_m? }` |
 
 ### 6.18 Sítio e equipamentos públicos (D-61, D-62)
 
 | Método | Rota | Papel | O quê |
 |---|---|---|---|
-| GET | `/estudos/:id/sitio` | leitura | área bruta, área líquida estimada (faixa), fração por restrição, zonas do PDOT, edificações existentes, distância à via de maior centralidade (`road_centrality`) e aos equipamentos mais próximos |
+| GET | `/estudos/:id/sitio` | leitura · obj. ler | área bruta, área líquida estimada (faixa), fração por restrição, zonas do PDOT, edificações existentes, distância à via de maior centralidade (`road_centrality`) e aos equipamentos mais próximos |
 | GET | `/territorio/restricoes?bbox&tipo` | leitura | camada vetorial de restrições |
 | GET | `/equipamentos?bbox&tipo&rede&pagina` | leitura | |
 | POST | `/equipamentos/:id/promover` | curador | cria a âncora correspondente e liga `ancora_id` |
@@ -2955,15 +3517,15 @@ não documenta timeout de rota HTTP síncrona; a IA nunca roda dentro do request
 | Método | Rota | Papel | O quê |
 |---|---|---|---|
 | GET | `/viabilidade/simular?metodo&<premissas>` | leitura | calcula sem gravar; premissa ausente obrigatória → `422 CENARIO_INCOMPLETO` com os campos |
-| GET | `/viabilidade?area_estudo_id`, `/viabilidade/:id` | leitura | |
-| POST / PATCH | `/viabilidade`, `/viabilidade/:id` | escrita | recalcula `resultados` e `comparacao` ao gravar |
+| GET | `/viabilidade?area_estudo_id`, `/viabilidade/:id` | leitura · obj. ler (cenário de área) | |
+| POST / PATCH | `/viabilidade`, `/viabilidade/:id` | escrita · obj. ler (cenário de área) | recalcula `resultados` e `comparacao` ao gravar |
 | GET | `/terra/lotes-mercado?cidade\|localidade\|area_estudo_id&faixa_area` | leitura | pedido (anúncios de terreno), arrematado (Terracap) e residual (cenários), lado a lado e rotulados |
 
 ### 6.20 Governança (D-69 a D-72)
 
 | Método | Rota | Papel | O quê |
 |---|---|---|---|
-| GET | `/operacao/uso?de&ate` | operador | aberturas e ações por tela e por semana, sem identificar pessoa na agregação |
+| GET | `/operacao/uso?de&ate` | operador | aberturas e ações por tela e por semana, sem identificar pessoa na agregação; lê `uso_eventos` inteira pela rota normal (fora da rota pessoal a tabela `pessoal` é tabela comum; T6) |
 | GET | `/operacao/frescor` | leitura | por fonte: última carga, frescor esperado, situação |
 | POST | `/operacao/cache/limpar` | operador | apaga o cache inteiro (o próximo acesso recalcula) |
 | GET | `/sobre/versoes` | leitura | `VERSAO_METODO` por domínio, versões dos conjuntos ativos, versão da app e do SDK |
@@ -2978,6 +3540,14 @@ type Natureza = 'fato' | 'hipotese' | 'premissa' | 'decisao';
 type NaturezaPreco = 'pedido' | 'arrematado' | 'declarado';
 type Escala = 'regional' | 'urbana' | 'entorno' | 'sitio';
 
+// v0.5 (item 21, T10): todo null de métrica ou bloco diz o motivo, no mesmo nível
+type MotivoAusencia = 'nao_agregavel' | 'sem_dado' | 'fora_da_cobertura' | 'amostra_pequena' | 'fase_futura';
+interface Indisponivel {
+  motivo: MotivoAusencia;
+  n?: number;                 // com 'amostra_pequena'
+  fase?: string;              // com 'fase_futura': a fase que cria o dado ('3', '4A', …)
+}
+
 interface Procedencia {
   fonte: string;              // chave de comum/fontes.ts
   conjunto?: string;          // código do conjunto público
@@ -2990,6 +3560,7 @@ interface Procedencia {
 interface ValorMetrica {
   chave: string;              // do catálogo (seção 5.13)
   valor: number | null;       // null = ausente ou suprimido; nunca 0 por ausência
+  indisponivel?: Indisponivel; // presente sempre que valor é null (v0.5)
   unidade: string;
   natureza_preco?: NaturezaPreco;
   amostra_n?: number;         // natureza 'amostra'
@@ -3009,7 +3580,7 @@ interface ResultadoEnriquecimento {
     fracao_coberta: number;
     metricas: ValorMetrica[];
   }>;
-  recusadas: Array<{ chave: string; motivo: 'nao_agregavel' | 'sem_dado' | 'fora_da_cobertura' }>;
+  recusadas: Array<{ chave: string; motivo: MotivoAusencia }>;
   versao_metodo: string;
   cache: { hit: boolean };
 }
@@ -3028,6 +3599,7 @@ interface BlocoDossie {
   tabelas?: Array<{ titulo: string; colunas: string[]; linhas: Array<Array<string | number | null>> }>;
   achados: AchadoResumo[];
   lacunas: string[];          // o que este bloco não conseguiu calcular e por quê
+  indisponivel?: Indisponivel; // bloco inteiro de fase futura: metricas vazio (v0.5, T10)
 }
 
 interface ItemSintese {
@@ -3058,16 +3630,26 @@ interface CapacidadePagamento {
   renda: Procedencia;
 }
 
-interface MatrizProduto {
+interface MatrizProduto {                // v0.5, item 26: duas leituras nomeadas (seção 5.17)
   linhas: string[]; colunas: string[];   // tipologias × faixas de preço
-  celulas: Array<{ linha: string; coluna: string; demanda_frac: number | null; oferta_frac: number | null;
-                   lacuna: number | null; absorcao: number | null; amostra_n: number }>;
+  composicao: {
+    rotulo: 'composição, não quantidade';
+    celulas: Array<{ linha: string; coluna: string; demanda_frac: number | null;
+                     oferta_usado_frac: number | null; oferta_novo_frac: number | null;  // nunca somadas
+                     descompasso_pp: number | null; amostra_n: number }>;
+  };
+  fluxo: {                               // unidades por ano; a lacuna em quantidade só existe aqui
+    celulas: Array<{ linha: string; coluna: string; demanda_anual: number | null;
+                     oferta_anual: number | null; lacuna_unidades_ano: number | null; absorcao: number | null }>;
+  };
   tabela_tipologia: { versao: string; calibrada_por_localidade: boolean };
 }
 
 interface SimulacaoHuff {
   rotulo: 'simulação com parâmetros declarados';
   categoria: string; ponto: [number, number]; atratividade: number; expoente: number; raio_max_m: number;
+  escala_atratividade: 'porte' | 'unitaria' | 'medida';  // a mesma para todas as lojas (v0.5, item 29)
+  frac_concorrentes_imputada: number;                    // 0..1
   aneis: Array<{ raio_m: number; gasto_potencial_brl_ano: number; participacao_frac: number; gasto_capturado_brl_ano: number }>;
   concorrentes: Array<{ id: string; fonte: string; nome: string | null; distancia_m: number; atratividade: number }>;
 }
@@ -3101,6 +3683,12 @@ interface ResultadoViabilidade {
 | `REGISTRO_REMOVIDO` | 404 | `PATCH` em registro com `soft_delete` já removido (C-19) |
 | `MES_NAO_FECHADO` | 409 | pedido que depende de um mês ainda não fechado |
 | `SLOT_INDISPONIVEL` | 503 | análise pedida sem slot resolvido |
+| `REGISTRO_NAO_ENCONTRADO` | 404 | id inexistente, ou objeto que o usuário não pode ler; a resposta é a mesma, para não confirmar que existe (v0.5, T4, item 13) |
+| `OBJETO_SEM_PERMISSAO` | 403 | o usuário lê o objeto, mas a regra de `comum/regras-objeto.ts` não o deixa escrever (v0.5, T4) |
+| `URL_FORA_DAS_FONTES` | 422 | URL cujo host não pertence a fonte ativa nem aos hosts fixos do código; nenhuma requisição é feita (v0.5, item 11; 8.2) |
+| `FONTE_CONFIG_INVALIDA` | 422 | `url_base` ou `cabecalhos` de `fontes_portal` fora da regra da 8.2; `detalhes` lista uma linha por campo (v0.5) |
+| `COLETA_PAUSADA` | 409 | ação manual de coleta com `coleta_ativa = false` (v0.5, item 14) |
+| `COLETA_TIMEOUT` | 504 | ação síncrona de uma página passou de 20 s, contando os redirecionamentos (v0.5, T5) |
 
 **Erros de plataforma que a tela traduz (v0.4).** Não são da app, mas chegam a ela e a tela os
 mostra com texto próprio, lendo `e.status` e `e.codigo` do `Error` de `urbiVerso.api()`:
@@ -3114,6 +3702,7 @@ mostra com texto próprio, lendo `e.status` e `e.codigo` do `Error` de `urbiVers
 | `ARQUIVOS_UPLOAD_DE_OUTRO_USUARIO` | 403 | `upload_id` de outra sessão (C-38) | erro genérico com o código |
 | `AUTH_TOKEN_SOMENTE_LEITURA` | 403 | token de agente somente leitura em mutação (C-55) | "este token só lê" |
 | `AUTH_METODO_NAO_PERMITIDO` | 405 | método fora do contrato método → nível (C-51) | erro genérico com o código |
+| `DADOS_VALOR_INVALIDO` | 422 | violação de `CHECK` (`23514`) que o invólucro `rota()` traduz (v0.5, T2) | o campo e a regra violada |
 
 Rotina que falha devolve `{ ok: false, erro: <mensagem> }`, nunca só `ok: false` (C-30).
 
@@ -3124,7 +3713,8 @@ Rotina que falha devolve `{ ok: false, erro: <mensagem> }`, nunca só `ok: false
 Todas exportadas em `export const rotinas`, idempotentes, com orçamento de tempo
 (`orcamento_rotina_ms`, padrão 10 min) abaixo do corte de 15 min do shell. Toda execução cria
 uma linha em `coletas` no início e a fecha no fim (`sucesso`, `parcial` quando o orçamento
-acabou antes do lote, `falha`). O retorno ao shell é `{ ok: true, resultado: { resumo,
+acabou antes do lote, `falha`, `pausada` quando `coleta_ativa` está desligado, `adiada` quando a
+trava da classe estava ocupada; v0.5). O retorno ao shell é `{ ok: true, resultado: { resumo,
 ...contadores } }`, e a falha devolve `{ ok: false, erro: <mensagem> }` (C-30). No corte de
 15 min o shell registra falha por timeout **sem avisar o handler**, que segue em segundo plano:
 quem fecha a `coleta` como `interrompida` é a execução seguinte (seção 5.4).
@@ -3135,12 +3725,34 @@ fuso**: "hoje", "ontem" e o mês corrente são calculados com `Date.now()` do pr
 parâmetro `fuso_organizacao`, por `intervaloDoDia(data, fuso)` do SDK (D-84). Não tem `definir`:
 estado de rotina mora em `cursores_rotina`.
 
+**CPU (v0.5, item 12).** A rotina roda no mesmo processo do shell e das outras apps: laço acima
+de 1 000 itens cede ao event loop (`await cederAoLaco()`), e nenhum trecho síncrono passa de
+~50 ms. É a rotina, e não a rota, que faz o que varre a cidade inteira (Gi*, lacunas comerciais
+por célula, `celula_metricas`, quantis de classe, achados) e grava o resultado para a rota ler
+(seção 6).
+
 **Quando a rotina roda (C-05, C-31).** O shell dispara o slot agendado uma vez por cadência, na
 hora cheia que o admin escolheu, e não o repete. Execuções extras no mesmo dia existem e não são
 erro: "Rodar agora" (só o admin da app; conta como execução e não é bloqueado), catch-up depois
 de indisponibilidade (uma execução imediata no boot, possivelmente fora do horário escolhido),
 re-tentativa enquanto a app está insalubre e a própria continuação. Todas **retomam do cursor**,
 nunca reiniciam o lote, e gravam `disparo` em `coletas` (`agendado`, `manual`, `continuacao`).
+
+**Trava por classe e grade de horários (v0.5, item 15).** O catch-up dispara juntas, no boot,
+todas as rotinas que perderam o slot, e o advisory lock do shell é por rotina, não entre rotinas.
+Por isso a trava de `cursores_rotina` tem **classe** (seção 5.4): `coleta` (`verificar_anuncios`,
+`descobrir_anuncios`, `verificar_lancamentos` e as continuações delas) e `carga` (`fechar_mes`,
+`carregar_dados_publicos`, `recalcular_derivados`, `calcular_achados`, `agrupar_anuncios`). No
+máximo uma execução por classe ao mesmo tempo, com o mesmo compare-and-set da D-85. Quem não
+obtém a trava da classe não falha: grava a `coleta` com o `disparo` e status `adiada`, agenda
+`continuar_coleta` para +10 min e devolve `{ ok: true, resultado: { resumo: "adiada: <rotina> em
+curso" } }`. As rotinas `leve` (`verificar_frescor`, `limpar_retencao`,
+`vincular_empreendimentos`, `carregar_series_macro`, `gerar_analises_mensais`, que só enfileira)
+ficam fora da trava de classe. O default de fábrica do shell é 06:00 UTC para todas, o que poria
+as treze no mesmo slot: o README da app traz a **grade sugerida**, em horas cheias distintas no
+fuso da organização (01h `descobrir_anuncios`, 02h `verificar_anuncios`, 03h `agrupar_anuncios`,
+04h `verificar_lancamentos`; mensais no dia 1: 05h `fechar_mes`, 06h `carregar_series_macro`,
+07h `calcular_achados`, 08h `gerar_analises_mensais`), e a fase 0 a aplica na aba Rotinas.
 
 **Fatiamento e continuação (D-85, C-13, C-32).** A rotina adquire a trava em `cursores_rotina`
 (seção 5.4), lê o cursor, processa até o orçamento acabar ou o lote esgotar, grava o cursor a
@@ -3152,9 +3764,24 @@ minuto (dispara entre 2 e 3 min depois) e a entrega é **pelo menos uma vez**: d
 partir do mesmo cursor, por isso o listener adquire a mesma trava da rotina e relê o cursor antes
 de agir. O evento `continuar_coleta` é declarado em `eventos` e, como todo evento de app, é
 **visível**: aparece em Preferências e quem tem `leitura` pode segui-lo; ele só é publicado quando
-há continuação, e o texto é escrito para quem opera (seção 13). O operador sem `admin` não tem
-"Rodar agora"; ele usa as ações que a app expõe por rota (`POST /fontes/:id/verificar`,
-`POST /dados-publicos/carregar`; D-91).
+há continuação, e o texto é escrito para quem opera (seção 13). O `id` devolvido por `agendar`
+vai para `cursores_rotina.agendamento_id`. O listener captura o próprio erro: fecha a `coleta`
+como `falha` com a mensagem e não relança (T2). O operador sem `admin` não tem "Rodar agora"; ele
+usa as ações que a app expõe por rota (`POST /buscas/:id/executar`, `POST /anuncios/:id/verificar`,
+`POST /dados-publicos/carregar`; D-91, T5). A v0.4 citava aqui `POST /fontes/:id/verificar`, que
+não existe na seção 6.
+
+**Parar a coleta (v0.5, item 14).** O toggle da aba Rotinas é o off-switch de **uma** rotina:
+desativada, ela não agenda, mas as continuações já agendadas acordam do mesmo jeito (o listener
+`reagir` roda independente do toggle). O off-switch de todas é o parâmetro `coleta_ativa` (seção
+4.3). Toda rotina de coleta externa (`verificar_anuncios`, `descobrir_anuncios`,
+`verificar_lancamentos`, `carregar_dados_publicos`, `carregar_series_macro`) e o listener
+`continuar_coleta`, quando a continuação é de uma delas, leem `coleta_ativa` no início de **cada
+fatia**; desligado, fecham a `coleta` como `pausada`, devolvem
+`{ ok: true, resultado: { resumo: "coleta pausada (coleta_ativa = false)" } }` e **não
+reagendam**. Desligar não precisa cancelar o agendamento pendente: a fatia que acordar sai sem
+agir. As rotas manuais de coleta respondem `409 COLETA_PAUSADA` (seção 6). Precedente: nobi e
+charles3 usam parâmetro `bool` conferido na hora da execução, no listener e na ação manual.
 
 **Transação por lote (C-24, C-25).** Não existe inserção em lote em `req.dados`: o lote de 500
 linhas é um laço de `criar`/`criarOuAtualizar` dentro de `transaction()`, e o orçamento conta com
@@ -3213,7 +3840,9 @@ até `max_paginas_busca_por_execucao` páginas no total:
 5. Ao fim, por fonte, grava `fonte_saude` (seção 8.4.1). `verificar_anuncios` faz o mesmo.
 
 Editar ou criar uma busca pela tela **não** dispara a rotina sozinho (diferente do script): o
-operador clica "Executar agora" na busca. Aprovar um candidato é síncrono na rota.
+operador clica "Executar agora" na busca, que pede a leitura por evento e responde `202` (seção
+6.3, T5); o listener lê só aquela busca, com a trava da classe `coleta`. Aprovar um candidato é
+síncrono na rota.
 
 ### 7.3 `verificar_lancamentos` (semanal)
 
@@ -3249,6 +3878,11 @@ Para cada lançamento com `url_fonte`, lê a página e tenta preencher o que est
    sobre os retratos com `status_fim_mes = ativo`. Mediana e percentis em código
    (`backend/metricas/`), com a mesma função que a rota `/anuncios/kpis` usa. `amostra_n` é o
    tamanho da amostra de preço; grupo sem preço grava `null` nas estatísticas, nunca zero.
+   A supressão por amostra (seção 5.1, item 21) vale na gravação: mediana só com n ≥ 5, P25/P75
+   e dispersão só com n ≥ 10, `variacao_*` só com n ≥ 20 nos dois meses; abaixo, `null` com o
+   motivo `amostra_pequena` e o `n`. As `variacao_*` são calculadas só sobre anúncios de buscas
+   do **painel** ativas em `M` e `M-1` (item 22); a mediana de todos os anúncios é nível, nunca
+   variação.
 4. Calcula as métricas ampliadas (D-25) sobre os mesmos grupos, por imóvel (D-26), e grava
    `indice_oferta_mensal` de `M` (D-40).
 5. Abre a linha do mês corrente para todo anúncio ativo (não congelada).
@@ -3280,8 +3914,12 @@ Regras de arquivo que a conferência fixou (C-35, C-37):
   antes do próximo. O bundle não documenta limite de memória da rotina nem o cap global de
   arquivo; `DADOS_ARQUIVO_MUITO_GRANDE` vindo do `enviar` falha o conjunto com mensagem que cita
   o cap da instância (R-43).
-- O pipeline não publica `files[]` individual acima de `arquivo_max_mb` (padrão 50, ajustável
-  para baixo quando a instância tiver cap menor); `detail_shard` por RA já fatia.
+- O teto de arquivo é **do pipeline, não da app** (v0.5, T14): `[manifest] arquivo_max_bytes` em
+  `config/df.toml` (padrão 50 MB, nunca acima do cap medido na Pinguim na fase 0), e o validador
+  do pipeline reprova `budget_bytes` maior que ele, além do arquivo maior que o próprio
+  `budget_bytes`. Shard que estoura é erro de build do pipeline, consertado fatiando mais
+  (sub-shard `RA_xx_1`, `RA_xx_2`, mesmo `shard_value`); nunca se publica acima. `detail_shard`
+  por RA já fatia. A app não tem parâmetro de tamanho de arquivo.
 - A leitura do arquivo guardado é em fluxo (`caminho_fs` do `ler`), nunca por buffer inteiro.
 
 Na v0.2 o manifest passa à versão 2 (D-49): além dos arquivos GeoJSON (`overview`, `detail`,
@@ -3301,10 +3939,25 @@ que tenha ao menos `analise_minimo_meses_historico` meses de métricas de anúnc
 FipeZap própria. A rotina **enfileira, não espera** (D-82, C-80): para cada análise cria a linha
 de `analises_ia` em `gerando` e chama `ctx.ia.consultarAsync` com o callback
 `analise_concluida`; o listener grava o resultado. Assim o orçamento de 15 min só paga o
-enfileiramento, e o limite de 10 chamadas por minuto da app (C-42) é respeitado com pausa entre
-pedidos; sobra continua por `continuar_coleta`. Antes de começar, confere que `fechar_mes` e
-`calcular_achados` de `M` concluíram; senão termina `parcial` sem pedir nada (C-36). Falha de uma
-análise não impede as outras; cada falha publica `erros.analise_falhou`.
+enfileiramento. Quem chama o provedor é o worker assíncrono do shell, que confere o limite de
+chamadas por minuto da app antes de cada chamada e trata o estouro como `RATE_LIMIT` retentável
+no próprio backoff; pausa dentro da rotina não controla esse ritmo (ia.md, modo assíncrono). Por
+isso a rotina enfileira **no máximo `ia_lote_por_fatia` análises por fatia** (parâmetro, padrão
+8) e agenda a próxima fatia por `continuar_coleta` em +2 min, deixando folga para os pedidos de
+usuário no mesmo minuto (v0.5, item 19). O limite é **por app** e é do admin da app (Config › IA
+› Configurações, 1 a 600); a fase 5 o sobe para 30 na instalação. Falha de uma análise não
+impede as outras; cada falha publica `erros.analise_falhou`.
+
+**Guarda da cadeia mensal (v0.5, item 16).** Antes de começar, confere que `fechar_mes` e
+`calcular_achados` de `M` concluíram (C-36). A guarda não espera um mês: na primeira vez que acha
+a pré-condição falsa, devolve `ok: true` com o resumo "aguardando <rotina> de M" e agenda
+`continuar_coleta` para +60 min; repete até 6 vezes, contadas em `cursores_rotina`, o que cobre o
+catch-up fora de ordem. Esgotadas as tentativas, ou se já passaram mais de 3 dias do fim de `M`,
+devolve `{ ok: false, erro: "cadeia mensal parada: <rotina> de M não concluiu" }` e publica
+`erros.cadeia_mensal_parada` (seção 13, severidade alta). Com `ok: true` a aba Rotinas mostraria
+`OK` e a rotina mensal só voltaria no mês seguinte, escondendo o mês perdido; com `ok: false` ela
+mostra `Falhou`, e a aba Saúde da Operação (`GET /operacao/saude`) mostra o elo parado
+(precedente: charles3, `consulta_djen_falhou` com `ok: false`).
 
 Na v0.2, também uma análise de **área** por área de estudo com `tipo = propria` e `estagio`
 diferente de `encerrada`, e sempre depois de `calcular_achados` do mesmo mês.
@@ -3314,8 +3967,14 @@ diferente de `encerrada`, e sempre depois de `calcular_achados` do mesmo mês.
 Para cada anúncio ativo criado ou com preço alterado desde o cursor, procura os candidatos a
 mesmo imóvel pela regra de `anuncio_grupos` (filtro por localidade, tipo, transação e quartos via
 `req.dados`, tolerâncias em código), cria ou amplia um grupo `sugerido` com a `confianca`, e
-nunca mexe em grupo `confirmado` nem `descartado`. Resumo: grupos sugeridos, anúncios envolvidos,
-grupos acima de `agrupar_confianca_auto`. Idempotente: rodar de novo não cria grupo repetido.
+nunca mexe em grupo `confirmado` nem `descartado`. Condição de grupo (v0.5, item 31): fonte
+diferente, **ou** mesma fonte com `id_externo` diferente (outro anunciante no mesmo portal gera
+outro código); anunciante não é guardado (D-74). Um grupo só conta como **um imóvel** sem
+curador quando os dois anúncios têm coordenada exata a ≤ 30 m, área igual a ±1 m² e preço a
+±2%; qualquer outro só conta depois de `confirmado` (com todos os anúncios por jitter, a
+checagem de distância nunca passa, e plantas idênticas no mesmo prédio casariam unidades
+diferentes). Resumo: grupos sugeridos, anúncios envolvidos, grupos que contam sem revisão.
+Idempotente: rodar de novo não cria grupo repetido.
 
 ### 7.8 `vincular_empreendimentos` (semanal)
 
@@ -3337,10 +3996,15 @@ decisão do admin da instância, por host (D-79).
 ### 7.10 `calcular_achados` (mensal, depois de `fechar_mes` e `carregar_series_macro`)
 
 Calcula, para o mês `M`, os achados da seção 9.7 em quatro recortes: a cidade, cada localidade,
-cada área de estudo não encerrada e as células (só os tipos `bolsao` e `lacuna_comercial`). Apaga e
-regrava os achados de `M` (idempotente). Fatiada por recorte, com cursor.
-Guarda: se o `fechar_mes` de `M` não terminou com `sucesso`, a rotina não calcula e devolve
-`parcial` com o resumo "mês não fechado" (R-21).
+cada área de estudo não encerrada e as células (só os tipos `bolsao` e `lacuna_comercial`). É
+aqui, e não na rota, que o Gi* e as lacunas comerciais por célula são calculados (item 12). Apaga
+e regrava os achados de `M` (idempotente). Fatiada por recorte, com cursor, e cedendo ao event
+loop a cada 1 000 células.
+Guarda: se o `fechar_mes` de `M` não terminou com `sucesso`, a rotina não calcula e segue a
+guarda da cadeia mensal da 7.6: `ok: true` com "aguardando fechar_mes de M" e nova tentativa em
++60 min, até 6 vezes; depois `ok: false` e `erros.cadeia_mensal_parada` (v0.5, item 16; R-21).
+Na fase 4C a rotina entra só com o tipo `condicao_em_risco`, que alimenta o Início mínimo; os
+demais tipos entram na fase 5 (v0.5, item 40).
 
 ### 7.11 `recalcular_derivados` (mensal, e "Rodar agora" do admin da app)
 
@@ -3382,14 +4046,39 @@ requisição por vez por host, pausa mínima configurável, e nunca tenta contor
 login. Bloqueio é **estado**, não erro: fica registrado por fonte e por anúncio, aparece na
 tela de Operação, e não inativa anúncio. É a mesma postura do `Code.gs`, transcrita.
 
+A postura é técnica. Ainda não se validou se a coleta automática é compatível com os termos de
+uso de cada portal (DFImoveis, QuintoAndar, Wimoveis, Imovelweb, VivaReal)
+[PENDENTE P-45].
+
 ### 8.2 Cliente HTTP
 
 `backend/coleta/cliente.ts`, com o `fetch` **global** do Node 20, sem `dispatcher` próprio e
 sem `undici` (D-79):
 
-- Timeout de 20 s por requisição; até 2 redirecionamentos; corpo lido até 2 MB.
+- Timeout de 20 s por requisição. Na ação síncrona de uma página (seção 6.3), os 20 s são o
+  total, contando os saltos de redirecionamento. Corpo lido **em fluxo** até 2 MB e cortado ali.
+- **Guarda de destino (v0.5, item 11).** Uma requisição da app sai com a rede do servidor da
+  instância, porque todas as apps rodam no processo do shell (guia de desenvolvimento § 8). Por
+  isso a coleta só busca URL cujo host pertence a uma fonte ativa. A lista vem de
+  `fontes_portal.url_base`: host exato, ou também os subdomínios quando `url_base` declara o host
+  com ponto inicial. Somam-se os hosts fixos do código (`raw.githubusercontent.com`,
+  `api.bcb.gov.br`). A guarda vale para `POST /anuncios/por-url`, `/anuncios/:id/verificar`,
+  `/lancamentos/:id/verificar`, `/candidatos/:id/reler`, `/fontes/:id/diagnosticar`, rotinas e
+  buscas. Fora da lista: `422 URL_FORA_DAS_FONTES`, sem requisição. Só `http` e `https` na porta
+  padrão. Host que é IP literal, `localhost` ou que termina em `.local` ou `.internal` é recusado,
+  e já ao salvar `url_base` (`422 FONTE_CONFIG_INVALIDA`). Precedente: nobi, integração Twilio,
+  que só busca mídia do domínio do Twilio. O contraexemplo a não seguir é a busca de URL
+  arbitrária com `redirect: 'follow'`.
+- **Redirecionamento manual.** `redirect: 'manual'`, até 2 saltos, e cada `Location` passa pela
+  mesma guarda. Salto para host fora da lista não é seguido: vira `erro` com a mensagem
+  `redirecionamento_externo`.
 - Cabeçalhos: `User-Agent` do parâmetro, `Accept: text/html,application/xhtml+xml,application/json;q=0.9,*/*;q=0.8`,
-  `Accept-Language: pt-BR,pt;q=0.9`, mais `fontes_portal.cabecalhos`.
+  `Accept-Language: pt-BR,pt;q=0.9`, mais `fontes_portal.cabecalhos`. Esse campo aceita só nomes
+  de uma lista fechada (`Accept`, `Accept-Language`, `Referer`). `Host`, `Cookie`,
+  `Authorization`, `Proxy-*` e qualquer outro nome são recusados ao salvar
+  (`422 FONTE_CONFIG_INVALIDA`).
+- Teste: tabela-verdade da guarda com host da fonte, subdomínio declarado e não declarado, IP
+  literal, `localhost`, porta não padrão e redirecionamento para fora.
 - **Proxy de saída é da instância (D-79, C-34).** O shell tem um proxy de egresso declarativo
   por host: o administrador da instância (alçada `sistema`, Admin › Variáveis) lista os hosts que
   saem por um proxy HTTP, e a regra vale para o `fetch()` global. Um `dispatcher` explícito da app
@@ -3425,6 +4114,16 @@ assinatura `(html, urlFinal, config) → Candidato | null` e os mesmos extratore
 4. **Regex sobre texto limpo** (`R$ 1.234.567`, `123 m²`, `3 quartos`, `2 vagas`): só preenche
    o que os três anteriores não deram, e marca `caracteristicas.origem_campos[campo] = texto`,
    que é o que impede esse valor de sobrescrever preço na verificação.
+
+**CPU do parser (v0.5, item 12).** O parser recebe no máximo os 2 MB que o cliente leu (8.2).
+Expressão regular sem quantificador aninhado (`(a+)+`, `(.*)*`) nem alternância ambígua sob
+quantificador, para não abrir ReDoS no processo do shell. Cada parser tem um teste com uma
+fixture de 2 MB que falha acima de 200 ms.
+
+**`bruto` é dado, não HTML (v0.5, T3).** `bruto`, o HTML de portal e o JSON de diagnóstico nunca
+são renderizados como HTML: a tela os mostra em `urbi-navegador-json` ou em `<pre>` com
+interpolação Lit (seção 10.1). URL extraída da página passa por `urlSegura()` antes de gravar
+(seção 6).
 
 Cada parser por fonte (`quintoandar`, `dfimoveis`, `wimoveis`, `imovelweb`, `vivareal`) só
 acrescenta: padrão de URL de anúncio, caminho do estado embutido, marcadores de inatividade e
@@ -3495,7 +4194,7 @@ filtro por caixa.
 
 | Portão | Tipo | Regra |
 |---|---|---|
-| URL válida e canônica, `http(s)`, host da fonte | duro | |
+| URL válida e canônica, `http(s)`, host de fonte ativa | duro | a guarda de destino da 8.2 |
 | Não duplicado (`url_fonte`, ou `fonte_id + id_externo`) | duro | duplicado de anúncio **inativo** reativa o anúncio em vez de criar |
 | Página lida e reconhecida (`ativa`) | duro | bloqueada 5 vezes → `bloqueado_leitura` |
 | `tipo_transacao` coerente com a busca | duro | |
@@ -3531,15 +4230,23 @@ fallback falha em vez de cair para `normal`.
 |---|---|---|---|
 | Território | `analise_territorio` | uma localidade, no mês de referência, com todo o histórico | rotina mensal para toda localidade com dado suficiente; botão na tela de Diagnóstico e no bloco da localidade no Mapa |
 | Mercado | `analise_mercado` | a cidade, no mês de referência, com todo o histórico | rotina mensal; botão na tela de Mercado |
-| Recorte em tela | `analise_tela` | os filtros que o usuário está vendo (Mapa ou Mercado) | só por botão |
-| Área de estudo | `analise_area` | uma área de estudo, no mês, com os anéis dela | rotina mensal para as áreas próprias ativas; botão no dossiê e na ficha |
+| Recorte em tela | `analise_tela` | os filtros que o usuário está vendo (Mapa ou Mercado) | só por botão [PENDENTE P-46] |
+| Área de estudo | `analise_area` | uma área de estudo, no mês, com os anéis dela | rotina mensal para as áreas próprias ativas; botão no dossiê e na ficha, só para quem lê a área (9.5) |
 
 ### 9.2 Contexto entregue ao modelo
 
 Montado por `backend/ia/contexto.ts`, sempre com a mesma forma: um cabeçalho com o recorte e a
 data, e blocos de indicadores em JSON compacto (chave, valor, unidade, período, fonte, `n`
-quando é amostra). **Nada de texto de página de portal, nada de linha crua de anúncio.** Os
-blocos, por tipo:
+quando é amostra). **Nada de texto de página de portal, nada de linha crua de anúncio.**
+
+**Regras de método no contexto (v0.5, itens 21 e 22).** O contexto usa a mesma função das rotas
+(seção 6). Valor suprimido pela regra de amostra (seção 5.1) vai como `null`, com o motivo
+`amostra_pequena` e o `n`, nunca como número. Variação de oferta (mês contra mês, 12 meses,
+crescimento de oferta) vem só do painel de buscas ou do `indice_oferta_mensal`; a mediana bruta
+de todos os anúncios entra como nível. Ainda não se validou o uso de IVV e FipeZap no contexto
+enviado ao provedor [PENDENTE P-45].
+
+Os blocos, por tipo:
 
 **Território** (localidade `L`, mês `M`):
 
@@ -3559,14 +4266,15 @@ blocos, por tipo:
   centralidade viária) com fonte e ano;
 - âncoras em `L` por grupo e segmento (contagem);
 - lacunas: lista do que **não** existe para `L` (sem FipeZap próprio, sem IVV regional, sem
-  perfil PDAD, amostra de anúncios menor que 10), para o modelo declarar em vez de inventar.
+  perfil PDAD, estatísticas de anúncios suprimidas por amostra pequena), para o modelo declarar
+  em vez de inventar.
 
 **Mercado** (cidade `C`, mês `M`): IVV mensal inteiro (todas as 13 métricas, 2021 em diante),
 os seis derivados por período (mês, trimestre, ano e acumulado), sazonalidade do IVV, IVV
 regional do último retrato (ranking e matriz preço × liquidez), FipeZap total venda e locação
 (2011 em diante, com yield e variações), métricas de anúncios da cidade por tipologia (36
-meses), ranking de localidades por preço/m² e por crescimento de oferta em `M`, lançamentos por
-estágio, lacunas.
+meses), ranking de localidades por preço/m² e por crescimento de oferta em `M` (do painel,
+item 22), lançamentos por estágio, lacunas.
 
 **Recorte em tela**: os KPIs e as séries exatamente como a tela os mostra, mais o perfil da
 localidade quando há uma só no filtro, mais lacunas.
@@ -3670,8 +4378,10 @@ custo por mês; o provedor não vem e fica no histórico de IA do shell.
 análise de território, ≈ 60 a 120 KB, cabem; o corte de séries da seção 9.2 e
 `analise_minimo_meses_historico` mantêm o contexto bem abaixo disso); saída até 16 000 tokens,
 fixo (modelo com teto menor recusa com `MODELO_INVALIDO`); timeout padrão de 120 s, que o admin
-da app ajusta de 1 a 600 s em Config › IA › Configurações; limite padrão de 10 chamadas por
-minuto por app. As consultas de análise **não** ligam `cache` (o contexto é sempre diferente, e
+da app ajusta de 1 a 600 s em Config › IA › Configurações; limite de chamadas por minuto **por
+app**, padrão 10, que o admin da app ajusta de 1 a 600 no mesmo lugar. A fase 5 o sobe para 30
+na instalação (passo do checklist), e a rotina mensal limita o próprio ritmo por
+`ia_lote_por_fatia` (seção 7.6), deixando folga para os pedidos de usuário (v0.5, item 19). As consultas de análise **não** ligam `cache` (o contexto é sempre diferente, e
 assim o prompt não fica retido no provedor; seção 22.2).
 
 Orçamento de referência (para o admin calibrar os slots): uma análise de território consome na
@@ -3681,6 +4391,14 @@ soma uma análise de área na mesma faixa de uma de território; os achados entr
 das séries, e o contexto de território e de mercado tende a encolher. É aceitável no slot
 `poder` mensal; não é aceitável por clique sem controle, por isso o botão de "gerar agora" é
 `escrita` e a tela avisa quando já existe análise do mês para o recorte.
+
+**Sigilo da análise de área própria (v0.5, item 13).** A análise de uma área `tipo = propria`
+herda o sigilo da área (seção 6): só quem tem `estrategico` ou `curador`, ou é o
+`responsavel_id`, a pede, a vê na lista e a abre; para os demais o detalhe responde `404`. O pedido
+grava `area_eventos` com o usuário; a gerada pela rotina grava o evento sem usuário. O contexto
+segue a seção 22.2 e a R-38: nenhum dado pessoal, e a retenção pelo provedor fica sob a política
+do contrato do admin da instância com ele. Área própria real só existe na Laputa; na Pinguim, a
+análise de área roda sobre áreas de prospecção, referência ou fictícias.
 
 ### 9.6 Quando não gerar
 
@@ -3697,7 +4415,7 @@ linha fica `falhou` com `codigo_erro`.
 |---|---|
 | `ENTRADA_MUITO_GRANDE`, `JANELA_EXCEDIDA` | erro da app: o contexto passou do teto; não publica `analise_falhou`, abre achado de qualidade para corrigir o corte |
 | `RESPOSTA_TRUNCADA` | a resposta passou de 16 000 tokens; publica `erros.analise_falhou` |
-| `RATE_LIMIT` | a rotina espera e tenta na próxima continuação; o botão diz "tente em um minuto" |
+| `RATE_LIMIT` | não é falha (v0.5, item 19): no modo assíncrono o worker do shell retenta no próprio backoff, e a linha fica `gerando` mais tempo; a tela mostra "na fila" com a hora do pedido. A rotina não pausa: ela já limita o lote por `ia_lote_por_fatia`. Só vira `falhou` se o worker esgotar as tentativas |
 | `SLOT_NAO_CONFIGURADO` | como "sem slot resolvido" acima |
 | falha do provedor | `erros.analise_falhou` |
 
@@ -3708,15 +4426,15 @@ e interpreta. Os tipos, todos calculados por `comum/achados.ts` sobre métricas 
 
 | Tipo | Regra | Recortes |
 |---|---|---|
-| `variacao_periodo` | variação de `M` contra `M-1` e contra `M-12` | cidade, localidade, área |
-| `mudanca_incomum` | valor de `M` fora de [P10, P90] dos últimos `achado_janela_meses` (mínimo 12 pontos) | cidade, localidade, área |
+| `variacao_periodo` | variação de `M` contra `M-1` e contra `M-12`; em métrica de oferta, só sobre anúncios do painel ou pelo `indice_oferta_mensal`, e só com n ≥ 20 nos dois meses (v0.5, itens 21 e 22) | cidade, localidade, área |
+| `mudanca_incomum` | valor de `M` fora de [P10, P90] dos últimos `achado_janela_meses` (mínimo 12 pontos); em métrica de oferta, sobre o painel ou o índice (item 22) | cidade, localidade, área |
 | `maior_contribuidor`, `maior_detrator` | localidade ou tipologia que mais moveu a métrica da cidade no mesmo sentido ou no oposto | cidade |
-| `destoa_cidade` | recorte fora de [P25, P75] das localidades no mês | localidade, área |
-| `lacuna_produto` | célula da matriz de produto com \|demanda − oferta\| ≥ 0,10 | localidade, área |
-| `lacuna_comercial` | gasto potencial por estabelecimento ≥ `lacuna_comercial_razao_min` × mediana da cidade | localidade, área, célula |
-| `bolsao` | Gi* com \|z\| ≥ 1,96 | célula |
-| `pipeline_pressao` | meses de absorção futura acima da mediana das localidades | localidade, área |
-| `terra_agio` | ágio mediano das licitações do ano acima do P75 das localidades | localidade |
+| `destoa_cidade` | recorte fora de [P25, P75] das localidades no mês; em métrica de oferta, só entre localidades com `qualidade_cobertura = boa` (item 22) | localidade, área |
+| `lacuna_produto` | célula da matriz com descompasso de **composição** `descompasso_pp` ≥ 10 pontos percentuais, rotulado "composição, não quantidade" (v0.5, item 26; seção 5.17) | localidade, área |
+| `lacuna_comercial` | gasto potencial por estabelecimento na **bacia** da categoria (`raio_bacia_m`) ≥ `lacuna_comercial_razao_min` × mediana da cidade; só células habitadas com gasto ≥ P25 da cidade; célula sem estabelecimento na bacia é "sem oferta", fora da razão (v0.5, item 30) | localidade, área, célula |
+| `bolsao` | Gi* só sobre células habitadas, com significância por FDR de Benjamini-Hochberg (q = 0,05) no lugar de \|z\| ≥ 1,96 fixo, e só para grupo de ≥ 3 células contíguas significativas; Gi* de preço desligado até haver ≥ 200 células com ≥ 5 imóveis (v0.5, item 30; seção 5.18) [PENDENTE P-46] | célula |
+| `pipeline_pressao` | meses de absorção futura acima da mediana das localidades; absorção `null` não gera achado, e alvará antigo sem habite-se fica fora do pipeline (v0.5, item 27; seção 5.15) | localidade, área |
+| `terra_agio` | ágio mediano das licitações do ano, por localidade × `destinacao_categoria`, acima do P75 das localidades na mesma categoria; `outra` nunca entra (v0.5, T12) | localidade |
 
 **Pontuação** (D-68) = |z| × peso do tipo × fator de amostra × fator de qualidade, onde:
 
@@ -3725,7 +4443,7 @@ e interpreta. Os tipos, todos calculados por `comum/achados.ts` sobre métricas 
   dividida por 1,4826 × MAD entre localidades; para lacunas, a própria diferença dividida pelo
   limiar do tipo;
 - fator de amostra = min(1, √(n ÷ 30)), com `n` = `amostra_n` da métrica (1 para métricas sem
-  amostra);
+  amostra); métrica suprimida pela regra de amostra (seção 5.1) não gera achado (v0.5, item 21);
 - fator de qualidade = 0,5 se o conjunto ou a métrica tem flag de qualidade, 1 se não;
 - pesos iniciais do tipo, em `comum/achados.ts` com `versao_metodo`:
 
@@ -3742,6 +4460,12 @@ mês; gera o achado e propõe mudar o status da condição. Cada achado guarda o
 geraram, com fonte e período, para a tela e a IA mostrarem a mesma coisa. O `sentido` do
 catálogo decide se a frase diz "melhorou" ou "piorou"; métrica `neutro` só diz "subiu" ou
 "caiu".
+
+**Na fase 4C (v0.5, item 40)** `calcular_achados` entra só com o tipo `condicao_em_risco`, que
+alimenta o Início mínimo (condições vencidas e diligências da semana); os demais tipos entram na
+fase 5. Achado de área própria herda o sigilo da área (seção 6): some de `/achados`, do Início e
+de quem não lê a área, e nunca entra no contexto das análises de cidade ou de localidade, que
+todos leem.
 
 ---
 
@@ -3782,10 +4506,39 @@ catálogo decide se a frase diz "melhorou" ou "piorou"; métrica `neutro` só di
   `beds`, `price_min`, `price_max`, `q`, `inativos`, `terr`, `terr_metrica`, `vias`, `de`, `ate`,
   `periodo`, `comparar`, `serie`, `regiao_modo`, `faixa`, `ano`, `tema`, `locality`, `mes`. Link
   colado abre a mesma visão.
+  Rota desconhecida cai num `urbi-estado-vazio` "Página não encontrada" com link para Início
+  (`/`); não redireciona em silêncio (v0.5).
 - Estados: carregando (`urbi-loading`), vazio com motivo (`urbi-estado-vazio`), erro com
   `e.message` e `e.detalhes` em `urbi-banner variante="erro"`, e **ausência de dado** sempre
   como frase, nunca zero. Controle cuja fonte não existe fica desabilitado **com o motivo**
   (herdado da regra R8.64 do site).
+- **Frases de ausência (v0.5).** Cada motivo de `null` da 6.21 tem uma frase fixa na tela, e o
+  número nunca aparece com aviso ao lado:
+  - `amostra_pequena`: "amostra pequena (n = 3; mediana pede 5)", com o `n` e o mínimo da regra
+    (mediana n ≥ 5; P25/P75 e dispersão n ≥ 10; variação entre meses n ≥ 20 nos dois meses);
+  - `fase_futura`: "disponível a partir da <entrega>" (ex.: "disponível a partir da coleta
+    automática"), para bloco ou campo de tabela que ainda não existe (T10);
+  - conjunto público ausente: "<conjunto> não carregado", nunca "sem restrição" nem "sem
+    equipamento" (ex.: "restrições não carregadas");
+  - seção da ficha cuja fonte é de fase posterior: omitida, com a linha "disponível com
+    <entrega>" no lugar (ex.: "disponível com Comércio e âncoras").
+- **Áreas próprias (v0.5).** Quem não tem `estrategico` nem `curador` e não é o `responsavel_id`
+  da área nunca vê área `tipo = propria`: ela some de listas, portfólio, Início, achados, mapa
+  (camada 13), comparações e exportações, sem contagem de ocultas, e o link direto cai no
+  "Página não encontrada" (a rota responde `404`; seção 14).
+- **Conteúdo de terceiro (v0.5).** Toda URL vinda de dado de terceiro (anúncio, fonte,
+  procedência, conjunto) passa por `urlSegura()` de `comum/` ao gravar e ao renderizar: só
+  `http`/`https`, senão `null`, e a tela mostra o texto sem link. Link externo abre com
+  `target="_blank" rel="noopener noreferrer"`. O `bruto`, o HTML de portal e o JSON de
+  diagnóstico aparecem em `urbi-navegador-json` ou em `<pre>` com interpolação Lit, nunca como
+  HTML; `unsafeHTML` é proibido na app (teste estático procura a palavra em `frontend/`); texto
+  da IA vai só por `urbi-markdown`.
+- **Tags e registro (v0.5).** A raiz é `app-inteligencia-imobiliaria` (derivada do slug); toda
+  outra tag leva o prefixo `intel-imob-` (o slug inteiro daria tags de 40+ caracteres). O
+  registro passa por `definir(tag, classe)` de `frontend/registro.ts`, que só chama
+  `customElements.define` quando `customElements.get(tag)` é `undefined`, para o "Tentar
+  novamente" do shell reavaliar o bundle (`?r=N`) sem lançar. Um teste confere o prefixo de toda
+  tag registrada.
 - Procedência: todo bloco de números tem um rodapé "Fonte · período · n" e um link para a Base
   de dados.
 - Mobile: usável a 390 px; `urbi-tabela responsivo="multiline"`; o mapa ocupa a tela com o
@@ -3862,10 +4615,12 @@ de preço/m², P25–P75, lançamentos, âncoras, "sem coordenada exata: N".
 
 **Detalhe de anúncio (três níveis):** essencial (título, preço, preço/m² com origem informado
 ou calculado, área, quartos/suítes/vagas, localidade, status e "confirmado no portal em");
-complementar (condomínio, IPTU, regularização, dias publicado, portal com link `rel="noopener"`,
+complementar (condomínio, IPTU, regularização, dias publicado, portal com link por `urlSegura()`
+e `rel="noopener noreferrer"`,
 primeiro visto, histórico de preço em `urbi-grafico-linha`); técnico (precisão da coordenada
 **com a frase "localização aproximada; centroide da localidade"**, confiança, qualidade, hash,
-parser, última verificação, eventos). Bloco **Comparáveis**: régua P25–P50–P75 do recorte e a
+parser, última verificação, eventos; o `bruto` em `urbi-navegador-json`). Na fase 1, histórico
+de preço e retratos mostram "disponível a partir da coleta automática" (`fase_futura`). Bloco **Comparáveis**: régua P25–P50–P75 do recorte e a
 posição deste anúncio em `urbi-grafico-medidor` com faixas (C-57); `qualidade_amostra` escrita. Botão "Analisar este recorte" (seção 9).
 
 **Detalhe de localidade (clique no contorno):** nome, códigos, perfil do último ano,
@@ -3907,7 +4662,10 @@ procedência que leva à Base de dados.
   pedido ao shell (C-65; fecha P-19).
 - **Camadas da v0.3:** restrições do sítio (APP, UC, declividade, ARIS e ARINE), com legenda por
   tipo; equipamentos públicos por tipo e rede; perímetros estratégicos das áreas de estudo, com
-  cor por papel.
+  cor por papel. Sem o conjunto `restricoes_sitio` ou `equipamentos_publicos` carregado, a
+  camada fica desabilitada com "restrições não carregadas" ou "equipamentos não carregados"
+  (v0.5); camadas internas da UP importadas por KMZ como `contornos` de papel restrição aparecem
+  na mesma legenda, rotuladas com a origem.
 
 ### 10.3 Mercado (`/mercado`)
 
@@ -3939,8 +4697,14 @@ Sucede a view Mercado Residencial. `urbi-shell-page` com `urbi-stack`:
    parcial.
 9. **Análise de mercado** vigente (seção 9) e botão "Gerar análise do mês".
 10. **Oferta ampliada** (v0.2): fração com redução de preço, redução mediana, idade do estoque,
-    dias até sair, saídas em até 30 dias, último preço pedido antes de sair; todos por imóvel.
+    tempo de anúncio, último preço pedido antes de sair; todos por imóvel. Na v0.5 o tempo de
+    anúncio é a mediana Kaplan-Meier e S(30) (fração ainda ativa aos 30 dias), com o rótulo
+    "estimativa com censura (Kaplan-Meier)" e o número de eventos; abaixo de 20 eventos no
+    grupo, "amostra pequena". R$/m² sempre por `base_area`, com a base no rótulo e "não
+    especificada" como classe própria.
 11. **Índice de oferta estratificado** ao lado da mediana bruta, com estratos imputados contados.
+    Calculado desde a fase 3, só aparece na tela quando a primeira base de 12 meses fechar; até
+    lá, "índice em formação: base fecha em <mês>". Mês sem índice publicável mostra o motivo.
 12. **Contexto macro e de crédito**: as séries de `series_macro` por papel, com o mês do IVV
     alinhado.
 13. **Estoque de lançamentos por status** (na planta, em obra, pronto) e VSO/LsO onde a fonte
@@ -3983,7 +4747,9 @@ Markdown (`urbi-markdown`), os achados como lista com a direção (badge) e os i
 citados expandíveis (valor, fonte, período), alertas, lacunas (com link para o cadastro quando
 há `campo_cadastro`), e o rodapé técnico (slot, modelo, versão das instruções, tokens, data,
 quem gerou). Botão "Ver versões anteriores". Botões "Gerar análise de mercado" e "Gerar análise
-de território" (escrita).
+de território" (escrita). Análise em `gerando` aparece como "na fila desde <hora do pedido>":
+todo pedido é assíncrono (D-82) e o limite por minuto da app, quando estoura, só adia a chamada
+(o worker retenta), não a faz falhar (v0.5).
 
 ### 10.6 Cadastro (`/cadastro/*`)
 
@@ -4011,7 +4777,9 @@ do `nav` e abre com `urbi-abas`, uma aba por cadastro abaixo, cada uma na sua su
 - **Empreendimentos** (v0.2): lista e ficha com os vínculos (lançamento, anúncios, licenças,
   lote Terracap) e o estágio derivado; criar, editar, desvincular.
 - **Lotes Terracap** (v0.2): `urbi-inbox` com a ficha, os derivados e o mini-mapa; importação de
-  CSV do edital e do resultado.
+  CSV do edital e do resultado. Na prévia, a `destinacao_categoria` vem proposta a partir do
+  texto verbatim (`comum/terra/destinacoes.ts`) e o operador confirma o mapeamento, como o de
+  `ivv_regional` (v0.5).
 - **Licenciamento de obras** (v0.2): idem, com importação de CSV.
 - **Faixas de programa** (v0.2): tabela editável com vigência e link da portaria.
 
@@ -4022,20 +4790,40 @@ uma aba por item abaixo, cada uma na sua sub-rota (D-86). Erros do barramento (`
 admin da app vê; a Operação mostra falhas lendo `coletas`, `fonte_saude` e `achados_qualidade`,
 nunca o barramento (C-47).
 
+**Coleta pausada (v0.5).** Com o parâmetro `coleta_ativa = false`, todas as abas da Operação
+abrem com um `urbi-banner` fixo "coleta pausada (coleta_ativa = false) desde <data>; nenhuma
+rotina de coleta faz requisição", e os botões que pedem coleta (verificar agora, executar busca,
+reler, carregar dados públicos) ficam desabilitados com esse motivo, em vez de receber
+`409 COLETA_PAUSADA`. Quem religa é o admin da app, em Config › Parâmetros.
+
+- **Saúde (v0.5):** painel único do que pode parar calado. (1) **Cadeia mensal:** por mês, o
+  estado de cada elo (`fechar_mes`, `carregar_series_macro`, `calcular_achados`,
+  `gerar_analises_mensais`) lido de `coletas`: concluído, aguardando (com a tentativa, até 6),
+  adiado, falhou ou parado; a cadeia parada também é o erro `cadeia_mensal_parada` (seção 13),
+  que só o admin vê, por isso o estado está aqui (`GET /operacao/saude`). (2) **Coleta:**
+  `coleta_ativa`, última execução por rotina e execuções `adiada` ou `pausada`. (3) **Fontes:**
+  as bloqueadas, as de parser degradado e as atrasadas (seção 23).
 - **Candidatos:** fila por status; ficha com os campos lidos, o `bruto`, a página de origem;
   aprovar (com correções inline), rejeitar (motivo), reler; destaque aos `bloqueado_leitura`
-  ("a página nunca foi lida; os dados são os da listagem").
+  ("a página nunca foi lida; os dados são os da listagem"). O `bruto` aparece em
+  `urbi-navegador-json`, nunca como HTML (10.1).
 - **Fontes de portal:** tabela com estado (ok | instável | bloqueada, desde quando, taxa de
-  bloqueio 24 h), parser, última execução; ficha com buscas salvas (CRUD, executar agora),
+  bloqueio 24 h), parser, última execução; ficha com buscas salvas (CRUD, executar agora; a
+  execução é pedida por evento, a rota responde `202` e a ficha acompanha a `coleta` criada; v0.5),
   diagnóstico (código HTTP, classificação, amostra do HTML); aviso quando há fonte bloqueada:
   "fonte bloqueada: considere pedir ao administrador da instância a inclusão do host no proxy de
   egresso; ver docs/coleta.md" (D-79).
 - **Execuções:** `urbi-tabela` de `coletas` com contadores e `disparo`; detalhe com
-  `detalhes_erros`; link para a aba Rotinas nativa da Config (log do shell e "Rodar agora", que é
-  do admin da app; C-05).
+  `detalhes_erros`; os status `pausada` (coleta desligada) e `adiada` (outra rotina da mesma
+  classe em curso) aparecem com o resumo da rotina, não como falha (v0.5); link para a aba
+  Rotinas nativa da Config (log do shell e "Rodar agora", que é do admin da app; C-05).
 - **Importações:** escolher tabela, baixar modelo de CSV, subir arquivo, escolher modo de
-  duplicata, ver prévia (contagens, mapeamento inferido editável, rejeições), aplicar; histórico
-  com relatório.
+  duplicata, ver prévia (contagens, mapeamento inferido editável, rejeições e a lista
+  `colunas_ignoradas` com o motivo `derivada` ou `desconhecida`; coluna ignorada nunca rejeita a
+  linha), aplicar; histórico com relatório. **Desfazer importação** (v0.5, admin da app):
+  confirma com as contagens, faz remoção lógica das linhas criadas por aquela importação que
+  ninguém editou depois e mostra no relatório as que ficaram por terem sido editadas; nunca
+  apaga de vez (11.3).
 - **Dados públicos:** manifest remoto × carregado por conjunto; "Carregar agora" (pede a carga
   por evento e mostra a `coleta` quando ela começa; D-91); arquivos com tamanho, hash, status;
   arquivos removidos pelo shell (`urbiverso.arquivos.removido`, com o motivo).
@@ -4064,27 +4852,38 @@ Abas que o shell monta sozinho (C-84), todas do admin da app:
 | Slack | sempre | — |
 | Eventos | a app declara `eventos` | destinos de Remessa dos erros (seção 13) |
 | Sentinela | sempre | — |
-| Lixeira | a app tem tabelas com `soft_delete` | restauração e purga manual de anúncios, lançamentos, contornos, análises…; por isso a Operação não tem tela própria de restauração |
-| Rotinas | a app declara `rotinas` | status, horário, "Rodar agora", log |
-| IA | a app declara `ia` | sub-abas Slots · Configurações (timeout e limite por minuto; C-42) · Utilização · Histórico |
+| Lixeira | a app tem tabelas com `soft_delete` | restauração e purga manual de anúncios, lançamentos, contornos, análises…; por isso a Operação não tem tela própria de restauração. A purga de anúncio com retrato e de área com ficha é recusada por desenho (`409 DADOS_DEPENDENCIA_EXISTE`, FK `restringir`; v0.5): o histórico não sai por purga, e o registro fica na lixeira |
+| Rotinas | a app declara `rotinas` | status, horário, "Rodar agora", log; a fase 0 aplica a grade de horários sugerida do README (o default 06:00 UTC poria todas no mesmo slot) |
+| IA | a app declara `ia` | sub-abas Slots · Configurações (timeout e limite por minuto; C-42) · Utilização · Histórico. O limite é por app (1 a 600, padrão 10) e sobe para 30 na instalação da fase 5 (v0.5) |
 
 A Lixeira restaura e purga fora das rotas da app: não grava `alteracoes_cadastro` nem incrementa
 `versao`. É aceitável porque é ação do admin da app, registrada pelo shell; a tela de Cadastro
 mostra o registro restaurado como qualquer outro. A app não declara `telas_config`: o que é
 operação de domínio está em `/operacao/*`.
 
-### 10.9 Início (`/inicio`, v0.2)
+### 10.9 Início (`/`, v0.2)
+
+**Início é a raiz (v0.5).** A tela mora em `/` e o `nav` a declara como `{ "titulo": "Início",
+"rota": "/", "icone": "fa-solid fa-house" }`; o "Home" que o shell põe no menu e o "Início" do
+`nav` abrem a mesma tela. `/inicio` não existe; links de notificação e visões salvas usam `/`.
 
 `urbi-shell-page` com `urbi-stack`: achados de maior pontuação da cidade e das áreas próprias
 (cartões com `texto_curto`, direção e link para a tela de origem), **condições de tese vencidas ou
 em risco** e **diligências com prazo na semana** das áreas próprias (v0.3), análises novas do mês,
 estado das fontes e da saúde do parser, fontes atrasadas, visões salvas fixadas. É a resposta a "o que mudou desde a
-última vez que olhei".
+última vez que olhei". As áreas próprias e o que pende delas só aparecem para quem as vê (10.1);
+para os demais o Início não diz que existem.
+
+**Início mínimo da 4C (v0.5).** Na fase 4C entra só o bloco de condições vencidas ou em risco
+(achado `condicao_em_risco`, único tipo de `calcular_achados` nessa fase) e o de diligências da
+semana; os demais blocos chegam com a fase 5 e, até lá, mostram "disponível com <entrega>".
 
 ### 10.10 Estudos de área (`/estudos`, `/estudos/:id`, `/estudos/portfolio`, `/estudos/comparar`, v0.2)
 
 - **Lista:** `urbi-inbox` por tipo e estágio, com mini-mapa; "Nova área" por desenho, por ponto
-  ou por importação de KMZ.
+  ou por importação de KMZ. Área `tipo = propria` só aparece para quem tem `estrategico` ou
+  `curador`, ou é o responsável dela (10.1, seção 14); a lista oficial de onde elas vêm é
+  `[PENDENTE P-47]`.
 - **Dossiê (v0.3, D-56):** `urbi-2x1` com o mapa da área, dos anéis e dos perímetros à esquerda
   e, à direita, `urbi-abas` nas quatro escalas do método, mais as abas de trabalho:
   - **Regional:** contexto macro e de crédito, IVV e FipeZap da cidade, posição da localidade no
@@ -4093,18 +4892,34 @@ estado das fontes e da saúde do parser, fontes atrasadas, visões salvas fixada
     expansão urbana), centralidades de emprego próximas.
   - **Entorno (por anel):** demografia e renda, formação domiciliar, emprego e acessibilidade,
     oferta e preço (por imóvel, com a natureza do preço), lançamentos e pipeline, comércio e
-    lacunas, âncoras e equipamentos, tráfego dos trechos próximos, novas edificações.
-  - **Sítio:** área bruta e líquida estimada, restrições por tipo, zona do PDOT e regularização,
-    edificações existentes, acesso à via de maior centralidade.
+    lacunas, âncoras e equipamentos, tráfego dos trechos próximos, novas edificações. Estatística
+    abaixo do mínimo de amostra sai como "amostra pequena" com o `n` (10.1). Oferta por anel só
+    usa anúncios com `h3_r9`; enquanto a fração de ativos com coordenada exata no recorte for
+    menor que 50%, o bloco de oferta mostra a estatística da localidade com o rótulo "da RA, não
+    do anel" (v0.5).
+  - **Sítio:** área bruta e líquida, restrições por tipo, zona do PDOT e regularização,
+    edificações existentes, acesso à via de maior centralidade. A área líquida é **vetorial**
+    (polígono menos a interseção com a união das camadas restritivas, em SIRGAS 2000 / UTM 23S)
+    e aparece com a faixa que vem da simplificação e da resolução da fonte, com a fonte escrita;
+    a grade de células não entra nela. Sem `restricoes_sitio` carregado, o bloco diz
+    "restrições não carregadas" e não mostra área líquida (v0.5).
   - **Síntese e agenda:** os cinco grupos com natureza e evidência; itens propostos pela IA para
-    aceitar ou descartar; a agenda de decisão.
+    aceitar ou descartar; a agenda de decisão. O registro da decisão (quem decide, foro,
+    alternativas) e as transições da escada que a exigem são
+    `[PENDENTE P-42]`.
   - **Tese:** os dez componentes, as condições necessárias e de interrupção com status, prazo e
-    métrica monitorada; histórico de versões.
+    métrica monitorada; as hipóteses de produto (`hipoteses_produto`, fase 4C: tipologia, faixa de
+    preço, unidades, cenário de viabilidade, natureza, status) a que as condições podem se ligar;
+    histórico de versões.
   - **Diligência:** as perguntas por frente, com as respondidas pelo app marcadas para confirmar.
+    A ambiental fica sem pré-preenchimento enquanto `restricoes_sitio` não estiver carregado.
   - **Âncoras:** hipóteses de âncora com simulação, "a âncora traz" e "a UP traz".
   - **Viabilidade:** cenários vertical e loteamento, sensibilidade, comparação com pedido e
-    arrematado.
-  - **Linha do tempo:** `area_eventos` e observações de campo.
+    arrematado (mesmas regras da 10.13).
+  - **Linha do tempo:** `area_eventos` e observações de campo. Comentário é `area_eventos` de
+    `tipo = nota`, com autor e data, não editável; não há tabela de comentários (v0.5). A trilha
+    de saídas (ficha, pacote, exportação, análise de IA de área própria) aparece aqui com o
+    usuário. Aviso de prazo ao responsável é `[PENDENTE P-43]`.
   Cada bloco tem o rodapé "fonte · período · método · fração coberta" e, quando houver, a marca de
   fonte atrasada. Seletor de anel no topo.
 - **Modo campo (v0.3, D-78):** no celular, a área abre direto no mapa com anéis, perímetros e
@@ -4118,18 +4933,35 @@ estado das fontes e da saúde do parser, fontes atrasadas, visões salvas fixada
     falhar ou for negada, o usuário toca a posição no mapa (`modo="desenhar-ponto"`) ou a digita,
     e `precisao_m` fica nulo (R-46).
 - **Portfólio (v0.3, D-66):** `urbi-tabela` das áreas próprias (e das outras por filtro) com
-  estágio, seis indicadores-chave, condições por status, diligências abertas por frente e data
-  da última ficha; mapa de todas; clique abre o dossiê.
+  estágio, seis indicadores-chave (os mesmos da capa da ficha), condições por status,
+  diligências abertas por frente e data da última ficha; mapa de todas; clique abre o dossiê.
+  Quem não vê áreas próprias (10.1) recebe o portfólio só com as outras, sem aviso de ocultas.
 - **Ficha:** escolher "uma página" ou "detalhada", marcar e ordenar as seções, gerar (congela em
   `area_estudo_fichas`), baixar em Markdown, CSV ou pacote (ZIP gerado no backend; D-93). PDF e
   Word ficam no Futuro: o SDK 100 não tem geração de documento (C-40; fecha P-20). Leiaute da **uma página** (v0.3): cabeçalho (nome, tipo, estágio, data,
   "uso interno" quando `tipo = propria`, mapa com anéis); seis indicadores (domicílios no anel
-  médio, formação domiciliar anual, renda média rateada, R$/m² pedido mediano, unidades no
-  pipeline, R$/m² arrematado da localidade), cada um com natureza e fonte; três maiores lacunas
-  de produto; três maiores lacunas comerciais; sítio (área líquida estimada, zona do PDOT);
-  síntese aceita em cinco linhas curtas; três próximas perguntas de maior impacto; rodapé de
-  fontes, versões e método. A **detalhada** acrescenta as quatro escalas, a tese com condições, as
-  hipóteses de âncora e a viabilidade.
+  médio, formação domiciliar anual, distribuição de domicílios por faixa de renda, R$/m² pedido
+  mediano, unidades no pipeline, R$/m² arrematado da localidade), cada um com natureza e fonte;
+  três maiores lacunas de produto; três maiores lacunas comerciais; sítio (área líquida com a
+  faixa, zona do PDOT); síntese aceita em cinco linhas curtas; três próximas perguntas de maior
+  impacto; rodapé de fontes, versões e método. A **detalhada** acrescenta as quatro escalas, a
+  tese com condições, as hipóteses de âncora e a viabilidade.
+- **Capa sem falácia ecológica (v0.5).** Na capa, indicador cuja unidade nativa é `localidade`
+  não aparece como valor do anel. A renda entra como distribuição de domicílios por faixa, com o
+  rótulo "da RA <nome>, PDAD <ano>" e, quando o anel cruza mais de uma RA, a fração do anel em
+  cada uma. Valor de renda do anel só entra quando houver fonte por setor ou célula
+  (`censo_2022_setores` com rendimento), com a fonte escrita.
+- **Seção omitida com motivo (v0.5).** Seção cuja fonte é de fase posterior sai da ficha com a
+  linha "disponível com <entrega>" (ex.: as três maiores lacunas comerciais, "disponível com
+  Comércio e âncoras", até a fase 7), nunca vazia nem zero; a J1 não depende dela.
+- **Comparar fichas (v0.5).** Na lista de fichas da área, a ação "Comparar com…" escolhe outra
+  ficha da mesma área e abre a tabela de `GET /estudos/:id/fichas/comparar?a&b`: por chave
+  estável de `conteudo` (chave do catálogo + recorte + período), os dois valores e a diferença,
+  com a marca "mudou o dado" quando versão do conjunto e `versao_metodo` coincidem, ou "mudou a
+  medida" quando não, e aí sem variação calculada. Não ganha entrada no `nav`.
+- **Saídas de área própria (v0.5).** Gerar ficha, baixar pacote ou CSV e gerar análise de IA de
+  área própria gravam `area_eventos` com o usuário (trilha de saídas; seção 22). Não há trilha de
+  visualização.
 - **Comparar áreas:** 2 a 6 áreas, mesma tabela e `urbi-grafico-colunas` agrupadas.
 
 ### 10.11 Produto (`/produto`, `/produto/matriz`, `/produto/benchmark`, v0.2)
@@ -4137,9 +4969,17 @@ estado das fontes e da saúde do parser, fontes atrasadas, visões salvas fixada
 - **Demanda e capacidade:** recorte por localidade ou área de estudo; perfil de demanda em
   `urbi-kpi` e gráficos; capacidade de pagamento como colunas por faixa de preço alcançável, com
   a taxa usada e a origem dela escritas; seletor de programa.
-- **Matriz de produto:** `urbi-mapa-de-calor` tipologia × faixa de preço, alternando demanda,
-  oferta, lacuna e absorção; clique na célula abre os anúncios e lançamentos dela. Aviso fixo:
-  a conversão de tamanho de domicílio em quartos é hipótese declarada.
+- **Matriz de produto:** `urbi-mapa-de-calor` tipologia × faixa de preço, em **duas leituras
+  nomeadas** (v0.5), alternadas por `urbi-abas`:
+  - **Composição:** participação de cada célula na demanda e na oferta, cada uma somando 1 no
+    recorte, e o "descompasso" em pontos percentuais, rotulado "composição, não quantidade";
+  - **Fluxo:** demanda anual (`formacao_domiciliar_anual` × distribuição alcançável) contra
+    oferta anual (unidades lançadas nos últimos 12 meses, mais pipeline com entrega em 12 meses);
+    a lacuna em unidades/ano só aparece nesta leitura, ao lado da absorção.
+  A oferta é só venda, separada em "usado (anúncios, por imóvel)" e "novo (lançamentos,
+  unidades)". Clique na célula abre os anúncios e lançamentos dela. Aviso fixo: a conversão de
+  tamanho de domicílio em quartos é hipótese declarada. Absorção por localidade com menos de 12
+  meses de IVV regional vem rotulada "rateio da cidade" (10.13).
 - **Benchmark de lançamentos:** `urbi-tabela` dos comparáveis com régua P25–P50–P75 e posição de
   um produto hipotético digitado (área e preço).
 
@@ -4147,22 +4987,36 @@ estado das fontes e da saúde do parser, fontes atrasadas, visões salvas fixada
 
 - **Potencial e lacunas:** escolher categoria; mapa de lacuna por célula ou localidade; tabela
   das categorias com gasto potencial, estabelecimentos e razão contra a cidade; filtro pela área
-  de estudo.
+  de estudo. Na v0.5 a lacuna de cada célula é a da **bacia da categoria** (gasto e
+  estabelecimentos somados no `raio_bacia_m` dela, escrito na legenda); célula sem
+  estabelecimento na bacia aparece como "sem oferta", fora da escala da razão, e só células
+  habitadas com gasto ≥ P25 da cidade são coloridas. Bolsão (Gi*) só aparece para grupo de ≥ 3
+  células contíguas significativas por FDR (q = 0,05), e o de preço fica desligado com o motivo
+  até haver 200 células com ≥ 5 imóveis.
 - **Simular âncora:** clicar um ponto (ou escolher uma área própria), categoria e porte; o
   resultado do Huff por anel, com os concorrentes considerados e os parâmetros escritos; botão
-  "Levar para a ficha".
+  "Levar para a ficha". Na v0.5 o resultado diz a **escala de atratividade** usada (classe de
+  porte por categoria, aplicada também à âncora simulada, ou A = 1 para todas) e a fração de
+  concorrentes com atratividade imputada; a área medida da âncora só entra quando todas as
+  concorrentes da rodada têm área medida.
 - **Áreas gêmeas:** referência (área, localidade ou célula), resultado no mapa e em tabela com
   o que aproxima e o que afasta.
 - **Lentes de aptidão:** lista de lentes; editor de pesos para o curador; mapa do score com a
-  decomposição ao clicar.
+  decomposição ao clicar. Permanência na V1 é `[PENDENTE P-46]` (sem jornada que
+  a use, R-36).
 
 ### 10.13 Terra e oferta futura (`/terra`, `/terra/lotes`, `/terra/viabilidade`, `/terra/pipeline`, v0.2)
 
-- **Licitações Terracap:** resumo por localidade (medianas de R$/m² de terreno e de potencial,
-  ágio, propostas, fração vendida), série por ano e mapa dos lotes; sempre com "preço arrematado
-  em licitação" escrito.
+- **Licitações Terracap:** resumo por localidade × `destinacao_categoria` (medianas de R$/m² de
+  terreno e de potencial, ágio, propostas, fração vendida), série por ano e mapa dos lotes;
+  sempre com "preço arrematado em licitação" escrito. A categoria `outra` é listada, mas nunca
+  entra em mediana (v0.5).
 - **Pipeline de oferta:** unidades por estágio (licenciado, em obra, lançado, concluído) por
-  localidade, meses de absorção futura e a lista dos empreendimentos.
+  localidade, meses de absorção futura e a lista dos empreendimentos. Só alvarás de uso
+  residencial contam unidades. Alvará sem habite-se e sem lançamento vinculado há mais de
+  `alvara_validade_meses` sai do pipeline e vai para a lista à parte "alvará antigo sem
+  habite-se". A absorção usa o IVV regional só com 12 meses de série; antes disso, "rateio da
+  cidade"; sem nenhum dos dois, "sem absorção" (v0.5).
 - **Mercado de lotes (v0.3):** por localidade e faixa de área de lote: pedido (anúncios de
   terreno), arrematado (Terracap) e residual (cenários), lado a lado, com a natureza de cada um e
   a amostra; mapa dos lotes anunciados e licitados.
@@ -4171,6 +5025,15 @@ estado das fontes e da saúde do parser, fontes atrasadas, visões salvas fixada
   total e por m², grade de sensibilidade em `urbi-mapa-de-calor`, comparação com pedido e
   arrematado; "Salvar cenário" liga à área de estudo. Rótulo fixo: simulação expedita, não
   substitui avaliação.
+- **Linhas da viabilidade (v0.5).** O resultado mostra, cada uma com a origem: VGV a **preço de
+  venda** (pedido × (1 − desconto), com o desconto do IVV do recorte nos últimos 12 meses ou, sem
+  IVV, do parâmetro, escrito como premissa); custos indiretos (fração do custo de obra);
+  contrapartida urbanística (ODIR/ONALT) em R$, campo manual sem padrão, que só vale zero quando
+  marcado "não incide"; e o residual bruto e o **líquido** de aquisição (ITBI e registro). O
+  rótulo diz "método estático; o tempo entra só pelo custo de espera". A comparação é por R$/m²
+  de área computável contra o R$/m² de potencial da Terracap (mesma `destinacao_categoria`) no
+  cenário vertical, e por R$/m² de gleba bruta no loteamento, com o aviso "a Terracap vende lote
+  urbanizado, não gleba". Os valores padrão dos parâmetros seguem `[PENDENTE P-35]`.
 
 ---
 
@@ -4191,7 +5054,19 @@ exato). Fluxo em dois passos, como a importação do módulo `pessoas`:
    dentro do arquivo e contra o banco); nada é gravado.
 2. **Aplicar** (`POST /importacoes/:id/aplicar`): em lotes de 500 numa transação cada, com o
    modo de duplicata escolhido; linha rejeitada não derruba o lote (vai ao relatório); ao fim,
-   `coletas` e `achados_qualidade` registram o que a validação achou de não bloqueante.
+   `coletas` e `achados_qualidade` registram o que a validação achou de não bloqueante. Toda
+   linha criada guarda `importacao_id` (referência → `importacoes`, `anular`), que é o que
+   permite desfazer a importação (11.3.2).
+
+**Colunas que a app não grava (v0.5).** `comum/importacao-chaves.ts` declara, por tabela, as
+`colunas_derivadas`: as que a exportação acrescenta (`id`, `criado_em`, `atualizado_em`,
+`versao`, `preco_m2`, `orientacao`, `preco_m2_divergente`, `localidade_nome`, `h3_r9`, …). Na
+prévia, coluna derivada e coluna desconhecida são **ignoradas com aviso**, na lista
+`colunas_ignoradas` com o motivo `derivada` ou `desconhecida`, e nunca rejeitam a linha. O `id`
+exportado só serve de chave no modo `atualizar` em tabela sem chave natural. Na leitura, o `'`
+inicial de célula de texto que começa com `=`, `+`, `-`, `@`, tabulação ou retorno é retirado
+(é o prefixo que a exportação põe; 11.2), para o ida-e-volta não alterar o dado. Teste de ida e
+volta (18.1): exportar → importar em `ignorar` dá zero rejeições e zero inserções.
 
 Modos de duplicata (chave natural por tabela, declarada em `comum/importacao-chaves.ts`):
 
@@ -4209,14 +5084,32 @@ derivados, `;` como separador, BOM, datas `AAAA-MM-DD`, frações como `0.057` (
 rodapé **não**: o nome do arquivo carrega tabela, filtro resumido e data
 (`anuncios_asa-norte_2026-10-16.csv`).
 
+**Injeção de fórmula (v0.5).** Célula de texto que começa com `=`, `+`, `-`, `@`, tabulação ou
+retorno sai com `'` na frente, para a planilha que abrir o CSV não a executar como fórmula;
+colunas numéricas saem como número e não são tocadas. A importação retira esse `'` (11.1).
+
+**Recorte de sigilo (v0.5).** A exportação aplica a mesma regra das telas: quem não vê áreas
+próprias (seção 14) recebe o CSV sem elas e sem o que pende delas, sem linha de aviso. Exportação,
+ficha, pacote e análise de IA de área própria gravam `area_eventos` com o usuário (trilha de
+saídas; seção 22). A saída de IVV e FipeZap em CSV e pacote depende de
+`[PENDENTE P-45]`.
+
 Além do CSV, o **pacote com proveniência** (D-28, seção 6) acompanha o modelo do Our World in
 Data: os dados, os metadados em JSON e um LEIAME com a citação, para o número sair do app com a
-fonte junto.
+fonte junto. Os CSVs do pacote seguem a mesma regra de prefixo.
 
-### 11.3 Migração da planilha (uma vez)
+### 11.3 Migração da planilha (incremental e reversível; v0.5)
 
-Ordem, respeitando referências. Cada passo é uma importação pela tela, com o CSV exportado da
-aba correspondente (Arquivo › Fazer download › CSV, por aba), sem edição manual do CSV:
+**Retrato datado.** A migração nunca importa a planilha viva nem download manual. O repositório
+da app traz `scripts/exportar-planilha.mjs`, que baixa cada aba em CSV pela mesma consulta GViz
+que o site já usa e grava `migracao/AAAA-MM-DD/<aba>.csv` com o sha256 de cada arquivo. Cada
+passo da tabela abaixo é uma importação pela tela com o CSV do retrato, sem edição manual. O
+mesmo retrato é a entrada dos testes de paridade (18.1). A semente versionada do repositório do
+site tem 141 anúncios (2026-09-19); a planilha viva tinha 158 na mesma data e cresce. Por isso o
+aceite não usa número fixo: `importacoes` grava a contagem de linhas do CSV do retrato, e o
+pronto é "importadas + rejeitadas com motivo = linhas do retrato".
+
+Ordem, respeitando referências:
 
 | # | Aba(s) | Tabela destino | Observações |
 |---|---|---|---|
@@ -4244,8 +5137,37 @@ aba correspondente (Arquivo › Fazer download › CSV, por aba), sem edição m
 Critério de aceite da migração: para cada aba importada, `total_linhas = inseridas + ignoradas + rejeitadas`
 no relatório, e as rejeitadas estão listadas com motivo; as contagens de `APP_META`
 (`listings_active_count`, `rows_polygons_active`, …) batem com as contagens da app no dia da
-migração, e a diferença, se houver, está explicada por rejeição nomeada. Depois disso a
-planilha é posta em somente leitura e o Apps Script tem os gatilhos removidos.
+migração, e a diferença, se houver, está explicada por rejeição nomeada. O corte não acontece
+de uma vez: segue a convivência da 11.3.1, aba por aba.
+
+#### 11.3.1 Convivência site × app (v0.5)
+
+Regra: **um coletor por vez, uma fonte de verdade por tabela** (dois coletores no mesmo portal
+violariam "uma requisição por vez por host", 8.1).
+
+| Fase | Fonte de verdade de anúncios | Coletor | Site |
+|---|---|---|---|
+| 1 e 2 | planilha | Apps Script | no ar, sem mudança |
+| 3 em diante | app, a partir do dia em que as rotinas de coleta são ligadas na Laputa | rotinas da app | mostra o retrato congelado |
+| 6 | app | rotinas da app | congelado por inteiro, marcado como legado |
+
+- Nas fases 1 e 2 a app recebe a planilha por **reimportação incremental**: novo retrato datado,
+  `modo_duplicata = atualizar` pela chave natural `id_legado`, quantas vezes for preciso.
+- No corte da fase 3, no mesmo dia: os gatilhos do Apps Script são removidos e as abas de
+  anúncios (`LISTINGS*`, `LISTING_*`) ficam somente leitura.
+- As demais abas (IVV, FipeZap, PDAD, tráfego) mudam de fonte de verdade quando a fase que as
+  carrega fica pronta; até lá, a reimportação incremental vale para elas também.
+- A planilha não é apagada nem editada durante a migração; é ela a cópia de segurança.
+
+#### 11.3.2 Desfazer importação (v0.5)
+
+A tela de Importações tem **Desfazer importação**, só para o admin da app
+(`POST /importacoes/:id/desfazer`): faz remoção lógica (`PATCH …/remover`) das linhas com aquele
+`importacao_id` que ninguém editou depois (`versao` igual à da criação) e lista no relatório as
+que ficaram por terem sido editadas; nunca apaga de vez. Linhas que a importação **atualizou**
+(modo `atualizar`) não voltam ao valor anterior: o relatório as lista para conferência, e o
+caminho é reimportar o retrato anterior (D-119). Como a importação é idempotente pela chave natural
+(11.1), desfazer e reimportar dá o mesmo resultado.
 
 ### 11.4 Regras de normalização herdadas (em `comum/`)
 
@@ -4267,7 +5189,19 @@ O pipeline Python (`pipeline/`) continua sendo o **produtor**: roda no GitHub Ac
 repositório (mensal e manual), lê IBGE, Ipea, OSM e GeoPortal, escreve `data/public/` com
 `manifest.json`, schemas, `sha256` e orçamento por arquivo, e abre a PR automática. Nada disso
 muda. A app é a **consumidora**: a rotina `carregar_dados_publicos` lê o manifest publicado e
-traz os arquivos para dentro do banco (coluna `arquivo`), de onde a app os serve.
+traz os arquivos para dentro do banco (coluna `arquivo`); a app entrega ao frontend uma URL
+assinada (D-81), nunca os bytes.
+
+**Repositório do pipeline (v0.5).** O pipeline Python **não muda de repositório com a app**:
+continua em `rafaleandrog/inteligencia-real-estate`, com os workflows e as regras dele (R2.7,
+R2.8), publicando o manifest e os arquivos em `data/public/`, que é público porque deriva só de
+fonte pública. A app, num repositório privado próprio, lê esse manifest pela URL
+`raw.githubusercontent.com` declarada em `manifest_publico_url` (seção 4.3), sem credencial: a
+app não tem parâmetro `secret` (D-79). Mudança no pipeline é PR naquele repositório; mudança no
+contrato que a app lê (12.2) é PR nos dois, com a versão do manifest como amarra. Cada fase que
+precisa de conjunto novo (4A, 7) começa com o PR do pipeline mergeado e o conjunto publicado
+(seção 15). A transferência daquele repositório para uma org e o dono das credenciais seguem em
+R-25 `[PENDENTE P-44]`.
 
 Por que não rodar o pipeline na app: ele precisa de Python, geopandas e de horas de CPU em
 rasters; a rotina do shell tem 15 minutos e Node. Por que não deixar os arquivos no GitHub e
@@ -4291,8 +5225,9 @@ Na v0.2, a versão 2 do manifest (D-49) acrescenta o papel `tabela` (CSV com `ta
 - Só baixa conjunto cujo `content_hash` difere do `ativo`; conjunto inalterado não gera tráfego.
 - Um conjunto por execução quando o total passa de 20 MB; continuação por agendamento.
 - Arquivo baixado é conferido (`bytes`, `sha256`) antes de subir; o shell guarda o blob uma vez.
-- No frontend, cada arquivo é buscado uma vez por sessão e memoizado por `sha256`; a URL leva
-  `?v=<sha8>` e a rota responde `Cache-Control: immutable`.
+- No frontend, cada arquivo é pedido uma vez por sessão: a rota da seção 6.7 devolve
+  `{ arquivo_id, sha256, bytes, url }` e a tela memoiza o conteúdo por `sha256`; não há
+  cabeçalho de cache próprio, porque a app não serve bytes (D-81).
 - `ra_aggregates.json` vira linhas de `agregados_territoriais`, que é o que Ranking, Comparar,
   Diagnóstico e a análise de IA leem; as camadas finas só são baixadas quando alguém liga a
   camada no mapa.
@@ -4312,6 +5247,8 @@ manifest 2.
 | `censo_2022_setores` | agregados por setor do Censo 2022, conforme publicados | variáveis do setor rateadas para as células pelo CNEFE | 4A |
 | `composicao_localidades` | limites antigos e vigentes + CNEFE | `localidade_composicao` | 4A |
 | `pdot_zoneamento` | zoneamento do PDOT (catálogo do IPEDF, WFS) | camada vetorial + zona dominante por célula | 4 |
+| `equipamentos_publicos` | INEP (Censo Escolar), CNES, OSM | pontos com `fonte`, `id_fonte`, `tipo` (tabela `equipamentos_publicos`, seção 5.21); licença por fonte `[PENDENTE P-14]` | 4 |
+| `restricoes_sitio` | hidrografia (APP pela faixa declarada), UC de proteção integral e de uso sustentável, modelo de elevação 30 m (declividade), ARIS/ARINE do PDOT | polígonos por tipo, simplificados a 5 m (camada vetorial, base da área líquida) + frações por célula em `celula_metricas`; fontes e licenças `[PENDENTE P-31]` | 4A |
 | `comercio_cnpj` | estabelecimentos do CNPJ (Base dos Dados), CNAE → categoria | estabelecimentos por categoria e célula; `pontos_comerciais` das categorias com `huff` | 7 |
 | `comercio_osm` | POIs do OpenStreetMap | idem, como segunda fonte e para o que o CNPJ não localiza | 7 |
 | `potencial_consumo` | POF/IBGE (participação do gasto por faixa de renda) × domicílios e renda da célula | gasto potencial anual por categoria e célula | 7 |
@@ -4322,6 +5259,23 @@ manifest 2.
 Cada conjunto registra licença, ano de referência e método no manifest `[PENDENTE P-14]`.
 MapBiomas e Open Buildings exigem processamento de raster com credencial no Actions
 `[PENDENTE P-30]`.
+
+**Conjunto ausente não é zero (v0.5).** Enquanto `restricoes_sitio` ou `equipamentos_publicos`
+não estiverem publicados e carregados, a tela diz "restrições não carregadas" ou "equipamentos não
+carregados" e a diligência correspondente fica sem pré-preenchimento (seção 5.20); nunca "sem
+restrição" nem contagem zero. A fase que depende de um conjunto (4, 4A, 7) só começa com o PR do
+pipeline mergeado e o conjunto publicado no manifest (seção 12.1).
+
+**Teto de arquivo é do pipeline (v0.5).** O cap global de arquivo da instância não é publicado
+no bundle (R-43), e a app só controla o tamanho de cada arquivo publicado. Por isso o teto mora
+no pipeline: `[manifest] arquivo_max_bytes` em `config/df.toml` (padrão 50 MB, nunca acima do
+cap medido na Pinguim na fase 0), e o validador (`outputs/validator.py`) reprova `budget_bytes`
+maior que ele, além do arquivo maior que o próprio `budget_bytes` (regra que já existe). Shard
+que estoura é erro de build do pipeline; o conserto é fatiar mais (sub-shard `RA_xx_1`,
+`RA_xx_2`, com o mesmo `shard_value`) ou subir o percentil de corte, nunca publicar acima. Hoje
+o maior arquivo publicado tem 5,6 MB (`road_centrality/overview.json`). A app só recebe
+`DADOS_ARQUIVO_MUITO_GRANDE` se o cap da instância for menor que o do pipeline, e aí falha o
+conjunto citando o cap (R-43). A regra entra no `docs/DATA_CONTRACT.md` no PR do pipeline.
 
 ---
 
@@ -4342,7 +5296,8 @@ em tela (Fontes, Execuções, Qualidade).
   "fechamento_mes_falhou":  { "campos": ["coleta_id", "mes", "erro"],             "conteudo": "Fechamento de {mes} falhou: {erro}",                           "api": "coletas/{coleta_id}",        "rota": "operacao/execucoes" },
   "dados_publicos_falhou":  { "campos": ["conjunto", "erro"],                     "conteudo": "Carga do conjunto {conjunto} falhou: {erro}",                  "api": "dados-publicos/estado",       "rota": "operacao/dados-publicos" },
   "analise_falhou":         { "campos": ["tipo", "recorte", "erro"],              "conteudo": "Análise {tipo} de {recorte} falhou: {erro}",                   "api": "analises/estado",            "rota": "analises" },
-  "parser_degradado":       { "campos": ["fonte_id", "fonte", "campos"],          "conteudo": "Parser de {fonte} degradado: {campos}",                          "api": "fontes/{fonte_id}/saude",     "rota": "operacao/fontes" }
+  "parser_degradado":       { "campos": ["fonte_id", "fonte", "campos"],          "conteudo": "Parser de {fonte} degradado: {campos}",                          "api": "fontes/{fonte_id}/saude",     "rota": "operacao/fontes" },
+  "cadeia_mensal_parada":   { "campos": ["mes", "rotina", "erro"],               "conteudo": "Cadeia mensal de {mes} parada em {rotina}: {erro}",            "api": "operacao/saude",             "rota": "operacao/saude" }
 },
 "eventos": {
   "lacuna_cadastro":        { "descricao": "A coleta ou a análise por IA apontou um dado de cadastro que falta e precisa de preenchimento manual.", "campos": ["tabela", "registro_id", "nome", "campos"], "conteudo": "Lacuna em {nome}: faltam {campos}", "api": "{tabela}/{registro_id}", "rota": "cadastro/{tabela}" },
@@ -4373,6 +5328,20 @@ para quem opera, e `continuar_coleta` só é publicado quando há continuação 
 deduplicação nativa é só por usuário e evento na entrega; "uma vez por transição" é da app
 (seção 8.4; C-50).
 
+**`cadeia_mensal_parada` (v0.5), severidade alta.** As rotinas dependentes (`calcular_achados`,
+`gerar_analises_mensais`) não esperam um mês pela pré-condição: achando o `fechar_mes` de M não
+concluído, devolvem `ok: true` com "aguardando fechar_mes de M" e reagendam por
+`continuar_coleta` em +60 min, até 6 vezes (cobre o catch-up fora de ordem). Esgotadas as
+tentativas, ou passados 3 dias de M, devolvem `ok: false` com `erro: "cadeia mensal parada:
+fechar_mes de M não concluiu"` e publicam este erro. A aba Rotinas passa a mostrar `Falhou` e a
+Operação › Saúde mostra o elo parado (10.7), porque `curador` e `operador` não veem `erro.*`.
+Sem isso, uma guarda que devolve `parcial` como sucesso esconde o mês perdido até o mês seguinte
+(precedente: charles3 `consulta_djen_falhou`, falha parcial com `ok: false`).
+
+Pendências do dono que mudariam esta seção: o evento de decisão registrada sobre uma área
+(`[PENDENTE P-42]`) e o aviso de prazo de diligência e condição ao
+responsável, que amplia a D-14 (`[PENDENTE P-43]`).
+
 Erros que o shell injeta sem declaração (C-47), também só para o admin da app: `ia_chamada` e
 `override_ia_removido` (a app declara `ia`), `listener_falhou` (declara `eventos`),
 `remessa_falhou`, `evento_rejeitado`, `iniciar_falhou` e `encerrar_falhou` (sempre).
@@ -4390,11 +5359,12 @@ só entra quando houver uso que peça. Para a inscrição por filtro valer, ele 
 | Nível | Quem | O que faz |
 |---|---|---|
 | (sem permissão) | todo usuário da instância: o admin da instância mantém `permissao_padrao = nenhuma` em Admin › Instaláveis › Apps › Acesso (alçada `usuarios`); a app não declara isso no manifesto (D-13, C-56) | não vê a app |
-| `leitura` | liberado individualmente pelo admin da instância | vê todas as telas, exporta CSV, abre análises; **salva, edita e apaga as próprias visões** pelas rotas pessoais (D-80) |
-| `escrita` + `curador` | | cadastra e corrige anúncios, lançamentos, âncoras, contornos e localidades; aprova e rejeita candidatos; gera análises; e, na v0.2, empreendimentos, lotes Terracap, licenciamento, faixas de programa, lentes, grupos de anúncios, vínculos e as áreas `propria` |
+| `leitura` | liberado individualmente pelo admin da instância | vê todas as telas, exceto as áreas `tipo = propria` e o que pende delas (abaixo), exporta CSV, abre análises; **salva, edita e apaga as próprias visões** pelas rotas pessoais (D-80); grava a própria telemetria por `POST /pessoal/uso` (`uso_eventos` é `pessoal`; v0.5) |
+| `leitura` + `estrategico` (v0.5) | a Direção; analistas que trabalham áreas próprias também. Quem recebe é a P-06 | tudo de `leitura` mais **ver** as áreas `tipo = propria` e o que pende delas; o papel não dá escrita. Declarado sob `leitura`, então pode ser dado a quem só lê (usuário `leitura` só recebe papéis de `leitura`, permissoes.md) |
+| `escrita` + `curador` | | cadastra e corrige anúncios, lançamentos, âncoras, contornos e localidades; aprova e rejeita candidatos; gera análises; e, na v0.2, empreendimentos, lotes Terracap, licenciamento, faixas de programa, lentes, grupos de anúncios, vínculos e as áreas `propria` (cuja lista oficial de origem é `[PENDENTE P-47]`); vê as áreas próprias |
 | `escrita` + `operador` | | gerencia fontes e buscas, roda verificações e buscas agora pelas rotas da app, importa CSV, pede a carga de dados públicos (D-91), mantém as séries macro (D-90), resolve achados; gera análises. Não tem o "Rodar agora" da aba Rotinas, que é do admin (C-05) |
 | `escrita` sem papel | | gera análises; cria e edita as **próprias** áreas de estudo (exceto `tipo = propria`) e, nelas e nas áreas em que é responsável, perímetros, síntese, tese, condições, diligências, hipóteses de âncora, cenários e observações; gera fichas. Rotas de cadastro e operação exigem o papel e respondem `403 PAPEL_EXIGIDO` |
-| `admin` | | tudo acima mais a Config (parâmetros, rotinas e "Rodar agora", IA, eventos e destinos, usuários e papéis, Lixeira) e os erros do barramento. Como o shell não concede papéis ao admin automaticamente — "`nivelApp: 'admin'` não confere os papéis declarados sob `escrita`" (C-53) —, o admin que também cura atribui a si o papel |
+| `admin` | | tudo acima mais a Config (parâmetros, rotinas e "Rodar agora", IA, eventos e destinos, usuários e papéis, Lixeira), **desfazer importação** (11.3.2; v0.5) e os erros do barramento. `admin` sem `estrategico` nem `curador` não vê área própria de que não é responsável: a regra é por papel, não por nível. Como o shell não concede papéis ao admin automaticamente — "`nivelApp: 'admin'` não confere os papéis declarados sob `escrita`" (C-53) —, o admin que também cura atribui a si o papel |
 
 Gate de papel em código: `exigirPapel('curador')` lê `req.contexto.rolesApp` (`ContextoRequest`
 traz `usuario`, `nivelApp` e `rolesApp`; C-52). Um agente com token passa pelo mesmo gate e pelos
@@ -4404,49 +5374,176 @@ método da oportunidade, a regra é "autor, responsável da área ou curador"; n
 `tipo = propria`, só responsável e curador escrevem. Nenhuma rota
 olha `usuario.tipo` nem `natureza`. Externos: a app não declara `aceita_externos`.
 
+**Sigilo das áreas próprias (v0.5).** Áreas `tipo = propria` e tudo que pende delas (`teses`,
+`tese_condicoes`, `diligencias`, `area_sintese_itens`, `cenarios_viabilidade`,
+`area_estudo_fichas`, `observacoes_campo`, `area_eventos`, `analises_ia` de área) só são lidos
+por quem tem `estrategico` ou `curador`, ou é o `responsavel_id` da área. Para os demais a área
+some das listas, do portfólio, do Início, dos achados, do mapa e das exportações, e o detalhe
+responde `404 REGISTRO_NAO_ENCONTRADO` (não confirma que existe). Essas tabelas são `restrito`,
+então só as rotas da app as leem (a rota genérica não sabe de papel; `req.dados` ignora
+`acesso_externo`). Área própria real só existe na Laputa; na Pinguim, que recebe devs de fora, os
+testes usam áreas de prospecção, referência ou fictícias. O papel e a escrita sobre a decisão da
+área (decisor, transições da escada) dependem de `[PENDENTE P-42]`.
+
+**Guarda por objeto (v0.5).** Cada tabela com regra por objeto a declara em
+`comum/regras-objeto.ts` (`autor`, `responsavel`, `curador`, `estrategico`, por operação). Toda
+rota que recebe `:id` dessas tabelas busca o registro e chama `exigirAcessoObjeto(req, registro,
+operacao)` antes de qualquer efeito: quem não pode ler recebe `404 REGISTRO_NAO_ENCONTRADO`;
+quem lê e não pode escrever, `403 OBJETO_SEM_PERMISSAO`. Id de objeto pai vindo no corpo
+(`area_estudo_id`, `tese_id`) passa pela mesma guarda. `testes/matriz-acesso.test.ts` tem uma
+linha por rota × perfil (autor, responsável, curador, estrategico, escrita sem relação, leitura
+sem `estrategico`) com o status esperado, e a lista de rotas é conferida contra a pilha dos
+Routers por contagem exata: rota nova sem linha reprova. O QA repete a matriz na Pinguim com o
+pool de usuários de QA (18.2).
+
 ---
 
 ## 15. Fases de implementação
 
-Cada fase termina com release instalável na Pinguim e com a documentação em `docs/` da app
-atualizada. As fases mais distantes têm menos detalhe de propósito: o detalhe cresce quando a
-fase anterior mostra o que a realidade pede. Estimativa em **sessões** de implementação com
-agente (uma sessão ≈ um PR grande revisado), não em dias.
+Cada subfase termina numa release que a **Pinguim** instala sozinha e onde roda o QA; cada fase
+termina com a release instalada na **Laputa**, onde a equipe usa a app, e com a documentação em
+`docs/` da app atualizada. As fases mais distantes têm menos detalhe de propósito: o detalhe
+cresce quando a fase anterior mostra o que a realidade pede.
 
-Ordem na v0.3: 0 → 1 → 2 → 3 → 4 → **4A** → **4B** → **4C** → 5 → 6, com a **7** podendo correr em
-paralelo à 6, porque depende sobretudo do pipeline. Cada fase de 4A em diante fecha com as
-jornadas da seção 24 que lhe cabem e com o golden set. A fase 5 (IA) vem depois da 4B porque a análise de
-área e a camada de achados dependem dela. Cada fase abaixo lista no fim os **acréscimos da
+**A unidade de planejamento é o PR, não a sessão (v0.5).** Cada fase vira uma sub-issue de uma
+issue-spec guarda-chuva (skill `orquestrar` do kit) e se divide em subfases; cada subfase é um PR
+que entrega uma fatia vertical instalável (schema + rota + tela + teste + doc) e termina numa
+release que instala na Pinguim. A estimativa de cada fase é o número de PRs: a soma abaixo dá 28 a
+34 PRs, que é piso, e a contagem real é registrada na issue guarda-chuva a cada fase fechada e
+reestima as seguintes. As fases 1 e 3 já vêm divididas (1a a 1d, 3a a 3d); 4A, 4B e 7 seguem a
+mesma regra quando chegarem (precedente: o `reg360` cresceu por versões pequenas, uma issue por
+mudança; D-99).
+
+**Pinguim testa, Laputa usa (v0.5).** A Pinguim é instância de teste: recebe toda release pelo
+auto-update (aceitação `Releases`) e é onde o QA de cada fase roda. A equipe usa a app na Laputa
+(produção da UP), com aceitação `homologado` e atualização manual pelo admin dela: a release de uma
+fase só vai à Laputa depois do QA na Pinguim e da homologação (`prerelease=false`). Como a
+Pinguim recebe devs de fora, **áreas próprias, teses e cenários reais nunca entram na Pinguim**:
+lá o golden set e os testes usam áreas de prospecção, referência ou fictícias. A primeira
+instalação na Laputa acontece ao fim da fase 1; `1.0.0` só depois do critério global de pronto
+(18.3). As regras de convivência com as outras apps da instância estão em 3.6 (precedente:
+`reg360`, `docs/operacao.md`; D-97).
+
+**Portão entre fases (R-26, v0.5).** Uma fase só começa quando a anterior cumpriu três condições,
+registradas na sub-issue dela: (a) o "Pronto quando" conferido pelo QA na Pinguim (skill `qa`,
+relatório em `qa-relatorios/`); (b) a release instalada na Laputa; (c) uso real: cada jornada da
+seção 24 atribuída à fase feita por uma pessoa da equipe com dado real (data e quem), ou, nas
+fases sem jornada que feche nelas (1, 2, 3 e 4; a J6 só fecha inteira na 4B), duas semanas de uso
+na Laputa com a tela da fase aberta em pelo menos cinco dias distintos segundo `uso_eventos`. A
+fase 0 só tem a condição (a), porque a primeira instalação na Laputa é ao fim da fase 1. Cumpridas
+as condições, o dono dá o ok por escrito na sub-issue; sem o ok, a fase seguinte não começa.
+`uso_eventos` é evidência, não substitui o ok (D-104).
+
+**Convivência com o site (v0.5).** Um coletor por vez, uma fonte de verdade por tabela (seção 2.1):
+nas fases 1 e 2 a planilha é a fonte e o Apps Script coleta, e a app recebe a planilha por
+reimportação incremental; na fase 3, no dia em que as rotinas de coleta são ligadas na Laputa, os
+gatilhos do Apps Script saem e as abas de anúncios ficam somente leitura; as demais abas mudam de
+fonte quando a fase que as carrega fica pronta; a fase 6 só congela o resto. A regra vale também
+entre instâncias: na Pinguim, `coleta_ativa` fica `false` fora da janela de QA de coleta, que é
+curta (um dia) e com lote reduzido; é a única sobreposição com o Apps Script, porque o corte só
+acontece depois do QA (D-98).
+
+Ordem: −1 → 0 → 1 → 2 → 3 → 4 → **4A** → **4B** → **4C** → 5 → 6, com a **7** podendo correr em
+paralelo à 6, porque depende sobretudo do pipeline, que anda na sua trilha (15.0a). Cada fase de
+4A em diante fecha com as jornadas da seção 24 que lhe cabem e com o golden set. A fase 5 (IA) vem
+depois da 4B porque a análise de área e a camada de achados dependem dela; o que a 4C precisa dos
+achados e do Início entra na própria 4C, para que nenhuma fase dependa de uma posterior
+(D-105). Cada fase abaixo lista no fim os **acréscimos da
 v0.2**.
 
-### 15.0 Fase 0 — Preparação (1 sessão)
+### 15.−1 Fase −1 — Ativação na plataforma (não é sessão de código)
 
-- Decidir o repositório (D-16) e instalar o kit (`npx @urbiverso/kit-apps`): `apps/`,
-  `pnpm-workspace.yaml` com catálogo, `release.yml`, `ci.yml`, `KIT.md`, skills.
-- Credenciar o SDK (PAT `read:packages` no ambiente do agente e secret no CI).
-- Criar `apps/inteligencia_imobiliaria/` com `manifesto.json` mínimo, `schema.json` vazio,
-  `backend/rotas.ts` com `rotas` vazio, `frontend/index.ts` com a tela "em construção",
-  `docs/README.md` apontando para esta spec.
+Responsável: o operador das instâncias (Urbiverso Ltda), acionado pelo dono da app. Cada item diz
+quem tem a alçada. O checklist vira `docs/ativacao.md` da app e é conferido item a item na fase 0
+(precedente: o checklist de ativação do `reg360`, `docs/operacao.md`; D-96).
+
+1. Criar o repositório privado `UP-Urbita/app-inteligencia-imobiliaria` (dono da org UP-Urbita).
+2. PAT *classic* `read:packages` da conta de serviço da UP em `URBIVERSO_PACKAGES_TOKEN`, no
+   ambiente das sessões e nos secrets do repositório (o registry não autentica fine-grained).
+3. Leitura do repositório para o usuário do PAT da Pinguim e da Laputa, ou a credencial do
+   repositório cadastrada no modal Instalar app.
+4. Na Pinguim (alçada `apps`): instalar do repositório, nível de aceitação `Releases`, auto-update
+   ligado. Sem `Releases`, a release prerelease não chega, e a falha é calada.
+5. Na Laputa (alçada `apps`), ao fim da fase 1: instalar do repositório, aceitação `homologado`,
+   atualização manual.
+6. `permissao_padrao = nenhuma` nas duas instâncias (alçada `usuarios`; C-56). Quem recebe
+   `leitura`, `estrategico`, `curador`, `operador` e `admin` na Laputa segue em `[PENDENTE P-06]`.
+7. Slots-base `poder` e `barato` autorizados para a app (alçada `integracoes`; C-06).
+8. Cap global de arquivo informado (C-15, C-35); ele é o teto do `arquivo_max_bytes` do pipeline.
+9. Cadência e horário das releases na Pinguim acertados (3.6)
+   `[PENDENTE P-48]`.
+10. Hosts do proxy de egresso só quando a medição da fase 3 pedir (alçada `sistema`; D-79).
+
+**Pronto quando:** os itens 1 a 4 e 6 a 9 estão feitos e registrados em `docs/ativacao.md`; o
+item 5 fica para o fim da fase 1, e o 10 só existe se a medição pedir.
+
+### 15.0 Fase 0 — Preparação (1 a 2 PRs)
+
+- Instalar o kit no repositório criado na fase −1 (`npx @urbiverso/kit-apps`): `apps/`,
+  `pnpm-workspace.yaml` com catálogo, `release.yml`, `ci.yml`, `KIT.md`, skills. Dali em diante
+  vale o protocolo do kit (18.2).
+- Criar `apps/inteligencia_imobiliaria/` com `manifesto.json` mínimo, já com a `identidade`
+  `UP-Urbita/app-inteligencia-imobiliaria::inteligencia_imobiliaria`, `schema.json` vazio,
+  `backend/rotas.ts` com `rotas` vazio e o invólucro `rota(fn)`, `frontend/index.ts` com a tela
+  "em construção" em `/`, `docs/README.md` apontando para esta spec e `docs/ativacao.md` com o
+  checklist da fase −1.
+- `testes/infra.ts` com o `req.dados` falso e o teste de contrato dele (18.1), para que a fase 1
+  nasça testável sem instância.
+- `scripts/exportar-planilha.mjs` e o primeiro retrato datado em `migracao/AAAA-MM-DD/` (11.3);
+  `scripts/gerar-paridade.mjs` e `testes/fixtures/paridade/<data>.json` com os 30 valores de
+  Mercado e Diagnóstico e os 10 cenários de mapa (18.1). Quem monta é o PR desta fase; o dono
+  só aprova a lista de valores.
 - `pnpm build && pnpm exec urbi-empacotar inteligencia_imobiliaria --dir apps/inteligencia_imobiliaria`
-  limpo; primeira release pelo `release.yml` do kit; instalação na Pinguim com auto-update ligado.
-- Na instalação, conferir com o admin da instância (README da app): `permissao_padrao = nenhuma`
-  (C-56), slots-base `poder` e `barato` autorizados para a app (C-06), o cap global de arquivo
-  (C-15, C-35) e os hosts candidatos ao proxy de egresso (D-79).
+  limpo; primeira release pelo `release.yml` do kit (nasce prerelease); a Pinguim a instala sozinha.
+- Conferir o checklist da fase −1 item a item. Escrever no README a grade de horários sugerida
+  das rotinas (seção 4.1), que cada instância aplica na aba Rotinas na release que declara a
+  rotina, porque o default de 06:00 UTC poria as treze no mesmo slot.
 
-**Pronto quando:** a app aparece no menu da Pinguim com a tela vazia e `0.1.0`.
+**Pronto quando:** a app aparece no menu da Pinguim com a tela vazia e `0.1.0`; o checklist da
+fase −1 está conferido; a fixture de paridade existe e o dono aprovou a lista.
 
-### 15.1 Fase 1 — Fundação: território, cadastro, mapa (3 a 4 sessões)
+### 15.0a Trilha do pipeline (paralela, em outro repositório)
+
+O pipeline Python **não muda de repositório com a app**: continua em
+`rafaleandrog/inteligencia-real-estate`, com os workflows e as regras dele (R2.7, R2.8), publicando
+o manifest e os arquivos em `data/public/`, que é público porque deriva só de fonte pública. A app
+lê esse manifest pela URL `raw.githubusercontent.com` de `manifest_publico_url` (4.3): a app
+privada não precisa de credencial para ler dado público. Mudança no pipeline é PR naquele
+repositório; mudança no contrato que a app lê (12.2) é PR nos dois, com a versão do manifest como
+amarra. Cada fase que precisa de conjunto novo (4, 4A, 7) começa com o PR do pipeline mergeado e o
+conjunto publicado: é pré-requisito da fase, não entrega dela. A transferência daquele
+repositório e o dono das credenciais seguem em R-25 `[PENDENTE P-44]`
+(D-100).
+
+### 15.1 Fase 1 — Fundação: território, cadastro, mapa (4 PRs: 1a a 1d)
 
 **Schema:** `cidades`, `localidades`, `localidade_perfis`, `contornos`, `fontes_portal`,
 `buscas_portal`, `anuncios`, `anuncio_eventos`, `lancamentos`, `lancamento_eventos`, `ancoras`,
-`importacoes`, `achados_qualidade`, `alteracoes_cadastro`, `coletas`, `cursores_rotina`.
+`importacoes`, `achados_qualidade`, `alteracoes_cadastro`, `coletas`, `cursores_rotina`. Cada
+tabela nasce com todos os seus índices (3.6).
 
-**Backend:** `aoIniciar` com a semente; rotas de 6.1, 6.2 (menos comparáveis, verificar e
-por-url), 6.4, 6.9 (importações e qualidade); `comum/` com normalização portada e testada;
-exportação CSV; `backend/metricas/` com mediana e percentis.
+**Subfases (v0.5), cada uma um PR com release na Pinguim:**
+
+- **1a** esqueleto, território e importação: `cidades`, `localidades`, `localidade_perfis`,
+  `contornos`, `importacoes`, `achados_qualidade`; semente; prévia e aplicar.
+- **1b** cadastro de anúncios, lançamentos e âncoras (com `fontes_portal`, `buscas_portal`,
+  `anuncio_eventos`, `lancamento_eventos`, `alteracoes_cadastro`), exportação CSV e `uso_eventos`.
+- **1c** Mapa.
+- **1d** Operação › Qualidade e migração dos passos 0 a 7 e 10 (com `coletas` e
+  `cursores_rotina`).
+
+**Backend:** `aoIniciar` com a semente, aguardada pelas rotas (4.2); rotas de 6.1, 6.2 (menos
+comparáveis, verificar e por-url), 6.4, 6.9 (importações e qualidade); `comum/` com normalização
+portada e testada; exportação CSV; `backend/metricas/` com mediana e percentis. Os contratos de
+6.21 valem desde já: bloco ou campo que depende de tabela de fase posterior (retratos, grupos,
+liquidez, `preco_inicial`) vem `null` com `indisponivel: { motivo: 'fase_futura', fase: '3' }`, e a
+tela mostra "disponível a partir da coleta automática"; a fase que cria a tabela troca o `null`
+pelo valor sem mudar a forma da resposta.
 
 **Importação:** prévia + aplicar com aliases da planilha; passos 0 a 7 e 10 da migração
-(sem a parte de rotina do 8).
+(sem a parte de rotina do 8), sobre o retrato datado (`migracao/AAAA-MM-DD/`), nunca sobre a
+planilha viva. Reimportar o retrato seguinte em `atualizar` é o caminho de manter a app em dia até
+o corte da fase 3.
 
 **Frontend:** roteador de sub-rotas; Mapa com camadas 2, 5, 6, 7, 8, filtros, KPIs, detalhes
 em três níveis, estado na URL; Cadastro (anúncios por formulário, lançamentos, âncoras,
@@ -4454,11 +5551,16 @@ contornos com importação de KML e desenho, localidades); Operação › Import
 
 **Docs:** `docs/dados.md` (todas as tabelas da fase), `docs/importacao.md`.
 
-**Pronto quando:** os 158 anúncios, 22 lançamentos, 35 âncoras e os contornos da planilha
-estão na Pinguim pela importação, com o relatório conferindo as contagens; o mapa abre com os
-mesmos filtros do site e o mesmo detalhe; um curador cria, edita e remove um anúncio e o
-evento e a alteração ficam registrados; um CSV exportado reabre na prévia da importação sem
-rejeição.
+**Pronto quando:** os anúncios, lançamentos, âncoras e contornos do retrato datado estão na
+Pinguim pela importação, e o relatório de cada tabela fecha "importadas + rejeitadas com motivo =
+linhas do retrato" (contagem gravada em `importacoes`); o aceite não usa número fixo, porque os 141
+anúncios são a semente versionada do repositório do site (2026-09-19) e a planilha viva tinha 158 na
+mesma data e cresce; reimportar o mesmo retrato não duplica nada; o mapa abre com os mesmos
+filtros do site e o mesmo detalhe, e os 10 cenários de mapa da fixture de paridade conferem; um
+curador cria, edita e remove um anúncio e o evento e a alteração ficam registrados; um CSV
+exportado reabre na prévia da importação sem rejeição (colunas derivadas ignoradas com aviso). Ao
+fim da fase a release é homologada e instalada na Laputa, com a planilha ainda como fonte de
+verdade.
 
 **Acréscimos da v0.2:** nenhum de desenho; a legenda com classes já era exceção prevista. O
 roteador de sub-rotas já nasce com as rotas novas do `nav` apontando para "em construção".
@@ -4468,7 +5570,7 @@ de fase use uso real; `comum/tipos.ts` com `Procedencia` e `ValorMetrica`; regra
 `CONFLITO_VERSAO` nos `PATCH` de cadastro; botão "Como ler" nas telas da fase; `comum/higienizar.ts`
 (a coleta da fase 3 já nasce com ele).
 
-### 15.2 Fase 2 — Mercado e Diagnóstico (3 sessões)
+### 15.2 Fase 2 — Mercado e Diagnóstico (3 PRs)
 
 **Schema:** `ivv_mensal`, `ivv_regional`, `fipezap_mensal`, `pdad_observacoes`, `pdad_figuras`,
 `procedencias`; `sql_declarado` `serie_pareada_fipezap`, `ranking_localidades_indicador`,
@@ -4483,15 +5585,27 @@ e dispersão; Base de dados.
 **Frontend:** Mercado (10.3 itens 1 a 7), Diagnóstico com as quatro abas; `comum/indicadores.ts`.
 
 **Pronto quando:** cada número que o site mostra hoje no Mercado e no Diagnóstico aparece
-igual no app para o mesmo recorte (roteiro de paridade com 30 valores escolhidos, conferidos à
-mão); a Base de dados lista toda fonte importada.
+igual no app para o mesmo recorte: o `pnpm test` compara a app com os 30 valores de
+`testes/fixtures/paridade/<data>.json`, tirados do código do site sobre o retrato datado, e o QA
+confere a mesma lista na Pinguim; a Base de dados lista toda fonte importada.
 
 **Acréscimos da v0.2:** `comum/metricas.ts` (catálogo com natureza, rateio e sentido, D-22,
 D-35), que substitui `comum/indicadores.ts`; coroplética das localidades por qualquer métrica;
 exceção de dispersão; estoque de lançamentos por status e VSO/LsO (D-32); déficit habitacional e
 coabitação por importação; `cv_frac` e `erro_padrao` na PDAD com o aviso de cautela (D-29).
 
-### 15.3 Fase 3 — Coleta, histórico e fechamento mensal (3 a 4 sessões)
+### 15.3 Fase 3 — Coleta, histórico e fechamento mensal (4 PRs: 3a a 3d)
+
+A coleta automática nos portais depende do parecer jurídico sobre os termos de uso
+`[PENDENTE P-45]`.
+
+**Subfases (v0.5):**
+
+- **3a** cliente HTTP, classificação e parsers: código puro, sem rotina, com as fixtures reais.
+- **3b** `verificar_anuncios` e `descobrir_anuncios`, com `cursores_rotina`, trava por classe e
+  `coleta_ativa`.
+- **3c** `fechar_mes` e as métricas.
+- **3d** candidatos, portões e as telas de Operação.
 
 **Schema:** `candidatos`, `anuncio_retratos`, `metricas_anuncios_mensais`; `sql_declarado`
 `mediana_preco_por_localidade`, `cobertura_anuncios`.
@@ -4511,26 +5625,34 @@ item 8; comparáveis no detalhe do Mapa; situação do anúncio e "confirmado no
 **Docs:** `docs/coleta.md` com a postura, a classificação, os portões e o runbook do pedido de
 proxy de egresso ao admin da instância, com a lista de hosts (D-79).
 
-**Pronto quando:** a rotina diária roda na Pinguim por sete dias seguidos com log limpo ou
-com bloqueio registrado por fonte (não com erro); um candidato descoberto é promovido pelo
-portão e outro fica pendente pelo motivo certo; o primeiro `fechar_mes` congela o mês e as
-métricas conferem com um recálculo manual de três grupos; a decisão de pedir o proxy de egresso
-(D-09, D-79) é tomada com o painel de Fontes como evidência; duas continuações entregues em
-duplicata não processam o mesmo lote duas vezes (D-85).
+**Pronto quando:** é o único que termina na Laputa. **Na Pinguim**, na janela de QA (um dia,
+lote reduzido): cada rotina de coleta roda com log limpo ou bloqueio registrado por fonte; um
+candidato descoberto é promovido pelo portão e outro fica pendente pelo motivo certo; duas
+continuações entregues em duplicata não processam o mesmo lote duas vezes (D-85); `coleta_ativa =
+false` para a cadeia de continuações na fatia seguinte; e a janela fecha com `coleta_ativa =
+false`. **Na Laputa**: o corte é feito no dia em que as rotinas de coleta são ligadas (gatilhos do
+Apps Script removidos, abas de anúncios somente leitura); a rotina diária roda sete dias seguidos
+com log limpo ou com bloqueio registrado por fonte (não com erro); o primeiro `fechar_mes` congela
+o mês e as métricas conferem com um recálculo manual de três grupos; a decisão de pedir o proxy de
+egresso (D-09, D-79) é tomada com o painel de Fontes como evidência.
 
 **Acréscimos da v0.2:** `anuncio_grupos`, rotina `agrupar_anuncios` e a fila de agrupamentos
-(D-26); `preco_inicial_brl` e as métricas ampliadas (D-25); `indice_oferta_mensal` (D-40);
+(D-26); `preco_inicial_brl` e as métricas ampliadas (D-25); `indice_oferta_mensal` (D-40), calculado desde já e mostrado na tela só quando a primeira base de 12 meses fechar;
 `fonte_saude` e o erro `parser_degradado` (D-27); recorte por polígono e raio no Mapa (D-24);
 seletor temporal dos retratos; pacote com proveniência (D-28).
 
-### 15.4 Fase 4 — Território público e tráfego (2 a 3 sessões)
+### 15.4 Fase 4 — Território público e tráfego (2 a 3 PRs)
 
 **Schema:** `conjuntos_publicos`, `conjunto_arquivos`, `agregados_territoriais`,
 `trechos_rodoviarios`, `trecho_aliases`, `sentidos_oficiais`, `trafego_diario`, `corredores`,
 `corredor_diario`.
 
-**Backend:** rotina `carregar_dados_publicos`; rotas 6.7; servir arquivo com `ETag` e cache
-imutável.
+**Pipeline (pré-requisito, 15.0a):** os conjuntos que a fase carrega, publicados; para o
+acréscimo da v0.3, `equipamentos_publicos` (INEP, CNES, OSM; pontos com `fonte`, `id_fonte`,
+`tipo`).
+
+**Backend:** rotina `carregar_dados_publicos`; rotas 6.7, com a rota de arquivo que resolve a URL
+assinada (D-81).
 
 **Importação:** passos 16 a 18.
 
@@ -4550,15 +5672,16 @@ ainda sem conjunto tabular.
 **Acréscimos da v0.3:** `comum/fontes.ts`, rotina `verificar_frescor` e a tela de frescor (D-71);
 `equipamentos_publicos` (INEP, CNES, OSM) com a camada e a promoção a âncora (D-62).
 
-### 15.4A Fase 4A — Grade analítica (2 a 3 sessões)
+### 15.4A Fase 4A — Grade analítica (2 a 3 PRs)
 
 **Schema:** `celulas`, `celula_metricas`, `localidade_composicao`; `h3_r9` em `anuncios`,
 `lancamentos`, `ancoras` (preenchido por um passo de recálculo para o que já existe);
 `sql_declarado` `contagem_por_celula`; a agregação do enriquecimento é código sobre `varrerTudo`
 (D-83).
 
-**Pipeline:** conjuntos `celulas_r9`, `ibge_grade` e `aop_ipea` também em tabela; `cnefe_2022`,
-`censo_2022_setores`, `composicao_localidades`.
+**Pipeline (pré-requisito, 15.0a):** conjuntos `celulas_r9`, `ibge_grade` e `aop_ipea` também em
+tabela; `cnefe_2022`, `censo_2022_setores`, `composicao_localidades`; `restricoes_sitio`
+(polígonos por tipo, simplificados a 5 m, mais a fração restrita por célula).
 
 **Backend:** `comum/celulas.ts` (pertencimento por centroide, raio, polígono, polyline), rateio
 pelo catálogo; carga tabular fatiada; rotas 6.10.
@@ -4572,15 +5695,21 @@ cálculo manual no QGIS; a série de domicílios de Planaltina aparece nominal e
 quebra de 2022 marcada; a camada hexagonal desenha o DF no zoom 12 sem travar no celular de
 referência, com `hex_max_celulas_resposta` medido e fixado aqui (o `urbi-mapa` desenha em canvas
 para "milhares de polígonos", sem número contratual; P-17 é medição, C-64); a carga de
-`celula_metricas` cabe nas continuações do mês, com o throughput medido na Pinguim (C-28).
+`celula_metricas` cabe nas continuações do mês, com o throughput medido na Pinguim (C-28); a área
+líquida de um polígono sintético com restrição conhecida confere com o cálculo vetorial; a grade
+entra **sem** oferta por célula: enquanto a fração de anúncios ativos com coordenada exata no
+recorte for menor que 50%, o entorno mostra a estatística da localidade, rotulada "da RA, não do
+anel" (não há meta de volume como portão de fase); e o teste do golden set roda o dossiê sobre a
+entrada congelada de cada área de referência e passa (24.2).
 
-**Acréscimos da v0.3:** restrições do sítio por célula e a camada vetorial (D-61); natureza
+**Acréscimos da v0.3:** restrições do sítio como polígonos (a área líquida é vetorial) e a
+fração restrita por célula, só para mapa e achados (D-61); natureza
 `amostra` e `categorica` no catálogo e o catálogo inicial (D-67); `versao_metodo` e
 `comum/versoes.ts` (D-70); `cache_calculos` e `geracao_cadastro` (D-69); rotinas
 `recalcular_derivados` e `limpar_retencao`; `ResultadoEnriquecimento` como contrato; golden set
-montado (P-37) e conferido no "pronto quando".
+montado sobre entrada congelada (P-37, 24.2) e conferido no "pronto quando".
 
-### 15.4B Fase 4B — Áreas, demanda e produto (3 a 4 sessões)
+### 15.4B Fase 4B — Áreas, demanda e produto (3 a 4 PRs)
 
 **Schema:** `areas_estudo`, `area_estudo_fichas`, `empreendimentos`, `vinculo_sugestoes`,
 `terracap_lotes`, `licenciamento_obras`, `faixas_programa`; `sql_declarado`
@@ -4596,33 +5725,44 @@ de 2024 em diante e das licenças disponíveis.
 matriz, benchmark); Terra e oferta futura; Cadastro de empreendimentos, lotes, licenças e
 faixas; fila de vínculos; anéis de âncoras existentes no dossiê.
 
-**Pronto quando:** as áreas próprias da UP estão cadastradas e cada uma tem uma ficha de uma
-página gerada e baixada em Markdown; a capacidade de pagamento de uma localidade confere com uma
-planilha feita à mão para três faixas de renda; a mediana de R$/m² arrematado de uma localidade
-confere com os editais lidos à mão; um empreendimento aparece com lançamento, alvará e anúncios
-vinculados.
+**Pronto quando:** na Pinguim, o QA cadastra áreas de prospecção, referência ou fictícias e gera
+a ficha de uma página de cada uma; na Laputa, as áreas próprias da UP estão cadastradas
+`[PENDENTE P-47]` e cada uma tem uma ficha de uma página gerada e baixada
+em Markdown; uma pessoa sem `estrategico`, `curador` nem responsabilidade pela área não as vê; a
+capacidade de pagamento de uma localidade confere com uma planilha feita à mão para três faixas de
+renda; a mediana de R$/m² arrematado de uma localidade, por `destinacao_categoria`, confere com os
+editais lidos à mão; um empreendimento aparece com lançamento, alvará e anúncios vinculados. A
+seção de comércio da ficha sai omitida com o motivo ("disponível com Comércio e âncoras"), nunca
+vazia nem zero; a J1 não depende dela.
 
 **Acréscimos da v0.3:** estágios da escada de maturidade (D-55); dossiê nas quatro escalas e
 `Dossie` como contrato (D-56); sítio no dossiê (área líquida); `cenarios_viabilidade`, as rotas
 6.19, a tela de viabilidade e o mercado de lotes (D-63, D-64); leiaute da ficha de uma página;
 jornada J1.
 
-### 15.4C Fase 4C — Tese, diligência e portfólio (2 a 3 sessões)
+### 15.4C Fase 4C — Tese, diligência e portfólio (3 a 4 PRs)
 
-**Schema:** `area_perimetros`, `area_sintese_itens`, `teses`, `tese_condicoes`, `diligencias`,
-`hipoteses_ancora`, `area_eventos`, `observacoes_campo`.
+**Schema:** `area_perimetros`, `area_sintese_itens`, `teses`, `tese_condicoes` (com
+`hipotese_produto_id` opcional), `diligencias`, `hipoteses_ancora`, `hipoteses_produto` (v0.5:
+área, tipologia, faixa de preço, unidades, `cenario_viabilidade_id`, natureza, status, evidências),
+`area_eventos`, `observacoes_campo`; `achados_mercado`.
 
 **Backend:** rotas 6.17 e 6.18; semente de perguntas de diligência (`comum/diligencia.ts`) e o
-pré-preenchimento pelo app; agenda de decisão; portfólio; métrica monitorada nas condições.
+pré-preenchimento pelo app; agenda de decisão `[PENDENTE P-42]`; portfólio;
+métrica monitorada nas condições; a rotina `calcular_achados` só com o tipo `condicao_em_risco` (os
+demais tipos entram na fase 5); comparação de duas fichas da mesma área (6.11).
 
 **Frontend:** abas Síntese e agenda, Tese, Diligência, Âncoras (sem simulação ainda), Linha do
-tempo; Portfólio; modo campo; perímetros no mapa.
+tempo; Portfólio; modo campo; perímetros no mapa; **Início mínimo** em `/`, com condições vencidas
+e diligências da semana (o Início completo é da fase 5); ação "Comparar com…" na lista de fichas.
+Aviso de prazo ao responsável fica fora até decisão `[PENDENTE P-43]`.
 
-**Pronto quando:** as jornadas J2 (sem a parte de âncora), J5 e J7 são feitas na Pinguim por
-alguém da equipe; uma condição com métrica monitorada muda de status sugerido depois de um
-`calcular_achados`; um item `fato` sem evidência é recusado com o erro certo.
+**Pronto quando:** as jornadas J2 (sem a parte de âncora), J5 e J7 são feitas na Laputa por
+alguém da equipe, e o QA as repete na Pinguim com áreas fictícias; uma condição com métrica
+monitorada muda de status sugerido depois de um `calcular_achados`; um item `fato` sem evidência é
+recusado com o erro certo.
 
-### 15.5 Fase 5 — Análises por IA (2 sessões)
+### 15.5 Fase 5 — Análises por IA (2 PRs)
 
 **Schema:** `analises_ia`.
 
@@ -4633,46 +5773,58 @@ parâmetros de instruções com texto padrão.
 **Frontend:** tela Análises; botões e blocos de análise vigente no Mapa, Mercado e
 Diagnóstico; `estadoSlot` escondendo o que não resolve.
 
-**Docs:** `docs/analises.md`.
+**Docs:** `docs/analises.md`, com o porquê do limite de requisições por minuto.
+
+**Instalação (v0.5):** o admin da app sobe o limite de requisições de IA por minuto de 10 para
+`30` (Config › IA › Configurações), na Pinguim e na Laputa; é passo do checklist da fase.
+`gerar_analises_mensais` enfileira no máximo `ia_lote_por_fatia` análises por fatia (4.1).
 
 **Pronto quando:** a análise de mercado do mês e a de três localidades são geradas na Pinguim,
 todos os achados citam indicadores existentes, uma lacuna de lançamento vira evento e aparece
 no inbox do curador, e o custo em tokens está dentro da faixa da seção 9.5.
 
-**Acréscimos da v0.2:** `achados_mercado`, rotina `calcular_achados` e a seção 9.7 (D-21);
-slot `analise_area` e a análise de área no dossiê e na ficha; `achado_ids` no schema de resposta;
-tela de Início (D-33); `visoes_salvas`. O "pronto quando" ganha: toda análise do mês cita ao menos
+**Acréscimos da v0.2:** os demais tipos de achado da seção 9.7 (D-21; a tabela `achados_mercado`
+e a rotina `calcular_achados` entram na 4C); slot `analise_area` e a análise de área no dossiê e na
+ficha; `achado_ids` no schema de resposta; Início completo (D-33; o mínimo entra na 4C);
+`visoes_salvas`. O "pronto quando" ganha: toda análise do mês cita ao menos
 três achados por `id`, e nenhum achado citado é desconhecido.
 
 **Acréscimos da v0.3:** extensão do schema de `analise_area` (síntese, hipóteses, perguntas) e a
-rota `/analises/:id/propor-sintese`; pesos e fórmula da pontuação (D-68); achado
-`condicao_em_risco`; Início com condições vencidas e diligências da semana; jornada J4.
+rota `/analises/:id/propor-sintese`; pesos e fórmula da pontuação (D-68); jornada J4. O achado
+`condicao_em_risco` e o Início com condições vencidas e diligências da semana passaram para a 4C.
 
-### 15.6 Fase 6 — Fechamento da migração (1 sessão)
+### 15.6 Fase 6 — Fechamento da migração (1 PR)
 
-- Planilha em somente leitura; gatilhos do Apps Script removidos; `README.md` do repositório
+- A coleta da planilha já parou na fase 3 (gatilhos do Apps Script removidos, abas de anúncios
+  somente leitura). Aqui as demais abas ficam somente leitura, e o `README.md` deste repositório
   passa a apontar para a app e marca o site como legado.
 - Site estático congelado em uma tag; GitHub Pages pode seguir no ar como arquivo histórico ou
   ser desligado (decisão do dono).
 - `docs/PRODUCT_PLAN.md`, `ARCHITECTURE.md`, `DATA_CONTRACT.md`, `SHEET_SETUP.md` recebem um
   aviso de que descrevem o legado.
 
-### 15.6A Fase 7 — Comércio e âncoras (3 a 4 sessões; pode correr em paralelo à 6)
+### 15.6A Fase 7 — Comércio e âncoras (3 a 4 PRs; pode correr em paralelo à 6)
+
+Lentes, Gi* e as camadas de MapBiomas e Open Buildings não aparecem em jornada nenhuma (R-36) e
+dependem de decisão de escopo `[PENDENTE P-46]`; MapBiomas e Open Buildings
+dependem também da credencial do Earth Engine (P-30). Nada sai do escopo até a decisão.
 
 **Schema:** `pontos_comerciais`, `lentes`; `categoria_consumo` e `atratividade` em `ancoras`.
 
-**Pipeline:** `comercio_cnpj`, `comercio_osm`, `potencial_consumo`, `mapbiomas_urbano`,
-`open_buildings`, `jobs_cep_2023`.
+**Pipeline (pré-requisito, 15.0a):** `comercio_cnpj`, `comercio_osm`, `potencial_consumo`,
+`mapbiomas_urbano`, `open_buildings`, `jobs_cep_2023`.
 
 **Backend:** `comum/comercio/` (categorias, lacunas, Huff), `comum/espacial/` (similaridade,
-score, Gi*); rotas 6.13; achados `lacuna_comercial` e `bolsao`.
+score, Gi*, com significância por FDR e o Gi* de preço desligado até haver dado); rotas 6.13;
+achados `lacuna_comercial` (na bacia da categoria) e `bolsao`.
 
 **Frontend:** Comércio e âncoras (potencial e lacunas, simular, gêmeas, lentes); camadas de
 pontos comerciais, expansão urbana e novas edificações; seção de comércio no dossiê e na ficha.
 
 **Pronto quando:** a contagem de supermercados por RA confere com uma amostra verificada à mão
 em duas RAs; a simulação de Huff de uma âncora existente, rodada como se ela não existisse,
-devolve participação coerente com a localização dela (teste de sanidade, não de calibração); a
+devolve participação coerente com a localização dela, com a escala de atratividade declarada
+(teste de sanidade, não de calibração); a
 ficha de prospecção de uma área própria sai com potencial, concorrência, fluxo e hipótese de
 âncora.
 
@@ -4752,7 +5904,7 @@ gravada na hipótese de âncora; seção de âncora na ficha detalhada; jornada 
 | D-13 | Permissão padrão **nenhuma**; liberação por pessoa. *v0.4: é operação do admin da instância (`permissao_padrao`), não contrato do manifesto (C-56)* | `leitura` para toda a instância | Pedido do dono, por enquanto |
 | D-14 | Notificação só de erros de operação, mais o evento de lacuna de cadastro | Notificar candidato novo, reativação, queda de preço | Foco pedido; o resto entra quando houver uso |
 | D-15 | Sem modo demonstração nem dado fictício | Manter `demo.json` | A instância de destino é de testes e recebe o dado real por CSV |
-| D-16 | Repositório da app a decidir depois; a spec descreve a forma (`apps/<slug>/`) sem fixar onde | Decidir agora | Pedido do dono: nesta rodada só a spec |
+| D-16 | Repositório da app a decidir depois; a spec descreve a forma (`apps/<slug>/`) sem fixar onde. *v0.5: substituída pela D-95 (repositório na org UP-Urbita)* | Decidir agora | Pedido do dono: nesta rodada só a spec |
 | D-17 | `metricas_anuncios_mensais` materializada por rotina, com recálculo total disponível | Calcular na hora | Velocidade de tela e uma só implementação da estatística (o fechamento) |
 | D-18 | Papéis `curador` (dado) e `operador` (operação) sob `escrita` | Um papel só | Separa quem responde pelo dado de quem responde pela máquina; admin pode ter os dois |
 | D-19 | Tráfego e rodovias entram na V1 (fase 4) | Deixar para depois | Já está pronto na planilha e no site; portar custa menos que decidir de novo |
@@ -4831,12 +5983,42 @@ gravada na hipótese de âncora; seção de âncora na ficha detalhada; jornada 
 | D-92 | **Teto de transporte:** polyline na querystring até `polyline_max_vertices` (300); acima, área de estudo temporária; corpo JSON até 100 KB, então geometria colada ou importada vai sempre como arquivo | Polígono de centenas de vértices na URL e GeoJSON colado no corpo | C-77: o bundle não documenta teto de URL (a app assume 8 KB). C-78: "O corpo excede o teto de `100kb`" → `413`. C-20: sem teto de `json` documentado, cache e ficha guardam por bloco |
 | D-93 | **Bibliotecas puras no bundle; PDF e Word no Futuro.** ZIP do pacote por `fflate`; `h3-js` autorizada quando a medição pedir; ficha em Markdown, CSV e pacote | Pacote em três downloads; PDF da ficha na V1 | C-74: "dependência nativa fica fora", e biblioteca pura em JS ou WASM entra sem permissão. C-40: o SDK 100 não tem geração de documento. Fecha P-18 e P-20 |
 | D-94 | **"Ver tabela", legenda do mapa e posição do aparelho são da app:** `urbi-tabela` montado com os dados do gráfico; legenda como exceção registrada; `navigator.geolocation` com fallback de posição tocada, e foto por `<input type="file" capture>` | Esperar o primitivo oferecer | C-60, C-67, C-68 (ausentes no SDK) e C-71 (ambíguo): nenhum dos três existe no primitivo, e o modo campo precisa funcionar sem contrato de câmera e geolocalização. Fecha P-39 |
+| D-95 | A app nasce no repositório privado UP-Urbita/app-inteligencia-imobiliaria, identidade UP-Urbita/app-inteligencia-imobiliaria::inteligencia_imobiliaria; este repositório fica com o site e o pipeline | reorganizar o repositório atual ou usar um repositório pessoal | apps da UP moram na org da UP (UP-Urbita/app-radar-sei, UP-Urbita/urbigis); ENGINEERING_RULES R1.1 e R1.3 proíbem build e backend Node; gate de identidade em 2026-10-28 (substitui D-16; fecha P-04) |
+| D-96 | Fase −1 de ativação na plataforma, checklist de 10 itens com alçada por item, feita pelo operador das instâncias e registrada em docs/ativacao.md | deixar a ativação implícita na fase 0 | apps-em-repo-proprio.md § 7; checklist de ativação do reg360 |
+| D-97 | Pinguim é teste (Releases, auto-update, QA); a equipe usa na Laputa (homologado, atualização manual) a partir do fim da fase 1; dado sigiloso nunca na Pinguim | usar a Pinguim como instância de uso | apps-em-repo-proprio.md § 8; reg360 operacao.md; a Pinguim recebe devs de fora |
+| D-98 | Um coletor por vez também entre instâncias: na Pinguim coleta_ativa = false fora de uma janela curta de QA; os sete dias da fase 3 contam na Laputa depois do corte | coletar nas duas instâncias | §8.1 (uma requisição por vez por host); item 4 da revisão |
+| D-99 | A unidade de planejamento é o PR (fatia vertical com release); fases como sub-issues de uma issue guarda-chuva; estimativa em PRs, recontada a cada fase | estimar em sessões | skill orquestrar; reg360 cresceu por versões pequenas |
+| D-100 | O pipeline fica neste repositório em trilha própria; a app lê o manifest público sem credencial; conjunto publicado é pré-requisito das fases 4, 4A e 7 | levar o pipeline para o repositório da app | apps-em-repo-proprio.md § 2; workflows do pipeline já existem aqui |
+| D-101 | req.dados falso tipado por Pick<HelperDados>, teste estático de sql_declarado, banco só via URBIVERSO_PG_TESTE_URL antes de release que muda sql_declarado | esperar dev-shell ou testar só na instância | apps-em-repo-proprio.md § 9 (não existe dev-shell); KIT.md; nobi testes/infra.ts |
+| D-102 | Paridade e golden set sobre retrato datado e entrada congelada versionados; o teste local bloqueia a fase, a Pinguim é informativa | comparar com a planilha viva ou com dado vivo | nobi atendimento-golden.test.ts; reg360 importacao.md |
+| D-103 | gerar-paridade.mjs recebe um checkout do site num commit fixado e grava o commit na fixture | copiar o código do site para o repositório da app | os repositórios são separados |
+| D-104 | A fase seguinte só começa com QA na Pinguim, release na Laputa e uso real (jornada, ou 5 dias distintos em 2 semanas), mais o ok escrito do dono | portão subjetivo "foi usada" | skill orquestrar; reg360 operacao.md |
+| D-105 | A 4C traz achados_mercado só com condicao_em_risco, o Início mínimo e hipoteses_produto; seção da ficha de fase posterior sai omitida com motivo | manter a 4C dependendo das fases 5 e 7 | o pronto quando da 4C usava o que só nascia na fase 5; a J1 usava lacunas da fase 7 |
+| D-106 | Índices nascem com a tabela; no máximo uma release por dia útil fora do horário de uso; sem downgrade; migração pesada fora do boot (§3.6) | releases livres | overview.md (instalar reinicia o shell); distribuicao.md (downgrade proibido) |
+| D-107 | Papel estrategico sob leitura abre as áreas próprias; os demais recebem 404 | sigilo só por curador, ou nenhum | permissoes.md (papel sob leitura); nobi papel gestor |
+| D-108 | Parâmetro bool coleta_ativa lido a cada fatia; desligado, para continuações e rotas manuais (409 COLETA_PAUSADA) | confiar no toggle da aba Rotinas | rotinas.md (o toggle não cancela agendamentos); nobi atendimento_ativo |
+| D-109 | Limite de IA sobe para 30 na fase 5; o lote mensal enfileira até ia_lote_por_fatia (8) por fatia, com intervalo de 2 min | pausa entre pedidos dentro da rotina | ia.md (o worker respeita requests_por_minuto); nobi integracoes.md |
+| D-110 | Início mora em "/" e é a tela do Home do shell; rota desconhecida mostra "Página não encontrada" | Início em /inicio | overview.md (o shell põe Home, que abre "/"); radar_sei, charles3 e reg360 usam "/" |
+| D-111 | Tags com prefixo intel-imob-, raiz app-inteligencia-imobiliaria, registro que só define a tag se ela ainda não existe | prefixo com o slug inteiro, ou @customElement direto | convenção de prefixo por app (radar-sei-*, charles3-*, reg360-*); o "Tentar novamente" do shell reavalia o bundle |
+| D-112 | Semente como promise memoizada, aguardada por middleware; sem 503 APP_PREPARANDO | responder 503 até o fim da semente | overview.md (aoIniciar roda depois do listen); nobi seed.ts |
+| D-113 | Sai agrupar_confianca_auto; grupo só conta sozinho com coordenada exata a ≤ 30 m, área ±1 m² e preço ±2% | limiar de confiança 0,90 | a app não guarda anunciante; 141 de 141 anúncios da semente têm coordenada por jitter |
+| D-114 | O repositório da app segue o KIT.md e as skills do kit; merge e release só por ordem expressa | replicar o protocolo deste repositório | KIT.md; o ci.yml do kit já empacota cada app |
+| D-115 | Nas tabelas filhas de uma área de estudo, ler é o da área (resolvido pelo pai) e escrever é escrita + ler da área, salvo quando a coluna Papel acrescenta "autor ou curador" | regra própria por tabela filha | uma regra só, e a matriz de acesso fecha por contagem exata (T4, item 13) |
+| D-116 | O filtro de sigilo das áreas próprias entra na consulta antes da paginação e vale também para contagens | filtrar a página depois de lida | senão total e contagens revelam a área oculta, contra o 404 que não confirma existência (item 13) |
+| D-117 | Código próprio 422 FONTE_CONFIG_INVALIDA para url_base ou cabecalhos inválidos ao salvar fonte | reusar URL_FORA_DAS_FONTES | este significa host fora da lista; ao salvar a fonte o host define a lista |
+| D-118 | Nas ações síncronas de uma página o teto de 20 s é o total com redirecionamentos; estourou, 504 COLETA_TIMEOUT | 20 s por requisição (até 60 s com 2 saltos) | T5; nas rotinas o teto por requisição continua 20 s |
+| D-119 | Desfazer importação só remove (lógico) as linhas criadas e não editadas; linhas atualizadas no modo atualizar não voltam: o relatório as lista e o caminho é reimportar o retrato anterior | Reverter as atualizações guardando o valor anterior de cada coluna | Guardar o antes de cada célula exigiria tabela de histórico; o retrato datado com sha256 já permite voltar (precedente reg360: sem desfazer em produção) |
+| D-120 | A trava de classe é uma linha de cursores_rotina com rotina = "classe:<classe>", pelo mesmo compare-and-set da D-85 | tabela própria de travas | reaproveita o mecanismo sancionado (D-85, C-32) |
+| D-121 | raio_bacia_m de partida por categoria (supermercado 1 500, farmácia 800, padaria 800, academia 1 500, escola 2 000, clínica 2 000, restaurante 1 000, pet 1 500, vestuário 3 000) | raio único | ponto de partida a conferir com a P-25 |
+| D-122 | dias_ate_sair_mediana mantém o nome e passa a ser mediana de Kaplan-Meier; S(30) em permanencia_30_dias_frac | renomear | não quebra referências |
+| D-123 | base_area vira dimensão de metricas_anuncios_mensais, R$/m² null na linha todas | colunas lado a lado | garante nunca misturar base de área |
+| D-124 | hipoteses_produto.status em hipotese, sustentada, descartada | reaproveitar status de hipoteses_ancora | hipótese de produto não tem fase de conversa |
 
 ---
 
 ## 17. Pendências
 
-P-11 (a contradição sobre `reagir`) foi resolvida pela D-47 e não aparece abaixo. Na v0.4 a
+P-11 (a contradição sobre `reagir`) foi resolvida pela D-47 e não aparece abaixo. Na v0.5 fecharam P-04 e P-23 e entraram P-42 a P-48. Na v0.4 a
 conferência contra o SDK fechou P-05, P-16 a P-22, P-38 e P-39; elas ficam na tabela com a linha
 "Fechada em v0.4", para o histórico.
 
@@ -4845,7 +6027,7 @@ conferência contra o SDK fechou P-05, P-16 a P-22, P-38 e P-39; elas ficam na t
 | P-01 | O que são `EMPLOYMENT_PRELIMINARY`, `EMPLOYMENT_RA_PROFILE` e `WORKPLACE_RA_2018` (fonte, ano, unidade) | Decidir se viram linhas de `agregados_territoriais`, tabela própria ou morrem na migração |
 | P-02 | Texto padrão das instruções de IA dos quatro slots de análise | Fase 5 escreve a primeira versão; a equipe refina na Config |
 | P-03 | Cabeçalhos exatos de `PDAD_A_FIGURE_MAP`, `FIPEZAP_SOURCES`, `FIPEZAP_NOTES`, `PDAD_A_GUIDE`, `LISTINGS_COVERAGE`, `PDAD_A_COVERAGE` (não alcancei a planilha além da nona aba) | As tabelas `pdad_figuras` e `procedencias` têm `extras` justamente para absorver o que não está modelado; confirmar na primeira importação |
-| P-04 | Repositório da app (D-16) e `identidade` do manifesto | Fase 0 |
+| P-04 | **Fechada em v0.5:** repositório `UP-Urbita/app-inteligencia-imobiliaria` e identidade `UP-Urbita/app-inteligencia-imobiliaria::inteligencia_imobiliaria` (D-95) | — |
 | P-05 | **Fechada em v0.4:** o horário é do admin da app na aba Rotinas, por hora cheia no fuso da organização (dia do mês de 1 a 28); não há dependência entre rotinas, e a ordem mensal é por horas distintas mais guarda de pré-condição (C-05, C-36). O README da app sugere os horários; o fuso das rotinas é o parâmetro `fuso_organizacao` (D-84) | — |
 | P-06 | Quem são as pessoas da equipe que recebem `leitura`, `curador`, `operador`, `admin` na Pinguim | Liberação na instalação |
 | P-07 | Se o GitHub Pages continua no ar como arquivo depois da fase 6 | Fase 6 |
@@ -4863,12 +6045,12 @@ conferência contra o SDK fechou P-05, P-16 a P-22, P-38 e P-39; elas ficam na t
 | P-20 | **Fechada em v0.4:** não há geração de PDF ou Word no SDK 100; a ficha sai em Markdown, CSV e pacote, e PDF/Word ficam no Futuro (C-40; D-54, D-93) | — |
 | P-21 | **Fechada em v0.4 como pergunta ao SDK:** o bundle não documenta limite de linhas nem orientação para tabela grande, e não há inserção em lote; a carga é `criarOuAtualizar` por cursor e o throughput é medido na Pinguim na fase 4A (C-28; D-83) | fallback: só células habitadas e catálogo inicial (R-45) |
 | P-22 | **Fechada em v0.4:** sim, por `rotasPessoais` e tabela `pessoal: true` (SDK 94, shell 0.56.25) (C-54; D-80) | — |
-| P-23 | Ano-base e fonte dos pesos do índice estratificado | O índice não é publicado até decidir |
+| P-23 | **Fechada em v0.5:** estrato localidade × orientação, peso exógeno (Censo 2022 × dormitórios da PDAD), base nos primeiros 12 meses publicáveis, imputação de até 3 meses e publicação só com peso imputado ≤ 0,30 (seção 5.4); `indice_ano_base` sai de 4.3 | — |
 | P-24 | Quais séries macro carregar (códigos e escalas) e se o custo de construção tem licença de uso | O bloco macro sai vazio |
 | P-25 | Lista final de categorias de consumo, CNAEs e grupos da POF | Comércio começa por um conjunto mínimo (supermercado, farmácia, academia, escola, clínica) |
 | P-26 | Geocodificação do CNPJ: por CEP, por endereço ou casada ao CNEFE | Pontos por CEP ficam fora de distância e de célula |
 | P-27 | Calibração do expoente do Huff (sem dado de venda) | Simulação só serve para comparar cenários entre si |
-| P-28 | Quem cadastra as áreas próprias da UP e de onde vem a lista oficial | Áreas próprias incompletas ou desatualizadas no Início e nas análises |
+| P-28 | Quem cadastra as áreas próprias da UP e de onde vem a lista oficial *v0.5: a fonte provável é o Urbigis/Magis; ver P-47* | Áreas próprias incompletas ou desatualizadas no Início e nas análises |
 | P-29 | Se o IPEDF publica erro padrão ou CV por indicador, e qual limiar usar | Aviso de cautela só pela cobertura amostral |
 | P-30 | Credencial do Earth Engine (ou alternativa) no Actions para MapBiomas e Open Buildings | Expansão urbana e novas edificações ficam fora da fase 7 |
 | P-31 | Fontes e licenças de UC, APP e hidrografia, e do modelo de elevação para declividade, no DF | Restrições do sítio ficam incompletas; área líquida não é estimada |
@@ -4882,6 +6064,13 @@ conferência contra o SDK fechou P-05, P-16 a P-22, P-38 e P-39; elas ficam na t
 | P-39 | **Fechada em v0.4:** sem contrato no SDK (C-68 ausente, C-71 ambíguo); o modo campo usa HTML puro para a foto e `navigator.geolocation` com fallback de posição tocada ou digitada (D-94) | se a instância restringir permissões, só o fallback (R-46) |
 | P-40 | Perguntas padrão de diligência por frente, revisadas com o doc. 05 e com o jurídico | A semente começa com as perguntas do doc. 05, §61 |
 | P-41 | Repertório oficial de modelos de parceria para hipóteses de âncora, a partir do doc. 03 | `modelo_parceria` fica texto livre |
+| P-42 | Quem decide sobre uma área e quais transições da escada exigem decisão registrada; recomendação: tabela `decisoes_area` e papel `decisor` para a Direção (precedente: aprovações do nobi) | A agenda de decisão não registra quem decidiu; a Direção, só com `leitura`, não registra nada |
+| P-43 | Se o aviso de prazo de diligência e de condição ao responsável pode ampliar a D-14; recomendação: notificação direta ao responsável por rotina diária (precedente: reg360 `checar_propostas_vencendo`) | Prazos só aparecem no Início, por consulta |
+| P-44 | Quem responde por cada fonte manual e se o pipeline vai para a org da UP; recomendação: responsável nomeado por fonte e pipeline em repositório público na `UP-Urbita` | Fonte manual atrasada sem ninguém para cobrar; o manifest depende de um repositório pessoal |
+| P-45 | Parecer sobre a coleta nos portais (termos de uso) e sobre IVV e FipeZap em exportação, pacote e IA; recomendação: parecer antes da fase 3 | Risco de violar termos de uso e de redistribuir dado licenciado |
+| P-46 | Se lentes, Gi* e análise de tela, que não servem a nenhuma jornada, saem da V1 pela R-36; recomendação: mover para o Futuro e manter áreas gêmeas (J3) | Telas sem uso que custam construção e manutenção |
+| P-47 | Confirmar que a lista oficial de áreas próprias é a do Urbigis/Magis ("MATRÍCULAS › Atuais (UP)") e nomear o curador que a espelha; recomendação: importar por KMZ com o id de origem | Áreas próprias incompletas ou desatualizadas no Início, no portfólio e nas análises |
+| P-48 | Horário e cadência exata das releases na Pinguim, a acertar com o operador | release em horário de uso derruba as apps de outros na Pinguim |
 
 ---
 
@@ -4889,56 +6078,107 @@ conferência contra o SDK fechou P-05, P-16 a P-22, P-38 e P-39; elas ficam na t
 
 ### 18.1 Testes da app (`testes/`, `node --test`)
 
+Os testes rodam **sem instância e sem dev-shell**, que não existe (apps-em-repo-proprio.md § 9;
+D-101):
+
+- **Infra de teste (v0.5):** `testes/infra.ts` traz o `req.dados` falso em memória, declarado como
+  `Pick<HelperDados, …>` dos métodos que a app usa, para que o typecheck acuse divergência de
+  assinatura com o SDK (precedente: `criarDadosMock` do `nobi`). Um teste de contrato do falso
+  cobre filtros com operador, array como `IN`, `atualizarSe` com `versao`, soft delete e
+  `transaction` com rollback, citando a seção do `banco-de-dados.md` que cada caso espelha.
+- **`sql_declarado` (v0.5):** todo `sql_declarado` tem teste estático no `pnpm test`: só `SELECT`
+  ou `WITH`, sem `;`, sem aspas duplas, parâmetros usados = declarados. Teste que executa SQL contra
+  banco lê `URBIVERSO_PG_TESTE_URL` e pula sem ela (convenção do `KIT.md`); roda na sessão local com
+  um PostgreSQL descartável e, obrigatoriamente, antes de cada release que muda `sql_declarado`. O
+  CI do kit não sobe banco para app; isso é aceito, e a execução real é conferida na Pinguim.
+
 - **Puros (`comum/`):** normalização de número e data (paridade com `src/normalize.js` e com
   `toNumber_` do script, entrada por entrada); escalas (fração ↔ p.p. declarada; recusa fora da
   faixa); agregação por natureza (fluxo soma, estoque média, razão ponderada pareada,
   não-agregável recusa); mediana e percentil (listas vazias, pares, ímpares); ponto em
   polígono; jitter determinístico (mesma URL, mesmo ponto); orientação por tipologia;
   consolidação do PDAD (média entre localidades, soma de contagens, `suprimido` fora, os dois
-  formatos de `purchase_*`); vocabulário de URL do mapa (ida e volta).
+  formatos de `purchase_*`); vocabulário de URL do mapa (ida e volta); `urlSegura()` (só
+  `http`/`https`, o resto vira `null`); supressão por amostra (mediana com n ≥ 5, P25/P75 com
+  n ≥ 10, variação entre meses com n ≥ 20 nos dois, abaixo disso `null` com `amostra_pequena`).
 - **Parser:** uma fixture real por fonte e por caso (ativo com JSON-LD, ativo só com meta,
   inativo por marcador, bloqueado por captcha, listagem com `ItemList`), resultado esperado em
-  JSON ao lado; o teste roda o parser contra a fixture e compara.
+  JSON ao lado; o teste roda o parser contra a fixture e compara. Uma fixture de 2 MB falha o
+  teste se o parser passar de 200 ms; expressões regulares sem quantificador aninhado (21.1).
+- **Guarda de destino da coleta (v0.5):** tabela-verdade de host da fonte, subdomínio declarado,
+  IP literal, `localhost`, `.local`/`.internal`, porta não padrão e redirecionamento para fora
+  (`422 URL_FORA_DAS_FONTES` sem requisição; salto externo vira `redirecionamento_externo`);
+  cabeçalho fora da lista fechada recusado.
 - **Classificação de resposta:** tabela-verdade de status HTTP × corpo → resultado.
 - **Portões de promoção:** cada portão com um candidato que passa e um que reprova, e a
   distinção duro × brando.
 - **Rotinas:** handler com `ctx` falso (`dados` em memória, `eventos` que grava, relógio
   controlável): verificar com `ativa`/`inativa`/`bloqueada`, contagem de dias distintos,
   reativação, preço acima da variação máxima; descoberta com duplicata e com bloqueio;
-  fechamento de mês idempotente (rodar duas vezes não muda nada); continuação por cursor.
+  fechamento de mês idempotente (rodar duas vezes não muda nada); continuação por cursor;
+  `coleta_ativa = false` fecha a fatia como `pausada` sem reagendar; segunda rotina da mesma classe
+  de trava sai `adiada`; a guarda da cadeia mensal reagenda até 6 vezes e depois devolve `ok: false`
+  com `cadeia_mensal_parada`. O `ctx` falso usa o mesmo `req.dados` de `testes/infra.ts`.
 - **Importação:** CSV de cada aba da planilha (amostra de 20 linhas versionada em
   `testes/fixtures/planilha/`) → prévia sem rejeição; CSV com erro de cada tipo → rejeição
-  nomeada; os quatro modos de duplicata.
+  nomeada; os quatro modos de duplicata. **Ida e volta (v0.5):** exportar → importar em `ignorar`
+  dá zero rejeições e zero inserções, com as colunas derivadas e desconhecidas em
+  `colunas_ignoradas`; célula de texto que começa com `=`, `+`, `-`, `@`, tabulação ou retorno sai
+  com `'` na frente e volta sem ele; coluna numérica não é tocada.
 - **IA:** montagem de contexto (chaves esperadas por tipo; compactação acima do limite);
   validação da resposta (achado com chave desconhecida é descartado e registrado).
-- **Rotas:** `supertest` sobre o Router com `req.dados`/`req.contexto` falsos: gate de papel
-  (403 `PAPEL_EXIGIDO`), teto de `por_pagina`, CSV com BOM e `;`, `null` para ausência.
+- **Rotas:** `supertest` sobre o Router com o `req.dados` de `testes/infra.ts` e `req.contexto`
+  falso: gate de papel (403 `PAPEL_EXIGIDO`), teto de `por_pagina`, CSV com BOM e `;`, `null` para
+  ausência. **Invólucro (v0.5):** um teste percorre a pilha de cada Router exportado e reprova rota
+  registrada sem `rota()`; outro prova que exceção num handler resolve a request. Campo de fase
+  posterior vem `null` com `indisponivel.motivo = 'fase_futura'`, nunca omitido nem 0.
+- **Frontend (v0.5):** teste estático que reprova a palavra `unsafeHTML` em `frontend/`; toda tag
+  registrada por `frontend/registro.ts` tem o prefixo `intel-imob-` (a raiz é
+  `app-inteligencia-imobiliaria`).
 - **Grade e rateio (v0.2):** pertencimento por centroide contra uma fixture de pontos com o H3
   de referência calculado pelo pipeline (deve bater em 100% dos pontos fora da borda de
   projeção); raio e polígono → células; *encoded polyline* ida e volta; contagem soma, razão
   recalculada de numerador e denominador, média ponderada, `nao_agregavel` recusa; soma dos
-  pesos de composição; série padronizada só para contagens.
+  pesos de composição; série padronizada só para contagens; oferta por célula só com anúncios de
+  `h3_r9`, e o rótulo "da RA, não do anel" abaixo de 50% de coordenada exata no recorte.
 - **Oferta (v0.2):** regra de agrupamento com casos que casam e que não casam em cada
-  tolerância; métricas por imóvel; índice estratificado em que só a composição muda e o índice
-  fica parado; preço de saída nunca rotulado como venda.
+  tolerância, incluindo mesma fonte com `id_externo` diferente e plantas iguais no mesmo prédio
+  por jitter (que nunca contam sozinhas: a contagem automática exige coordenada exata a ≤ 30 m,
+  área ±1 m² e preço ±2%); métricas com `amostra_n` e `imoveis_n` lado a lado; índice
+  estratificado em que só a composição muda e o índice fica parado, com imputação parada no
+  terceiro mês e mês não publicado acima do peso imputado máximo; preço de saída nunca rotulado
+  como venda; tempo de anúncio por Kaplan-Meier com ativos censurados e importados truncados à
+  esquerda contra um caso calculado à mão, `null` abaixo de 20 eventos; R$/m² nunca mistura
+  `base_area`.
 - **Produto e comércio (v0.2):** capacidade de pagamento contra três casos calculados à mão
-  (Price e SAC); matriz cujas frações somam 1 por linha de demanda e de oferta; Huff com
-  participações que somam 1 por célula e loja única com participação 1; áreas gêmeas em que a
-  referência é a mais próxima de si; Gi* numa grade sintética com bolsão conhecido.
+  (Price e SAC); matriz de composição em que demanda e oferta somam 1 cada no recorte, com o
+  descompasso em p.p., e leitura de fluxo em unidades/ano só com fluxo dos dois lados; Huff com
+  participações que somam 1 por célula, loja única com participação 1 e todas as lojas da rodada na
+  mesma escala de atratividade; áreas gêmeas em que a referência é a mais próxima de si; lacuna
+  comercial somada na bacia da categoria; Gi* numa grade sintética com bolsão conhecido, com
+  significância por FDR (Benjamini-Hochberg, q = 0,05) e bolsão só com 3 ou mais células
+  contíguas, e uma grade de ruído puro que não gera bolsão.
 - **Terra e oferta futura (v0.2):** lote não vendido fora da mediana de arrematado; ágio;
   pipeline sem dupla contagem entre alvará e lançamento.
 - **Achados (v0.2):** cada tipo com um caso positivo e um negativo; pontuação ordena; recorte
   sem amostra não gera achado; resposta da IA com `achado_id` desconhecido é descartada.
 - **Carga tabular (v0.2):** troca de versão atômica (a leitura nunca vê o conjunto pela metade);
   retomada por cursor no meio do arquivo.
-- **Gates (v0.2):** toda rota de cálculo é `GET` e responde para `leitura`; `tipo = propria` só
-  com `curador`; visões só do próprio usuário.
+- **Gates (v0.2):** toda rota de cálculo é `GET` e responde para `leitura`; visões só do próprio
+  usuário. **Matriz de acesso (v0.5):** `testes/matriz-acesso.test.ts` tem uma linha por rota ×
+  perfil (autor, responsável, curador, estrategico, escrita sem relação, leitura sem
+  `estrategico`) com o status esperado: quem não pode ler recebe `404 REGISTRO_NAO_ENCONTRADO`,
+  quem lê e não pode escrever recebe `403 OBJETO_SEM_PERMISSAO`, e área própria some das listas
+  para quem não tem `estrategico`, `curador` nem é responsável. A lista de rotas é conferida contra
+  a pilha dos Routers por contagem exata: rota nova sem linha reprova (precedente: `MATRIZ` do
+  `nobi`, `testes/papeis.test.ts`).
 - **Método (v0.3):** `fato` sem evidência recusado; item da IA nasce `proposto` e `hipotese`;
   publicar tese torna a anterior `substituida`; encerrar área sem motivo recusado; condição com
   métrica monitorada gera `condicao_em_risco` ao cruzar o limiar; semente de diligências
   idempotente; pré-preenchimento marca `respondida_app` e não fecha a pergunta.
-- **Sítio e viabilidade (v0.3):** área líquida num polígono sintético com restrição conhecida;
-  área abaixo do mínimo não estimada; residual vertical e de loteamento contra dois casos à mão;
+- **Sítio e viabilidade (v0.3):** área líquida **vetorial** (polígono − interseção com a união
+  das restrições, em SIRGAS 2000 / UTM 23S) num polígono sintético com restrição conhecida, menor
+  que uma célula; área abaixo de `area_liquida_min_ha` não estimada; residual vertical e de loteamento contra dois casos à mão;
   sensibilidade 3 × 3; premissa obrigatória ausente → `CENARIO_INCOMPLETO`.
 - **Catálogo (v0.3):** natureza `amostra` recalcula a mediana dos pontos dentro da área (e não a
   das células); `categorica` devolve distribuição que soma 1.
@@ -4948,34 +6188,68 @@ conferência contra o SDK fechou P-05, P-16 a P-22, P-38 e P-39; elas ficam na t
   e-mail, CPF e nome de pessoa de uma fixture com todos eles.
 - **Concorrência (v0.3, D-88):** dois `PATCH` com a mesma `versao`, o segundo recebe
   `CONFLITO_VERSAO`; `PATCH` em registro removido recebe `REGISTRO_REMOVIDO`.
-- **Golden set (v0.3):** o dossiê das três áreas de referência contra a planilha versionada.
+- **Paridade (v0.5):** a app contra `testes/fixtures/paridade/<data>.json`, gerado por
+  `scripts/gerar-paridade.mjs` com as funções de `src/` do site sobre o retrato datado de
+  `migracao/AAAA-MM-DD/` (30 valores de Mercado e Diagnóstico, 10 cenários de mapa).
+- **Golden set (v0.5):** para cada área de referência, `testes/fixtures/areas_referencia/<area>/`
+  guarda a **entrada congelada** (geometria, extrato das células, métricas e pontos do maior anel,
+  com `versoes_conjuntos` e data de corte) e o **esperado** calculado à mão por um analista sobre
+  essa entrada, com data, versões e autor. O teste roda o código do dossiê sobre a entrada
+  congelada e é ele que bloqueia a fase; ele também trava a contagem de casos, para que o golden
+  set não encolha calado (precedente: `atendimento-golden.test.ts` do `nobi`).
+
+Retrato novo, fixture de paridade nova ou entrada congelada nova só entram por PR que regenera os
+arquivos e explica cada diferença (D-102).
 
 Os testes **só leem a pasta da app** (regra do guia de apps em repositório próprio).
 
 ### 18.2 Portas
 
-- `pnpm build && pnpm exec urbi-empacotar inteligencia_imobiliaria --dir apps/inteligencia_imobiliaria`
-  limpo em todo PR: o `ci.yml` do kit roda `typecheck`, `build` e `test` (`--if-present`), mas o
-  doc não diz que ele empacota app, então o empacotamento entra no script `test` do `package.json`
-  da app (C-73, C-76). O release é pelo `release.yml` do kit (`urbi-release` via `npx @latest`),
-  não pelo `pnpm exec`.
-- `pnpm test` verde em todo PR; noturna contra o SDK mais novo, em workflow próprio do repositório
-  (o doc não a atribui ao kit; conferir no `KIT.md` instalado). Os testes só leem a pasta da app,
-  nunca fontes da plataforma (C-76).
-- Revisão de PR pela skill `revisar-pr-apps` (bundle do SDK como referência, nunca o monorepo).
+**Protocolo (v0.5).** No repositório da app vale o protocolo do kit, e a spec só aponta para ele:
+`KIT.md` e as skills `especificar` (ideia → issue-spec), `implementar` (issue → PR), `orquestrar`
+(arco de fases, seção 15), `revisar-pr-apps` (revisão contra o SDK instalado, nunca o monorepo) e
+`qa` (Pinguim, nunca sysadmin). Issues e PRs ficam no repositório da app; o protocolo de issues do
+`CLAUDE.md` deste repositório (labels, `logged-by-claude`) vale aqui, não lá, e se a equipe quiser
+as mesmas labels lá elas vão na seção "Deste repositório" do `CLAUDE.md` da app. Merge e release
+só por ordem expressa do dono na conversa (`KIT.md`; D-114).
+
+- O `ci.yml` do kit roda typecheck, build, testes e o empacotamento de cada app (passo
+  "Empacotar (validação)") em todo PR; a app não repete o empacotamento no script `test` (C-73,
+  C-76). O release é pelo `release.yml` do kit (`urbi-release` via `npx @latest`), não pelo
+  `pnpm exec`, e nasce prerelease.
+- `pnpm test` verde em todo PR. A noturna contra o SDK novo é workflow próprio do repositório
+  (`sdk-noturna.yml`, como no `nobi`). Opcional: `revisao-registrada.yml` como required check, a
+  partir da linha de máquina do relatório da `revisar-pr-apps`. Os testes só leem a pasta da app,
+  nunca fontes da plataforma (C-76). Teste com banco roda localmente antes de release que muda
+  `sql_declarado` (18.1).
 - QA na Pinguim pela skill `qa`, com o roteiro de cada fase derivado dos "Pronto quando" da
-  seção 15, com o token do QA Principal (nunca sysadmin).
+  seção 15, com o token do QA Principal (nunca sysadmin), relatório em `qa-relatorios/`. O QA
+  repete a matriz de acesso de 18.1 com o pool de usuários de QA e usa só áreas de prospecção,
+  referência ou fictícias.
+- **Medidor de desempenho (v0.5).** `qa-relatorios/medidor/p95.mjs` mede os alvos de 21.1 na
+  instância: lê `URBIVERSO_QA_URL` e o token do QA Principal (nunca o imprime), roda só `GET` de uma
+  lista fechada de operações (lista, pontos por viewport, enriquecimento, dossiê por bloco com e sem
+  cache, Huff, ficha), 30 chamadas por operação depois de 3 de aquecimento, uma por vez, e grava
+  `qa-relatorios/AAAA-MM-DD-desempenho.md` com host, versão da app e do shell, p50, p95 e máximo
+  por operação e o alvo ao lado. A lista nunca contém rota com `homolog`, `upgrade`, `release` ou
+  `atestado`. O QA de cada fase anexa o relatório ao PR (precedente: `qa-relatorios/simulador/` do
+  `nobi`).
+- **Promoção.** Release só vai à Laputa depois do QA na Pinguim e da homologação
+  (`prerelease=false`), que é ato humano; releases respeitam a cadência e as regras de 3.6, e não
+  há downgrade.
 
 ### 18.3 Critério global de pronto da V1
 
-1. Todas as fases 0 a 7 (incluindo 4A, 4B e 4C) instaladas na Pinguim pela release, auto-update
-   ligado.
+1. Todas as fases 0 a 7 (incluindo 4A, 4B e 4C) instaladas na Laputa pela release homologada, e
+   a Pinguim com aceitação `Releases` e auto-update ligado; só então a versão é `1.0.0`.
 2. Migração conferida (seção 11.3), planilha congelada, Apps Script sem gatilhos.
-3. Paridade de 30 valores com o site (fase 2) e de 10 cenários de mapa (fase 1).
-4. Sete dias de rotinas com log limpo ou bloqueio registrado.
+3. Paridade de 30 valores com o site (fase 2) e de 10 cenários de mapa (fase 1), sobre o retrato
+   datado da fixture.
+4. Sete dias de rotinas na Laputa com log limpo ou bloqueio registrado.
 5. Os "pronto quando" das fases 4A, 4B, 4C e 7 conferidos, incluindo as validações amostrais à
    mão (enriquecimento, capacidade, Terracap, contagem de comércio) e o golden set.
-6. As sete jornadas da seção 24 feitas por pessoas da equipe, cada uma dentro da meta de tempo.
+6. As sete jornadas da seção 24 feitas por pessoas da equipe na Laputa, cada uma dentro da meta
+   de tempo.
 7. Docs da app completos; esta spec marcada como implementada e as seções que viraram
    comportamento migradas para `docs/` da app (spec descreve o que ainda não existe).
 
@@ -5103,12 +6377,16 @@ fase acrescenta o que encontrar e marca o que resolveu.
 | R-44 | 4, 4A | **Disco cresce sem cota nem dedup**: o shell guarda cada blob, e conjunto substituído dobra o espaço (C-37) | `limpar_retencao` apaga os arquivos de conjunto substituído há mais de 30 dias por `deletarVarios` (21.6) |
 | R-45 | 4A | **Carga de um milhão de linhas sem inserção em lote** não fecha no mês, e a continuação é entregue pelo menos uma vez (C-13, C-28, C-32) | cursor com compare-and-set e trava da app (D-85); throughput medido na 4A; fallback de só células habitadas e catálogo inicial (D-83) |
 | R-46 | 4C | **Câmera e geolocalização bloqueadas** por uma `Permissions-Policy` futura da instância, que o bundle não documenta (C-71) | foto por `<input type="file">` e posição tocada ou digitada como caminho sempre disponível (D-94) |
+| R-47 | 4B a 5 | **área própria vaza por agregado (portfólio, total, Início, achados, contexto de IA da cidade ou localidade) mesmo com o detalhe em 404** | filtro antes da paginação, achados de área própria fora de análises compartilhadas, matriz T4 com leitura sem estrategico em toda rota de área |
+| R-48 | 3 | **Apps Script e app, ou Pinguim e Laputa, coletando o mesmo portal ao mesmo tempo** | corte no dia da ligação na Laputa; coleta_ativa = false na Pinguim fora de janela curta de QA |
+| R-49 | todas | **cada release reinicia a Pinguim inteira; índice em tabela grande alonga o boot ou deixa a app !saudavel** | §3.6: índices na criação, uma release por dia útil |
+| R-50 | 4B, 4C | **área própria ou tese real cadastrada na Pinguim, que recebe devs de fora** | regra em §15 e §3.6; QA só com áreas de prospecção, referência ou fictícias |
 
 ---
 
 ## 21. Requisitos não funcionais
 
-### 21.1 Orçamento de desempenho (p95 na Pinguim, com dado real do DF)
+### 21.1 Orçamento de desempenho (p95 na Pinguim, com dado público real do DF)
 
 | Operação | Alvo | Se passar |
 |---|---|---|
@@ -5120,9 +6398,38 @@ fase acrescenta o que encontrar e marca o que resolveu.
 | Gerar ficha | 10 s | congelar a partir do dossiê em cache |
 | Abrir o app no celular (primeira tela útil) | 3 s em 4G | carregar camadas sob demanda |
 
-O QA de cada fase mede os alvos das telas dela e registra no PR. A **fase 0** confere na Pinguim
-o que o bundle não publica: o cap global de arquivo (C-15, C-35) e, na fase 4A, o throughput da
-carga da grade (C-28).
+A Pinguim é a instância de teste: os alvos são medidos lá com dado público e anúncios reais e
+com áreas de prospecção, referência ou fictícias, nunca áreas próprias (que só existem na
+Laputa; seção 14). O QA de cada fase mede os alvos das telas dela e registra no PR. A **fase 0**
+confere na Pinguim o que o bundle não publica: o cap global de arquivo (C-15, C-35) e, na fase
+4A, o throughput da carga da grade (C-28).
+
+**Medidor (v0.5).** `qa-relatorios/medidor/p95.mjs` mede os alvos da tabela na instância: lê
+`URBIVERSO_QA_URL` e o token do QA Principal (nunca o imprime), roda só `GET` de uma lista
+fechada de operações (lista, pontos por viewport, enriquecimento, dossiê por bloco com e sem
+cache, Huff, ficha), 30 chamadas por operação depois de 3 de aquecimento, uma por vez, e grava
+`qa-relatorios/AAAA-MM-DD-desempenho.md` com host, versão da app e do shell, p50, p95 e máximo
+por operação e o alvo ao lado. A lista nunca contém rota com `homolog`, `upgrade`, `release` ou
+`atestado`. O QA de cada fase anexa o relatório ao PR e reprova operação acima do alvo
+(precedente: `nobi/qa-relatorios/simulador/api.mjs`).
+
+**Orçamento de CPU (v0.5).** Todas as apps rodam no mesmo processo Node da instância
+(guia-desenvolvimento.md § 8): CPU presa na app trava o shell e as outras apps. Por isso nenhum
+trecho síncrono da app passa de ~50 ms:
+
+1. O que varre a cidade inteira (Gi*, lacunas comerciais por célula, `celula_metricas`,
+   achados) só roda em rotina e grava resultado; a rota lê o resultado, nunca recalcula para o
+   DF.
+2. Cálculo por pedido (enriquecimento, Huff, matriz, viabilidade) é limitado pelos tetos da
+   21.2 e por `hex_max_celulas_resposta`, passa pelo cache (D-69) e, em laço acima de 1 000
+   itens, cede ao event loop (`await cederAoLaco()` de `comum/`, `setImmediate` a cada 1 000
+   iterações).
+3. Mediana e percentil ordenam só a amostra do recorte, nunca a tabela.
+4. Parser: corpo até 2 MB (8.2); expressões regulares sem quantificador aninhado; teste com
+   fixture de 2 MB que falha acima de 200 ms.
+5. Sem `worker_threads` na V1: o bundle é arquivo único e o SDK não o documenta.
+
+O medidor acima é quem confere o efeito: operação acima do alvo reprova no QA.
 
 ### 21.2 Limites de entrada
 
@@ -5177,16 +6484,20 @@ apaga é `limpar_retencao` (7.13; C-41, R-44).
 | Dado | Onde | Tratamento |
 |---|---|---|
 | Usuários (id, nome, `avatar_url`) | shell, pela view de diretório; `autor_id` e afins com `campos_incluir` (C-29) | o mínimo para autoria e auditoria; a app não lê `email` nem `tipo` |
-| Telemetria de uso | `uso_eventos` | agregada sem nome na tela; retenção curta (D-72) |
+| Telemetria de uso | `uso_eventos` (`pessoal`, `restrito`; `usuario_id` é dado pessoal) | gravada pela rota pessoal `POST /pessoal/uso`; agregada sem nome na tela; retenção curta, apagada por `limpar_retencao` (D-72) |
 | Corretor ou anunciante pessoa física | páginas lidas na coleta | **não** é guardado: higienização do `bruto` (D-74) |
 | CNPJ de empresário individual e MEI | pipeline `comercio_cnpj` | só categoria, CNAE, porte e localização; sem nome nem documento |
 | Arrematante de licitação, responsável técnico de licença | editais, DODF, licenças | não é guardado |
 | Fotos de campo | `observacao_fotos.foto` | orientar a não fotografar pessoas; foto com pessoa identificável é apagada a pedido |
-| Áreas próprias e teses | `areas_estudo` (`tipo = propria`), `teses` | sigilo comercial: permissão individual (D-13); ficha e pacote marcados "uso interno" |
+| Áreas próprias e teses | `areas_estudo` (`tipo = propria`) e tudo que pende delas (seção 14) | sigilo comercial: só quem tem `estrategico` ou `curador`, ou é o responsável, vê; para os demais, `404` e ausência em listas e exportações (v0.5). Ficha e pacote marcados "uso interno". Só existem na Laputa, nunca na Pinguim. Lista oficial: `[PENDENTE P-47]` |
+| Trilha de saídas de área própria | `area_eventos` (usuário, ação, data) | ficha, pacote, exportação e análise de IA de área própria gravam quem gerou; não há trilha de visualização, que seria telemetria nominal (R-35) |
 
 ### 22.2 Regras
 
 - Nenhum dado pessoal sai em exportação, pacote, ficha ou contexto de IA.
+- Área própria não sai para quem não a vê (seção 14), nem em exportação; quem a vê e a leva para
+  fora deixa o registro em `area_eventos`. Na Pinguim (instância de teste, com devs de fora) não
+  entra área própria, tese nem cenário real.
 - O contexto enviado ao provedor de IA leva números, achados e textos de síntese, nunca nome de
   pessoa.
 - A ficha registra quem a gerou; o pacote leva o nome do arquivo e a data, não o usuário.
@@ -5198,7 +6509,11 @@ apaga é `limpar_retencao` (7.13; C-41, R-44).
   contrato do administrador da instância com o provedor configurado em cada slot, e o README da
   app pede que ela seja registrada na instalação. A app não liga `cache` nas consultas de análise
   (contexto sempre diferente; evita manter o prompt no provedor). O histórico de IA do shell
-  guarda metadados das chamadas; o doc não diz se guarda o contexto (R-38).
+  guarda metadados das chamadas; o doc não diz se guarda o contexto (R-38). A análise de IA de
+  área própria segue as mesmas regras (sem dado pessoal; política de retenção do contrato do
+  admin) e grava a saída em `area_eventos`.
+- O uso de IVV e FipeZap (dado de terceiro) em exportação, pacote e contexto de IA, e a coleta
+  automática nos portais, dependem de `[PENDENTE P-45]`.
 
 ---
 
@@ -5206,25 +6521,30 @@ apaga é `limpar_retencao` (7.13; C-41, R-44).
 
 Valores iniciais de `comum/fontes.ts`, a calibrar com a primeira carga de cada fonte. Quando a
 fonte passa do frescor, o rodapé de procedência mostra "fonte atrasada" e o Início lista.
+A Operação › Saúde (10.7) lista as atrasadas junto com as bloqueadas e a cadeia mensal (v0.5).
 
-| Fonte | Periodicidade | Frescor esperado | Observação |
-|---|---|---|---|
-| Anúncios (coleta) | diária | 2 dias | atraso = rotina parada ou fonte bloqueada |
-| IVV | mensal | 75 dias | publicação de terceiro; atraso não é erro da app |
-| FipeZap | mensal | 45 dias | |
-| Séries do Banco Central | mensal | 45 dias | |
-| CUB-DF | mensal | 60 dias | `[PENDENTE P-34]` |
-| Terracap | por edital | 120 dias | sem edital no período não é atraso; o aviso só diz "sem licitação recente" |
-| Licenciamento (CAP/SEDUH) | mensal | 60 dias | `[PENDENTE P-12]` |
-| CNPJ | mensal | 60 dias | |
-| OpenStreetMap | contínua | 90 dias | |
-| PDAD | cerca de bienal | 900 dias | a idade aparece em todo número |
-| Censo, Grade, CNEFE | decenal | — | a idade aparece em todo número; sem alerta |
-| AOP (Ipea) | pontual | — | marcado como base 2017–2019 e população de 2010 |
-| MapBiomas | anual | 450 dias | |
-| Open Buildings | pontual | — | até 2023 |
-| Tráfego do DER | conforme publicação | 120 dias | |
-| PDOT | por revisão do plano | — | a vigência aparece na ficha da zona |
+A coluna **Dono** (v0.5) nomeia quem responde por cada fonte: quem a carrega quando é manual
+(IVV de PDF, Terracap, licenciamento, faixas de programa) e quem acompanha o pipeline quando é
+pública. Hoje nenhuma tem responsável nomeado, e a escolha é do dono da app.
+
+| Fonte | Periodicidade | Frescor esperado | Observação | Dono |
+|---|---|---|---|---|
+| Anúncios (coleta) | diária | 2 dias | atraso = rotina parada ou fonte bloqueada | `[PENDENTE P-44]` |
+| IVV | mensal | 75 dias | publicação de terceiro; atraso não é erro da app | `[PENDENTE P-44]` |
+| FipeZap | mensal | 45 dias | | `[PENDENTE P-44]` |
+| Séries do Banco Central | mensal | 45 dias | | `[PENDENTE P-44]` |
+| CUB-DF | mensal | 60 dias | `[PENDENTE P-34]` | `[PENDENTE P-44]` |
+| Terracap | por edital | 120 dias | sem edital no período não é atraso; o aviso só diz "sem licitação recente" | `[PENDENTE P-44]` |
+| Licenciamento (CAP/SEDUH) | mensal | 60 dias | `[PENDENTE P-12]` | `[PENDENTE P-44]` |
+| CNPJ | mensal | 60 dias | | `[PENDENTE P-44]` |
+| OpenStreetMap | contínua | 90 dias | | `[PENDENTE P-44]` |
+| PDAD | cerca de bienal | 900 dias | a idade aparece em todo número | `[PENDENTE P-44]` |
+| Censo, Grade, CNEFE | decenal | — | a idade aparece em todo número; sem alerta | `[PENDENTE P-44]` |
+| AOP (Ipea) | pontual | — | marcado como base 2017–2019 e população de 2010 | `[PENDENTE P-44]` |
+| MapBiomas | anual | 450 dias | | `[PENDENTE P-44]` |
+| Open Buildings | pontual | — | até 2023 | `[PENDENTE P-44]` |
+| Tráfego do DER | conforme publicação | 120 dias | | `[PENDENTE P-44]` |
+| PDOT | por revisão do plano | — | a vigência aparece na ficha da zona | `[PENDENTE P-44]` |
 
 ---
 
@@ -5232,25 +6552,38 @@ fonte passa do frescor, o rodapé de procedência mostra "fonte atrasada" e o In
 
 ### 24.1 As sete jornadas
 
-Cada jornada é feita por uma pessoa da equipe, na Pinguim, com dado real, e é o aceite das fases
-indicadas. O tempo é uma meta de uso, não de desempenho.
+Cada jornada é feita por uma pessoa da equipe, na **Laputa**, com dado real, e é o aceite das
+fases indicadas: a jornada feita, com data e quem, é a condição (c) do portão entre fases (seção
+15). Na Pinguim o QA repete as jornadas só com áreas de prospecção, referência ou fictícias. O
+tempo é uma meta de uso, não de desempenho.
 
 | # | Jornada | Persona | Passos | Saída esperada | Fases |
 |---|---|---|---|---|---|
-| J1 | **Triar uma gleba nova** | analista | importar o KMZ ou desenhar; ver o sítio (área líquida, PDOT, restrições); ver o entorno nos anéis; ver terra e oferta; registrar três itens de síntese; gerar a ficha de uma página | ficha baixada, área no estágio `sinal` ou `hipotese`, em até 30 min | 4A, 4B |
-| J2 | **Definir produto para uma área própria** | analista | demanda e capacidade; matriz; benchmark de lançamentos; dois cenários de viabilidade (vertical e loteamento); registrar duas hipóteses de produto com condições | cenários salvos, hipóteses com condições e métrica monitorada | 4B, 4C |
+| J1 | **Triar uma gleba nova** | analista | importar o KMZ ou desenhar; ver o sítio (área líquida, PDOT, restrições); ver o entorno nos anéis; ver terra e oferta; registrar três itens de síntese; gerar a ficha de uma página (sem a seção de comércio, que sai omitida com o motivo até a fase 7) | ficha baixada, área no estágio `sinal` ou `hipotese`, em até 30 min | 4A, 4B |
+| J2 | **Definir produto para uma área própria** | analista | demanda e capacidade; matriz; benchmark de lançamentos; dois cenários de viabilidade (vertical e loteamento); registrar duas hipóteses de produto (`hipoteses_produto`) com condições | cenários salvos, hipóteses de produto com condições e métrica monitorada | 4B, 4C |
 | J3 | **Preparar a conversa com uma âncora** | analista | potencial e lacuna da categoria; simulação de Huff em dois portes; áreas gêmeas; hipótese de âncora com "traz/traz"; ficha detalhada com a seção de âncora | hipótese registrada, ficha baixada | 7 |
 | J4 | **Revisão mensal do mercado** | direção | Início; análise de mercado; achados do mês; portfólio | leitura em até 15 min; três achados citados na reunião têm link para a origem | 5 |
-| J5 | **Acompanhar o portfólio** | direção | portfólio; condições vencidas; diligências da semana; abrir uma área e ver a linha do tempo | sabe o que mudou em cada área própria sem abrir planilha | 4C, 5 |
+| J5 | **Acompanhar o portfólio** | direção | portfólio; condições vencidas e diligências da semana no Início mínimo; abrir uma área e ver a linha do tempo; comparar a ficha atual com a anterior | sabe o que mudou em cada área própria sem abrir planilha, separando "mudou o dado" de "mudou a medida" | 4C, 5 |
 | J6 | **Curadoria semanal** | curador, operador | candidatos; grupos e vínculos; saúde das fontes; frescor; qualidade | filas zeradas ou com motivo, em até 45 min | 3, 4B |
 | J7 | **Visita de campo** | analista | abrir a área no celular; ver anéis, perímetros e restrições; registrar duas observações com foto | observações na linha do tempo, com posição | 4C |
+
+Lentes de aptidão, Gi*/bolsões e a análise de tela não aparecem em jornada nenhuma; pela R-36
+seriam candidatas a sair para o Futuro, o que depende de decisão `[PENDENTE P-46]`.
 
 ### 24.2 Áreas de referência (golden set)
 
 Três áreas escolhidas pela equipe, uma de cada tipo (própria, prospecção, referência)
-`[PENDENTE P-37]`. Para cada uma, uma planilha versionada em `testes/fixtures/areas_referencia/`
-com os valores calculados à mão (domicílios por anel, renda rateada, R$/m² mediano, área líquida,
-residual de um cenário, participação de Huff de uma categoria). Toda fase de 4A em diante roda
-o dossiê das três e compara: diferença acima de 2% em contagem, ou acima de 5% em estatística de
-amostra, bloqueia a fase até ser explicada.
+`[PENDENTE P-37]`. Os aceites numéricos usam o **retrato datado** (`migracao/AAAA-MM-DD/`, com
+sha256), nunca a planilha viva nem o dado vivo da instância. Para cada área,
+`testes/fixtures/areas_referencia/<area>/` guarda a **entrada congelada** (geometria, extrato das
+células, métricas e pontos do maior anel, com `versoes_conjuntos` e data de corte) e o
+**esperado** calculado à mão por um analista sobre essa entrada (domicílios por anel, distribuição
+de renda da RA, R$/m² mediano, área líquida, residual de um cenário, participação de Huff de uma
+categoria), com data, versões e autor. Toda fase de 4A em diante roda o código do dossiê sobre a
+entrada congelada, em `node --test`, sem instância: diferença acima de 2% em contagem, ou acima de
+5% em estatística de amostra, bloqueia a fase até ser explicada. Na Pinguim a conferência é
+informativa e só compara quando as versões dos conjuntos coincidem com as da fixture; versão nova
+de conjunto não reprova nada e pede, se quiserem, uma fixture nova com novo cálculo à mão. A área
+própria do golden set tem a entrada congelada no repositório privado, e nunca é carregada na
+Pinguim.
 
