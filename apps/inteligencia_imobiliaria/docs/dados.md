@@ -46,6 +46,8 @@ Sucessor do `docs/DATA_CONTRACT.md` do site para a app. O desenho completo está
 | `atributos_def` | catálogo de atributos extensíveis: `codigo`, tipo, unidade, opções (só crescem), `aplica_a`, `grupo`, `ativo`; teto de 200 ativos | `codigo` |
 | `atributos_valor` | um valor por objeto e atributo, só na coluna `valor_*` do tipo; `fonte`, `observado_em`, `importacao_id` | `objeto_tipo` + `objeto_id` + `atributo_id` |
 | `areas_estudo` | áreas de estudo: tipo (`propria` sigilosa), estágio, responsável, autor, geometria (ponto ou polígono), localidade dominante | `nome` (CSV); geometria pelo hash (KML/KMZ) |
+| `ivv_mensal` | IVV mensal (sucede `IVV_MONTHLY`): as 13 métricas em colunas; acumulados, variações e checagens publicados em `extras`, verbatim | mês + segmento + mercado |
+| `ivv_regional` | IVV por localidade e faixa de quartos (sucede `IVV_REGION`); IVV em fração; `DF Total` marcado como `agregado_total` | mês + região da fonte + faixa |
 | `vinculos_nucleo` | junção objeto da app × registro do imobiliário (só o id; nada copiado) | `objeto_tipo` + `objeto_id` + `entidade` + `nucleo_id` (entre os vivos) |
 
 ### Semente

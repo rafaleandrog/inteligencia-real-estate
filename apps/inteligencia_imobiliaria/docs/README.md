@@ -34,6 +34,12 @@ repositório; o recorte da primeira versão, em `docs/MVP_PROPOSTA.md`.
   **decisor** (ou do admin), com motivo, que fica no histórico. Área **própria** é sigilosa: só
   `estrategico`, `curador` ou o responsável a veem, e o "Baixar CSV" não a traz para ninguém.
   Dossiê, anéis e fichas chegam na fase 4B.
+- **Mercado** (`/mercado`): IVV do período escolhido (mês, no ano, 12 meses, ano civil ou tudo),
+  com comparação contra o período anterior ou o mesmo período do ano anterior; quatro destaques
+  (preço de venda/m², vendas, IVV, VGV), os grupos de indicadores com a natureza de agregação
+  escrita (fluxo soma, estoque faz média, preço é razão ponderada), os seis derivados com a fórmula,
+  sete gráficos e o IVV por localidade (ranking, régua do DF, mapa de calor por faixa de quartos e
+  as três leituras da matriz preço × liquidez). Os números saem do mesmo motor de cálculo do site.
 - **Operação** (`/operacao`): importações CSV com prévia, aplicar e desfazer, os achados de
   qualidade e as execuções. Ver [Importação](importacao.md), inclusive a migração da planilha.
 - O menu da app tem onze áreas. Cada área entra numa fase; a tela diz quando.
@@ -86,4 +92,8 @@ repositório; o recorte da primeira versão, em `docs/MVP_PROPOSTA.md`.
   curador, `403 OBJETO_SEM_PERMISSAO`), `PATCH /estudos/:id/remover|restaurar`,
   `POST /estudos/importar` e `/estudos/importar/:importacao_id/aplicar` (`{ tipo, estagio,
   indices }`). Atributos e vínculos aceitam `area_estudo`, com o sigilo da área.
+- Mercado: `GET /mercado/ivv?de&ate&segmento&mercado` (série com `natureza` por métrica),
+  `GET /mercado/ivv/periodo?modo=month|ytd|last_12|year|all|custom&ano&mes&de&ate&comparar=nenhum|anterior|ano_anterior`
+  (`atual` e `comparacao` com `valores`, `derivados` e `avisos`), `GET /mercado/ivv/acumulado?ano`,
+  `GET /mercado/ivv/sazonalidade?metrica`, `GET /mercado/ivv-regional?mes&faixa_quartos`.
 - Importação e carga por agente: ver [Importação](importacao.md).

@@ -101,7 +101,7 @@ export async function validarCsv(
   // Valor padrão declarado na prévia (gravado no mapeamento): preenche só célula vazia.
   const campos = mapa.campos;
   const camposPadrao = campos.filter((c) => padroes[c.coluna] !== undefined && padroes[c.coluna] !== '');
-  const mapeadas = new Set([...mapa.colunas.map((c) => c.campo.coluna), ...camposPadrao.map((c) => c.coluna)]);
+  const mapeadas = new Set([...mapa.colunas.map((c) => c.campo.coluna), ...camposPadrao.map((c) => c.coluna), ...(mapa.extras.length ? ['extras'] : [])]);
   const faltando = campos.filter((c) => c.obrigatorio && !mapeadas.has(c.coluna)).map((c) => c.coluna);
   // No modo `atualizar` o CSV pode trazer só o que muda; a linha que não existe ainda é que exige tudo.
   if (faltando.length && modo !== 'atualizar') {
@@ -126,6 +126,14 @@ export async function validarCsv(
       const r = converter(m.campo, celulas[alvo.indice] ?? '', alvo.pct);
       if (r.ok) valores[m.campo.coluna] = r.valor;
       else erros.push(r.erro);
+    }
+    if (mapa.extras.length) {
+      const extras: Record<string, string> = {};
+      for (const x of mapa.extras) {
+        const v = (celulas[x.indice] ?? '').trim();
+        if (v !== '') extras[x.nome] = v;
+      }
+      valores.extras = Object.keys(extras).length ? extras : null;
     }
     for (const c of camposPadrao) {
       if (valores[c.coluna] !== null && valores[c.coluna] !== undefined) continue;

@@ -1,7 +1,8 @@
 {
   "gerado_em": "2026-10-18",
-  "site_commit": "91a512842107eae21ec8056183a62975a31cf53e",
+  "site_commit": "7d166db1c06d559000f27e8781ecc96e833af2c1",
   "entrada": "data/demo.json",
+  "entrada_ivv": "tests/fixtures/ivv-monthly.json",
   "mapa": [
     {
       "nome": "todos",
@@ -93,6 +94,140 @@
       "amostra_preco_m2": 17
     }
   ],
-  "mercado": [],
+  "mercado": [
+    {
+      "nome": "mes_2025_06",
+      "query": {
+        "modo": "month",
+        "ano": "2025",
+        "mes": "6"
+      },
+      "valores": {
+        "sales_units": 347,
+        "launches_units": 278,
+        "offers_units": 6951,
+        "cancellations_units": 55,
+        "ivv_pct": 0.0499,
+        "asking_price_brl_m2": 13619.3,
+        "sale_price_brl_m2": 11427.69,
+        "vgv_brl_million": 316.01
+      },
+      "derivados": {
+        "asking_sale_gap": 0.16091943051404983,
+        "months_of_supply": 20.03170028818444,
+        "replacement_ratio": 0.8011527377521613,
+        "avg_sale_ticket": 910691.6426512968,
+        "avg_sold_area": 79.69164265129683,
+        "cancellations_to_sales": 0.1585014409221902
+      }
+    },
+    {
+      "nome": "ano_ate_2025_06",
+      "query": {
+        "modo": "ytd",
+        "ano": "2025",
+        "mes": "6"
+      },
+      "valores": {
+        "sales_units": 2243,
+        "launches_units": 3382,
+        "offers_units": 7040.833333333333,
+        "cancellations_units": 393,
+        "ivv_pct": 0.0531,
+        "asking_price_brl_m2": 13468.575527654648,
+        "sale_price_brl_m2": 11331.89769609723,
+        "vgv_brl_million": 1920.7
+      },
+      "derivados": {
+        "asking_sale_gap": 0.15864170841008665,
+        "months_of_supply": 18.834150691038786,
+        "replacement_ratio": 1.5078020508247882,
+        "avg_sale_ticket": 856308.5153811859,
+        "avg_sold_area": 75.56620597414178,
+        "cancellations_to_sales": 0.17521176995095855
+      }
+    },
+    {
+      "nome": "ultimos_12_2025_12",
+      "query": {
+        "modo": "last_12",
+        "ano": "2025",
+        "mes": "12"
+      },
+      "valores": {
+        "sales_units": 4615,
+        "launches_units": 6111,
+        "offers_units": 6977,
+        "cancellations_units": 761,
+        "ivv_pct": 0.0551,
+        "asking_price_brl_m2": 13694.672348310756,
+        "sale_price_brl_m2": 11385.962489745192,
+        "vgv_brl_million": 4205.28
+      },
+      "derivados": {
+        "asking_sale_gap": 0.1685845268762742,
+        "months_of_supply": 18.141711809317442,
+        "replacement_ratio": 1.324160346695558,
+        "avg_sale_ticket": 911219.9349945828,
+        "avg_sold_area": 80.03011917659805,
+        "cancellations_to_sales": 0.1648970747562297
+      }
+    },
+    {
+      "nome": "ano_2024",
+      "query": {
+        "modo": "year",
+        "ano": "2024",
+        "mes": "1"
+      },
+      "valores": {
+        "sales_units": 4623,
+        "launches_units": 5275,
+        "offers_units": 6646.916666666667,
+        "cancellations_units": 809,
+        "ivv_pct": 0.058,
+        "asking_price_brl_m2": 13148.612343750172,
+        "sale_price_brl_m2": 11145.012330158117,
+        "vgv_brl_million": 3918.33
+      },
+      "derivados": {
+        "asking_sale_gap": 0.15238110008957795,
+        "months_of_supply": 17.253515033528014,
+        "replacement_ratio": 1.1410339606316244,
+        "avg_sale_ticket": 847573.0045425049,
+        "avg_sold_area": 76.04953493402553,
+        "cancellations_to_sales": 0.17499459225611075
+      }
+    }
+  ],
+  "ivv_regional": [
+    {
+      "faixa": "TOTAL",
+      "mes": "2026-05-01",
+      "referencia_ivv_pp": 6.5,
+      "primeira": "Sobradinho",
+      "primeira_ivv_pp": 27.7,
+      "regioes": 18,
+      "sem_valor": 0
+    },
+    {
+      "faixa": "2Q",
+      "mes": "2026-05-01",
+      "referencia_ivv_pp": 7.5,
+      "primeira": "Sobradinho II",
+      "primeira_ivv_pp": 52.1,
+      "regioes": 14,
+      "sem_valor": 4
+    },
+    {
+      "faixa": "3Q",
+      "mes": "2026-05-01",
+      "referencia_ivv_pp": 5.9,
+      "primeira": "Sobradinho",
+      "primeira_ivv_pp": 25,
+      "regioes": 13,
+      "sem_valor": 5
+    }
+  ],
   "diagnostico": []
 }

@@ -1,0 +1,26 @@
+{
+  "commit": "d858168",
+  "arquivos": [
+    "filters.js",
+    "fipezap/history.js",
+    "fipezap/locality.js",
+    "fipezap/normalize-fipezap.js",
+    "format.js",
+    "icons.js",
+    "ivv/aggregate.js",
+    "ivv/chart-model.js",
+    "ivv/derived.js",
+    "ivv/metrics.js",
+    "ivv/normalize-ivv.js",
+    "ivv/period.js",
+    "ivv/region.js",
+    "ivv/scope.js",
+    "normalize.js",
+    "pdad/aggregate.js",
+    "pdad/indicators.js",
+    "pdad/insights.js",
+    "pdad/normalize-pdad.js",
+    "territorio/aggregates.js",
+    "territorio/ra-keys.js"
+  ]
+}

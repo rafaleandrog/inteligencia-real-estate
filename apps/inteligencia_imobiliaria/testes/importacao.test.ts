@@ -41,7 +41,7 @@ test('RA_PROFILES: prévia sem gravar, aplicar, contagem fecha e reimportar não
     assert.equal(previa.status, 201, previa.texto);
     assert.equal(previa.corpo.total_linhas, 35);
     assert.equal(s.dados.linhas('localidade_perfis').length, 0, 'a prévia não grava na tabela alvo');
-    assert.ok(previa.corpo.colunas_ignoradas.some((c: any) => c.cabecalho === 'ra_name' && c.motivo === 'desconhecida'));
+    assert.ok(previa.corpo.colunas_ignoradas.some((c: any) => c.cabecalho === 'ra_name' && c.motivo === 'extras'));
 
     const ap = await s.chamar('POST', `/importacoes/${previa.corpo.id}/aplicar`, {}, PERFIS.operador);
     assert.equal(ap.status, 200, ap.texto);

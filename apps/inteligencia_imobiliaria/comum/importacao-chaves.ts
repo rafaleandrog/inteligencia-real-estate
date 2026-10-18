@@ -38,6 +38,8 @@ export interface TabelaImport {
   temVersao: boolean;
   /** Colunas não mapeadas vão para `extras` (json), sem aviso de perda. */
   extras?: boolean;
+  /** A tabela não tem `soft_delete` (série publicada): o desfazer apaga a linha. */
+  semLixeira?: boolean;
   /** Modos permitidos; `substituir_tudo` só em série publicada. */
   modos: ModoDuplicata[];
   /**
@@ -352,6 +354,71 @@ export const TABELAS_IMPORT: Record<string, TabelaImport> = {
       { coluna: 'notas', tipo: 'texto_longo' },
     ],
   },
+  ivv_mensal: {
+    tabela: 'ivv_mensal',
+    titulo: 'IVV mensal',
+    chave: ['mes_referencia', 'escopo_segmento', 'escopo_mercado'],
+    derivadas: ['cidade_id'],
+    temVersao: false,
+    semLixeira: true,
+    // As 50 colunas derivadas publicadas (acumulados, variações, checagens) vão para `extras`, verbatim (5.7).
+    extras: true,
+    modos: MODOS_CADASTRO,
+    campos: [
+      { coluna: 'mes_referencia', tipo: 'texto', obrigatorio: true, aliases: ['reference_date', 'reference_month', 'period_id'] },
+      { coluna: 'escopo_geografico', tipo: 'texto', limite: 60, aliases: ['geography_scope'] },
+      { coluna: 'escopo_mercado', tipo: 'texto', limite: 60, aliases: ['market_scope'] },
+      { coluna: 'escopo_segmento', tipo: 'texto', limite: 60, aliases: ['segment_scope'] },
+      { coluna: 'ivv_frac', tipo: 'fracao', aliases: ['ivv_pct'] },
+      { coluna: 'oferta_unidades', tipo: 'inteiro', aliases: ['offers_units', 'offered_units'] },
+      { coluna: 'vendas_unidades', tipo: 'inteiro', aliases: ['sales_units', 'sold_units'] },
+      { coluna: 'lancamentos_unidades', tipo: 'inteiro', aliases: ['launches_units', 'launched_units'] },
+      { coluna: 'lancamentos_empreendimentos', tipo: 'inteiro', aliases: ['launches_developments', 'launched_projects'] },
+      { coluna: 'distratos_unidades', tipo: 'inteiro', aliases: ['cancellations_units'] },
+      { coluna: 'oferta_area_m2', tipo: 'decimal', aliases: ['offer_area_m2', 'offered_area_m2'] },
+      { coluna: 'area_vendida_m2', tipo: 'decimal', aliases: ['sold_area_m2'] },
+      { coluna: 'preco_pedido_m2_brl', tipo: 'decimal', aliases: ['asking_price_brl_m2', 'offer_price_brl_m2'] },
+      { coluna: 'preco_venda_m2_brl', tipo: 'decimal', aliases: ['sale_price_brl_m2'] },
+      { coluna: 'vgo_brl_milhoes', tipo: 'decimal', aliases: ['vgo_brl_million'] },
+      { coluna: 'vgv_brl_milhoes', tipo: 'decimal', aliases: ['vgv_brl_million'] },
+      { coluna: 'vgl_brl_milhoes', tipo: 'decimal', aliases: ['vgl_brl_million'] },
+      { coluna: 'distratos_sobre_vendas_frac', tipo: 'fracao', aliases: ['cancellations_to_sales_pct'] },
+      { coluna: 'fonte_publicador', tipo: 'texto', limite: 200, aliases: ['source_publisher'] },
+      { coluna: 'fonte_arquivo', tipo: 'texto', limite: 300, aliases: ['source_file'] },
+      { coluna: 'fonte_url', tipo: 'url', limite: 1000, aliases: ['source_url'] },
+      { coluna: 'fonte_relatorio_gerado_em', tipo: 'texto', limite: 60, aliases: ['source_report_generated_at'] },
+      { coluna: 'filtro_relatorio', tipo: 'texto', limite: 300, aliases: ['report_filter'] },
+      { coluna: 'fonte_codigo', tipo: 'texto', limite: 80, aliases: ['source_id'] },
+      { coluna: 'localizador_fonte', tipo: 'texto', limite: 300, aliases: ['source_locator'] },
+      { coluna: 'verificado_em', tipo: 'data', aliases: ['verified_at'] },
+      { coluna: 'nota_cobertura', tipo: 'texto_longo', aliases: ['coverage_note'] },
+      { coluna: 'qualidade', tipo: 'texto', limite: 60, aliases: ['quality_flag'] },
+    ],
+  },
+  ivv_regional: {
+    tabela: 'ivv_regional',
+    titulo: 'IVV por localidade',
+    chave: ['mes_referencia', 'nome_regiao_fonte', 'faixa_quartos'],
+    derivadas: ['cidade_id', 'localidade_nome', 'agregado_total'],
+    temVersao: false,
+    semLixeira: true,
+    modos: MODOS_CADASTRO,
+    campos: [
+      { coluna: 'mes_referencia', tipo: 'texto', obrigatorio: true, aliases: ['reference_month', 'reference_date'] },
+      { coluna: 'nome_regiao_fonte', tipo: 'texto', obrigatorio: true, limite: 120, aliases: ['market_region'] },
+      { coluna: 'faixa_quartos', tipo: 'texto', obrigatorio: true, aliases: ['bedroom_bucket'], opcoes: ['1Q', '2Q', '3Q', '4+Q', 'TOTAL'] },
+      { ...LOCALIDADE_REF, aliases: ['localidade_codigo', 'localidade_id'] },
+      { coluna: 'ofertadas', tipo: 'inteiro', aliases: ['offered_units'] },
+      { coluna: 'vendidas', tipo: 'inteiro', aliases: ['sold_units'] },
+      // A aba publica em pontos percentuais (12.5 = 12,5%); a app guarda fração.
+      { coluna: 'ivv_publicado_frac', tipo: 'fracao', aliasesPct: ['ivv_pct_published', 'ivv_pct'] },
+      { coluna: 'ivv_recalculado_frac', tipo: 'fracao', aliasesPct: ['ivv_pct_check'] },
+      { coluna: 'ivv_variancia_pp', tipo: 'decimal', aliases: ['ivv_variance_pp'] },
+      { coluna: 'preco_oferta_m2_brl', tipo: 'decimal', aliases: ['offer_price_brl_m2'] },
+      { coluna: 'preco_venda_m2_brl', tipo: 'decimal', aliases: ['sale_price_brl_m2'] },
+      { coluna: 'fonte_codigo', tipo: 'texto', limite: 80, aliases: ['source_id'] },
+    ],
+  },
 };
 
 /** Cabeçalho normalizado para comparação: minúsculo, sem acento, sem espaço nas pontas. */
@@ -376,7 +443,8 @@ export interface MapeamentoColuna {
 
 export interface ColunaIgnorada {
   cabecalho: string;
-  motivo: 'derivada' | 'desconhecida' | 'repetida';
+  /** `extras`: coluna sem campo próprio guardada verbatim no json `extras` da linha (sem perda). */
+  motivo: 'derivada' | 'desconhecida' | 'repetida' | 'extras';
 }
 
 /**
@@ -384,7 +452,7 @@ export interface ColunaIgnorada {
  * depois alias. Coluna derivada ou desconhecida é ignorada com aviso, nunca
  * rejeita a linha (T9). `atr_<codigo>` fica para o motor (atributos).
  */
-export function mapearCabecalho(def: TabelaImport, cabecalho: string[]): { colunas: MapeamentoColuna[]; ignoradas: ColunaIgnorada[]; atributos: { indice: number; codigo: string }[]; variante: string | null; campos: CampoImport[] } {
+export function mapearCabecalho(def: TabelaImport, cabecalho: string[]): { colunas: MapeamentoColuna[]; ignoradas: ColunaIgnorada[]; atributos: { indice: number; codigo: string }[]; extras: { indice: number; nome: string }[]; variante: string | null; campos: CampoImport[] } {
   const normalizados = cabecalho.map(normalizarCabecalho);
   const variante = def.variantes?.find((v) => normalizados.includes(v.detecta)) ?? null;
   if (variante) {
@@ -400,6 +468,7 @@ export function mapearCabecalho(def: TabelaImport, cabecalho: string[]): { colun
   const colunas: MapeamentoColuna[] = [];
   const ignoradas: ColunaIgnorada[] = [];
   const atributos: { indice: number; codigo: string }[] = [];
+  const extras: { indice: number; nome: string }[] = [];
   const usados = new Set<string>();
   const derivadas = new Set([...DERIVADAS_COMUNS, ...def.derivadas]);
   const porNome = new Map<string, { campo: CampoImport; pct: boolean; prioridade: number }>();
@@ -436,11 +505,16 @@ export function mapearCabecalho(def: TabelaImport, cabecalho: string[]): { colun
       colunas.push({ indice, cabecalho: bruto, campo: alvo.campo, pct: alvo.pct, alternativas: [] });
       continue;
     }
+    if (def.extras && !derivadas.has(nome)) {
+      extras.push({ indice, nome });
+      ignoradas.push({ cabecalho: bruto, motivo: 'extras' });
+      continue;
+    }
     ignoradas.push({ cabecalho: bruto, motivo: derivadas.has(nome) ? 'derivada' : 'desconhecida' });
   }
   colunas.sort((a, b) => a.indice - b.indice);
   ignoradas.sort((a, b) => cabecalho.indexOf(a.cabecalho) - cabecalho.indexOf(b.cabecalho));
-  return { colunas, ignoradas, atributos, variante: variante?.nome ?? null, campos: def.campos };
+  return { colunas, ignoradas, atributos, extras, variante: variante?.nome ?? null, campos: def.campos };
 }
 
 /** Cabeçalho do modelo baixável: as colunas canônicas, na ordem do catálogo. */

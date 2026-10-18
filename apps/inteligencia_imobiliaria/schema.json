@@ -2659,6 +2659,260 @@
           "geometria_hash"
         ]
       ]
+    },
+    "ivv_mensal": {
+      "acesso_externo": "somente_leitura",
+      "id_legivel": "IVV {mes_referencia}",
+      "colunas": {
+        "cidade_id": {
+          "tipo": "referencia",
+          "tabela_ref": "cidades",
+          "ao_deletar": "restringir",
+          "obrigatorio": true
+        },
+        "mes_referencia": {
+          "tipo": "data",
+          "obrigatorio": true
+        },
+        "escopo_geografico": {
+          "tipo": "texto",
+          "limite": 60
+        },
+        "escopo_mercado": {
+          "tipo": "texto",
+          "limite": 60
+        },
+        "escopo_segmento": {
+          "tipo": "texto",
+          "limite": 60
+        },
+        "ivv_frac": {
+          "tipo": "decimal",
+          "precisao": 8,
+          "escala": 6
+        },
+        "oferta_unidades": {
+          "tipo": "inteiro"
+        },
+        "vendas_unidades": {
+          "tipo": "inteiro"
+        },
+        "lancamentos_unidades": {
+          "tipo": "inteiro"
+        },
+        "lancamentos_empreendimentos": {
+          "tipo": "inteiro"
+        },
+        "distratos_unidades": {
+          "tipo": "inteiro"
+        },
+        "oferta_area_m2": {
+          "tipo": "decimal",
+          "precisao": 14,
+          "escala": 2
+        },
+        "area_vendida_m2": {
+          "tipo": "decimal",
+          "precisao": 14,
+          "escala": 2
+        },
+        "preco_pedido_m2_brl": {
+          "tipo": "decimal",
+          "precisao": 12,
+          "escala": 2
+        },
+        "preco_venda_m2_brl": {
+          "tipo": "decimal",
+          "precisao": 12,
+          "escala": 2
+        },
+        "vgo_brl_milhoes": {
+          "tipo": "decimal",
+          "precisao": 14,
+          "escala": 3
+        },
+        "vgv_brl_milhoes": {
+          "tipo": "decimal",
+          "precisao": 14,
+          "escala": 3
+        },
+        "vgl_brl_milhoes": {
+          "tipo": "decimal",
+          "precisao": 14,
+          "escala": 3
+        },
+        "distratos_sobre_vendas_frac": {
+          "tipo": "decimal",
+          "precisao": 8,
+          "escala": 6
+        },
+        "fonte_publicador": {
+          "tipo": "texto",
+          "limite": 200
+        },
+        "fonte_arquivo": {
+          "tipo": "texto",
+          "limite": 300
+        },
+        "fonte_url": {
+          "tipo": "texto",
+          "limite": 1000
+        },
+        "fonte_relatorio_gerado_em": {
+          "tipo": "texto",
+          "limite": 60
+        },
+        "filtro_relatorio": {
+          "tipo": "texto",
+          "limite": 300
+        },
+        "fonte_codigo": {
+          "tipo": "texto",
+          "limite": 80
+        },
+        "localizador_fonte": {
+          "tipo": "texto",
+          "limite": 300
+        },
+        "verificado_em": {
+          "tipo": "data"
+        },
+        "nota_cobertura": {
+          "tipo": "texto_longo"
+        },
+        "qualidade": {
+          "tipo": "texto",
+          "limite": 60
+        },
+        "extras": {
+          "tipo": "json"
+        },
+        "importacao_id": {
+          "tipo": "referencia",
+          "tabela_ref": "importacoes",
+          "ao_deletar": "anular"
+        }
+      },
+      "unicos": [
+        {
+          "colunas": [
+            "cidade_id",
+            "mes_referencia",
+            "escopo_segmento",
+            "escopo_mercado"
+          ],
+          "nulos_distintos": false
+        }
+      ],
+      "indices": [
+        [
+          "cidade_id",
+          "mes_referencia"
+        ],
+        [
+          "importacao_id"
+        ]
+      ]
+    },
+    "ivv_regional": {
+      "acesso_externo": "somente_leitura",
+      "id_legivel": "{nome_regiao_fonte} {faixa_quartos} {mes_referencia}",
+      "colunas": {
+        "cidade_id": {
+          "tipo": "referencia",
+          "tabela_ref": "cidades",
+          "ao_deletar": "restringir",
+          "obrigatorio": true
+        },
+        "mes_referencia": {
+          "tipo": "data",
+          "obrigatorio": true
+        },
+        "localidade_id": {
+          "tipo": "referencia",
+          "tabela_ref": "localidades",
+          "ao_deletar": "anular"
+        },
+        "nome_regiao_fonte": {
+          "tipo": "texto",
+          "limite": 120,
+          "obrigatorio": true
+        },
+        "agregado_total": {
+          "tipo": "booleano",
+          "obrigatorio": true
+        },
+        "faixa_quartos": {
+          "tipo": "texto",
+          "limite": 10,
+          "opcoes": [
+            "1Q",
+            "2Q",
+            "3Q",
+            "4+Q",
+            "TOTAL"
+          ],
+          "obrigatorio": true
+        },
+        "ofertadas": {
+          "tipo": "inteiro"
+        },
+        "vendidas": {
+          "tipo": "inteiro"
+        },
+        "ivv_publicado_frac": {
+          "tipo": "decimal",
+          "precisao": 8,
+          "escala": 6
+        },
+        "ivv_recalculado_frac": {
+          "tipo": "decimal",
+          "precisao": 8,
+          "escala": 6
+        },
+        "ivv_variancia_pp": {
+          "tipo": "decimal",
+          "precisao": 8,
+          "escala": 4
+        },
+        "preco_oferta_m2_brl": {
+          "tipo": "decimal",
+          "precisao": 12,
+          "escala": 2
+        },
+        "preco_venda_m2_brl": {
+          "tipo": "decimal",
+          "precisao": 12,
+          "escala": 2
+        },
+        "fonte_codigo": {
+          "tipo": "texto",
+          "limite": 80
+        },
+        "importacao_id": {
+          "tipo": "referencia",
+          "tabela_ref": "importacoes",
+          "ao_deletar": "anular"
+        }
+      },
+      "unicos": [
+        [
+          "cidade_id",
+          "mes_referencia",
+          "nome_regiao_fonte",
+          "faixa_quartos"
+        ]
+      ],
+      "indices": [
+        [
+          "cidade_id",
+          "mes_referencia",
+          "faixa_quartos"
+        ],
+        [
+          "importacao_id"
+        ]
+      ]
     }
   }
 }
