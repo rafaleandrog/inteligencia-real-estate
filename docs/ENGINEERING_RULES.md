@@ -1,5 +1,9 @@
 # Regras de engenharia
 
+> **Escopo (spec D-127):** estas regras valem para o site (raiz, `src/`, `admin.html`, `assets/`,
+> `pipeline/`, `data/`, `tests/`, `tools/`). A app UrbiVerso em `apps/inteligencia_imobiliaria/`
+> segue o `KIT.md` e as skills do kit; R1.x ("sem build, sem backend Node") e R2.1 não valem lá.
+
 Fonte canônica das regras deste repositório. [`AGENTS.md`](../AGENTS.md) é o resumo de entrada;
 este arquivo é o detalhe. Em caso de conflito, **este arquivo vence**.
 

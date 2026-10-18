@@ -1,0 +1,187 @@
+# Release de uma app ou de um módulo via urbi-release — canônico.
+#
+# DO KIT: reescrito por inteiro a cada `npx @urbiverso/kit-apps`. Não edite —
+# o que você mudar aqui some na próxima atualização. O que este workflow RODA é
+# seu: ele chama `typecheck`, `build` e `test` do package.json do pacote do
+# alvo (`apps/<appId>/` ou `modulos/<slug>/backend/`). O `build` roda sempre;
+# `typecheck` e `test` são opcionais (`--if-present`) e são o lugar de qualquer
+# passo próprio.
+#
+# Dispara por workflow_dispatch (Actions → release → Run workflow, ou
+# `gh workflow run release.yml -f alvo=<appId-ou-slug>`): recebe o ALVO — o
+# nome da pasta em apps/ ou em modulos/ —, valida, resolve qual dos dois é, e o
+# `urbi-release` empacota, deriva a tag canônica a partir do HEAD e publica um
+# PRERELEASE no GitHub com o pacote + .sha256 (convenção que a plataforma
+# consome):
+#
+#   app     apps/<appId>/      tag <appId>-a<versao>_<sha8>  <appId>-<versao>.urbiapp.tgz
+#   módulo  modulos/<slug>/    tag <slug>-m<versao>_<sha8>   <slug>-<versao>.urbimod.tgz
+#
+# Um repositório pode ter apps e módulos lado a lado; cada release é de um
+# alvo. O mesmo nome nas duas pastas é ambíguo e o workflow recusa — renomeie
+# uma delas.
+#
+# O alvo é texto livre, e não uma lista fixa, de propósito: uma lista nomearia
+# as apps DESTE repositório dentro de um arquivo que é do kit, e foi exatamente
+# essa linha que, por meses, impediu o kit de atualizar este arquivo em qualquer
+# repositório que já tivesse uma app. O passo "Validar alvo" faz o que a lista
+# fazia — recusa alvo que não existe — e ainda diz quais existem.
+#
+# Módulo cujo manifesto declara `requer_extensoes` com `postgis` ganha um
+# PostgreSQL com PostGIS no runner antes dos testes, e a URL dele em
+# URBIVERSO_PG_TESTE_URL (com URBIVERSO_PG_TESTE_EXIGIR=1: o teste que precisa
+# do banco falha em vez de pular). A convenção está no KIT.md.
+#
+# O `urbi-release` é rodado via `npx` a partir do pacote publicado
+# @urbiverso/sdk (o SDK não tem deps de runtime — baixa só o bin).
+#
+# NÃO PINE ESTE `npx` NUMA VERSÃO. O bin carrega a lista de obsolescências
+# embutida, então a versão do SDK É a régua com que este workflow fiscaliza.
+# SDK novo incompatível → workflow VERMELHO, nada publicado. SDK velho demais →
+# workflow VERDE publicando o que a instância vai recusar. Entre falhar alto e
+# passar calado, este workflow escolhe falhar alto.
+#
+# Isto vale só para a FERRAMENTA. O `@urbiverso/sdk` do catálogo é outro papel
+# — tipos —, e lá a política é o oposto: versão exata, amarrada ao `sdk_min`
+# do manifesto.
+#
+# O registry autentica com o secret URBIVERSO_PACKAGES_TOKEN (PAT classic com
+# read:packages), e com ele só. Vale igual para repositório de cliente e para
+# repositório da própria organização urbiverso: um caminho, exercitado por
+# todos, é o que garante que ele funciona.
+#
+# NÃO PONHA UM FALLBACK AQUI. `secrets.URBIVERSO_PACKAGES_TOKEN ||
+# secrets.GITHUB_TOKEN` é a forma tentadora, e ela transforma "faltou
+# configurar" em "autenticou com uma credencial que não podia funcionar": o
+# token nativo do Actions é escopado ao PRÓPRIO repositório e não alcança um
+# pacote publicado por outro — a menos que o pacote conceda Actions access a
+# este repositório, um a um, que é outra configuração e não a que este workflow
+# assume. E mesmo com a concessão, o bloco `permissions:` abaixo não pede
+# `packages`, então o token nativo nasce sem esse escopo. O sintoma é um `403`
+# (autenticou e negou, não `401`) a duzentas linhas de log da causa, com `ghs_`
+# no `.npmrc` denunciando de onde veio. Sem o fallback, secret ausente vira
+# string vazia e o preflight pega na primeira linha. Um caminho, uma mensagem.
+#
+# Sem gatilho por push de tag: o urbi-release cria a tag ele mesmo a partir do
+# HEAD, então um push de tag pré-existente conflitaria com essa criação.
+name: release
+on:
+  workflow_dispatch:
+    inputs:
+      alvo:
+        description: 'App ou módulo a publicar: o nome da pasta em apps/ ou em modulos/ (ex.: ola_mundo)'
+        required: true
+        type: string
+permissions:
+  contents: write    # urbi-release cria a tag + o release
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20   # runner pendurado não vira hora faturada (PostGIS custa ~2 min)
+    # Nível de job, e não do passo: o `.npmrc` versionado autentica o registry
+    # por REFERÊNCIA a esta variável (`_authToken=${URBIVERSO_PACKAGES_TOKEN}`),
+    # e quem a lê é o `npm`/`npx` do passo de publicar — o `pnpm` dos passos
+    # anteriores descarta a credencial do `.npmrc` do projeto e se salva pelo
+    # NODE_AUTH_TOKEN. Com a variável vazia, install e build passam e só a
+    # publicação quebra, com 401.
+    env:
+      URBIVERSO_PACKAGES_TOKEN: ${{ secrets.URBIVERSO_PACKAGES_TOKEN }}
+      ALVO: ${{ inputs.alvo }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '20'
+          registry-url: https://npm.pkg.github.com
+          scope: '@urbiverso'
+      # Corepack, e não `pnpm/action-setup`: o `packageManager` do package.json
+      # fixa a versão exata numa fonte de verdade só.
+      - name: Habilitar Corepack
+        run: corepack enable
+      # O alvo é pasta, schema e prefixo de rota, em snake_case. Quem digita
+      # errado descobre aqui, com a lista do que existe — não num 404 do
+      # urbi-release. `$ALVO` via env, e não interpolado no script: entrada de
+      # workflow não entra em shell sem aspas. O que este passo resolve vai para
+      # os seguintes por $GITHUB_ENV:
+      #   PASTA_ALVO    a pasta do instalável (o `--dir` do urbi-release)
+      #   PASTA_PACOTE  onde roda typecheck/build/test (app: a própria pasta;
+      #                 módulo: o `backend/`, que é o pacote do workspace)
+      - name: Validar alvo
+        id: alvo
+        run: |
+          if ! printf '%s' "$ALVO" | grep -Eq '^[a-z][a-z0-9_]*$'; then
+            echo "::error::alvo '$ALVO' inválido — use o nome da pasta em apps/ ou modulos/, em snake_case."
+            exit 1
+          fi
+          existentes() {
+            for m in apps/*/manifesto.json modulos/*/manifesto.json; do
+              [ -f "$m" ] && printf '%s ' "$(dirname "$m")"
+            done
+          }
+          if [ -f "apps/$ALVO/manifesto.json" ] && [ -f "modulos/$ALVO/manifesto.json" ]; then
+            echo "::error::alvo '$ALVO' é ambíguo: existem apps/$ALVO e modulos/$ALVO. Renomeie um dos dois."
+            exit 1
+          elif [ -f "apps/$ALVO/manifesto.json" ]; then
+            echo "PASTA_ALVO=apps/$ALVO" >> "$GITHUB_ENV"
+            echo "PASTA_PACOTE=apps/$ALVO" >> "$GITHUB_ENV"
+            echo "manifesto=apps/$ALVO/manifesto.json" >> "$GITHUB_OUTPUT"
+          elif [ -f "modulos/$ALVO/manifesto.json" ]; then
+            echo "PASTA_ALVO=modulos/$ALVO" >> "$GITHUB_ENV"
+            echo "PASTA_PACOTE=modulos/$ALVO/backend" >> "$GITHUB_ENV"
+            echo "manifesto=modulos/$ALVO/manifesto.json" >> "$GITHUB_OUTPUT"
+          else
+            echo "::error::não existe apps/$ALVO nem modulos/$ALVO com manifesto.json. Alvos deste repositório: $(existentes)"
+            exit 1
+          fi
+      # Preflight da credencial, ANTES de instalar — o script explica os três
+      # casos que ele separa. É o mesmo do ci.yml, e é do kit.
+      - name: Conferir credencial do registry
+        run: bash .github/kit/credencial-registry.sh
+      - name: Instalar dependências
+        run: pnpm install --frozen-lockfile
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.URBIVERSO_PACKAGES_TOKEN }}
+      # PostGIS só quando o manifesto do alvo o pede em `requer_extensoes`. O
+      # nome do arquivo entra por env, nunca interpolado no script.
+      - name: Extensões de host do alvo
+        id: extensoes
+        env:
+          MANIFESTO: ${{ steps.alvo.outputs.manifesto }}
+        run: |
+          node -e '
+            const m = JSON.parse(require("fs").readFileSync(process.env.MANIFESTO, "utf8"));
+            const pede = Array.isArray(m.requer_extensoes) && m.requer_extensoes.includes("postgis");
+            console.log(`postgis=${pede}`);
+          ' >> "$GITHUB_OUTPUT"
+      - name: PostgreSQL + PostGIS para os testes
+        if: steps.extensoes.outputs.postgis == 'true'
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq postgresql postgresql-contrib postgis
+          sudo systemctl start postgresql.service
+          sudo -u postgres psql -qc "ALTER USER postgres PASSWORD 'postgres'"
+          sudo -u postgres psql -qc "CREATE EXTENSION IF NOT EXISTS postgis"
+          sudo -u postgres psql -Atc "SELECT postgis_full_version()"
+          echo "URBIVERSO_PG_TESTE_URL=postgresql://postgres:postgres@localhost:5432/postgres" >> "$GITHUB_ENV"
+          echo "URBIVERSO_PG_TESTE_EXIGIR=1" >> "$GITHUB_ENV"
+      # `typecheck` e `test` são opcionais: o esbuild do build não checa tipos e
+      # nem todo pacote tem teste. Quem os declarar no package.json do pacote os
+      # ganha aqui sem mexer no workflow.
+      - name: Typecheck, build e testes
+        run: |
+          cd "$PASTA_PACOTE"
+          pnpm run --if-present typecheck
+          pnpm build
+          pnpm run --if-present test
+      # urbi-release: gate de árvore Git limpa → valida + empacota → recaptura
+      # HEAD → tag <alvo>-a<versao>_<sha8> (app) ou <alvo>-m<versao>_<sha8>
+      # (módulo) → prerelease com .tgz + .sha256. Rodado da raiz do repo;
+      # --dir aponta a pasta do alvo (é ela que diz ao bin se é app ou
+      # módulo), --saida cai em ./dist (gitignored).
+      - name: Publicar via urbi-release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          NODE_AUTH_TOKEN: ${{ secrets.URBIVERSO_PACKAGES_TOKEN }}
+        run: >-
+          npx --yes --package @urbiverso/sdk@latest urbi-release
+          "$ALVO" --dir "$PASTA_ALVO" --repo "$GITHUB_REPOSITORY"

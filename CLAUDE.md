@@ -3,6 +3,21 @@
 Este arquivo é lido automaticamente pelo Claude Code a cada nova sessão.
 Para regras de código, arquitetura e data contract, consulte `AGENTS.md`.
 
+## Dois produtos, regras por caminho (spec D-127)
+
+- **Site** (raiz, `src/`, `admin.html`, `assets/`, `pipeline/`, `data/`, `tests/`, `tools/`):
+  `AGENTS.md`, `docs/ENGINEERING_RULES.md` e `docs/AI_WORKFLOW.md`. Review do Codex.
+- **App UrbiVerso** (`apps/inteligencia_imobiliaria/`, `scripts/`, `migracao/`, `qa-relatorios/`):
+  `KIT.md` e as skills do kit em `.claude/skills/`. Revisão com `revisar-pr-apps`.
+  A spec é `docs/SPEC_URBIVERSO.md`; o escopo do MVP, `docs/MVP_PROPOSTA.md`.
+
+**Antes de tocar na app, leia o [`KIT.md`](./KIT.md) por completo.**
+Ele traz as regras da plataforma urbiverso e é mantido pelo time urbiverso.
+
+@./KIT.md
+
+O protocolo de issues abaixo vale para os dois lados.
+
 ---
 
 ## Protocolo Obrigatório: Registro de Issues

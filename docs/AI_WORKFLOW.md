@@ -1,5 +1,9 @@
 # Workflow de agentes de IA
 
+> **Escopo (spec D-127):** estas regras valem para o site (raiz, `src/`, `admin.html`, `assets/`,
+> `pipeline/`, `data/`, `tests/`, `tools/`). A app UrbiVerso em `apps/inteligencia_imobiliaria/`
+> segue o `KIT.md` e as skills do kit; R1.x ("sem build, sem backend Node") e R2.1 não valem lá.
+
 Documentação de engenharia para agentes que trabalham neste repositório. Se você é um agente
 começando agora, leia [`../AGENTS.md`](../AGENTS.md) primeiro — este arquivo é o detalhe operacional.
 

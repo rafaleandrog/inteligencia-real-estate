@@ -1,0 +1,2480 @@
+{
+  "tabelas": {
+    "cidades": {
+      "acesso_externo": "somente_leitura",
+      "id_legivel": "{nome}",
+      "colunas": {
+        "slug": {
+          "tipo": "texto",
+          "limite": 60,
+          "obrigatorio": true,
+          "unico": true,
+          "formato": "^[a-z][a-z0-9_]*$"
+        },
+        "nome": {
+          "tipo": "texto",
+          "limite": 120,
+          "obrigatorio": true
+        },
+        "uf": {
+          "tipo": "texto",
+          "limite": 2,
+          "obrigatorio": true
+        },
+        "codigo_ibge": {
+          "tipo": "texto",
+          "limite": 7
+        },
+        "centro_latitude": {
+          "tipo": "decimal",
+          "precisao": 10,
+          "escala": 7,
+          "obrigatorio": true
+        },
+        "centro_longitude": {
+          "tipo": "decimal",
+          "precisao": 10,
+          "escala": 7,
+          "obrigatorio": true
+        },
+        "zoom_inicial": {
+          "tipo": "inteiro",
+          "obrigatorio": true
+        },
+        "ativa": {
+          "tipo": "booleano",
+          "obrigatorio": true,
+          "padrao": true
+        }
+      }
+    },
+    "importacoes": {
+      "acesso_externo": "restrito",
+      "id_legivel": "{tabela_alvo} {criado_em}",
+      "colunas": {
+        "tabela_alvo": {
+          "tipo": "texto",
+          "limite": 60,
+          "obrigatorio": true
+        },
+        "fonte_codigo": {
+          "tipo": "texto",
+          "limite": 60
+        },
+        "tipo_arquivo": {
+          "tipo": "texto",
+          "limite": 20,
+          "opcoes": [
+            "csv",
+            "pdf",
+            "planilha",
+            "imagem",
+            "outro"
+          ],
+          "obrigatorio": true
+        },
+        "arquivo": {
+          "tipo": "arquivo",
+          "obrigatorio": true,
+          "tamanho_max_mb": 50,
+          "mimes": [
+            "text/csv",
+            "text/plain",
+            "application/vnd.ms-excel",
+            "application/pdf",
+            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            "application/vnd.oasis.opendocument.spreadsheet",
+            "image/png",
+            "image/jpeg",
+            "application/vnd.google-earth.kml+xml",
+            "application/vnd.google-earth.kmz",
+            "application/geo+json",
+            "application/json",
+            "application/octet-stream"
+          ]
+        },
+        "modo_duplicata": {
+          "tipo": "texto",
+          "limite": 20,
+          "opcoes": [
+            "ignorar",
+            "atualizar",
+            "substituir_tudo",
+            "falhar"
+          ],
+          "obrigatorio": true
+        },
+        "mapeamento": {
+          "tipo": "json"
+        },
+        "status": {
+          "tipo": "texto",
+          "limite": 20,
+          "opcoes": [
+            "previa",
+            "anexada",
+            "extraindo",
+            "aplicando",
+            "aplicada",
+            "falhou",
+            "cancelada",
+            "desfeita"
+          ],
+          "obrigatorio": true
+        },
+        "total_linhas": {
+          "tipo": "inteiro"
+        },
+        "inseridas": {
+          "tipo": "inteiro"
+        },
+        "atualizadas": {
+          "tipo": "inteiro"
+        },
+        "ignoradas": {
+          "tipo": "inteiro"
+        },
+        "rejeitadas": {
+          "tipo": "inteiro"
+        },
+        "relatorio": {
+          "tipo": "json"
+        },
+        "autor_id": {
+          "tipo": "referencia",
+          "tabela_ref": "shell.usuarios",
+          "ao_deletar": "anular",
+          "campos_incluir": [
+            "nome as autor_nome"
+          ],
+          "obrigatorio": true
+        },
+        "aplicada_em": {
+          "tipo": "datahora"
+        },
+        "retrato_data": {
+          "tipo": "data"
+        },
+        "arquivo_sha256": {
+          "tipo": "texto",
+          "limite": 64
+        },
+        "desfeita_em": {
+          "tipo": "datahora"
+        },
+        "desfeita_por_id": {
+          "tipo": "referencia",
+          "tabela_ref": "shell.usuarios",
+          "ao_deletar": "anular",
+          "campos_incluir": [
+            "nome as desfeita_por_nome"
+          ]
+        },
+        "relatorio_desfazer": {
+          "tipo": "json"
+        },
+        "coleta_id": {
+          "tipo": "referencia",
+          "tabela_ref": "coletas",
+          "ao_deletar": "anular"
+        }
+      },
+      "indices": [
+        [
+          "tabela_alvo",
+          "status"
+        ]
+      ]
+    },
+    "localidades": {
+      "acesso_externo": "restrito",
+      "soft_delete": true,
+      "id_legivel": "{nome} ({codigo})",
+      "colunas": {
+        "cidade_id": {
+          "tipo": "referencia",
+          "tabela_ref": "cidades",
+          "ao_deletar": "restringir",
+          "obrigatorio": true
+        },
+        "tipo": {
+          "tipo": "texto",
+          "limite": 20,
+          "opcoes": [
+            "ra",
+            "submercado",
+            "bairro",
+            "municipio",
+            "agregado"
+          ],
+          "obrigatorio": true
+        },
+        "codigo": {
+          "tipo": "texto",
+          "limite": 40,
+          "obrigatorio": true
+        },
+        "codigo_romano": {
+          "tipo": "texto",
+          "limite": 12
+        },
+        "codigo_legado": {
+          "tipo": "texto",
+          "limite": 40
+        },
+        "numero": {
+          "tipo": "inteiro"
+        },
+        "nome": {
+          "tipo": "texto",
+          "limite": 120,
+          "obrigatorio": true
+        },
+        "nome_fonte": {
+          "tipo": "texto",
+          "limite": 120
+        },
+        "localidade_pai_id": {
+          "tipo": "referencia",
+          "tabela_ref": "localidades",
+          "ao_deletar": "anular"
+        },
+        "classificacao_fonte": {
+          "tipo": "texto",
+          "limite": 40
+        },
+        "regra_mapeamento": {
+          "tipo": "texto_longo"
+        },
+        "nota_metodologica": {
+          "tipo": "texto_longo"
+        },
+        "vigente_de": {
+          "tipo": "data"
+        },
+        "vigente_ate": {
+          "tipo": "data"
+        },
+        "area_km2": {
+          "tipo": "decimal",
+          "precisao": 12,
+          "escala": 4
+        },
+        "ponto_referencia_latitude": {
+          "tipo": "decimal",
+          "precisao": 10,
+          "escala": 7
+        },
+        "ponto_referencia_longitude": {
+          "tipo": "decimal",
+          "precisao": 10,
+          "escala": 7
+        },
+        "criada_apos_pdad_2024": {
+          "tipo": "booleano"
+        },
+        "localidade_predecessora_id": {
+          "tipo": "referencia",
+          "tabela_ref": "localidades",
+          "ao_deletar": "anular"
+        },
+        "referencia_legal": {
+          "tipo": "texto",
+          "limite": 200
+        },
+        "geometria_fonte_url": {
+          "tipo": "texto",
+          "limite": 500
+        },
+        "perfil_fonte_url": {
+          "tipo": "texto",
+          "limite": 500
+        },
+        "qualidade": {
+          "tipo": "texto",
+          "limite": 80
+        },
+        "notas": {
+          "tipo": "texto_longo"
+        },
+        "versao": {
+          "tipo": "inteiro",
+          "obrigatorio": true,
+          "padrao": 1
+        },
+        "importacao_id": {
+          "tipo": "referencia",
+          "tabela_ref": "importacoes",
+          "ao_deletar": "anular"
+        }
+      },
+      "unicos": [
+        {
+          "colunas": [
+            "cidade_id",
+            "tipo",
+            "codigo"
+          ],
+          "onde": [
+            {
+              "coluna": "removido_em",
+              "operador": "nulo"
+            }
+          ]
+        },
+        {
+          "colunas": [
+            "cidade_id",
+            "codigo_legado"
+          ],
+          "onde": [
+            {
+              "coluna": "codigo_legado",
+              "operador": "nao_nulo"
+            },
+            {
+              "coluna": "removido_em",
+              "operador": "nulo"
+            }
+          ]
+        }
+      ],
+      "indices": [
+        [
+          "cidade_id",
+          "tipo"
+        ],
+        [
+          "importacao_id"
+        ]
+      ],
+      "busca_texto": {
+        "colunas": [
+          "nome",
+          "nome_fonte"
+        ]
+      }
+    },
+    "localidade_perfis": {
+      "acesso_externo": "somente_leitura",
+      "id_legivel": "{ano_referencia}",
+      "colunas": {
+        "localidade_id": {
+          "tipo": "referencia",
+          "tabela_ref": "localidades",
+          "ao_deletar": "restringir",
+          "obrigatorio": true
+        },
+        "ano_referencia": {
+          "tipo": "inteiro",
+          "obrigatorio": true
+        },
+        "populacao_total": {
+          "tipo": "inteiro"
+        },
+        "densidade_hab_km2": {
+          "tipo": "decimal",
+          "precisao": 12,
+          "escala": 2
+        },
+        "renda_per_capita_brl": {
+          "tipo": "decimal",
+          "precisao": 12,
+          "escala": 2
+        },
+        "faixa_0_14_frac": {
+          "tipo": "decimal",
+          "precisao": 6,
+          "escala": 5
+        },
+        "faixa_15_29_frac": {
+          "tipo": "decimal",
+          "precisao": 6,
+          "escala": 5
+        },
+        "faixa_30_44_frac": {
+          "tipo": "decimal",
+          "precisao": 6,
+          "escala": 5
+        },
+        "faixa_45_59_frac": {
+          "tipo": "decimal",
+          "precisao": 6,
+          "escala": 5
+        },
+        "faixa_60_mais_frac": {
+          "tipo": "decimal",
+          "precisao": 6,
+          "escala": 5
+        },
+        "idade_media": {
+          "tipo": "decimal",
+          "precisao": 5,
+          "escala": 2
+        },
+        "feminino_frac": {
+          "tipo": "decimal",
+          "precisao": 6,
+          "escala": 5
+        },
+        "masculino_frac": {
+          "tipo": "decimal",
+          "precisao": 6,
+          "escala": 5
+        },
+        "domicilios_total": {
+          "tipo": "inteiro"
+        },
+        "moradores_por_domicilio": {
+          "tipo": "decimal",
+          "precisao": 5,
+          "escala": 2
+        },
+        "tipologia_dominante": {
+          "tipo": "texto",
+          "limite": 40
+        },
+        "tipologia_dominante_frac": {
+          "tipo": "decimal",
+          "precisao": 6,
+          "escala": 5
+        },
+        "ocupacao_dominante": {
+          "tipo": "texto",
+          "limite": 40
+        },
+        "ocupacao_dominante_frac": {
+          "tipo": "decimal",
+          "precisao": 6,
+          "escala": 5
+        },
+        "escritura_registrada_frac": {
+          "tipo": "decimal",
+          "precisao": 6,
+          "escala": 5
+        },
+        "status": {
+          "tipo": "texto",
+          "limite": 80
+        },
+        "qualidade": {
+          "tipo": "texto",
+          "limite": 80
+        },
+        "extras": {
+          "tipo": "json"
+        },
+        "importacao_id": {
+          "tipo": "referencia",
+          "tabela_ref": "importacoes",
+          "ao_deletar": "anular"
+        }
+      },
+      "unicos": [
+        {
+          "colunas": [
+            "localidade_id",
+            "ano_referencia"
+          ],
+          "onde": [
+            {
+              "coluna": "removido_em",
+              "operador": "nulo"
+            }
+          ]
+        }
+      ],
+      "indices": [
+        [
+          "importacao_id"
+        ]
+      ],
+      "soft_delete": true
+    },
+    "contornos": {
+      "acesso_externo": "restrito",
+      "soft_delete": true,
+      "id_legivel": "{nome}",
+      "colunas": {
+        "id_legado": {
+          "tipo": "texto",
+          "limite": 80,
+          "unico": true
+        },
+        "nome": {
+          "tipo": "texto",
+          "limite": 200,
+          "obrigatorio": true
+        },
+        "categoria": {
+          "tipo": "texto",
+          "limite": 60
+        },
+        "subcategoria": {
+          "tipo": "texto",
+          "limite": 60
+        },
+        "tipo_entidade": {
+          "tipo": "texto",
+          "limite": 30,
+          "opcoes": [
+            "regiao_administrativa",
+            "trecho_rodoviario",
+            "area_personalizada"
+          ],
+          "obrigatorio": true
+        },
+        "entidade_codigo": {
+          "tipo": "texto",
+          "limite": 80
+        },
+        "papel_geometria": {
+          "tipo": "texto",
+          "limite": 30,
+          "opcoes": [
+            "limite_exibicao",
+            "limite",
+            "eixo_rota",
+            "corredor_exibicao"
+          ],
+          "obrigatorio": true
+        },
+        "localidade_id": {
+          "tipo": "referencia",
+          "tabela_ref": "localidades",
+          "ao_deletar": "anular"
+        },
+        "grupo_camada": {
+          "tipo": "texto",
+          "limite": 60,
+          "obrigatorio": true
+        },
+        "geometria": {
+          "tipo": "json",
+          "obrigatorio": true
+        },
+        "geometria_tipo": {
+          "tipo": "texto",
+          "limite": 20,
+          "obrigatorio": true
+        },
+        "geometria_fonte": {
+          "tipo": "json"
+        },
+        "bbox_oeste": {
+          "tipo": "decimal",
+          "precisao": 10,
+          "escala": 7,
+          "obrigatorio": true
+        },
+        "bbox_sul": {
+          "tipo": "decimal",
+          "precisao": 10,
+          "escala": 7,
+          "obrigatorio": true
+        },
+        "bbox_leste": {
+          "tipo": "decimal",
+          "precisao": 10,
+          "escala": 7,
+          "obrigatorio": true
+        },
+        "bbox_norte": {
+          "tipo": "decimal",
+          "precisao": 10,
+          "escala": 7,
+          "obrigatorio": true
+        },
+        "centroide_latitude": {
+          "tipo": "decimal",
+          "precisao": 10,
+          "escala": 7
+        },
+        "centroide_longitude": {
+          "tipo": "decimal",
+          "precisao": 10,
+          "escala": 7
+        },
+        "area_m2": {
+          "tipo": "decimal",
+          "precisao": 16,
+          "escala": 2
+        },
+        "area_ha": {
+          "tipo": "decimal",
+          "precisao": 16,
+          "escala": 2
+        },
+        "perimetro_m": {
+          "tipo": "decimal",
+          "precisao": 16,
+          "escala": 2
+        },
+        "metricas_aproximadas": {
+          "tipo": "booleano",
+          "obrigatorio": true,
+          "padrao": true
+        },
+        "estilo": {
+          "tipo": "json"
+        },
+        "ordem_camada": {
+          "tipo": "inteiro"
+        },
+        "buffer_exibicao_m": {
+          "tipo": "decimal",
+          "precisao": 8,
+          "escala": 2
+        },
+        "descricao": {
+          "tipo": "texto_longo"
+        },
+        "propriedades": {
+          "tipo": "json"
+        },
+        "fonte_url": {
+          "tipo": "texto",
+          "limite": 500
+        },
+        "fonte_arquivo": {
+          "tipo": "texto",
+          "limite": 200
+        },
+        "fonte_sistema": {
+          "tipo": "texto",
+          "limite": 80
+        },
+        "fonte_camada": {
+          "tipo": "texto",
+          "limite": 120
+        },
+        "fonte_feicao_id": {
+          "tipo": "texto",
+          "limite": 120
+        },
+        "fonte_crs": {
+          "tipo": "texto",
+          "limite": 40
+        },
+        "fonte_verificada_em": {
+          "tipo": "data"
+        },
+        "confianca": {
+          "tipo": "texto",
+          "limite": 80
+        },
+        "qualidade": {
+          "tipo": "texto",
+          "limite": 80
+        },
+        "geometria_hash": {
+          "tipo": "texto",
+          "limite": 64,
+          "obrigatorio": true
+        },
+        "vigente_de": {
+          "tipo": "data"
+        },
+        "vigente_ate": {
+          "tipo": "data"
+        },
+        "sincronizado_em": {
+          "tipo": "datahora"
+        },
+        "importado_em": {
+          "tipo": "datahora"
+        },
+        "status": {
+          "tipo": "texto",
+          "limite": 10,
+          "opcoes": [
+            "ativo",
+            "inativo"
+          ],
+          "obrigatorio": true,
+          "padrao": "ativo"
+        },
+        "arquivo_origem": {
+          "tipo": "arquivo",
+          "tamanho_max_mb": 20,
+          "mimes": [
+            "application/vnd.google-earth.kml+xml",
+            "application/vnd.google-earth.kmz",
+            "application/geo+json",
+            "application/json",
+            "application/octet-stream"
+          ]
+        },
+        "versao": {
+          "tipo": "inteiro",
+          "obrigatorio": true,
+          "padrao": 1
+        },
+        "importacao_id": {
+          "tipo": "referencia",
+          "tabela_ref": "importacoes",
+          "ao_deletar": "anular"
+        }
+      },
+      "unicos": [
+        {
+          "colunas": [
+            "tipo_entidade",
+            "entidade_codigo",
+            "geometria_hash"
+          ],
+          "onde": [
+            {
+              "coluna": "removido_em",
+              "operador": "nulo"
+            }
+          ]
+        }
+      ],
+      "indices": [
+        [
+          "grupo_camada",
+          "status"
+        ],
+        [
+          "bbox_oeste",
+          "bbox_leste"
+        ],
+        [
+          "bbox_sul",
+          "bbox_norte"
+        ],
+        [
+          "localidade_id"
+        ],
+        [
+          "importacao_id"
+        ]
+      ]
+    },
+    "achados_qualidade": {
+      "acesso_externo": "restrito",
+      "id_legivel": "{codigo} em {tabela}#{registro_id}",
+      "colunas": {
+        "tabela": {
+          "tipo": "texto",
+          "limite": 60,
+          "obrigatorio": true
+        },
+        "registro_id": {
+          "tipo": "inteiro"
+        },
+        "campo": {
+          "tipo": "texto",
+          "limite": 60
+        },
+        "codigo": {
+          "tipo": "texto",
+          "limite": 60,
+          "obrigatorio": true
+        },
+        "severidade": {
+          "tipo": "texto",
+          "limite": 10,
+          "opcoes": [
+            "erro",
+            "aviso",
+            "info"
+          ],
+          "obrigatorio": true
+        },
+        "mensagem": {
+          "tipo": "texto",
+          "limite": 1000,
+          "obrigatorio": true
+        },
+        "valor": {
+          "tipo": "texto",
+          "limite": 500
+        },
+        "origem": {
+          "tipo": "texto",
+          "limite": 20,
+          "opcoes": [
+            "importacao",
+            "rotina",
+            "manual",
+            "validacao_escrita"
+          ],
+          "obrigatorio": true
+        },
+        "detectado_em": {
+          "tipo": "datahora",
+          "obrigatorio": true
+        },
+        "resolvido_em": {
+          "tipo": "datahora"
+        },
+        "resolvido_por_id": {
+          "tipo": "referencia",
+          "tabela_ref": "shell.usuarios",
+          "ao_deletar": "anular",
+          "campos_incluir": [
+            "nome as resolvido_por_nome"
+          ]
+        },
+        "importacao_id": {
+          "tipo": "referencia",
+          "tabela_ref": "importacoes",
+          "ao_deletar": "anular"
+        },
+        "coleta_id": {
+          "tipo": "referencia",
+          "tabela_ref": "coletas",
+          "ao_deletar": "anular"
+        }
+      },
+      "indices": [
+        [
+          "tabela",
+          "resolvido_em"
+        ],
+        [
+          "codigo"
+        ],
+        [
+          "importacao_id"
+        ]
+      ]
+    },
+    "alteracoes_cadastro": {
+      "acesso_externo": "restrito",
+      "id_legivel": "{acao} {tabela}#{registro_id}",
+      "colunas": {
+        "tabela": {
+          "tipo": "texto",
+          "limite": 60,
+          "obrigatorio": true
+        },
+        "registro_id": {
+          "tipo": "inteiro",
+          "obrigatorio": true
+        },
+        "acao": {
+          "tipo": "texto",
+          "limite": 20,
+          "opcoes": [
+            "criado",
+            "editado",
+            "removido",
+            "restaurado",
+            "destruido"
+          ],
+          "obrigatorio": true
+        },
+        "campos": {
+          "tipo": "json"
+        },
+        "autor_id": {
+          "tipo": "referencia",
+          "tabela_ref": "shell.usuarios",
+          "ao_deletar": "anular",
+          "campos_incluir": [
+            "nome as autor_nome"
+          ],
+          "obrigatorio": true
+        },
+        "em": {
+          "tipo": "datahora",
+          "obrigatorio": true
+        },
+        "motivo": {
+          "tipo": "texto",
+          "limite": 500
+        }
+      },
+      "indices": [
+        [
+          "tabela",
+          "registro_id"
+        ]
+      ]
+    },
+    "fontes_portal": {
+      "acesso_externo": "restrito",
+      "soft_delete": true,
+      "id_legivel": "{nome}",
+      "colunas": {
+        "slug": {
+          "tipo": "texto",
+          "limite": 60,
+          "obrigatorio": true,
+          "unico": true,
+          "formato": "^[a-z][a-z0-9_]*$"
+        },
+        "nome": {
+          "tipo": "texto",
+          "limite": 80,
+          "obrigatorio": true
+        },
+        "tipo": {
+          "tipo": "texto",
+          "limite": 20,
+          "opcoes": [
+            "portal",
+            "agregador",
+            "manual"
+          ],
+          "obrigatorio": true
+        },
+        "ativa": {
+          "tipo": "booleano",
+          "obrigatorio": true,
+          "padrao": false
+        },
+        "frequencia": {
+          "tipo": "texto",
+          "limite": 20,
+          "opcoes": [
+            "diaria",
+            "semanal",
+            "manual"
+          ],
+          "obrigatorio": true,
+          "padrao": "manual"
+        },
+        "url_base": {
+          "tipo": "texto",
+          "limite": 500,
+          "obrigatorio": true
+        },
+        "parser": {
+          "tipo": "texto",
+          "limite": 30,
+          "opcoes": [
+            "generico_html",
+            "generico_json",
+            "quintoandar",
+            "dfimoveis",
+            "wimoveis",
+            "imovelweb",
+            "vivareal"
+          ],
+          "obrigatorio": true,
+          "padrao": "generico_html"
+        },
+        "config_parser": {
+          "tipo": "json"
+        },
+        "cabecalhos": {
+          "tipo": "json"
+        },
+        "notas": {
+          "tipo": "texto_longo"
+        },
+        "estado": {
+          "tipo": "texto",
+          "limite": 20,
+          "opcoes": [
+            "ok",
+            "bloqueada",
+            "instavel",
+            "sem_dado"
+          ],
+          "obrigatorio": true,
+          "padrao": "sem_dado"
+        },
+        "bloqueada_desde": {
+          "tipo": "datahora"
+        },
+        "ultimo_sucesso_em": {
+          "tipo": "datahora"
+        },
+        "ultimo_erro_em": {
+          "tipo": "datahora"
+        },
+        "versao": {
+          "tipo": "inteiro",
+          "obrigatorio": true,
+          "padrao": 1
+        },
+        "importacao_id": {
+          "tipo": "referencia",
+          "tabela_ref": "importacoes",
+          "ao_deletar": "anular"
+        }
+      },
+      "indices": [
+        [
+          "importacao_id"
+        ]
+      ]
+    },
+    "buscas_portal": {
+      "acesso_externo": "restrito",
+      "soft_delete": true,
+      "id_legivel": "{rotulo}",
+      "colunas": {
+        "fonte_id": {
+          "tipo": "referencia",
+          "tabela_ref": "fontes_portal",
+          "ao_deletar": "restringir",
+          "obrigatorio": true
+        },
+        "rotulo": {
+          "tipo": "texto",
+          "limite": 120,
+          "obrigatorio": true
+        },
+        "url": {
+          "tipo": "texto",
+          "limite": 1000,
+          "obrigatorio": true
+        },
+        "localidade_id": {
+          "tipo": "referencia",
+          "tabela_ref": "localidades",
+          "ao_deletar": "anular"
+        },
+        "tipo_transacao": {
+          "tipo": "texto",
+          "limite": 20,
+          "opcoes": [
+            "venda",
+            "locacao"
+          ]
+        },
+        "tipo_imovel": {
+          "tipo": "texto",
+          "limite": 20,
+          "opcoes": [
+            "apartamento",
+            "casa",
+            "casa_condominio",
+            "kitnet",
+            "predio",
+            "terreno",
+            "nao_classificado"
+          ]
+        },
+        "ativa": {
+          "tipo": "booleano",
+          "obrigatorio": true,
+          "padrao": true
+        },
+        "ultima_leitura_em": {
+          "tipo": "datahora"
+        },
+        "ultimo_status": {
+          "tipo": "texto",
+          "limite": 20,
+          "opcoes": [
+            "ok",
+            "bloqueada",
+            "erro",
+            "sem_resultados"
+          ]
+        },
+        "candidatos_gerados": {
+          "tipo": "inteiro",
+          "obrigatorio": true,
+          "padrao": 0
+        },
+        "autor_id": {
+          "tipo": "referencia",
+          "tabela_ref": "shell.usuarios",
+          "ao_deletar": "anular",
+          "campos_incluir": [
+            "nome as autor_nome"
+          ]
+        },
+        "painel": {
+          "tipo": "booleano",
+          "obrigatorio": true,
+          "padrao": false
+        },
+        "painel_desde": {
+          "tipo": "data"
+        },
+        "versao": {
+          "tipo": "inteiro",
+          "obrigatorio": true,
+          "padrao": 1
+        },
+        "importacao_id": {
+          "tipo": "referencia",
+          "tabela_ref": "importacoes",
+          "ao_deletar": "anular"
+        }
+      },
+      "unicos": [
+        {
+          "colunas": [
+            "fonte_id",
+            "url"
+          ],
+          "onde": [
+            {
+              "coluna": "removido_em",
+              "operador": "nulo"
+            }
+          ]
+        }
+      ],
+      "indices": [
+        [
+          "importacao_id"
+        ]
+      ]
+    },
+    "anuncios": {
+      "acesso_externo": "restrito",
+      "soft_delete": true,
+      "id_legivel": "{titulo} · {localidade_texto}",
+      "colunas": {
+        "id_legado": {
+          "tipo": "texto",
+          "limite": 200,
+          "unico": true
+        },
+        "fonte_id": {
+          "tipo": "referencia",
+          "tabela_ref": "fontes_portal",
+          "ao_deletar": "restringir",
+          "obrigatorio": true
+        },
+        "portal": {
+          "tipo": "texto",
+          "limite": 80,
+          "obrigatorio": true
+        },
+        "tipo_transacao": {
+          "tipo": "texto",
+          "limite": 20,
+          "opcoes": [
+            "venda",
+            "locacao"
+          ],
+          "obrigatorio": true
+        },
+        "titulo": {
+          "tipo": "texto",
+          "limite": 300,
+          "obrigatorio": true
+        },
+        "url_fonte": {
+          "tipo": "texto",
+          "limite": 1000,
+          "obrigatorio": true
+        },
+        "tipo_url_fonte": {
+          "tipo": "texto",
+          "limite": 40
+        },
+        "id_externo": {
+          "tipo": "texto",
+          "limite": 120
+        },
+        "codigo_portal": {
+          "tipo": "texto",
+          "limite": 120
+        },
+        "data_texto_portal": {
+          "tipo": "texto",
+          "limite": 40
+        },
+        "status": {
+          "tipo": "texto",
+          "limite": 10,
+          "opcoes": [
+            "ativo",
+            "inativo"
+          ],
+          "obrigatorio": true,
+          "padrao": "ativo"
+        },
+        "localidade_id": {
+          "tipo": "referencia",
+          "tabela_ref": "localidades",
+          "ao_deletar": "restringir",
+          "obrigatorio": true
+        },
+        "endereco": {
+          "tipo": "texto",
+          "limite": 300
+        },
+        "localidade_texto": {
+          "tipo": "texto",
+          "limite": 120,
+          "obrigatorio": true
+        },
+        "latitude": {
+          "tipo": "decimal",
+          "precisao": 10,
+          "escala": 7,
+          "obrigatorio": true
+        },
+        "longitude": {
+          "tipo": "decimal",
+          "precisao": 10,
+          "escala": 7,
+          "obrigatorio": true
+        },
+        "precisao_coordenada": {
+          "tipo": "texto",
+          "limite": 50,
+          "opcoes": [
+            "exata_fonte",
+            "centroide_localidade_jitter_deterministico",
+            "centroide_localidade_jitter",
+            "centroide_ra_jitter_deterministico",
+            "manual"
+          ],
+          "obrigatorio": true
+        },
+        "confianca": {
+          "tipo": "texto",
+          "limite": 60,
+          "obrigatorio": true
+        },
+        "tipo_imovel": {
+          "tipo": "texto",
+          "limite": 20,
+          "opcoes": [
+            "apartamento",
+            "casa",
+            "casa_condominio",
+            "kitnet",
+            "predio",
+            "terreno",
+            "nao_classificado"
+          ],
+          "obrigatorio": true
+        },
+        "preco_pedido_brl": {
+          "tipo": "decimal",
+          "precisao": 14,
+          "escala": 2
+        },
+        "area_m2": {
+          "tipo": "decimal",
+          "precisao": 12,
+          "escala": 2
+        },
+        "base_area": {
+          "tipo": "texto",
+          "limite": 40
+        },
+        "preco_m2_informado_brl": {
+          "tipo": "decimal",
+          "precisao": 12,
+          "escala": 2
+        },
+        "quartos": {
+          "tipo": "inteiro"
+        },
+        "suites": {
+          "tipo": "inteiro"
+        },
+        "vagas": {
+          "tipo": "inteiro"
+        },
+        "condominio_brl": {
+          "tipo": "decimal",
+          "precisao": 12,
+          "escala": 2
+        },
+        "iptu_brl": {
+          "tipo": "decimal",
+          "precisao": 12,
+          "escala": 2
+        },
+        "dias_publicado": {
+          "tipo": "inteiro"
+        },
+        "visualizacoes": {
+          "tipo": "inteiro"
+        },
+        "interessados": {
+          "tipo": "inteiro"
+        },
+        "qualidade": {
+          "tipo": "texto",
+          "limite": 80,
+          "obrigatorio": true
+        },
+        "situacao_regularizacao": {
+          "tipo": "texto",
+          "limite": 40
+        },
+        "observado_em": {
+          "tipo": "data",
+          "obrigatorio": true
+        },
+        "visto_em": {
+          "tipo": "data"
+        },
+        "pagina_verificada_em": {
+          "tipo": "data"
+        },
+        "primeiro_visto_em": {
+          "tipo": "datahora",
+          "obrigatorio": true
+        },
+        "verificado_em": {
+          "tipo": "datahora"
+        },
+        "preco_alterado_em": {
+          "tipo": "datahora"
+        },
+        "inativo_em": {
+          "tipo": "datahora"
+        },
+        "falhas_verificacao": {
+          "tipo": "inteiro",
+          "obrigatorio": true,
+          "padrao": 0
+        },
+        "ultima_falha_em": {
+          "tipo": "data"
+        },
+        "ultimo_status_verificacao": {
+          "tipo": "texto",
+          "limite": 20,
+          "opcoes": [
+            "ativa",
+            "inativa",
+            "inativa_pendente",
+            "bloqueada",
+            "erro",
+            "nunca"
+          ],
+          "obrigatorio": true,
+          "padrao": "nunca"
+        },
+        "ultimo_http": {
+          "tipo": "inteiro"
+        },
+        "ultima_mensagem": {
+          "tipo": "texto",
+          "limite": 500
+        },
+        "hash_conteudo": {
+          "tipo": "texto",
+          "limite": 64
+        },
+        "versao_parser": {
+          "tipo": "texto",
+          "limite": 60
+        },
+        "origem_cadastro": {
+          "tipo": "texto",
+          "limite": 20,
+          "opcoes": [
+            "importacao",
+            "descoberta",
+            "manual_url",
+            "manual_formulario"
+          ],
+          "obrigatorio": true
+        },
+        "caracteristicas": {
+          "tipo": "json"
+        },
+        "preco_inicial_brl": {
+          "tipo": "decimal",
+          "precisao": 14,
+          "escala": 2
+        },
+        "busca_origem_id": {
+          "tipo": "referencia",
+          "tabela_ref": "buscas_portal",
+          "ao_deletar": "anular"
+        },
+        "versao": {
+          "tipo": "inteiro",
+          "obrigatorio": true,
+          "padrao": 1
+        },
+        "importacao_id": {
+          "tipo": "referencia",
+          "tabela_ref": "importacoes",
+          "ao_deletar": "anular"
+        }
+      },
+      "unicos": [
+        {
+          "colunas": [
+            "fonte_id",
+            "id_externo"
+          ],
+          "onde": [
+            {
+              "coluna": "id_externo",
+              "operador": "nao_nulo"
+            },
+            {
+              "coluna": "removido_em",
+              "operador": "nulo"
+            }
+          ]
+        },
+        {
+          "colunas": [
+            "url_fonte"
+          ],
+          "onde": [
+            {
+              "coluna": "removido_em",
+              "operador": "nulo"
+            }
+          ]
+        }
+      ],
+      "indices": [
+        [
+          "localidade_id",
+          "status"
+        ],
+        [
+          "status",
+          "visto_em"
+        ],
+        [
+          "tipo_imovel",
+          "tipo_transacao"
+        ],
+        [
+          "latitude",
+          "longitude"
+        ],
+        [
+          "primeiro_visto_em"
+        ],
+        [
+          "busca_origem_id"
+        ],
+        [
+          "importacao_id"
+        ]
+      ],
+      "busca_texto": {
+        "colunas": [
+          "titulo",
+          "endereco",
+          "localidade_texto"
+        ]
+      }
+    },
+    "anuncio_eventos": {
+      "acesso_externo": "somente_leitura",
+      "id_legivel": "{tipo} em {ocorrido_em}",
+      "colunas": {
+        "anuncio_id": {
+          "tipo": "referencia",
+          "tabela_ref": "anuncios",
+          "ao_deletar": "restringir",
+          "obrigatorio": true
+        },
+        "tipo": {
+          "tipo": "texto",
+          "limite": 30,
+          "opcoes": [
+            "criado",
+            "reativado",
+            "preco_alterado",
+            "preco_nao_confirmado",
+            "inativo_confirmado",
+            "bloqueado",
+            "corrigido_manualmente",
+            "removido",
+            "restaurado"
+          ],
+          "obrigatorio": true
+        },
+        "ocorrido_em": {
+          "tipo": "datahora",
+          "obrigatorio": true
+        },
+        "status_anterior": {
+          "tipo": "texto",
+          "limite": 20
+        },
+        "status_novo": {
+          "tipo": "texto",
+          "limite": 20
+        },
+        "preco_anterior_brl": {
+          "tipo": "decimal",
+          "precisao": 14,
+          "escala": 2
+        },
+        "preco_novo_brl": {
+          "tipo": "decimal",
+          "precisao": 14,
+          "escala": 2
+        },
+        "campos_alterados": {
+          "tipo": "json"
+        },
+        "autor_id": {
+          "tipo": "referencia",
+          "tabela_ref": "shell.usuarios",
+          "ao_deletar": "anular",
+          "campos_incluir": [
+            "nome as autor_nome"
+          ]
+        },
+        "detalhes": {
+          "tipo": "texto",
+          "limite": 1000
+        }
+      },
+      "indices": [
+        [
+          "anuncio_id",
+          "ocorrido_em"
+        ],
+        [
+          "tipo",
+          "ocorrido_em"
+        ]
+      ]
+    },
+    "lancamentos": {
+      "acesso_externo": "restrito",
+      "soft_delete": true,
+      "id_legivel": "{nome}",
+      "colunas": {
+        "id_legado": {
+          "tipo": "texto",
+          "limite": 120,
+          "unico": true
+        },
+        "nome": {
+          "tipo": "texto",
+          "limite": 200,
+          "obrigatorio": true
+        },
+        "incorporadora": {
+          "tipo": "texto",
+          "limite": 200
+        },
+        "endereco": {
+          "tipo": "texto",
+          "limite": 300
+        },
+        "latitude": {
+          "tipo": "decimal",
+          "precisao": 10,
+          "escala": 7
+        },
+        "longitude": {
+          "tipo": "decimal",
+          "precisao": 10,
+          "escala": 7
+        },
+        "precisao_coordenada": {
+          "tipo": "texto",
+          "limite": 50,
+          "opcoes": [
+            "exata_fonte",
+            "centroide_localidade_jitter_deterministico",
+            "centroide_localidade_jitter",
+            "centroide_ra_jitter_deterministico",
+            "manual"
+          ]
+        },
+        "espacial_utilizavel": {
+          "tipo": "booleano",
+          "obrigatorio": true,
+          "padrao": false
+        },
+        "status_coordenada": {
+          "tipo": "texto",
+          "limite": 80
+        },
+        "localidade_id": {
+          "tipo": "referencia",
+          "tabela_ref": "localidades",
+          "ao_deletar": "anular"
+        },
+        "bairro_texto": {
+          "tipo": "texto",
+          "limite": 120,
+          "obrigatorio": true
+        },
+        "produto": {
+          "tipo": "texto",
+          "limite": 300
+        },
+        "segmento": {
+          "tipo": "texto",
+          "limite": 80
+        },
+        "status": {
+          "tipo": "texto",
+          "limite": 60
+        },
+        "estagio_vendas": {
+          "tipo": "texto",
+          "limite": 20,
+          "opcoes": [
+            "em_construcao",
+            "em_lancamento",
+            "oferta",
+            "encerrado"
+          ]
+        },
+        "unidades_total": {
+          "tipo": "inteiro"
+        },
+        "area_min_m2": {
+          "tipo": "decimal",
+          "precisao": 12,
+          "escala": 2
+        },
+        "area_max_m2": {
+          "tipo": "decimal",
+          "precisao": 12,
+          "escala": 2
+        },
+        "preco_atual_brl": {
+          "tipo": "decimal",
+          "precisao": 14,
+          "escala": 2
+        },
+        "preco_m2_atual_brl": {
+          "tipo": "decimal",
+          "precisao": 12,
+          "escala": 2
+        },
+        "url_fonte": {
+          "tipo": "texto",
+          "limite": 1000
+        },
+        "confianca": {
+          "tipo": "texto",
+          "limite": 80,
+          "obrigatorio": true
+        },
+        "qualidade": {
+          "tipo": "texto",
+          "limite": 80
+        },
+        "verificado_em": {
+          "tipo": "data",
+          "obrigatorio": true
+        },
+        "obra_frac": {
+          "tipo": "decimal",
+          "precisao": 6,
+          "escala": 5
+        },
+        "mix_unidades": {
+          "tipo": "texto",
+          "limite": 300
+        },
+        "entrega_prevista": {
+          "tipo": "data"
+        },
+        "orientacao": {
+          "tipo": "texto",
+          "limite": 12,
+          "opcoes": [
+            "vertical",
+            "horizontal"
+          ]
+        },
+        "situacao_regularizacao": {
+          "tipo": "texto",
+          "limite": 40
+        },
+        "primeiro_visto_em": {
+          "tipo": "datahora"
+        },
+        "caracteristicas": {
+          "tipo": "json"
+        },
+        "lacunas": {
+          "tipo": "json"
+        },
+        "unidades_estoque": {
+          "tipo": "inteiro"
+        },
+        "unidades_prontas_estoque": {
+          "tipo": "inteiro"
+        },
+        "versao": {
+          "tipo": "inteiro",
+          "obrigatorio": true,
+          "padrao": 1
+        },
+        "importacao_id": {
+          "tipo": "referencia",
+          "tabela_ref": "importacoes",
+          "ao_deletar": "anular"
+        }
+      },
+      "indices": [
+        [
+          "localidade_id"
+        ],
+        [
+          "estagio_vendas"
+        ],
+        [
+          "importacao_id"
+        ]
+      ],
+      "busca_texto": {
+        "colunas": [
+          "nome",
+          "incorporadora",
+          "bairro_texto"
+        ]
+      }
+    },
+    "lancamento_eventos": {
+      "acesso_externo": "somente_leitura",
+      "id_legivel": "{tipo} em {ocorrido_em}",
+      "colunas": {
+        "lancamento_id": {
+          "tipo": "referencia",
+          "tabela_ref": "lancamentos",
+          "ao_deletar": "restringir",
+          "obrigatorio": true
+        },
+        "tipo": {
+          "tipo": "texto",
+          "limite": 30,
+          "opcoes": [
+            "criado",
+            "atualizado_pela_coleta",
+            "preco_alterado",
+            "lacuna_detectada",
+            "corrigido_manualmente",
+            "removido",
+            "restaurado"
+          ],
+          "obrigatorio": true
+        },
+        "ocorrido_em": {
+          "tipo": "datahora",
+          "obrigatorio": true
+        },
+        "status_anterior": {
+          "tipo": "texto",
+          "limite": 60
+        },
+        "status_novo": {
+          "tipo": "texto",
+          "limite": 60
+        },
+        "preco_anterior_brl": {
+          "tipo": "decimal",
+          "precisao": 14,
+          "escala": 2
+        },
+        "preco_novo_brl": {
+          "tipo": "decimal",
+          "precisao": 14,
+          "escala": 2
+        },
+        "campos_alterados": {
+          "tipo": "json"
+        },
+        "autor_id": {
+          "tipo": "referencia",
+          "tabela_ref": "shell.usuarios",
+          "ao_deletar": "anular",
+          "campos_incluir": [
+            "nome as autor_nome"
+          ]
+        },
+        "detalhes": {
+          "tipo": "texto",
+          "limite": 1000
+        }
+      },
+      "indices": [
+        [
+          "lancamento_id",
+          "ocorrido_em"
+        ]
+      ]
+    },
+    "ancoras": {
+      "acesso_externo": "restrito",
+      "soft_delete": true,
+      "id_legivel": "{nome}",
+      "colunas": {
+        "id_legado": {
+          "tipo": "texto",
+          "limite": 120,
+          "unico": true
+        },
+        "nome": {
+          "tipo": "texto",
+          "limite": 200,
+          "obrigatorio": true
+        },
+        "categoria": {
+          "tipo": "texto",
+          "limite": 40,
+          "opcoes": [
+            "escola",
+            "mobilidade",
+            "parque_equipamento_publico",
+            "saude",
+            "shopping_center",
+            "supermercado_atacarejo",
+            "universidade"
+          ],
+          "obrigatorio": true
+        },
+        "subcategoria": {
+          "tipo": "texto",
+          "limite": 80,
+          "obrigatorio": true
+        },
+        "grupo": {
+          "tipo": "texto",
+          "limite": 20,
+          "opcoes": [
+            "infraestrutura",
+            "comercio_servico"
+          ],
+          "obrigatorio": true
+        },
+        "segmento": {
+          "tipo": "texto",
+          "limite": 60
+        },
+        "operador": {
+          "tipo": "texto",
+          "limite": 200,
+          "obrigatorio": true
+        },
+        "marca": {
+          "tipo": "texto",
+          "limite": 120
+        },
+        "endereco": {
+          "tipo": "texto",
+          "limite": 300
+        },
+        "latitude": {
+          "tipo": "decimal",
+          "precisao": 10,
+          "escala": 7,
+          "obrigatorio": true
+        },
+        "longitude": {
+          "tipo": "decimal",
+          "precisao": 10,
+          "escala": 7,
+          "obrigatorio": true
+        },
+        "precisao_coordenada": {
+          "tipo": "texto",
+          "limite": 80,
+          "obrigatorio": true
+        },
+        "confianca": {
+          "tipo": "texto",
+          "limite": 40,
+          "obrigatorio": true
+        },
+        "localidade_id": {
+          "tipo": "referencia",
+          "tabela_ref": "localidades",
+          "ao_deletar": "anular"
+        },
+        "bairro_texto": {
+          "tipo": "texto",
+          "limite": 120
+        },
+        "url_fonte": {
+          "tipo": "texto",
+          "limite": 1000,
+          "obrigatorio": true
+        },
+        "url_fonte_coordenada": {
+          "tipo": "texto",
+          "limite": 1000,
+          "obrigatorio": true
+        },
+        "verificado_em": {
+          "tipo": "data",
+          "obrigatorio": true
+        },
+        "status": {
+          "tipo": "texto",
+          "limite": 10,
+          "opcoes": [
+            "ativa",
+            "inativa",
+            "prevista"
+          ],
+          "obrigatorio": true,
+          "padrao": "ativa"
+        },
+        "escala_capacidade": {
+          "tipo": "texto",
+          "limite": 120
+        },
+        "area_ocupada_m2": {
+          "tipo": "decimal",
+          "precisao": 12,
+          "escala": 2
+        },
+        "categoria_consumo": {
+          "tipo": "texto",
+          "limite": 60
+        },
+        "atratividade": {
+          "tipo": "decimal",
+          "precisao": 12,
+          "escala": 2
+        },
+        "versao": {
+          "tipo": "inteiro",
+          "obrigatorio": true,
+          "padrao": 1
+        },
+        "importacao_id": {
+          "tipo": "referencia",
+          "tabela_ref": "importacoes",
+          "ao_deletar": "anular"
+        }
+      },
+      "indices": [
+        [
+          "categoria"
+        ],
+        [
+          "grupo",
+          "segmento"
+        ],
+        [
+          "localidade_id"
+        ],
+        [
+          "importacao_id"
+        ]
+      ],
+      "busca_texto": {
+        "colunas": [
+          "nome",
+          "operador",
+          "marca"
+        ]
+      }
+    },
+    "uso_eventos": {
+      "acesso_externo": "restrito",
+      "pessoal": true,
+      "id_legivel": "{acao} {sub_rota}",
+      "colunas": {
+        "usuario_id": {
+          "tipo": "referencia",
+          "tabela_ref": "shell.usuarios",
+          "ao_deletar": "cascata",
+          "obrigatorio": true
+        },
+        "sub_rota": {
+          "tipo": "texto",
+          "limite": 200,
+          "obrigatorio": true
+        },
+        "acao": {
+          "tipo": "texto",
+          "limite": 20,
+          "opcoes": [
+            "abrir",
+            "exportar",
+            "gerar_ficha",
+            "gerar_analise",
+            "salvar_area",
+            "simular"
+          ],
+          "obrigatorio": true
+        },
+        "em": {
+          "tipo": "datahora",
+          "obrigatorio": true
+        }
+      },
+      "indices": [
+        [
+          "sub_rota",
+          "em"
+        ]
+      ]
+    },
+    "coletas": {
+      "acesso_externo": "somente_leitura",
+      "id_legivel": "{tipo} {iniciado_em}",
+      "colunas": {
+        "tipo": {
+          "tipo": "texto",
+          "limite": 30,
+          "opcoes": [
+            "verificacao_anuncios",
+            "descoberta_anuncios",
+            "verificacao_lancamentos",
+            "fechamento_mes",
+            "dados_publicos",
+            "analises_ia",
+            "importacao",
+            "agrupamento_anuncios",
+            "vinculo_empreendimentos",
+            "series_macro",
+            "achados",
+            "recalculo",
+            "frescor",
+            "retencao"
+          ],
+          "obrigatorio": true
+        },
+        "disparo": {
+          "tipo": "texto",
+          "limite": 20,
+          "opcoes": [
+            "agendado",
+            "manual",
+            "continuacao"
+          ],
+          "obrigatorio": true
+        },
+        "iniciado_em": {
+          "tipo": "datahora",
+          "obrigatorio": true
+        },
+        "finalizado_em": {
+          "tipo": "datahora"
+        },
+        "status": {
+          "tipo": "texto",
+          "limite": 20,
+          "opcoes": [
+            "executando",
+            "sucesso",
+            "parcial",
+            "falha",
+            "interrompida",
+            "pausada",
+            "adiada"
+          ],
+          "obrigatorio": true
+        },
+        "candidatos_lidos": {
+          "tipo": "inteiro",
+          "obrigatorio": true,
+          "padrao": 0
+        },
+        "candidatos_processados": {
+          "tipo": "inteiro",
+          "obrigatorio": true,
+          "padrao": 0
+        },
+        "candidatos_rejeitados": {
+          "tipo": "inteiro",
+          "obrigatorio": true,
+          "padrao": 0
+        },
+        "paginas_pedidas": {
+          "tipo": "inteiro",
+          "obrigatorio": true,
+          "padrao": 0
+        },
+        "paginas_lidas": {
+          "tipo": "inteiro",
+          "obrigatorio": true,
+          "padrao": 0
+        },
+        "paginas_bloqueadas": {
+          "tipo": "inteiro",
+          "obrigatorio": true,
+          "padrao": 0
+        },
+        "novos": {
+          "tipo": "inteiro",
+          "obrigatorio": true,
+          "padrao": 0
+        },
+        "atualizados": {
+          "tipo": "inteiro",
+          "obrigatorio": true,
+          "padrao": 0
+        },
+        "reativados": {
+          "tipo": "inteiro",
+          "obrigatorio": true,
+          "padrao": 0
+        },
+        "precos_alterados": {
+          "tipo": "inteiro",
+          "obrigatorio": true,
+          "padrao": 0
+        },
+        "verificacoes": {
+          "tipo": "inteiro",
+          "obrigatorio": true,
+          "padrao": 0
+        },
+        "inativados": {
+          "tipo": "inteiro",
+          "obrigatorio": true,
+          "padrao": 0
+        },
+        "retratos": {
+          "tipo": "inteiro",
+          "obrigatorio": true,
+          "padrao": 0
+        },
+        "metricas": {
+          "tipo": "inteiro",
+          "obrigatorio": true,
+          "padrao": 0
+        },
+        "erros": {
+          "tipo": "inteiro",
+          "obrigatorio": true,
+          "padrao": 0
+        },
+        "detalhes_erros": {
+          "tipo": "texto_longo"
+        },
+        "cursor_inicial": {
+          "tipo": "inteiro"
+        },
+        "cursor_final": {
+          "tipo": "inteiro"
+        },
+        "versao_parser": {
+          "tipo": "texto",
+          "limite": 60
+        },
+        "disparado_por_id": {
+          "tipo": "referencia",
+          "tabela_ref": "shell.usuarios",
+          "ao_deletar": "anular",
+          "campos_incluir": [
+            "nome as disparado_por_nome"
+          ]
+        }
+      },
+      "indices": [
+        [
+          "tipo",
+          "iniciado_em"
+        ],
+        [
+          "status"
+        ]
+      ]
+    },
+    "cursores_rotina": {
+      "acesso_externo": "restrito",
+      "id_legivel": "{rotina}",
+      "colunas": {
+        "rotina": {
+          "tipo": "texto",
+          "limite": 60,
+          "obrigatorio": true,
+          "unico": true
+        },
+        "cursor": {
+          "tipo": "json"
+        },
+        "versao": {
+          "tipo": "inteiro",
+          "obrigatorio": true,
+          "padrao": 1
+        },
+        "em_execucao_desde": {
+          "tipo": "datahora"
+        },
+        "coleta_id": {
+          "tipo": "referencia",
+          "tabela_ref": "coletas",
+          "ao_deletar": "anular"
+        },
+        "classe": {
+          "tipo": "texto",
+          "limite": 10,
+          "opcoes": [
+            "coleta",
+            "carga",
+            "leve"
+          ],
+          "obrigatorio": true
+        },
+        "agendamento_id": {
+          "tipo": "inteiro"
+        }
+      }
+    },
+    "atributos_def": {
+      "acesso_externo": "restrito",
+      "soft_delete": true,
+      "id_legivel": "{nome}",
+      "colunas": {
+        "codigo": {
+          "tipo": "texto",
+          "limite": 60,
+          "obrigatorio": true,
+          "formato": "^[a-z][a-z0-9_]*$"
+        },
+        "nome": {
+          "tipo": "texto",
+          "limite": 120,
+          "obrigatorio": true
+        },
+        "descricao": {
+          "tipo": "texto_longo"
+        },
+        "tipo_valor": {
+          "tipo": "texto",
+          "limite": 10,
+          "opcoes": [
+            "numero",
+            "texto",
+            "data",
+            "booleano",
+            "opcao"
+          ],
+          "obrigatorio": true
+        },
+        "unidade": {
+          "tipo": "texto",
+          "limite": 30
+        },
+        "opcoes": {
+          "tipo": "json"
+        },
+        "aplica_a": {
+          "tipo": "json",
+          "obrigatorio": true
+        },
+        "grupo": {
+          "tipo": "texto",
+          "limite": 60
+        },
+        "ativo": {
+          "tipo": "booleano",
+          "obrigatorio": true,
+          "padrao": true
+        },
+        "promovido_para": {
+          "tipo": "texto",
+          "limite": 120
+        },
+        "versao": {
+          "tipo": "inteiro",
+          "obrigatorio": true,
+          "padrao": 1
+        }
+      },
+      "unicos": [
+        {
+          "colunas": [
+            "codigo"
+          ],
+          "onde": [
+            {
+              "coluna": "removido_em",
+              "operador": "nulo"
+            }
+          ]
+        }
+      ],
+      "indices": [
+        [
+          "ativo"
+        ]
+      ]
+    },
+    "atributos_valor": {
+      "acesso_externo": "restrito",
+      "id_legivel": "{objeto_tipo} {objeto_id}",
+      "colunas": {
+        "objeto_tipo": {
+          "tipo": "texto",
+          "limite": 20,
+          "opcoes": [
+            "anuncio",
+            "lancamento",
+            "ancora",
+            "contorno",
+            "area_estudo",
+            "terracap_lote",
+            "empreendimento",
+            "licenca_obra",
+            "ponto_comercial"
+          ],
+          "obrigatorio": true
+        },
+        "objeto_id": {
+          "tipo": "inteiro",
+          "obrigatorio": true
+        },
+        "atributo_id": {
+          "tipo": "referencia",
+          "tabela_ref": "atributos_def",
+          "ao_deletar": "restringir",
+          "obrigatorio": true
+        },
+        "valor_num": {
+          "tipo": "decimal",
+          "precisao": 18,
+          "escala": 6
+        },
+        "valor_texto": {
+          "tipo": "texto_longo"
+        },
+        "valor_data": {
+          "tipo": "data"
+        },
+        "valor_bool": {
+          "tipo": "booleano"
+        },
+        "fonte": {
+          "tipo": "texto",
+          "limite": 300
+        },
+        "observado_em": {
+          "tipo": "data"
+        },
+        "autor_id": {
+          "tipo": "referencia",
+          "tabela_ref": "shell.usuarios",
+          "ao_deletar": "anular",
+          "campos_incluir": [
+            "nome as autor_nome"
+          ]
+        },
+        "importacao_id": {
+          "tipo": "referencia",
+          "tabela_ref": "importacoes",
+          "ao_deletar": "anular"
+        },
+        "versao": {
+          "tipo": "inteiro",
+          "obrigatorio": true,
+          "padrao": 1
+        }
+      },
+      "unicos": [
+        [
+          "objeto_tipo",
+          "objeto_id",
+          "atributo_id"
+        ]
+      ],
+      "indices": [
+        [
+          "atributo_id",
+          "valor_num"
+        ],
+        [
+          "objeto_tipo",
+          "objeto_id"
+        ],
+        [
+          "importacao_id"
+        ]
+      ]
+    },
+    "vinculos_nucleo": {
+      "acesso_externo": "restrito",
+      "soft_delete": true,
+      "id_legivel": "{objeto_tipo} {objeto_id} · {entidade} {nucleo_id}",
+      "colunas": {
+        "objeto_tipo": {
+          "tipo": "texto",
+          "limite": 20,
+          "opcoes": [
+            "area_estudo",
+            "contorno",
+            "terracap_lote",
+            "lancamento",
+            "empreendimento"
+          ],
+          "obrigatorio": true
+        },
+        "objeto_id": {
+          "tipo": "inteiro",
+          "obrigatorio": true
+        },
+        "entidade": {
+          "tipo": "texto",
+          "limite": 20,
+          "opcoes": [
+            "imoveis",
+            "incorporacoes",
+            "parcelamentos",
+            "matriculas"
+          ],
+          "obrigatorio": true
+        },
+        "nucleo_id": {
+          "tipo": "inteiro",
+          "obrigatorio": true
+        },
+        "nucleo_subtipo": {
+          "tipo": "texto",
+          "limite": 10,
+          "opcoes": [
+            "lote",
+            "gleba",
+            "unidade"
+          ]
+        },
+        "vinculado_por_id": {
+          "tipo": "referencia",
+          "tabela_ref": "shell.usuarios",
+          "ao_deletar": "anular",
+          "campos_incluir": [
+            "nome as vinculado_por_nome"
+          ]
+        },
+        "vinculado_em": {
+          "tipo": "datahora",
+          "obrigatorio": true
+        },
+        "notas": {
+          "tipo": "texto_longo"
+        },
+        "versao": {
+          "tipo": "inteiro",
+          "obrigatorio": true,
+          "padrao": 1
+        }
+      },
+      "unicos": [
+        {
+          "colunas": [
+            "objeto_tipo",
+            "objeto_id",
+            "entidade",
+            "nucleo_id"
+          ],
+          "onde": [
+            {
+              "coluna": "removido_em",
+              "operador": "nulo"
+            }
+          ]
+        }
+      ],
+      "indices": [
+        [
+          "objeto_tipo",
+          "objeto_id"
+        ],
+        [
+          "entidade",
+          "nucleo_id"
+        ]
+      ]
+    }
+  }
+}

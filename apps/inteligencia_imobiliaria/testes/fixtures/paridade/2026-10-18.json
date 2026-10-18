@@ -1,0 +1,98 @@
+{
+  "gerado_em": "2026-10-18",
+  "site_commit": "91a512842107eae21ec8056183a62975a31cf53e",
+  "entrada": "data/demo.json",
+  "mapa": [
+    {
+      "nome": "todos",
+      "query": {},
+      "anuncios": 141,
+      "mediana_preco_m2": 7394.957983193277,
+      "amostra_preco_m2": 141
+    },
+    {
+      "nome": "plano_piloto",
+      "query": {
+        "localidade": "RA_01"
+      },
+      "anuncios": 17,
+      "mediana_preco_m2": 17619.04761904762,
+      "amostra_preco_m2": 17
+    },
+    {
+      "nome": "apartamentos",
+      "query": {
+        "tipo_imovel": "apartamento"
+      },
+      "anuncios": 71,
+      "mediana_preco_m2": 9771.59964253798,
+      "amostra_preco_m2": 71
+    },
+    {
+      "nome": "casas",
+      "query": {
+        "tipo_imovel": "casa"
+      },
+      "anuncios": 39,
+      "mediana_preco_m2": 6571.428571428572,
+      "amostra_preco_m2": 39
+    },
+    {
+      "nome": "terrenos",
+      "query": {
+        "tipo_imovel": "terreno"
+      },
+      "anuncios": 11,
+      "mediana_preco_m2": 1311.252268602541,
+      "amostra_preco_m2": 11
+    },
+    {
+      "nome": "ate_1_milhao",
+      "query": {
+        "preco_max": "1000000"
+      },
+      "anuncios": 55,
+      "mediana_preco_m2": 4900,
+      "amostra_preco_m2": 55
+    },
+    {
+      "nome": "acima_2_milhoes",
+      "query": {
+        "preco_min": "2000000"
+      },
+      "anuncios": 56,
+      "mediana_preco_m2": 8500,
+      "amostra_preco_m2": 56
+    },
+    {
+      "nome": "tres_quartos_ou_mais",
+      "query": {
+        "quartos_min": "3"
+      },
+      "anuncios": 102,
+      "mediana_preco_m2": 7659.979423868313,
+      "amostra_preco_m2": 102
+    },
+    {
+      "nome": "busca_asa_norte",
+      "query": {
+        "q": "asa norte"
+      },
+      "anuncios": 3,
+      "mediana_preco_m2": 15625,
+      "amostra_preco_m2": 3
+    },
+    {
+      "nome": "apartamentos_plano_piloto",
+      "query": {
+        "localidade": "RA_01",
+        "tipo_imovel": "apartamento"
+      },
+      "anuncios": 17,
+      "mediana_preco_m2": 17619.04761904762,
+      "amostra_preco_m2": 17
+    }
+  ],
+  "mercado": [],
+  "diagnostico": []
+}
