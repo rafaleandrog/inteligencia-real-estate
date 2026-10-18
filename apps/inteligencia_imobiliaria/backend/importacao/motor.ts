@@ -296,13 +296,13 @@ export interface ResultadoDesfazer {
  * ela que ninguém editou depois; nunca apaga de vez.
  */
 export async function desfazerImportacao(
-  tabelas: { tabela: string; temVersao: boolean }[],
+  tabelas: { tabela: string; temVersao: boolean; apagar?: boolean }[],
   importacao: Record<string, any>,
   ctx: CtxImportacao,
 ): Promise<ResultadoDesfazer> {
   const out: ResultadoDesfazer = { removidas: [], mantidas: [] };
   const aplicadaEm = importacao.aplicada_em ? new Date(importacao.aplicada_em).getTime() : Infinity;
-  for (const { tabela, temVersao } of tabelas) {
+  for (const { tabela, temVersao, apagar } of tabelas) {
     const linhas = await ctx.dados.varrerTudo(tabela, { filtros: { importacao_id: importacao.id } });
     for (const l of linhas) {
       const editada = temVersao ? Number(l.versao) !== 1 : new Date(l.atualizado_em).getTime() > aplicadaEm + 60_000;
@@ -310,7 +310,9 @@ export async function desfazerImportacao(
         out.mantidas.push({ tabela, id: Number(l.id), motivo: 'editada depois da importação' });
         continue;
       }
-      await ctx.dados.remover(tabela, Number(l.id), ctx.usuarioId);
+      // Tabela sem soft delete (valores de atributo) apaga a linha; o resto vai para a lixeira.
+      if (apagar) await ctx.dados.deletar(tabela, Number(l.id));
+      else await ctx.dados.remover(tabela, Number(l.id), ctx.usuarioId);
       out.removidas.push({ tabela, id: Number(l.id) });
     }
   }

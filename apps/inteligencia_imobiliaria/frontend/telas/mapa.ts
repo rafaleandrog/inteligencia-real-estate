@@ -7,6 +7,7 @@ import { mensagemDeErro, uv } from '../api';
 import { formatar } from '../componentes/cadastro';
 import { cortesQuintis, estiloAnuncio, type Paleta } from '../../comum/mapa';
 import { amostrarPaleta, aoTrocarTema } from '../componentes/cores';
+import '../componentes/nucleo';
 import { ROTULO_PRECISAO, ROTULO_TIPO_IMOVEL, TIPOS_IMOVEL } from '../../comum/anuncios';
 import '../componentes/como-ler';
 
@@ -20,6 +21,7 @@ const CAMADAS = [
   { id: 'ancoras', rotulo: 'Âncoras', icone: 'fa-solid fa-anchor' },
   { id: 'lancamentos', rotulo: 'Lançamentos', icone: 'fa-solid fa-building' },
   { id: 'anuncios', rotulo: 'Anúncios', icone: 'fa-solid fa-tag' },
+  { id: 'nucleo', rotulo: 'Núcleo (objetos vinculados)', icone: 'fa-solid fa-landmark' },
 ];
 const CAMADAS_PADRAO = CAMADAS.map((c) => c.id).join(',');
 
@@ -76,6 +78,7 @@ export class IntelImobMapa extends LitElement {
   @state() private ancoras: any[] = [];
   @state() private ras: any = null;
   @state() private importados: any = null;
+  @state() private vinculados: any = null;
   @state() private kpis: any = null;
   @state() private carregando = false;
   @state() private erro = '';
@@ -101,13 +104,15 @@ export class IntelImobMapa extends LitElement {
   async connectedCallback() {
     super.connectedCallback();
     try {
-      const [locs, ras, imp, lanc, anc] = await Promise.all([
+      const [locs, ras, imp, lanc, anc, vinc] = await Promise.all([
         uv().api('/localidades?tipo=ra&por_pagina=100'),
         uv().api('/contornos?tipo_entidade=regiao_administrativa&status=ativo'),
         uv().api('/contornos?tipo_entidade=area_personalizada&status=ativo'),
         uv().api('/lancamentos/mapa'),
         uv().api('/ancoras/mapa'),
+        uv().api('/vinculos-nucleo/mapa'),
       ]);
+      this.vinculados = vinc;
       this.localidades = locs.dados.map((l: any) => ({ valor: l.codigo, rotulo: l.nome }));
       this.ras = ras;
       this.importados = imp;
@@ -173,6 +178,17 @@ export class IntelImobMapa extends LitElement {
     }
     if (ligadas.has('lancamentos')) {
       out.push({ id: 'lancamentos', nome: 'Lançamentos', dados: { type: 'FeatureCollection', features: this.lancamentos.map((l) => ({ type: 'Feature', id: `lancamento:${l.id}`, geometry: ponto(l.longitude, l.latitude), properties: { id: `lancamento:${l.id}`, estilo: { preenchimento: p.lancamento, contorno: p.bordaPonto, espessura: 1, marcador: { forma: 'losango', tamanho: 11 } } } })) } as any });
+    }
+    if (ligadas.has('nucleo') && this.vinculados) {
+      // D-141: a geometria é a da própria app; o selo diz que há vínculo com o núcleo.
+      out.push({ id: 'nucleo', nome: 'Núcleo', dados: { type: 'FeatureCollection', features: this.vinculados.features.map((f: any) => {
+        const id = `${f.properties.objeto_tipo}:${f.properties.objeto_id}`;
+        const selo = { rotulo: { campo: 'selo' } };
+        const estilo = f.geometry?.type === 'Point'
+          ? { preenchimento: p.nucleo, contorno: p.bordaExata, espessura: 2, marcador: { forma: 'circulo', tamanho: 14 }, ...selo }
+          : { contorno: p.nucleo, espessura: 3, opacidadePreenchimento: 0.12, preenchimento: p.nucleo, ...selo };
+        return { ...f, id, properties: { ...f.properties, id, selo: `núcleo · ${f.properties.vinculos.length}`, estilo } };
+      }) } as any });
     }
     if (ligadas.has('anuncios')) {
       const cortes = this.cortes;
@@ -310,7 +326,9 @@ export class IntelImobMapa extends LitElement {
         </urbi-linha></urbi-stack></urbi-card>`;
     }
     return html`<urbi-card titulo=${d.nome} icone="fa-solid fa-draw-polygon"><urbi-stack>
-      <urbi-prosa>${d.categoria ?? ''} · ${formatar({ tipo: 'm2' }, d.area_m2)} (aproximada)</urbi-prosa>
+      <urbi-prosa>${d.categoria ?? ''} · ${formatar({ tipo: 'm2' }, d.area_m2)} (aproximada, calculada pela app)</urbi-prosa>
+      ${this.camadasLigadas.has('nucleo') ? html`<urbi-prosa papel="dica">Do núcleo imobiliário · lido agora</urbi-prosa>
+        <intel-imob-nucleo-objeto tipo="contorno" .objetoId=${d.id} compacto></intel-imob-nucleo-objeto>` : nothing}
       ${link(`/cadastro/contornos/${d.id}`)}</urbi-stack></urbi-card>`;
   }
 

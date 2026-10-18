@@ -135,6 +135,7 @@ async function prepararAnuncio(req: Request, dados: Linha, atual: Linha | null):
 }
 
 export const DEF_ANUNCIOS: DefCadastro = {
+  objeto: 'anuncio',
   tabela: 'anuncios',
   base: '/anuncios',
   camposCriar: CAMPOS_ANUNCIO,
@@ -216,6 +217,7 @@ async function prepararLancamento(req: Request, dados: Linha, atual: Linha | nul
 }
 
 export const DEF_LANCAMENTOS: DefCadastro = {
+  objeto: 'lancamento',
   tabela: 'lancamentos',
   base: '/lancamentos',
   camposCriar: CAMPOS_LANCAMENTO,
@@ -291,6 +293,7 @@ async function prepararAncora(req: Request, dados: Linha, atual: Linha | null): 
 }
 
 export const DEF_ANCORAS: DefCadastro = {
+  objeto: 'ancora',
   tabela: 'ancoras',
   base: '/ancoras',
   camposCriar: CAMPOS_ANCORA,

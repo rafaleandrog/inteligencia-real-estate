@@ -42,7 +42,10 @@ Sucessor do `docs/DATA_CONTRACT.md` do site para a app. O desenho completo está
 | `coletas` | cada execução com os contadores de domínio (importação hoje; rotinas a partir da fase 3) | — |
 | `cursores_rotina` | posição e trava das rotinas fatiadas (fase 3) | — |
 | `achados_qualidade` | avisos não bloqueantes (ex.: `SOMA_FAIXAS_ETARIAS`), com quem resolveu | — |
-| `alteracoes_cadastro` | histórico de criar, editar, remover e restaurar, com o antes e o depois | — |
+| `alteracoes_cadastro` | histórico de criar, editar, remover e restaurar, com o antes e o depois; valor de atributo entra no histórico do objeto como `atr_<codigo>` | — |
+| `atributos_def` | catálogo de atributos extensíveis: `codigo`, tipo, unidade, opções (só crescem), `aplica_a`, `grupo`, `ativo`; teto de 200 ativos | `codigo` |
+| `atributos_valor` | um valor por objeto e atributo, só na coluna `valor_*` do tipo; `fonte`, `observado_em`, `importacao_id` | `objeto_tipo` + `objeto_id` + `atributo_id` |
+| `vinculos_nucleo` | junção objeto da app × registro do imobiliário (só o id; nada copiado) | `objeto_tipo` + `objeto_id` + `entidade` + `nucleo_id` (entre os vivos) |
 
 ### Semente
 

@@ -28,7 +28,7 @@ dono. Por isso a tabela de fatos abaixo está **não medida**.
 | 5 | `permissao_padrao = nenhuma` para a app | alçada `usuarios` | pendente, na instalação |
 | 6 | Cap global de arquivo informado | admin da instância | pendente (medir) |
 | 7 | Hosts do proxy de egresso | alçada `sistema` | não se aplica ao MVP (sem coleta) |
-| 8 | Módulo `imobiliario` ≥ 1.0.0 instalado antes da release que declara `dependencias`; depois, as cinco flags de leitura ligadas na aba Núcleo da app | alçada `nucleo` | pendente; só a partir da release da fase 15.1a |
+| 8 | Módulo `imobiliario` ≥ 1.0.0 instalado antes da release que declara `dependencias`; depois, as cinco flags de leitura ligadas na aba Núcleo da app | alçada `nucleo` | pendente; a partir da versão 0.5.0 (15.1a), que declara a dependência: instalar ou atualizar a app sem o módulo faz ela não subir |
 
 ## Fatos da Pinguim que a spec assumiu sem medir (P-50)
 
@@ -65,3 +65,14 @@ Medir só com leitura, pela skill `instancia-urbiverso`, numa sessão com acesso
 - **`.claude/` era ignorada inteira.** O `.gitignore` do site ignorava `.claude/`; o kit instala ali as
   skills e o hook de sessão, que precisam ser versionados. O `.gitignore` passou a ignorar
   `.claude/*` com exceção do que o kit instala.
+
+## Divergências da spec encontradas na 15.1a
+
+- **Remover e restaurar de atributo e de vínculo são `PATCH`, não `POST`.** A tabela 6.23 escreve
+  `POST /atributos/:id/remover`; a app usa `PATCH`, como todo remover/restaurar dos cadastros (o
+  gate do shell trata `POST` e `PATCH` igual, escrita), para um padrão só na API.
+- **Desfazer importação apaga o valor de atributo.** `atributos_valor` não tem `soft_delete`
+  (5.24), então o desfazer apaga a linha, em vez de mandá-la para a lixeira como faz com os objetos.
+- **Sem o módulo no request, `503 NUCLEO_INDISPONIVEL`.** A spec não diz o que o `POST
+  /vinculos-nucleo` responde quando `req.modulos.imobiliario` não existe; a app recusa com 503 e a
+  instrução para o admin.

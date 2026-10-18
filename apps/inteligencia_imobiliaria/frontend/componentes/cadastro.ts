@@ -3,7 +3,11 @@ import { property, state } from 'lit/decorators.js';
 import type { CampoFormulario, UrbiColunaTabela } from '@urbiverso/sdk';
 import { definir } from '../registro';
 import { baixar, mensagemDeErro, patch, json, temPapel, uv } from '../api';
+import type { ObjetoTipo } from '../../comum/objetos';
+import { COMBINACOES } from '../../comum/vinculos';
 import './importar';
+import './atributos';
+import './nucleo';
 
 export type TipoCampo = 'texto' | 'texto_longo' | 'numero' | 'data' | 'booleano' | 'selecao' | 'localidade' | 'fonte' | 'url' | 'json' | 'brl' | 'm2' | 'frac' | 'datahora';
 export type Nivel = 'essencial' | 'complementar' | 'tecnico';
@@ -45,6 +49,8 @@ export interface ConfigCadastro {
   apiLista?: string;
   /** `false` quando a tabela não tem remover/restaurar pela tela. */
   removivel?: boolean;
+  /** Tipo de objeto (spec 5.24, 10.14): liga o bloco Atributos e, quando vinculável, a seção do núcleo. */
+  objeto?: ObjetoTipo;
 }
 
 const brl = new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL', maximumFractionDigits: 0 });
@@ -414,8 +420,26 @@ export class IntelImobCadastroFicha extends LitElement {
             <urbi-prosa papel="mono" inline>#${this.reg.id} · versão ${this.reg.versao ?? '—'}</urbi-prosa>
           </urbi-linha>
           ${!pode ? html`<urbi-prosa papel="dica">Somente leitura: editar exige o papel ${c.papel}.</urbi-prosa>` : nothing}
+          ${c.objeto && COMBINACOES[c.objeto]
+            ? html`<urbi-card titulo="Do núcleo imobiliário" icone="fa-solid fa-landmark">
+                <urbi-stack>
+                  <urbi-linha><urbi-badge cor="info">cadastro oficial · lido agora</urbi-badge></urbi-linha>
+                  <intel-imob-nucleo-objeto tipo=${c.objeto} .objetoId=${this.reg.id}></intel-imob-nucleo-objeto>
+                </urbi-stack>
+              </urbi-card>
+              <urbi-prosa papel="subtitulo">Da pesquisa · app</urbi-prosa>`
+            : nothing}
           ${this.secao('essencial')}
           ${c.blocosFicha ? c.blocosFicha(this.reg, this.recarregar) : nothing}
+          ${c.objeto
+            ? html`<urbi-card titulo="Atributos" icone="fa-solid fa-list-check">
+                <urbi-stack>
+                  <urbi-linha><urbi-badge cor="padrao">app</urbi-badge></urbi-linha>
+                  <intel-imob-atributos-objeto tipo=${c.objeto} .objetoId=${this.reg.id} ?removido=${removido}
+                    @intel-imob:atributos-salvos=${this.recarregar}></intel-imob-atributos-objeto>
+                </urbi-stack>
+              </urbi-card>`
+            : nothing}
           ${this.secao('complementar')}
           ${this.secao('tecnico')}
           ${c.eventos

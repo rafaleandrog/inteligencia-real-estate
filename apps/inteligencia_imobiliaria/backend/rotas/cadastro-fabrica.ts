@@ -3,6 +3,8 @@ import type { HelperDados } from '@urbiverso/sdk';
 import { ErroApp, exigirPapel, idDaRota, naoEncontrado, paginacao, rota, textoQuery, usuarioId, type Papel } from './comum';
 import { criarCadastro, diferenca, editarCadastro, escolher, historico, removerCadastro, restaurarCadastro } from './cadastro-comum';
 import { querCsv, responderCsv } from './exportar';
+import type { ObjetoTipo } from '../../comum/objetos';
+import { colunasAtributosCsv, idsPorAtributos } from '../atributos/filtro';
 
 type Linha = Record<string, any>;
 
@@ -37,6 +39,8 @@ export interface DefCadastro {
   /** Colunas extras resolvidas em lote para a lista (ex.: nome da localidade). */
   anexar?(req: Request, linhas: Linha[]): Promise<Linha[]>;
   eventos?: DefEventos;
+  /** Tipo de objeto (spec 5.24): liga o filtro `atr_<codigo>` e as colunas de atributo do CSV. */
+  objeto?: ObjetoTipo;
   /** Contagens e blocos extras da ficha. */
   ficha?(req: Request, l: Linha): Promise<Linha>;
 }
@@ -69,6 +73,11 @@ export function rotasCadastro(def: DefCadastro): Router {
 
   r.get(def.base, rota(async (req, res) => {
     const { filtros, busca, buscaColunas } = await def.filtros(req);
+    if (def.objeto) {
+      const ids = await idsPorAtributos(req, def.objeto);
+      // Nenhum objeto passa: id 0 não existe, a lista volta vazia sem consulta especial.
+      if (ids) filtros.id = ids.length ? ids : [0];
+    }
     const removidos = textoQuery(req, 'removidos');
     const opcoes = {
       filtros,
@@ -79,8 +88,9 @@ export function rotasCadastro(def: DefCadastro): Router {
     };
     if (querCsv(req)) {
       const linhas = await req.dados!.varrerTudo(def.tabela, opcoes);
-      const anexadas = def.anexar ? await def.anexar(req, linhas) : linhas;
-      responderCsv(res, def.tabela, def.colunasCsv, anexadas.map(derivar), textoQuery(req, 'localidade') ?? '');
+      const anexadas = (def.anexar ? await def.anexar(req, linhas) : linhas).map(derivar);
+      const atr = def.objeto ? await colunasAtributosCsv(req.dados!, def.objeto, anexadas) : { colunas: [], linhas: anexadas };
+      responderCsv(res, def.tabela, [...def.colunasCsv, ...atr.colunas], atr.linhas, textoQuery(req, 'localidade') ?? '');
       return;
     }
     const { pagina, por_pagina } = paginacao(req);

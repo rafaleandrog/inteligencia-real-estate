@@ -1,6 +1,6 @@
 {
   "nome": "Inteligência Imobiliária",
-  "versao": "0.4.0",
+  "versao": "0.5.0",
   "descricao": "Oferta, mercado e território do mercado imobiliário, com dado rastreável",
   "identidade": "rafaleandrog/inteligencia-real-estate::inteligencia_imobiliaria",
   "shell_min": "0.56.37",
@@ -95,5 +95,27 @@
       "rota": "/operacao",
       "icone": "fa-solid fa-gears"
     }
-  ]
+  ],
+  "dependencias": {
+    "urbiverso/modulos-urbiverso::imobiliario": {
+      "versao_min": "1.0.0",
+      "entidades": {
+        "imoveis": [
+          "ler"
+        ],
+        "parcelamentos": [
+          "ler"
+        ],
+        "incorporacoes": [
+          "ler"
+        ],
+        "matriculas": [
+          "ler"
+        ],
+        "setores_habitacionais": [
+          "ler"
+        ]
+      }
+    }
+  }
 }

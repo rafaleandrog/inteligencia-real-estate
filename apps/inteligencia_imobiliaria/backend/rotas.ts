@@ -9,6 +9,8 @@ import { qualidade } from './rotas/qualidade';
 import { mercadoCadastro } from './rotas/mercado-cadastro';
 import { mapa } from './rotas/mapa';
 import { coletas } from './rotas/coletas';
+import { atributos } from './rotas/atributos';
+import { vinculos } from './rotas/vinculos';
 import { CONTAGENS_LOCALIDADE } from './rotas/territorio';
 export { rotasPessoais } from './rotas/pessoais';
 
@@ -38,6 +40,8 @@ rotas.use(coletas);
 // O mapa vem antes do cadastro: `/anuncios/mapa` não pode cair em `/anuncios/:id`.
 rotas.use(mapa);
 rotas.use(mercadoCadastro);
+rotas.use(atributos);
+rotas.use(vinculos);
 
 CONTAGENS_LOCALIDADE.push(
   { chave: 'anuncios_ativos', tabela: 'anuncios', filtros: { status: 'ativo' } },

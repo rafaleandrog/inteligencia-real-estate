@@ -7,6 +7,7 @@ import { createHash } from 'node:crypto';
 import { ErroApp, exigirPapel, idDaRota, naoEncontrado, numeroQuery, paginacao, rota, textoQuery, usuarioId } from './comum';
 import { criarCadastro, editarCadastro, escolher, historico, removerCadastro, restaurarCadastro } from './cadastro-comum';
 import { querCsv, responderCsv } from './exportar';
+import { colunasAtributosCsv, idsPorAtributos } from '../atributos/filtro';
 import { cidadeDoRequest } from './territorio-comum';
 
 export const territorio: Router = Router();
@@ -133,6 +134,8 @@ function filtrosContornos(req: Request): Record<string, unknown> {
 /** Lista de contornos: GeoJSON para o mapa (padrão), tabela (`formato=lista`) ou CSV. */
 territorio.get('/contornos', rota(async (req, res) => {
   const filtros = filtrosContornos(req);
+  const porAtributo = await idsPorAtributos(req, 'contorno');
+  if (porAtributo) filtros.id = porAtributo.length ? porAtributo : [0];
   if (req.query.formato === 'lista') {
     const { pagina, por_pagina } = paginacao(req);
     const q = textoQuery(req, 'q');
@@ -142,7 +145,8 @@ territorio.get('/contornos', rota(async (req, res) => {
   }
   const linhas = await req.dados!.varrerTudo('contornos', { filtros, ordenar: 'ordem_camada', ordem: 'asc' });
   if (querCsv(req)) {
-    responderCsv(res, 'contornos', [...CAMPOS_CONTORNO_LISTA, 'geometria', 'estilo', 'fonte_url', 'qualidade'], linhas);
+    const atr = await colunasAtributosCsv(req.dados!, 'contorno', linhas);
+    responderCsv(res, 'contornos', [...CAMPOS_CONTORNO_LISTA, 'geometria', 'estilo', 'fonte_url', 'qualidade', ...atr.colunas], atr.linhas);
     return;
   }
   const cx = caixaDaQuery(req);

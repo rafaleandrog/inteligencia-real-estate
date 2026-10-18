@@ -25,6 +25,13 @@ Todo dado entra pelo mesmo fluxo, com as mesmas validações e o mesmo registro 
 5. **Desfazer** (só o admin da app): manda para a lixeira as linhas que a importação criou e que
    ninguém editou depois. Linhas atualizadas por ela não voltam ao valor anterior.
 
+**Atributos no mesmo CSV.** Uma coluna `atr_<codigo>` leva o valor do atributo `<codigo>` do
+catálogo para o objeto da linha (anúncios, lançamentos, âncoras e contornos). A prévia confere que o
+atributo existe, está ativo e se aplica ao objeto; atributo desconhecido é coluna ignorada com aviso,
+e valor fora do tipo rejeita a linha com o motivo. Célula vazia não apaga valor gravado. O modelo
+baixado traz as colunas `atr_<codigo>` dos atributos ativos, e o desfazer apaga os valores que a
+importação gravou e ninguém editou depois.
+
 Reimportar o mesmo arquivo com "Ignorar" não duplica nada: a chave natural de cada tabela está
 em [Dados](dados.md).
 

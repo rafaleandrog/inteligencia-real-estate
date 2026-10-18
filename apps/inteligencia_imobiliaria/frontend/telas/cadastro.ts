@@ -62,7 +62,7 @@ const COLUNAS_ANUNCIO: UrbiColunaTabela[] = [
 ];
 
 export const CONFIG_ANUNCIOS: ConfigCadastro = {
-  id: 'anuncios', titulo: 'Anúncios', singular: 'Anúncio', api: '/anuncios', tabelaImport: 'anuncios', papel: 'curador',
+  id: 'anuncios', objeto: 'anuncio', titulo: 'Anúncios', singular: 'Anúncio', api: '/anuncios', tabelaImport: 'anuncios', papel: 'curador',
   colunas: COLUNAS_ANUNCIO, campos: CAMPOS_ANUNCIO, eventos: true,
   query: (f) => ({ q: f.titulo ?? '', tipo_imovel: f.tipo_imovel ?? '', status: f.status ?? '' }),
   tituloFicha: (l) => l.titulo,
@@ -105,7 +105,7 @@ const CAMPOS_LANCAMENTO: CampoFicha[] = [
 ];
 
 export const CONFIG_LANCAMENTOS: ConfigCadastro = {
-  id: 'lancamentos', titulo: 'Lançamentos', singular: 'Lançamento', api: '/lancamentos', tabelaImport: 'lancamentos', papel: 'curador',
+  id: 'lancamentos', objeto: 'lancamento', titulo: 'Lançamentos', singular: 'Lançamento', api: '/lancamentos', tabelaImport: 'lancamentos', papel: 'curador',
   campos: CAMPOS_LANCAMENTO, eventos: true,
   colunas: [
     { id: 'nome', label: 'Nome', filtro: filtroTexto('Buscar nome, incorporadora…') },
@@ -151,7 +151,7 @@ const CAMPOS_ANCORA: CampoFicha[] = [
 ];
 
 export const CONFIG_ANCORAS: ConfigCadastro = {
-  id: 'ancoras', titulo: 'Âncoras', singular: 'Âncora', api: '/ancoras', tabelaImport: 'ancoras', papel: 'curador', campos: CAMPOS_ANCORA,
+  id: 'ancoras', objeto: 'ancora', titulo: 'Âncoras', singular: 'Âncora', api: '/ancoras', tabelaImport: 'ancoras', papel: 'curador', campos: CAMPOS_ANCORA,
   colunas: [
     { id: 'nome', label: 'Nome', filtro: filtroTexto('Buscar nome, operador…') },
     { id: 'categoria', label: 'Categoria', largura: '190px', valor: (l: any) => ROTULO_CATEGORIA_ANCORA[l.categoria] ?? l.categoria, filtro: filtroSelect(CATEGORIAS_ANCORA, ROTULO_CATEGORIA_ANCORA, 'Todas') },
@@ -188,7 +188,7 @@ const CAMPOS_CONTORNO: CampoFicha[] = [
 ];
 
 export const CONFIG_CONTORNOS: ConfigCadastro = {
-  id: 'contornos', titulo: 'Contornos', singular: 'Contorno', api: '/contornos', apiLista: '/contornos', tabelaImport: 'contornos', papel: 'curador',
+  id: 'contornos', objeto: 'contorno', titulo: 'Contornos', singular: 'Contorno', api: '/contornos', apiLista: '/contornos', tabelaImport: 'contornos', papel: 'curador',
   campos: CAMPOS_CONTORNO,
   colunas: [
     { id: 'nome', label: 'Nome', filtro: filtroTexto('Buscar nome…') },
@@ -291,7 +291,10 @@ export const CONFIG_FONTES: ConfigCadastro = {
 const ABAS: ConfigCadastro[] = [CONFIG_ANUNCIOS, CONFIG_LANCAMENTOS, CONFIG_ANCORAS, CONFIG_CONTORNOS, CONFIG_LOCALIDADES, CONFIG_FONTES];
 
 /** Abas extras registradas por fases seguintes (atributos, vínculos com o núcleo). */
-export const ABAS_EXTRAS: { id: string; label: string; icone: string; render: (sub: string[]) => unknown }[] = [];
+export const ABAS_EXTRAS: { id: string; label: string; icone: string; render: (sub: string[]) => unknown }[] = [
+  { id: 'atributos', label: 'Atributos', icone: 'fa-solid fa-list-check', render: () => html`<intel-imob-atributos-catalogo></intel-imob-atributos-catalogo>` },
+  { id: 'vinculos', label: 'Vínculos com o núcleo', icone: 'fa-solid fa-link', render: () => html`<intel-imob-vinculos-lista></intel-imob-vinculos-lista>` },
+];
 
 const ICONES: Record<string, string> = {
   anuncios: 'fa-solid fa-tag', lancamentos: 'fa-solid fa-building', ancoras: 'fa-solid fa-anchor', contornos: 'fa-solid fa-draw-polygon',

@@ -2211,6 +2211,270 @@
           "tipo": "inteiro"
         }
       }
+    },
+    "atributos_def": {
+      "acesso_externo": "restrito",
+      "soft_delete": true,
+      "id_legivel": "{nome}",
+      "colunas": {
+        "codigo": {
+          "tipo": "texto",
+          "limite": 60,
+          "obrigatorio": true,
+          "formato": "^[a-z][a-z0-9_]*$"
+        },
+        "nome": {
+          "tipo": "texto",
+          "limite": 120,
+          "obrigatorio": true
+        },
+        "descricao": {
+          "tipo": "texto_longo"
+        },
+        "tipo_valor": {
+          "tipo": "texto",
+          "limite": 10,
+          "opcoes": [
+            "numero",
+            "texto",
+            "data",
+            "booleano",
+            "opcao"
+          ],
+          "obrigatorio": true
+        },
+        "unidade": {
+          "tipo": "texto",
+          "limite": 30
+        },
+        "opcoes": {
+          "tipo": "json"
+        },
+        "aplica_a": {
+          "tipo": "json",
+          "obrigatorio": true
+        },
+        "grupo": {
+          "tipo": "texto",
+          "limite": 60
+        },
+        "ativo": {
+          "tipo": "booleano",
+          "obrigatorio": true,
+          "padrao": true
+        },
+        "promovido_para": {
+          "tipo": "texto",
+          "limite": 120
+        },
+        "versao": {
+          "tipo": "inteiro",
+          "obrigatorio": true,
+          "padrao": 1
+        }
+      },
+      "unicos": [
+        {
+          "colunas": [
+            "codigo"
+          ],
+          "onde": [
+            {
+              "coluna": "removido_em",
+              "operador": "nulo"
+            }
+          ]
+        }
+      ],
+      "indices": [
+        [
+          "ativo"
+        ]
+      ]
+    },
+    "atributos_valor": {
+      "acesso_externo": "restrito",
+      "id_legivel": "{objeto_tipo} {objeto_id}",
+      "colunas": {
+        "objeto_tipo": {
+          "tipo": "texto",
+          "limite": 20,
+          "opcoes": [
+            "anuncio",
+            "lancamento",
+            "ancora",
+            "contorno",
+            "area_estudo",
+            "terracap_lote",
+            "empreendimento",
+            "licenca_obra",
+            "ponto_comercial"
+          ],
+          "obrigatorio": true
+        },
+        "objeto_id": {
+          "tipo": "inteiro",
+          "obrigatorio": true
+        },
+        "atributo_id": {
+          "tipo": "referencia",
+          "tabela_ref": "atributos_def",
+          "ao_deletar": "restringir",
+          "obrigatorio": true
+        },
+        "valor_num": {
+          "tipo": "decimal",
+          "precisao": 18,
+          "escala": 6
+        },
+        "valor_texto": {
+          "tipo": "texto_longo"
+        },
+        "valor_data": {
+          "tipo": "data"
+        },
+        "valor_bool": {
+          "tipo": "booleano"
+        },
+        "fonte": {
+          "tipo": "texto",
+          "limite": 300
+        },
+        "observado_em": {
+          "tipo": "data"
+        },
+        "autor_id": {
+          "tipo": "referencia",
+          "tabela_ref": "shell.usuarios",
+          "ao_deletar": "anular",
+          "campos_incluir": [
+            "nome as autor_nome"
+          ]
+        },
+        "importacao_id": {
+          "tipo": "referencia",
+          "tabela_ref": "importacoes",
+          "ao_deletar": "anular"
+        },
+        "versao": {
+          "tipo": "inteiro",
+          "obrigatorio": true,
+          "padrao": 1
+        }
+      },
+      "unicos": [
+        [
+          "objeto_tipo",
+          "objeto_id",
+          "atributo_id"
+        ]
+      ],
+      "indices": [
+        [
+          "atributo_id",
+          "valor_num"
+        ],
+        [
+          "objeto_tipo",
+          "objeto_id"
+        ],
+        [
+          "importacao_id"
+        ]
+      ]
+    },
+    "vinculos_nucleo": {
+      "acesso_externo": "restrito",
+      "soft_delete": true,
+      "id_legivel": "{objeto_tipo} {objeto_id} · {entidade} {nucleo_id}",
+      "colunas": {
+        "objeto_tipo": {
+          "tipo": "texto",
+          "limite": 20,
+          "opcoes": [
+            "area_estudo",
+            "contorno",
+            "terracap_lote",
+            "lancamento",
+            "empreendimento"
+          ],
+          "obrigatorio": true
+        },
+        "objeto_id": {
+          "tipo": "inteiro",
+          "obrigatorio": true
+        },
+        "entidade": {
+          "tipo": "texto",
+          "limite": 20,
+          "opcoes": [
+            "imoveis",
+            "incorporacoes",
+            "parcelamentos",
+            "matriculas"
+          ],
+          "obrigatorio": true
+        },
+        "nucleo_id": {
+          "tipo": "inteiro",
+          "obrigatorio": true
+        },
+        "nucleo_subtipo": {
+          "tipo": "texto",
+          "limite": 10,
+          "opcoes": [
+            "lote",
+            "gleba",
+            "unidade"
+          ]
+        },
+        "vinculado_por_id": {
+          "tipo": "referencia",
+          "tabela_ref": "shell.usuarios",
+          "ao_deletar": "anular",
+          "campos_incluir": [
+            "nome as vinculado_por_nome"
+          ]
+        },
+        "vinculado_em": {
+          "tipo": "datahora",
+          "obrigatorio": true
+        },
+        "notas": {
+          "tipo": "texto_longo"
+        },
+        "versao": {
+          "tipo": "inteiro",
+          "obrigatorio": true,
+          "padrao": 1
+        }
+      },
+      "unicos": [
+        {
+          "colunas": [
+            "objeto_tipo",
+            "objeto_id",
+            "entidade",
+            "nucleo_id"
+          ],
+          "onde": [
+            {
+              "coluna": "removido_em",
+              "operador": "nulo"
+            }
+          ]
+        }
+      ],
+      "indices": [
+        [
+          "objeto_tipo",
+          "objeto_id"
+        ],
+        [
+          "entidade",
+          "nucleo_id"
+        ]
+      ]
     }
   }
 }

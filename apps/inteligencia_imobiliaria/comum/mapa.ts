@@ -12,6 +12,7 @@ export const TOKENS_MAPA = {
   ancoraInfraestrutura: '--cor-categoria-1',
   ancoraComercio: '--cor-categoria-2',
   importado: '--cor-categoria-4',
+  nucleo: '--cor-categoria-5',
   ra: '--cor-mapa-contorno',
   bordaPonto: '--cor-fundo',
   bordaExata: '--cor-texto-forte',
