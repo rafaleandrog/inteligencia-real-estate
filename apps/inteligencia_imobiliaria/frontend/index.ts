@@ -6,6 +6,7 @@ import { uv } from './api';
 import './telas/em-construcao';
 import './telas/inicio';
 import './telas/operacao';
+import './telas/cadastro';
 import { AREAS } from '../comum/telas';
 
 /** Primeiro segmento da sub-rota: `/operacao/importacoes/3` → `/operacao`. */
@@ -23,9 +24,17 @@ export class AppInteligenciaImobiliaria extends LitElement {
   connectedCallback() {
     super.connectedCallback();
     this.sub = uv().subRota();
+    this.registrarUso(this.sub);
     this.cancelar = uv().escutarRota((sub) => {
+      if (areaDaSubRota(sub) !== areaDaSubRota(this.sub) || sub.split('/').length !== this.sub.split('/').length) this.registrarUso(sub);
       this.sub = sub;
     });
+  }
+
+  /** Telemetria mínima de uso (spec 5.23, D-72): uma chamada por troca de tela; falha é ignorada. */
+  private registrarUso(sub: string) {
+    const rota = sub.replace(/\/\d+(?=\/|$)/g, '/:id');
+    uv().api('/pessoal/uso', { method: 'POST', body: JSON.stringify({ sub_rota: rota, acao: 'abrir' }) }).catch(() => undefined);
   }
 
   disconnectedCallback() {
@@ -37,6 +46,7 @@ export class AppInteligenciaImobiliaria extends LitElement {
     const area = areaDaSubRota(this.sub);
     if (area === '/') return html`<intel-imob-inicio></intel-imob-inicio>`;
     if (area === '/operacao') return html`<intel-imob-operacao .sub=${this.sub}></intel-imob-operacao>`;
+    if (area === '/cadastro') return html`<intel-imob-cadastro .sub=${this.sub}></intel-imob-cadastro>`;
     const def = AREAS.find((a) => a.rota === area);
     if (!def) return html`<intel-imob-nao-encontrada></intel-imob-nao-encontrada>`;
     return html`<intel-imob-em-construcao titulo=${def.titulo} quando=${def.quando}></intel-imob-em-construcao>`;

@@ -172,7 +172,7 @@ importacoes.post('/importacoes/:id/aplicar', rota(async (req, res) => {
     const arquivo = await lerArquivoTexto(req.arquivos, Number(imp.arquivo));
     const v = await validarCsv(def, ganchos, arquivo.texto, ctx, imp.modo_duplicata, extensaoAtributos, lerPadroes(imp.mapeamento?.padroes));
     if (v.bloqueio) throw new ErroApp(409, 'PREVIA_BLOQUEADA', v.bloqueio);
-    const r = await aplicarValidacao(def, v, ctx, imp.id);
+    const r = await aplicarValidacao(def, v, ctx, imp.id, ganchos);
     const final = await req.dados!.atualizar('importacoes', imp.id, {
       status: 'aplicada',
       aplicada_em: new Date().toISOString(),

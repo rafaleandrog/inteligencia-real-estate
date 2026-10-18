@@ -201,10 +201,11 @@ function mensagemDeErro(e: unknown): { codigo: string; mensagem: string } {
   return { codigo: x?.codigo ?? (x?.code === '23505' ? 'DUPLICATA' : 'ERRO_GRAVACAO'), mensagem: String(x?.message ?? e).slice(0, 300) };
 }
 
-async function gravarLinha(def: TabelaImport, l: LinhaValida, ctx: CtxImportacao, importacaoId: number, trx = ctx.dados): Promise<number | null> {
+async function gravarLinha(def: TabelaImport, l: LinhaValida, ctx: CtxImportacao, importacaoId: number, trx = ctx.dados, ganchos?: GanchosTabela): Promise<number | null> {
   if (l.acao === 'ignorar') return l.existente ? Number(l.existente.id) : null;
   if (l.acao === 'inserir') {
     const criado = await trx.criar(def.tabela, { ...l.dados, importacao_id: importacaoId });
+    if (ganchos?.aposCriar) await ganchos.aposCriar(trx, criado, ctx);
     return Number(criado.id);
   }
   const ex = l.existente!;
@@ -224,7 +225,8 @@ async function gravarLinha(def: TabelaImport, l: LinhaValida, ctx: CtxImportacao
  * passo 2). Lote que falha é refeito linha a linha, para que uma linha
  * recusada pelo banco não derrube as outras.
  */
-export async function aplicarValidacao(def: TabelaImport, v: Validacao, ctx: CtxImportacao, importacaoId: number): Promise<ResultadoAplicar> {
+export async function aplicarValidacao(def: TabelaImport, v: Validacao, ctx: CtxImportacao, importacaoId: number, ganchos?: GanchosTabela): Promise<ResultadoAplicar> {
+  if (ganchos?.antesDeAplicar) await ganchos.antesDeAplicar(v.validas.filter((l) => l.acao !== 'ignorar'), ctx);
   const r: ResultadoAplicar = { inseridas: 0, atualizadas: 0, ignoradas: 0, rejeitadas: v.rejeicoes.length, rejeicoes: [...v.rejeicoes], achados: 0 };
   const gravadas: { linha: LinhaValida; id: number | null }[] = [];
   for (let i = 0; i < v.validas.length; i += TAMANHO_LOTE) {
@@ -233,7 +235,7 @@ export async function aplicarValidacao(def: TabelaImport, v: Validacao, ctx: Ctx
       const ids = await ctx.dados.transaction(async (trx) => {
         const out: (number | null)[] = [];
         for (const l of lote) {
-          const id = await gravarLinha(def, l, ctx, importacaoId, trx);
+          const id = await gravarLinha(def, l, ctx, importacaoId, trx, ganchos);
           if (id !== null && l.depois && l.acao !== 'ignorar') await l.depois(id, { ...ctx, dados: trx }, importacaoId);
           out.push(id);
         }
@@ -244,7 +246,7 @@ export async function aplicarValidacao(def: TabelaImport, v: Validacao, ctx: Ctx
       for (const l of lote) {
         try {
           const id = await ctx.dados.transaction(async (trx) => {
-            const novo = await gravarLinha(def, l, ctx, importacaoId, trx);
+            const novo = await gravarLinha(def, l, ctx, importacaoId, trx, ganchos);
             if (novo !== null && l.depois && l.acao !== 'ignorar') await l.depois(novo, { ...ctx, dados: trx }, importacaoId);
             return novo;
           });

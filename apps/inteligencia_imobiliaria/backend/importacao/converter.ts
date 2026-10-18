@@ -20,6 +20,7 @@ export function converter(campo: CampoImport, bruto: string, pct: boolean): Conv
     case 'texto_longo': {
       let v = t;
       if (campo.traducao) v = campo.traducao[v] ?? campo.traducao[v.toLowerCase()] ?? v;
+      if (campo.traduzir) v = campo.traduzir(v);
       if (campo.opcoes && !campo.opcoes.includes(v)) {
         return erro(campo, 'OPCAO_INVALIDA', `"${v}" não está entre ${campo.opcoes.join(', ')}`);
       }

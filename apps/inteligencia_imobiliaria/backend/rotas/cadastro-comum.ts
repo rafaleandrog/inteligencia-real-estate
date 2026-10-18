@@ -101,7 +101,7 @@ export async function editarCadastro(
   });
 }
 
-export async function removerCadastro(req: Request, tabela: string, id: number): Promise<Linha> {
+export async function removerCadastro(req: Request, tabela: string, id: number, depois?: (trx: HelperDados, r: Linha) => Promise<void>): Promise<Linha> {
   const atual = await req.dados!.buscar(tabela, id, { incluir_removidos: true });
   if (!atual) throw naoEncontrado();
   if (atual.removido_em) return atual;
@@ -109,11 +109,12 @@ export async function removerCadastro(req: Request, tabela: string, id: number):
     const r = await trx.remover(tabela, id, usuarioId(req));
     if (!r) throw naoEncontrado();
     await registrarAlteracao(trx, req, tabela, id, 'removido', null, req.body?.motivo);
+    if (depois) await depois(trx, r);
     return r;
   });
 }
 
-export async function restaurarCadastro(req: Request, tabela: string, id: number): Promise<Linha> {
+export async function restaurarCadastro(req: Request, tabela: string, id: number, depois?: (trx: HelperDados, r: Linha) => Promise<void>): Promise<Linha> {
   const atual = await req.dados!.buscar(tabela, id, { incluir_removidos: true });
   if (!atual) throw naoEncontrado();
   if (!atual.removido_em) return atual;
@@ -121,6 +122,7 @@ export async function restaurarCadastro(req: Request, tabela: string, id: number
     const r = await trx.restaurar(tabela, id);
     if (!r) throw naoEncontrado();
     await registrarAlteracao(trx, req, tabela, id, 'restaurado', null, req.body?.motivo);
+    if (depois) await depois(trx, r);
     return r;
   });
 }

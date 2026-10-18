@@ -20,6 +20,6 @@ export const AREAS: AreaApp[] = [
   { rota: '/comercio', titulo: 'Comércio e âncoras', icone: 'fa-solid fa-store', descricao: 'Comércio e âncoras.', disponivel: false, quando: 'Fora do MVP (fase 7).' },
   { rota: '/terra', titulo: 'Terra e oferta futura', icone: 'fa-solid fa-mountain-sun', descricao: 'Terra e oferta futura.', disponivel: false, quando: 'Fora do MVP (fase 4B).' },
   { rota: '/analises', titulo: 'Análises', icone: 'fa-solid fa-wand-magic-sparkles', descricao: 'Análises por IA.', disponivel: false, quando: 'Fora do MVP (fase 5).' },
-  { rota: '/cadastro', titulo: 'Cadastro', icone: 'fa-solid fa-pen-ruler', descricao: 'Anúncios, lançamentos, âncoras, contornos e localidades.', disponivel: false, quando: 'Entra na fase 1b do MVP.' },
+  { rota: '/cadastro', titulo: 'Cadastro', icone: 'fa-solid fa-pen-ruler', descricao: 'Anúncios, lançamentos, âncoras, contornos e localidades.', disponivel: true, quando: 'Entra na fase 1b do MVP.' },
   { rota: '/operacao', titulo: 'Operação', icone: 'fa-solid fa-gears', descricao: 'Importações e qualidade dos dados.', disponivel: true, quando: 'Entra na fase 1a do MVP.' },
 ];

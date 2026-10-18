@@ -1,10 +1,23 @@
 import '@urbiverso/sdk/express';
 import { Router } from 'express';
+import type { AoIniciarApp } from '@urbiverso/sdk';
 import { garantirSemente } from './semente';
 import { inicio } from './rotas/inicio';
 import { importacoes } from './rotas/importacoes';
 import { territorio } from './rotas/territorio';
 import { qualidade } from './rotas/qualidade';
+import { mercadoCadastro } from './rotas/mercado-cadastro';
+import { CONTAGENS_LOCALIDADE } from './rotas/territorio';
+export { rotasPessoais } from './rotas/pessoais';
+
+/**
+ * Hook de ciclo de vida (spec 4.2): dispara a semente memoizada no boot. As
+ * rotas aguardam a mesma promise, porque o aoIniciar roda depois do listen.
+ */
+export const aoIniciar: AoIniciarApp = async (ctx) => {
+  if (!ctx.dados) return;
+  await garantirSemente(ctx.dados).catch(() => undefined);
+};
 
 /** Router autenticado, montado pelo shell em /api/inteligencia_imobiliaria/ (spec 4.2). */
 export const rotas: Router = Router();
@@ -19,3 +32,10 @@ rotas.use(inicio);
 rotas.use(importacoes);
 rotas.use(territorio);
 rotas.use(qualidade);
+rotas.use(mercadoCadastro);
+
+CONTAGENS_LOCALIDADE.push(
+  { chave: 'anuncios_ativos', tabela: 'anuncios', filtros: { status: 'ativo' } },
+  { chave: 'lancamentos', tabela: 'lancamentos' },
+  { chave: 'ancoras', tabela: 'ancoras' },
+);
