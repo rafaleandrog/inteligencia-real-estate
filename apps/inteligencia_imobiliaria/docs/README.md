@@ -13,7 +13,10 @@ repositório; o recorte da primeira versão, em `docs/MVP_PROPOSTA.md`.
 ## Para quem usa
 
 - **Início** (`/`): atalhos para as áreas que já existem. As demais aparecem como "em construção".
+- **Operação** (`/operacao`): importações CSV com prévia, aplicar e desfazer, e os achados de
+  qualidade. Ver [Importação](importacao.md).
 - O menu da app tem onze áreas. Cada área entra numa fase; a tela diz quando.
+- O contrato das tabelas está em [Dados](dados.md).
 
 ## Para o administrador
 
@@ -29,3 +32,6 @@ repositório; o recorte da primeira versão, em `docs/MVP_PROPOSTA.md`.
 - Rotas relativas a `/api/inteligencia_imobiliaria/`. Erro responde
   `{ erro: true, codigo, mensagem, detalhes? }`, com `detalhes` sempre lista de texto.
 - `GET /inicio` → `{ versao, atalhos: [{ titulo, rota, icone, descricao, disponivel }] }`.
+- Território: `GET /cidades`, `GET /localidades?cidade&tipo&q`, `GET /localidades/:id`,
+  `GET /contornos?grupo&tipo_entidade&status&bbox=o,s,l,n` (GeoJSON; `formato=lista` ou `csv`).
+- Importação e carga por agente: ver [Importação](importacao.md).

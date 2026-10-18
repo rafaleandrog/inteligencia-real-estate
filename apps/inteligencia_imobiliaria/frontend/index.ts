@@ -5,6 +5,7 @@ import { estiloPagina } from './estilos';
 import { uv } from './api';
 import './telas/em-construcao';
 import './telas/inicio';
+import './telas/operacao';
 import { AREAS } from '../comum/telas';
 
 /** Primeiro segmento da sub-rota: `/operacao/importacoes/3` → `/operacao`. */
@@ -35,6 +36,7 @@ export class AppInteligenciaImobiliaria extends LitElement {
   render() {
     const area = areaDaSubRota(this.sub);
     if (area === '/') return html`<intel-imob-inicio></intel-imob-inicio>`;
+    if (area === '/operacao') return html`<intel-imob-operacao .sub=${this.sub}></intel-imob-operacao>`;
     const def = AREAS.find((a) => a.rota === area);
     if (!def) return html`<intel-imob-nao-encontrada></intel-imob-nao-encontrada>`;
     return html`<intel-imob-em-construcao titulo=${def.titulo} quando=${def.quando}></intel-imob-em-construcao>`;

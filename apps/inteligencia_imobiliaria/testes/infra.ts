@@ -70,6 +70,7 @@ function comparavel(v: unknown): number | string | null {
 }
 
 function igual(a: unknown, b: unknown): boolean {
+  if (typeof a === 'boolean' || typeof b === 'boolean') return String(a) === String(b);
   const ca = comparavel(a);
   const cb = comparavel(b);
   if (ca === null || cb === null) return false;
@@ -329,7 +330,7 @@ export class DadosFalsos {
     const l = this.tab(tabela).find((x) => x.id === Number(id));
     if (!l) return null;
     this.validarColunas(tabela, dados);
-    const novo = { ...l, ...this.normalizar(tabela, dados), atualizado_em: this.agora() };
+    const novo: Linha = { ...l, ...this.normalizar(tabela, dados), atualizado_em: this.agora() };
     for (const [col, c] of Object.entries(this.def(tabela).colunas)) {
       if (c.obrigatorio && col in dados && (novo[col] === null || novo[col] === '')) {
         throw new ErroDadosFalso('DADOS_VALIDACAO_FALHOU', `Erros de validação: ${tabela}.${col} é obrigatório`);

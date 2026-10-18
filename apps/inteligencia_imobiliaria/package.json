@@ -11,6 +11,7 @@
   },
   "dependencies": {
     "express": "catalog:",
+    "fflate": "catalog:",
     "lit": "catalog:"
   },
   "devDependencies": {

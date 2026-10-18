@@ -1,0 +1,889 @@
+{
+  "tabelas": {
+    "cidades": {
+      "acesso_externo": "somente_leitura",
+      "id_legivel": "{nome}",
+      "colunas": {
+        "slug": {
+          "tipo": "texto",
+          "limite": 60,
+          "obrigatorio": true,
+          "unico": true,
+          "formato": "^[a-z][a-z0-9_]*$"
+        },
+        "nome": {
+          "tipo": "texto",
+          "limite": 120,
+          "obrigatorio": true
+        },
+        "uf": {
+          "tipo": "texto",
+          "limite": 2,
+          "obrigatorio": true
+        },
+        "codigo_ibge": {
+          "tipo": "texto",
+          "limite": 7
+        },
+        "centro_latitude": {
+          "tipo": "decimal",
+          "precisao": 10,
+          "escala": 7,
+          "obrigatorio": true
+        },
+        "centro_longitude": {
+          "tipo": "decimal",
+          "precisao": 10,
+          "escala": 7,
+          "obrigatorio": true
+        },
+        "zoom_inicial": {
+          "tipo": "inteiro",
+          "obrigatorio": true
+        },
+        "ativa": {
+          "tipo": "booleano",
+          "obrigatorio": true,
+          "padrao": true
+        }
+      }
+    },
+    "importacoes": {
+      "acesso_externo": "restrito",
+      "id_legivel": "{tabela_alvo} {criado_em}",
+      "colunas": {
+        "tabela_alvo": {
+          "tipo": "texto",
+          "limite": 60,
+          "obrigatorio": true
+        },
+        "fonte_codigo": {
+          "tipo": "texto",
+          "limite": 60
+        },
+        "tipo_arquivo": {
+          "tipo": "texto",
+          "limite": 20,
+          "opcoes": [
+            "csv",
+            "pdf",
+            "planilha",
+            "imagem",
+            "outro"
+          ],
+          "obrigatorio": true
+        },
+        "arquivo": {
+          "tipo": "arquivo",
+          "obrigatorio": true,
+          "tamanho_max_mb": 50,
+          "mimes": [
+            "text/csv",
+            "text/plain",
+            "application/vnd.ms-excel",
+            "application/pdf",
+            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            "application/vnd.oasis.opendocument.spreadsheet",
+            "image/png",
+            "image/jpeg",
+            "application/vnd.google-earth.kml+xml",
+            "application/vnd.google-earth.kmz",
+            "application/geo+json",
+            "application/json",
+            "application/octet-stream"
+          ]
+        },
+        "modo_duplicata": {
+          "tipo": "texto",
+          "limite": 20,
+          "opcoes": [
+            "ignorar",
+            "atualizar",
+            "substituir_tudo",
+            "falhar"
+          ],
+          "obrigatorio": true
+        },
+        "mapeamento": {
+          "tipo": "json"
+        },
+        "status": {
+          "tipo": "texto",
+          "limite": 20,
+          "opcoes": [
+            "previa",
+            "anexada",
+            "extraindo",
+            "aplicando",
+            "aplicada",
+            "falhou",
+            "cancelada",
+            "desfeita"
+          ],
+          "obrigatorio": true
+        },
+        "total_linhas": {
+          "tipo": "inteiro"
+        },
+        "inseridas": {
+          "tipo": "inteiro"
+        },
+        "atualizadas": {
+          "tipo": "inteiro"
+        },
+        "ignoradas": {
+          "tipo": "inteiro"
+        },
+        "rejeitadas": {
+          "tipo": "inteiro"
+        },
+        "relatorio": {
+          "tipo": "json"
+        },
+        "autor_id": {
+          "tipo": "referencia",
+          "tabela_ref": "shell.usuarios",
+          "ao_deletar": "anular",
+          "campos_incluir": [
+            "nome as autor_nome"
+          ],
+          "obrigatorio": true
+        },
+        "aplicada_em": {
+          "tipo": "datahora"
+        },
+        "retrato_data": {
+          "tipo": "data"
+        },
+        "arquivo_sha256": {
+          "tipo": "texto",
+          "limite": 64
+        },
+        "desfeita_em": {
+          "tipo": "datahora"
+        },
+        "desfeita_por_id": {
+          "tipo": "referencia",
+          "tabela_ref": "shell.usuarios",
+          "ao_deletar": "anular",
+          "campos_incluir": [
+            "nome as desfeita_por_nome"
+          ]
+        },
+        "relatorio_desfazer": {
+          "tipo": "json"
+        }
+      },
+      "indices": [
+        [
+          "tabela_alvo",
+          "status"
+        ]
+      ]
+    },
+    "localidades": {
+      "acesso_externo": "restrito",
+      "soft_delete": true,
+      "id_legivel": "{nome} ({codigo})",
+      "colunas": {
+        "cidade_id": {
+          "tipo": "referencia",
+          "tabela_ref": "cidades",
+          "ao_deletar": "restringir",
+          "obrigatorio": true
+        },
+        "tipo": {
+          "tipo": "texto",
+          "limite": 20,
+          "opcoes": [
+            "ra",
+            "submercado",
+            "bairro",
+            "municipio",
+            "agregado"
+          ],
+          "obrigatorio": true
+        },
+        "codigo": {
+          "tipo": "texto",
+          "limite": 40,
+          "obrigatorio": true
+        },
+        "codigo_romano": {
+          "tipo": "texto",
+          "limite": 12
+        },
+        "codigo_legado": {
+          "tipo": "texto",
+          "limite": 40
+        },
+        "numero": {
+          "tipo": "inteiro"
+        },
+        "nome": {
+          "tipo": "texto",
+          "limite": 120,
+          "obrigatorio": true
+        },
+        "nome_fonte": {
+          "tipo": "texto",
+          "limite": 120
+        },
+        "localidade_pai_id": {
+          "tipo": "referencia",
+          "tabela_ref": "localidades",
+          "ao_deletar": "anular"
+        },
+        "classificacao_fonte": {
+          "tipo": "texto",
+          "limite": 40
+        },
+        "regra_mapeamento": {
+          "tipo": "texto_longo"
+        },
+        "nota_metodologica": {
+          "tipo": "texto_longo"
+        },
+        "vigente_de": {
+          "tipo": "data"
+        },
+        "vigente_ate": {
+          "tipo": "data"
+        },
+        "area_km2": {
+          "tipo": "decimal",
+          "precisao": 12,
+          "escala": 4
+        },
+        "ponto_referencia_latitude": {
+          "tipo": "decimal",
+          "precisao": 10,
+          "escala": 7
+        },
+        "ponto_referencia_longitude": {
+          "tipo": "decimal",
+          "precisao": 10,
+          "escala": 7
+        },
+        "criada_apos_pdad_2024": {
+          "tipo": "booleano"
+        },
+        "localidade_predecessora_id": {
+          "tipo": "referencia",
+          "tabela_ref": "localidades",
+          "ao_deletar": "anular"
+        },
+        "referencia_legal": {
+          "tipo": "texto",
+          "limite": 200
+        },
+        "geometria_fonte_url": {
+          "tipo": "texto",
+          "limite": 500
+        },
+        "perfil_fonte_url": {
+          "tipo": "texto",
+          "limite": 500
+        },
+        "qualidade": {
+          "tipo": "texto",
+          "limite": 80
+        },
+        "notas": {
+          "tipo": "texto_longo"
+        },
+        "versao": {
+          "tipo": "inteiro",
+          "obrigatorio": true,
+          "padrao": 1
+        },
+        "importacao_id": {
+          "tipo": "referencia",
+          "tabela_ref": "importacoes",
+          "ao_deletar": "anular"
+        }
+      },
+      "unicos": [
+        {
+          "colunas": [
+            "cidade_id",
+            "tipo",
+            "codigo"
+          ],
+          "onde": [
+            {
+              "coluna": "removido_em",
+              "operador": "nulo"
+            }
+          ]
+        },
+        {
+          "colunas": [
+            "cidade_id",
+            "codigo_legado"
+          ],
+          "onde": [
+            {
+              "coluna": "codigo_legado",
+              "operador": "nao_nulo"
+            },
+            {
+              "coluna": "removido_em",
+              "operador": "nulo"
+            }
+          ]
+        }
+      ],
+      "indices": [
+        [
+          "cidade_id",
+          "tipo"
+        ],
+        [
+          "importacao_id"
+        ]
+      ],
+      "busca_texto": {
+        "colunas": [
+          "nome",
+          "nome_fonte"
+        ]
+      }
+    },
+    "localidade_perfis": {
+      "acesso_externo": "somente_leitura",
+      "id_legivel": "{ano_referencia}",
+      "colunas": {
+        "localidade_id": {
+          "tipo": "referencia",
+          "tabela_ref": "localidades",
+          "ao_deletar": "restringir",
+          "obrigatorio": true
+        },
+        "ano_referencia": {
+          "tipo": "inteiro",
+          "obrigatorio": true
+        },
+        "populacao_total": {
+          "tipo": "inteiro"
+        },
+        "densidade_hab_km2": {
+          "tipo": "decimal",
+          "precisao": 12,
+          "escala": 2
+        },
+        "renda_per_capita_brl": {
+          "tipo": "decimal",
+          "precisao": 12,
+          "escala": 2
+        },
+        "faixa_0_14_frac": {
+          "tipo": "decimal",
+          "precisao": 6,
+          "escala": 5
+        },
+        "faixa_15_29_frac": {
+          "tipo": "decimal",
+          "precisao": 6,
+          "escala": 5
+        },
+        "faixa_30_44_frac": {
+          "tipo": "decimal",
+          "precisao": 6,
+          "escala": 5
+        },
+        "faixa_45_59_frac": {
+          "tipo": "decimal",
+          "precisao": 6,
+          "escala": 5
+        },
+        "faixa_60_mais_frac": {
+          "tipo": "decimal",
+          "precisao": 6,
+          "escala": 5
+        },
+        "idade_media": {
+          "tipo": "decimal",
+          "precisao": 5,
+          "escala": 2
+        },
+        "feminino_frac": {
+          "tipo": "decimal",
+          "precisao": 6,
+          "escala": 5
+        },
+        "masculino_frac": {
+          "tipo": "decimal",
+          "precisao": 6,
+          "escala": 5
+        },
+        "domicilios_total": {
+          "tipo": "inteiro"
+        },
+        "moradores_por_domicilio": {
+          "tipo": "decimal",
+          "precisao": 5,
+          "escala": 2
+        },
+        "tipologia_dominante": {
+          "tipo": "texto",
+          "limite": 40
+        },
+        "tipologia_dominante_frac": {
+          "tipo": "decimal",
+          "precisao": 6,
+          "escala": 5
+        },
+        "ocupacao_dominante": {
+          "tipo": "texto",
+          "limite": 40
+        },
+        "ocupacao_dominante_frac": {
+          "tipo": "decimal",
+          "precisao": 6,
+          "escala": 5
+        },
+        "escritura_registrada_frac": {
+          "tipo": "decimal",
+          "precisao": 6,
+          "escala": 5
+        },
+        "status": {
+          "tipo": "texto",
+          "limite": 80
+        },
+        "qualidade": {
+          "tipo": "texto",
+          "limite": 80
+        },
+        "extras": {
+          "tipo": "json"
+        },
+        "importacao_id": {
+          "tipo": "referencia",
+          "tabela_ref": "importacoes",
+          "ao_deletar": "anular"
+        }
+      },
+      "unicos": [
+        {
+          "colunas": [
+            "localidade_id",
+            "ano_referencia"
+          ],
+          "onde": [
+            {
+              "coluna": "removido_em",
+              "operador": "nulo"
+            }
+          ]
+        }
+      ],
+      "indices": [
+        [
+          "importacao_id"
+        ]
+      ],
+      "soft_delete": true
+    },
+    "contornos": {
+      "acesso_externo": "restrito",
+      "soft_delete": true,
+      "id_legivel": "{nome}",
+      "colunas": {
+        "id_legado": {
+          "tipo": "texto",
+          "limite": 80,
+          "unico": true
+        },
+        "nome": {
+          "tipo": "texto",
+          "limite": 200,
+          "obrigatorio": true
+        },
+        "categoria": {
+          "tipo": "texto",
+          "limite": 60
+        },
+        "subcategoria": {
+          "tipo": "texto",
+          "limite": 60
+        },
+        "tipo_entidade": {
+          "tipo": "texto",
+          "limite": 30,
+          "opcoes": [
+            "regiao_administrativa",
+            "trecho_rodoviario",
+            "area_personalizada"
+          ],
+          "obrigatorio": true
+        },
+        "entidade_codigo": {
+          "tipo": "texto",
+          "limite": 80
+        },
+        "papel_geometria": {
+          "tipo": "texto",
+          "limite": 30,
+          "opcoes": [
+            "limite_exibicao",
+            "limite",
+            "eixo_rota",
+            "corredor_exibicao"
+          ],
+          "obrigatorio": true
+        },
+        "localidade_id": {
+          "tipo": "referencia",
+          "tabela_ref": "localidades",
+          "ao_deletar": "anular"
+        },
+        "grupo_camada": {
+          "tipo": "texto",
+          "limite": 60,
+          "obrigatorio": true
+        },
+        "geometria": {
+          "tipo": "json",
+          "obrigatorio": true
+        },
+        "geometria_tipo": {
+          "tipo": "texto",
+          "limite": 20,
+          "obrigatorio": true
+        },
+        "geometria_fonte": {
+          "tipo": "json"
+        },
+        "bbox_oeste": {
+          "tipo": "decimal",
+          "precisao": 10,
+          "escala": 7,
+          "obrigatorio": true
+        },
+        "bbox_sul": {
+          "tipo": "decimal",
+          "precisao": 10,
+          "escala": 7,
+          "obrigatorio": true
+        },
+        "bbox_leste": {
+          "tipo": "decimal",
+          "precisao": 10,
+          "escala": 7,
+          "obrigatorio": true
+        },
+        "bbox_norte": {
+          "tipo": "decimal",
+          "precisao": 10,
+          "escala": 7,
+          "obrigatorio": true
+        },
+        "centroide_latitude": {
+          "tipo": "decimal",
+          "precisao": 10,
+          "escala": 7
+        },
+        "centroide_longitude": {
+          "tipo": "decimal",
+          "precisao": 10,
+          "escala": 7
+        },
+        "area_m2": {
+          "tipo": "decimal",
+          "precisao": 16,
+          "escala": 2
+        },
+        "area_ha": {
+          "tipo": "decimal",
+          "precisao": 16,
+          "escala": 2
+        },
+        "perimetro_m": {
+          "tipo": "decimal",
+          "precisao": 16,
+          "escala": 2
+        },
+        "metricas_aproximadas": {
+          "tipo": "booleano",
+          "obrigatorio": true,
+          "padrao": true
+        },
+        "estilo": {
+          "tipo": "json"
+        },
+        "ordem_camada": {
+          "tipo": "inteiro"
+        },
+        "buffer_exibicao_m": {
+          "tipo": "decimal",
+          "precisao": 8,
+          "escala": 2
+        },
+        "descricao": {
+          "tipo": "texto_longo"
+        },
+        "propriedades": {
+          "tipo": "json"
+        },
+        "fonte_url": {
+          "tipo": "texto",
+          "limite": 500
+        },
+        "fonte_arquivo": {
+          "tipo": "texto",
+          "limite": 200
+        },
+        "fonte_sistema": {
+          "tipo": "texto",
+          "limite": 80
+        },
+        "fonte_camada": {
+          "tipo": "texto",
+          "limite": 120
+        },
+        "fonte_feicao_id": {
+          "tipo": "texto",
+          "limite": 120
+        },
+        "fonte_crs": {
+          "tipo": "texto",
+          "limite": 40
+        },
+        "fonte_verificada_em": {
+          "tipo": "data"
+        },
+        "confianca": {
+          "tipo": "texto",
+          "limite": 80
+        },
+        "qualidade": {
+          "tipo": "texto",
+          "limite": 80
+        },
+        "geometria_hash": {
+          "tipo": "texto",
+          "limite": 64,
+          "obrigatorio": true
+        },
+        "vigente_de": {
+          "tipo": "data"
+        },
+        "vigente_ate": {
+          "tipo": "data"
+        },
+        "sincronizado_em": {
+          "tipo": "datahora"
+        },
+        "importado_em": {
+          "tipo": "datahora"
+        },
+        "status": {
+          "tipo": "texto",
+          "limite": 10,
+          "opcoes": [
+            "ativo",
+            "inativo"
+          ],
+          "obrigatorio": true,
+          "padrao": "ativo"
+        },
+        "arquivo_origem": {
+          "tipo": "arquivo",
+          "tamanho_max_mb": 20,
+          "mimes": [
+            "application/vnd.google-earth.kml+xml",
+            "application/vnd.google-earth.kmz",
+            "application/geo+json",
+            "application/json",
+            "application/octet-stream"
+          ]
+        },
+        "versao": {
+          "tipo": "inteiro",
+          "obrigatorio": true,
+          "padrao": 1
+        },
+        "importacao_id": {
+          "tipo": "referencia",
+          "tabela_ref": "importacoes",
+          "ao_deletar": "anular"
+        }
+      },
+      "unicos": [
+        {
+          "colunas": [
+            "tipo_entidade",
+            "entidade_codigo",
+            "geometria_hash"
+          ],
+          "onde": [
+            {
+              "coluna": "removido_em",
+              "operador": "nulo"
+            }
+          ]
+        }
+      ],
+      "indices": [
+        [
+          "grupo_camada",
+          "status"
+        ],
+        [
+          "bbox_oeste",
+          "bbox_leste"
+        ],
+        [
+          "bbox_sul",
+          "bbox_norte"
+        ],
+        [
+          "localidade_id"
+        ],
+        [
+          "importacao_id"
+        ]
+      ]
+    },
+    "achados_qualidade": {
+      "acesso_externo": "restrito",
+      "id_legivel": "{codigo} em {tabela}#{registro_id}",
+      "colunas": {
+        "tabela": {
+          "tipo": "texto",
+          "limite": 60,
+          "obrigatorio": true
+        },
+        "registro_id": {
+          "tipo": "inteiro"
+        },
+        "campo": {
+          "tipo": "texto",
+          "limite": 60
+        },
+        "codigo": {
+          "tipo": "texto",
+          "limite": 60,
+          "obrigatorio": true
+        },
+        "severidade": {
+          "tipo": "texto",
+          "limite": 10,
+          "opcoes": [
+            "erro",
+            "aviso",
+            "info"
+          ],
+          "obrigatorio": true
+        },
+        "mensagem": {
+          "tipo": "texto",
+          "limite": 1000,
+          "obrigatorio": true
+        },
+        "valor": {
+          "tipo": "texto",
+          "limite": 500
+        },
+        "origem": {
+          "tipo": "texto",
+          "limite": 20,
+          "opcoes": [
+            "importacao",
+            "rotina",
+            "manual",
+            "validacao_escrita"
+          ],
+          "obrigatorio": true
+        },
+        "detectado_em": {
+          "tipo": "datahora",
+          "obrigatorio": true
+        },
+        "resolvido_em": {
+          "tipo": "datahora"
+        },
+        "resolvido_por_id": {
+          "tipo": "referencia",
+          "tabela_ref": "shell.usuarios",
+          "ao_deletar": "anular",
+          "campos_incluir": [
+            "nome as resolvido_por_nome"
+          ]
+        },
+        "importacao_id": {
+          "tipo": "referencia",
+          "tabela_ref": "importacoes",
+          "ao_deletar": "anular"
+        }
+      },
+      "indices": [
+        [
+          "tabela",
+          "resolvido_em"
+        ],
+        [
+          "codigo"
+        ],
+        [
+          "importacao_id"
+        ]
+      ]
+    },
+    "alteracoes_cadastro": {
+      "acesso_externo": "restrito",
+      "id_legivel": "{acao} {tabela}#{registro_id}",
+      "colunas": {
+        "tabela": {
+          "tipo": "texto",
+          "limite": 60,
+          "obrigatorio": true
+        },
+        "registro_id": {
+          "tipo": "inteiro",
+          "obrigatorio": true
+        },
+        "acao": {
+          "tipo": "texto",
+          "limite": 20,
+          "opcoes": [
+            "criado",
+            "editado",
+            "removido",
+            "restaurado",
+            "destruido"
+          ],
+          "obrigatorio": true
+        },
+        "campos": {
+          "tipo": "json"
+        },
+        "autor_id": {
+          "tipo": "referencia",
+          "tabela_ref": "shell.usuarios",
+          "ao_deletar": "anular",
+          "campos_incluir": [
+            "nome as autor_nome"
+          ],
+          "obrigatorio": true
+        },
+        "em": {
+          "tipo": "datahora",
+          "obrigatorio": true
+        },
+        "motivo": {
+          "tipo": "texto",
+          "limite": 500
+        }
+      },
+      "indices": [
+        [
+          "tabela",
+          "registro_id"
+        ]
+      ]
+    }
+  }
+}
