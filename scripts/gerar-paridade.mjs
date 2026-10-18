@@ -122,11 +122,61 @@ const graficosLocalidade = ['GAMA', 'ASA SUL'].map((nome) => {
   return { localidade: nome, venda_pontos: venda.series[0].pontos.filter((p) => p.valor !== null).length, venda_ultimo: ultimo(venda)[0], locacao_pontos: locacao.series[0].pontos.filter((p) => p.valor !== null).length, locacao_ultimo: ultimo(locacao)[0], resumo_venda: venda.resumo?.valor ?? null };
 });
 
+// Diagnóstico (spec 15.2): PDAD sintética determinística no formato de PDAD_A_DATA, com
+// suprimido, categoria numérica (resquício) e "Local de compras", passada pelo código do site.
+const { normalizePdadData } = await import(pathToFileURL(join(site, 'src/pdad/normalize-pdad.js')).href);
+const pdadAgg = await import(pathToFileURL(join(site, 'src/pdad/aggregate.js')).href);
+const pdadInd = await import(pathToFileURL(join(site, 'src/pdad/indicators.js')).href);
+const { raRealEstateProfile } = await import(pathToFileURL(join(site, 'src/pdad/insights.js')).href);
+const RAS_PDAD = [
+  { id: 'RA_01', nome: 'Plano Piloto', k: 0 }, { id: 'RA_02', nome: 'Gama', k: 1 }, { id: 'RA_03', nome: 'Taguatinga', k: 2 },
+  { id: 'RA_04', nome: 'Brazlândia', k: 3 }, { id: 'RA_05', nome: 'Sobradinho', k: 4 }, { id: 'RA_20', nome: 'Águas Claras', k: 5 },
+];
+const pdadEntrada = [];
+const obs = (ra, ano, code, cat, total, pct, extra = {}) => pdadEntrada.push({ pdad_year: ano, ra_geo_id: ra.id, ra_name: ra.nome, indicator_code: code, category_standard: cat, response_category: cat, estimate_total: total, estimate_pct: pct, source_value_status: 'published', ...extra });
+const IDADES = ['ate_4_anos', '10_a_14_anos', '20_a_24_anos', '35_a_39_anos', '50_a_54_anos', '65_a_69_anos'];
+for (const ra of RAS_PDAD) {
+  const ano = 2024;
+  IDADES.forEach((cat, i) => obs(ra, ano, 'age_sex_distribution', cat, 1000 * (ra.k + 1) + i * 37, 50));
+  const apto = 20 + ra.k * 9;
+  obs(ra, ano, 'dwelling_type', 'Apartamento', 400 * (ra.k + 1), apto);
+  obs(ra, ano, 'dwelling_type', 'Casa', 300 * (ra.k + 1), 100 - apto);
+  obs(ra, ano, 'tenure_status', 'Alugado', null, 15 + ra.k * 4);
+  obs(ra, ano, 'tenure_status', 'Próprio', null, 85 - ra.k * 4);
+  if (ra.k === 3) obs(ra, ano, 'registered_deed', 'Sim', null, null, { source_value_status: 'suppressed' });
+  else obs(ra, ano, 'registered_deed', 'Sim', null, 40 + ra.k * 7);
+  obs(ra, ano, 'health_insurance', 'Sim', null, 30 + ra.k * 6);
+  obs(ra, ano, 'pea_status', 'Ocupado', null, 50 + ra.k * 2);
+  obs(ra, ano, 'internet_access', 'Próprio', null, 70 + ra.k * 3);
+  obs(ra, ano, 'water_supply', 'Sim', null, 90 - ra.k, { segment_value: 'Rede Geral', segment_dimension: 'fonte' });
+  obs(ra, ano, 'purchase_food', 'Na própria RA', null, 60 - ra.k * 5, { segment_value: 'alimentacao' });
+  obs(ra, ano, 'purchase_food', 'Plano Piloto', null, 20 + ra.k * 3, { segment_value: 'alimentacao' });
+  if (ra.k === 0) obs(ra, ano, 'purchase_food', '56022', 56022, null);
+}
+// 2021: só o Plano Piloto (a cobertura do ano é parcial).
+obs(RAS_PDAD[0], 2021, 'dwelling_type', 'Apartamento', 380, 70);
+obs(RAS_PDAD[0], 2021, 'dwelling_type', 'Casa', 160, 30);
+const pdadRows = normalizePdadData(pdadEntrada).rows;
+const ix = pdadAgg.buildPdadIndex(pdadRows);
+const todos = pdadAgg.rasForYear(ix, 2024).map((r) => r.raGeoId);
+const kpisTodas = pdadAgg.summarizeKpis(ix, 2024, todos);
+const serieTodas = Object.fromEntries(['dwelling', 'tenure', 'deed', 'age'].map((k) => [k, pdadAgg.indicatorSeries(ix, 2024, todos, k).map((v) => ({ label: v.label, pct: v.pct }))]));
+const perfil = raRealEstateProfile(ix, 2024, 'RA_03').items.map((i) => ({ id: i.id, value: i.value, status: i.status, mediana: i.reference.median, n: i.reference.n, posicao: i.rank?.position ?? null }));
+const rankingPdad = ['deed', 'health', 'internet'].map((id) => {
+  const item = pdadInd.PDAD_RANK_SET.find((r) => r.id === id);
+  const ordem = pdadAgg.rasForYear(ix, 2024).map((ra) => ({ codigo: ra.raGeoId, valor: pdadAgg.rankScalar(ra, item) })).filter((p) => p.valor !== null).sort((a, b) => b.valor - a.valor);
+  return { id, n: ordem.length, primeira: ordem[0]?.codigo ?? null, primeira_valor: ordem[0]?.valor ?? null, ultima: ordem.at(-1)?.codigo ?? null };
+});
+const vista = pdadInd.PDAD_SCATTER_VIEWS.find((v) => v.id === 'vert_loc');
+const pontosDispersao = pdadAgg.rasForYear(ix, 2024).map((ra) => ({ codigo: ra.raGeoId, x: pdadAgg.rankScalar(ra, vista.x), y: pdadAgg.rankScalar(ra, vista.y) })).filter((p) => p.x !== null && p.y !== null);
+const diagnostico = { kpis_todas: kpisTodas, serie_todas: serieTodas, perfil_ra_03: perfil, ranking: rankingPdad, dispersao_vert_loc: pontosDispersao, compras_ra_01: pdadAgg.indicatorGroups(ix, 2024, ['RA_01']).map((g) => ({ grupo: g.group, itens: g.items.map((i) => ({ label: i.label, pct: i.pct })) })) };
+
 const destino = resolve('apps/inteligencia_imobiliaria/testes/fixtures/paridade');
 mkdirSync(destino, { recursive: true });
 const arquivo = join(destino, `${data}.json`);
-writeFileSync(arquivo, JSON.stringify({ gerado_em: data, site_commit: commit, entrada: 'data/demo.json', entrada_ivv: 'tests/fixtures/ivv-monthly.json', mapa, mercado, ivv_regional: ranking, fipezap: { graficos_df: graficosDf, localidades, graficos_localidade: graficosLocalidade }, diagnostico: [] }, null, 2) + '\n');
+writeFileSync(arquivo, JSON.stringify({ gerado_em: data, site_commit: commit, entrada: 'data/demo.json', entrada_ivv: 'tests/fixtures/ivv-monthly.json', mapa, mercado, ivv_regional: ranking, fipezap: { graficos_df: graficosDf, localidades, graficos_localidade: graficosLocalidade }, diagnostico }, null, 2) + '\n');
 // A entrada sintética do IVV vai junto, para o teste da app importar exatamente o que o site leu.
 writeFileSync(join(resolve('apps/inteligencia_imobiliaria/testes/fixtures/planilha'), 'ivv_monthly_sintetico.json'), JSON.stringify(ivvEntrada, null, 2) + '\n');
 writeFileSync(join(resolve('apps/inteligencia_imobiliaria/testes/fixtures/planilha'), 'fipezap_monthly_sintetico.json'), JSON.stringify(fipeEntrada, null, 2) + '\n');
+writeFileSync(join(resolve('apps/inteligencia_imobiliaria/testes/fixtures/planilha'), 'pdad_a_data_sintetico.json'), JSON.stringify(pdadEntrada, null, 2) + '\n');
 console.log(`paridade: ${mapa.length} cenários de mapa, ${mercado.length} períodos do IVV, ${ranking.length} faixas regionais → ${arquivo} (site ${commit.slice(0, 12)})`);

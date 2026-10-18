@@ -45,6 +45,12 @@ a localidade casa pela `ra_geo_id` ou pelo nome da RA na fonte, e o nome da font
 (Asa Sul continua Asa Sul, nunca vira Plano Piloto). **Procedências** pedem a coluna `familia`
 (`fipezap_fonte`, `fipezap_nota` ou `pdad_guia`), que pode ser declarada como valor padrão na prévia.
 
+**PDAD** (`PDAD_A_DATA`): a localidade casa pela `ra_geo_id` (`RA_01`); `estimate_pct` vem em
+pontos percentuais e é guardado em fração; `published`/`partial`/`suppressed` viram
+`publicado`/`parcial`/`suprimido`, e suprimido nunca vira zero. Linha cuja categoria é só dígitos
+(resquício de extração antiga) é rejeitada com `CATEGORIA_NUMERICA`. As colunas `figure_*` vão
+juntas em `metodologia`.
+
 **Áreas de estudo** entram pela própria tela (Estudos de área): KML, KMZ ou GeoJSON criam uma área
 por feição (ponto ou polígono, sem duplicar a geometria), e o CSV (tabela "Áreas de estudo") completa
 os demais campos e os atributos `atr_<codigo>` de áreas pelo nome; linha nova precisa de `latitude` e

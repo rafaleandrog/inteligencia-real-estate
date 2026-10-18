@@ -515,7 +515,44 @@ const procedencias: GanchosTabela = {
   chave: (d) => (d.familia && d.codigo ? `${d.familia}|${d.codigo}` : null),
 };
 
+// ---------------------------------------------------------------------------
+// PDAD (5.8): localidade pela `ra_geo_id`; categoria só de dígitos é resquício de
+// extração e rejeita a linha (`CATEGORIA_NUMERICA`); suprimido/parcial nunca vira 0.
+
+const METODOLOGIA_PDAD = ['figure_segmentation', 'figure_data_structure', 'figure_fields_to_capture', 'figure_preferred', 'figure_extraction_rule', 'figure_quality_notes', 'figure_map_status'];
+
+const pdadObservacoes: GanchosTabela = {
+  async carregar(ctx) {
+    await carregarLocalidades(ctx);
+  },
+  async preparar(v, ctx, erros) {
+    const dados: Record<string, unknown> = { ...v };
+    delete dados.localidade;
+    dados.localidade_id = await exigirLocalidade(ctx, v.localidade, 'localidade', erros, true);
+    if (/^\d+$/.test(String(v.categoria_padrao ?? ''))) {
+      erros.push({ coluna: 'categoria_padrao', codigo: 'CATEGORIA_NUMERICA', mensagem: `"${v.categoria_padrao}" é contagem gravada como categoria (resquício de extração), não categoria válida` });
+    }
+    const metodologia: Record<string, unknown> = {};
+    for (const k of METODOLOGIA_PDAD) {
+      if (v[k] !== null && v[k] !== undefined && v[k] !== '') metodologia[k] = v[k];
+      delete dados[k];
+    }
+    dados.metodologia = Object.keys(metodologia).length ? metodologia : null;
+    return { dados, achados: [] };
+  },
+  chave: (d) => (d.localidade_id && d.ano && d.codigo_indicador ? `${d.localidade_id}|${d.ano}|${d.codigo_indicador}|${d.valor_segmento ?? ''}|${d.categoria_padrao}` : null),
+};
+
+const pdadFiguras: GanchosTabela = {
+  async preparar(v) {
+    return { dados: { ...v }, achados: [] };
+  },
+  chave: (d) => (d.codigo_indicador ? String(d.codigo_indicador) : null),
+};
+
 export const GANCHOS: Record<string, GanchosTabela> = {
+  pdad_observacoes: pdadObservacoes,
+  pdad_figuras: pdadFiguras,
   fipezap_mensal: fipezapMensal,
   procedencias,
   ivv_mensal: ivvMensal,

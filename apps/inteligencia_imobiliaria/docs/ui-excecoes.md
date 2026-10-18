@@ -15,3 +15,10 @@ mesmo PR do HTML. Sem linha neste registro, não é exceção: é violação.
 As cores das feições não são literais: vêm dos tokens do tema (`--cor-mapa-contorno`,
 `--cor-categoria-*`, `--cor-info` → `--cor-erro` na rampa de preço/m²), resolvidos em JS por
 `frontend/componentes/cores.ts` e reamostrados quando o tema muda (ui.md § Resolver cor em JS).
+
+## Dispersão em tabela (Mercado › IVV por localidade e Diagnóstico › Dispersão)
+
+O SDK 100 não tem `urbi-grafico-dispersao`. As leituras cruzadas (IVV × preço, IVV × oferta,
+gap × preço; as nove do Diagnóstico) saem como `urbi-tabela` de pontos, com os dois eixos e,
+no Diagnóstico, a correlação de Pearson descritiva. Quando o SDK publicar um gráfico de
+dispersão, a tela troca a tabela por ele sem mudar a rota.

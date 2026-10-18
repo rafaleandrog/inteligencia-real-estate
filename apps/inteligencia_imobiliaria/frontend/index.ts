@@ -10,6 +10,7 @@ import './telas/cadastro';
 import './telas/mapa';
 import './telas/estudos';
 import './telas/mercado';
+import './telas/diagnostico';
 import { AREAS } from '../comum/telas';
 
 /** Primeiro segmento da sub-rota: `/operacao/importacoes/3` → `/operacao`. */
@@ -53,6 +54,7 @@ export class AppInteligenciaImobiliaria extends LitElement {
     if (area === '/cadastro') return html`<intel-imob-cadastro .sub=${this.sub}></intel-imob-cadastro>`;
     if (area === '/estudos') return html`<intel-imob-estudos .sub=${this.sub}></intel-imob-estudos>`;
     if (area === '/mercado') return html`<intel-imob-mercado .sub=${this.sub}></intel-imob-mercado>`;
+    if (area === '/diagnostico') return html`<intel-imob-diagnostico .sub=${this.sub}></intel-imob-diagnostico>`;
     const def = AREAS.find((a) => a.rota === area);
     if (!def) return html`<intel-imob-nao-encontrada></intel-imob-nao-encontrada>`;
     return html`<intel-imob-em-construcao titulo=${def.titulo} quando=${def.quando}></intel-imob-em-construcao>`;
