@@ -75,7 +75,7 @@ test('KMZ do Urbigis/Magis: prévia, aplicar sem duplicar, linha rejeitada e des
     assert.equal(a.corpo.inseridas, 2);
     assert.equal(a.corpo.rejeitadas, 1);
     const areas = s.dados.linhas('areas_estudo');
-    assert.ok(areas.every((x) => x.importacao_id === p.corpo.importacao_id && x.arquivo_origem && x.autor_id === PERFIS.autor.id));
+    assert.ok(areas.every((x) => x.importacao_id === p.corpo.importacao_id && !x.arquivo_origem && x.autor_id === PERFIS.autor.id));
     const p2 = await s.chamar('POST', '/estudos/importar', { upload_id: kmz() }, PERFIS.autor);
     const a2 = await s.chamar('POST', `/estudos/importar/${p2.corpo.importacao_id}/aplicar`, {}, PERFIS.autor);
     assert.equal(a2.corpo.inseridas, 0);

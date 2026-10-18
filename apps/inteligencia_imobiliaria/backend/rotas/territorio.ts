@@ -4,7 +4,7 @@ import { lerGeoArquivo } from '../importacao/geoarquivo';
 import { derivarGeometria } from '../importacao/tabelas';
 import { readFile } from 'node:fs/promises';
 import { createHash } from 'node:crypto';
-import { ErroApp, exigirPapel, idDaRota, naoEncontrado, numeroQuery, paginacao, rota, textoQuery, usuarioId } from './comum';
+import { ErroApp, exigirPapel, idDaRota, naoEncontrado, numeroQuery, ordenarEmMemoria, paginacao, rota, textoQuery, usuarioId } from './comum';
 import { criarCadastro, editarCadastro, escolher, historico, removerCadastro, restaurarCadastro } from './cadastro-comum';
 import { querCsv, responderCsv } from './exportar';
 import { colunasAtributosCsv, idsPorAtributos } from '../atributos/filtro';
@@ -143,7 +143,7 @@ territorio.get('/contornos', rota(async (req, res) => {
     res.json({ ...r, dados: r.dados.map((c) => Object.fromEntries(CAMPOS_CONTORNO_LISTA.map((k) => [k, c[k] ?? null]))) });
     return;
   }
-  const linhas = await req.dados!.varrerTudo('contornos', { filtros, ordenar: 'ordem_camada', ordem: 'asc' });
+  const linhas = ordenarEmMemoria(await req.dados!.varrerTudo('contornos', { filtros }), 'ordem_camada');
   if (querCsv(req)) {
     const atr = await colunasAtributosCsv(req.dados!, 'contorno', linhas);
     responderCsv(res, 'contornos', [...CAMPOS_CONTORNO_LISTA, 'geometria', 'estilo', 'fonte_url', 'qualidade', ...atr.colunas], atr.linhas);
@@ -218,6 +218,37 @@ territorio.patch('/contornos/:id/restaurar', rota(async (req, res) => {
 
 // --------------------------------------------- importação de KML/KMZ/GeoJSON
 
+/** Vértices para a prévia; geometria sem `coordinates` (já com erro) conta 0. */
+export function contarVertices(g: Geometria | null | undefined): number {
+  return Array.isArray(g?.coordinates) ? JSON.stringify(g!.coordinates).split('],[').length : 0;
+}
+
+/** Prévia que falha depois de gravar a importação não fica presa em `previa`. */
+export async function previaOuFalha<T>(req: Request, importacaoId: number, fn: () => Promise<T>): Promise<T> {
+  try {
+    return await fn();
+  } catch (e) {
+    await req.dados!.atualizar('importacoes', importacaoId, { status: 'falhou', relatorio: { erro: (e as Error).message } }).catch(() => undefined);
+    throw e;
+  }
+}
+
+/**
+ * Aplicação travada (`previa` → `aplicando`), como a do CSV: dois cliques não
+ * duplicam. A gravação é uma transação só; se ela falha, nada foi gravado e a
+ * importação volta a `previa` para nova tentativa.
+ */
+export async function aplicarTravado<T>(req: Request, importacaoId: number, fn: () => Promise<T>): Promise<T> {
+  const travada = await req.dados!.atualizarSe('importacoes', importacaoId, { status: 'aplicando' }, { status: 'previa' });
+  if (!travada) throw new ErroApp(409, 'IMPORTACAO_NAO_APLICAVEL', 'Esta importação já foi aplicada ou está sendo aplicada.');
+  try {
+    return await fn();
+  } catch (e) {
+    await req.dados!.atualizar('importacoes', importacaoId, { status: 'previa' }).catch(() => undefined);
+    throw e;
+  }
+}
+
 export async function lerFeicoes(req: Request, arquivoId: number) {
   const lido = await req.arquivos?.ler(arquivoId);
   if (!lido) throw new ErroApp(410, 'ARQUIVO_EXPIRADO', 'O arquivo não está mais disponível; envie de novo.');
@@ -240,17 +271,20 @@ territorio.post('/contornos/importar', rota(async (req, res) => {
   const imp = await req.dados!.criar('importacoes', {
     tabela_alvo: 'contornos', tipo_arquivo: 'outro', arquivo: uploadId, modo_duplicata: 'ignorar', status: 'previa', autor_id: usuarioId(req),
   });
-  const lido = await lerFeicoes(req, Number(imp.arquivo));
-  const feicoes = lido.feicoes.map((f, i) => {
-    const valida = f.erros.length === 0;
-    const cx = valida ? derivarGeometria(f.geometria) : null;
-    return { indice: i, nome: f.nome, tipo: f.geometria.type, vertices: JSON.stringify(f.geometria.coordinates).split('],[').length, erros: f.erros, bbox: cx ? [cx.bbox_oeste, cx.bbox_sul, cx.bbox_leste, cx.bbox_norte] : null };
-  });
-  await req.dados!.atualizar('importacoes', imp.id, {
-    total_linhas: feicoes.length,
-    rejeitadas: feicoes.filter((f) => f.erros.length).length,
-    arquivo_sha256: lido.sha256,
-    mapeamento: { arquivo: lido.nome, formato: lido.formato },
+  const { lido, feicoes } = await previaOuFalha(req, Number(imp.id), async () => {
+    const lido = await lerFeicoes(req, Number(imp.arquivo));
+    const feicoes = lido.feicoes.map((f, i) => {
+      const valida = f.erros.length === 0;
+      const cx = valida ? derivarGeometria(f.geometria) : null;
+      return { indice: i, nome: f.nome, tipo: f.geometria?.type ?? null, vertices: contarVertices(f.geometria), erros: f.erros, bbox: cx ? [cx.bbox_oeste, cx.bbox_sul, cx.bbox_leste, cx.bbox_norte] : null };
+    });
+    await req.dados!.atualizar('importacoes', imp.id, {
+      total_linhas: feicoes.length,
+      rejeitadas: feicoes.filter((f) => f.erros.length).length,
+      arquivo_sha256: lido.sha256,
+      mapeamento: { arquivo: lido.nome, formato: lido.formato },
+    });
+    return { lido, feicoes };
   });
   res.status(201).json({ importacao_id: imp.id, formato: lido.formato, feicoes });
 }));
@@ -261,6 +295,10 @@ territorio.post('/contornos/importar/:importacao_id/aplicar', rota(async (req, r
   const imp = await req.dados!.buscar('importacoes', idDaRota(req, 'importacao_id'));
   if (!imp || imp.tabela_alvo !== 'contornos' || imp.tipo_arquivo !== 'outro') throw naoEncontrado();
   if (imp.status !== 'previa') throw new ErroApp(409, 'IMPORTACAO_NAO_APLICAVEL', `A importação está "${imp.status}".`);
+  res.json(await aplicarTravado(req, Number(imp.id), () => aplicarContornos(req, imp)));
+}));
+
+async function aplicarContornos(req: Request, imp: Record<string, any>) {
   const lido = await lerFeicoes(req, Number(imp.arquivo));
   const escolhidas: number[] | null = Array.isArray(req.body?.indices) ? req.body.indices.map(Number) : null;
   const categoria = typeof req.body?.categoria === 'string' ? req.body.categoria.slice(0, 60) : null;
@@ -309,5 +347,5 @@ territorio.post('/contornos/importar/:importacao_id/aplicar', rota(async (req, r
     status: 'aplicada', aplicada_em: new Date().toISOString(), inseridas, ignoradas, rejeitadas: rejeicoes.length, atualizadas: 0,
     relatorio: { rejeicoes },
   });
-  res.json({ ...final, rejeicoes });
-}));
+  return { ...final, rejeicoes };
+}

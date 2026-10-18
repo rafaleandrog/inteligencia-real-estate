@@ -3,7 +3,7 @@ import { property, state } from 'lit/decorators.js';
 import type { UrbiColunaTabela } from '@urbiverso/sdk';
 import { definir } from '../registro';
 import { estiloPrimitivo } from '../estilos';
-import { mensagemDeErro, temPapel, uv } from '../api';
+import { irPara, mensagemDeErro, temPapel, uv } from '../api';
 import '../componentes/como-ler';
 import '../componentes/importar';
 
@@ -228,7 +228,7 @@ export class IntelImobDiagnostico extends LitElement {
     ];
     return html`<urbi-stack>
       <urbi-tabela responsivo="multiline" .colunas=${colunas} .linhas=${d?.fontes ?? []}></urbi-tabela>
-      ${d ? html`<urbi-prosa papel="dica">${d.achados_abertos} achado(s) de qualidade em aberto — <a href=${uv().href('/operacao/qualidade')}>Operação › Qualidade</a>. Conjuntos públicos (IBGE, Ipea, GeoPortal) entram na fase de dados públicos.</urbi-prosa>` : nothing}
+      ${d ? html`<urbi-prosa papel="dica">${d.achados_abertos} achado(s) de qualidade em aberto — <a href=${uv().href('/operacao/qualidade')} @click=${(e: MouseEvent) => irPara(e, '/operacao/qualidade')}>Operação › Qualidade</a>. Conjuntos públicos (IBGE, Ipea, GeoPortal) entram na fase de dados públicos.</urbi-prosa>` : nothing}
       ${temPapel('operador') ? html`<urbi-linha>
         <urbi-botao variante="secundario" icone="fa-solid fa-file-import" @click=${() => (this.importando = 'pdad_observacoes')}>Importar PDAD</urbi-botao>
         <urbi-botao variante="secundario" icone="fa-solid fa-file-import" @click=${() => (this.importando = 'pdad_figuras')}>Importar mapa de figuras</urbi-botao>
@@ -246,7 +246,7 @@ export class IntelImobDiagnostico extends LitElement {
       <urbi-shell-page titulo="Diagnóstico" dashboard>
         <intel-imob-como-ler slot="actions" tela="diagnostico"></intel-imob-como-ler>
         <urbi-abas .abas=${ABAS} ativa=${aba} @urbi:aba-selecionar=${(e: CustomEvent) => uv().navegarSub(e.detail.id === 'perfil' ? '/diagnostico' : `/diagnostico/${e.detail.id}`)}>
-          ${ABAS.map((a) => html`<div slot=${a.id}>${a.id === aba ? html`<urbi-stack>${this.erro ? html`<urbi-banner variante="erro">${this.erro}</urbi-banner>` : nothing}${corpo}</urbi-stack>` : nothing}</div>`)}
+          ${ABAS.map((a) => html`<urbi-hospedeiro slot=${a.id}>${a.id === aba ? html`<urbi-stack>${this.erro ? html`<urbi-banner variante="erro">${this.erro}</urbi-banner>` : nothing}${corpo}</urbi-stack>` : nothing}</urbi-hospedeiro>`)}
         </urbi-abas>
         ${det ? html`<urbi-modal title="Figura de origem" maxWidth="900px" @urbi-modal:close=${() => (this.detalhe = null)}>
           <urbi-stack>

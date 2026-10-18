@@ -1,5 +1,6 @@
 import { LitElement, html } from 'lit';
 import { state } from 'lit/decorators.js';
+import { keyed } from 'lit/directives/keyed.js';
 import { definir, TAG_RAIZ } from './registro';
 import { estiloPagina } from './estilos';
 import { uv } from './api';
@@ -23,10 +24,18 @@ export function areaDaSubRota(sub: string): string {
 export class AppInteligenciaImobiliaria extends LitElement {
   static styles = [estiloPagina];
   @state() private sub = '/';
+  /** O shell monta a app antes do contexto chegar (autenticacao.md): espera `carregado` e remonta a tela quando nível ou papéis mudam. */
+  @state() private contexto = '';
   private cancelar?: () => void;
+  private readonly aplicarContexto = () => {
+    const c = uv().contexto();
+    this.contexto = c.carregado === false ? '' : `${c.nivel ?? ''}|${[...c.roles].sort().join(',')}`;
+  };
 
   connectedCallback() {
     super.connectedCallback();
+    this.aplicarContexto();
+    window.addEventListener('urbi:contexto-app', this.aplicarContexto);
     this.sub = uv().subRota();
     this.registrarUso(this.sub);
     this.cancelar = uv().escutarRota((sub) => {
@@ -43,10 +52,16 @@ export class AppInteligenciaImobiliaria extends LitElement {
 
   disconnectedCallback() {
     super.disconnectedCallback();
+    window.removeEventListener('urbi:contexto-app', this.aplicarContexto);
     this.cancelar?.();
   }
 
   render() {
+    if (!this.contexto) return html`<urbi-loading></urbi-loading>`;
+    return keyed(this.contexto, this.tela());
+  }
+
+  private tela() {
     const area = areaDaSubRota(this.sub);
     if (area === '/') return html`<intel-imob-inicio></intel-imob-inicio>`;
     if (area === '/operacao') return html`<intel-imob-operacao .sub=${this.sub}></intel-imob-operacao>`;

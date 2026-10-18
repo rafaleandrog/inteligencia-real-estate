@@ -108,10 +108,10 @@ export class IntelImobFipezap extends LitElement {
     ];
     return html`<urbi-stack>
       <urbi-chips-atalho .opcoes=${SEGMENTOS_FIPE} ativo=${this.segmento} @urbi:chip-atalho:click=${(e: CustomEvent) => { this.segmento = e.detail.id; this.carregarLocalidades(); }}></urbi-chips-atalho>
-      <urbi-prosa papel="subtitulo">Total do DF</urbi-prosa>
+      <urbi-prosa papel="secao">Total do DF</urbi-prosa>
       <urbi-grid min="300px">${doSeg.map((g) => grafico(g, formato(g.chave)))}</urbi-grid>
       <urbi-prosa papel="dica">FipeZap é preço médio anunciado por m², não preço de transação. Yield: o oficial vence; o calculado entra só quando falta.</urbi-prosa>
-      <urbi-prosa papel="subtitulo">Por localidade</urbi-prosa>
+      <urbi-prosa papel="secao">Por localidade</urbi-prosa>
       ${this.localidades.length
         ? html`<urbi-select label="Localidade" pesquisavel .valor=${this.localidade} .opcoes=${this.localidades.map((l) => ({ valor: l.locality, rotulo: rotulo(l) }))}
             @urbi:select-change=${(e: CustomEvent) => { this.localidade = e.detail.valor; this.carregarPareado(); }}></urbi-select>

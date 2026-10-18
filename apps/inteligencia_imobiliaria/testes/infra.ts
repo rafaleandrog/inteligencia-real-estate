@@ -97,6 +97,8 @@ export class ErroDadosFalso extends Error {
 export class DadosFalsos {
   private tabelas = new Map<string, Linha[]>();
   private proximoId = new Map<string, number>();
+  /** Upload já promovido a `ativo` e o destino dele (arquivos.md: vale para uma app/tabela/coluna, um registro). */
+  private arquivosVinculados = new Map<number, string>();
   private relogio = Date.now();
   readonly consultas = new Map<string, (params: Record<string, any>, dados: DadosFalsos) => Linha[]>();
 
@@ -316,9 +318,18 @@ export class DadosFalsos {
         throw new ErroDadosFalso('DADOS_VALIDACAO_FALHOU', `Erros de validação: ${tabela}.${col} é obrigatório`);
       }
     }
+    for (const [col, c] of Object.entries(def.colunas)) {
+      if (c.tipo !== 'arquivo' || linha[col] === null || linha[col] === undefined) continue;
+      if (this.arquivosVinculados.has(Number(linha[col]))) {
+        throw new Error(`ErroArquivoRecusado: upload ${linha[col]} já vinculado a ${this.arquivosVinculados.get(Number(linha[col]))} (ARQUIVOS_DESTINO_INVALIDO)`);
+      }
+    }
     const id = this.proximoId.get(tabela)!;
     const agora = this.agora();
     Object.assign(linha, { id, criado_em: agora, atualizado_em: agora });
+    for (const [col, c] of Object.entries(def.colunas)) {
+      if (c.tipo === 'arquivo' && linha[col] !== null && linha[col] !== undefined) this.arquivosVinculados.set(Number(linha[col]), `${tabela}.${col}#${id}`);
+    }
     if (def.soft_delete) Object.assign(linha, { removido_em: null, removido_por_id: null });
     this.conferirUnicos(tabela, linha);
     this.proximoId.set(tabela, id + 1);

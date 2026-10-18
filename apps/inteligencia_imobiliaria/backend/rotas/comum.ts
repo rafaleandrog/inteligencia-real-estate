@@ -37,7 +37,9 @@ type Handler = (req: Request, res: Response, next: NextFunction) => unknown;
  * promessa rejeitada: sem isto, exceção num handler async deixa a request
  * pendurada. `ErroApp` vira o envelope da app; erro de plataforma com
  * `status` e `codigo` segue com eles; violação de CHECK (23514) vira
- * `422 DADOS_VALOR_INVALIDO`; o resto vai a `next(erro)` e o shell responde
+ * `422 DADOS_VALOR_INVALIDO`; chave única (23505) vira `409 DADOS_UNIQUE_VIOLADO`;
+ * a validação do `req.dados` ("Erros de validação: …", referência que não
+ * existe) vira `422 DADOS_VALIDACAO_FALHOU`; o resto vai a `next(erro)` e o shell responde
  * `500 ERRO_INTERNO` com o id da ocorrência.
  */
 export function rota(fn: Handler): RequestHandler {
@@ -70,6 +72,21 @@ export function responderErro(erro: unknown, res: Response, next: NextFunction):
       mensagem: 'Um valor não respeita a regra declarada da coluna.',
       ...(restricao ? { detalhes: [`Restrição violada: ${restricao}`] } : {}),
     });
+    return;
+  }
+  if (e?.code === '23505') {
+    const restricao = typeof e.constraint === 'string' ? e.constraint : '';
+    res.status(409).json({
+      erro: true,
+      codigo: 'DADOS_UNIQUE_VIOLADO',
+      mensagem: 'Já existe um registro com esse valor único.',
+      ...(restricao ? { detalhes: [`Restrição violada: ${restricao}`] } : {}),
+    });
+    return;
+  }
+  // banco-de-dados.md: no `req.dados`, opções, intervalo, obrigatório e geometria chegam como exceção "Erros de validação: …".
+  if (typeof e?.message === 'string' && e.status === undefined && /^Erros de validação|não encontrado em "|DADOS_REFERENCIA_INVALIDA/.test(e.message)) {
+    res.status(422).json({ erro: true, codigo: 'DADOS_VALIDACAO_FALHOU', mensagem: 'Dados recusados pela validação.', detalhes: [e.message] });
     return;
   }
   if (typeof e?.status === 'number' && e.status >= 400 && e.status < 500 && typeof e.codigo === 'string') {
@@ -129,4 +146,36 @@ export function numeroQuery(req: Request, nome: string): number | undefined {
   if (t === undefined) return undefined;
   const n = Number(t);
   return Number.isFinite(n) ? n : undefined;
+}
+
+/**
+ * Ordena em memória o resultado de `varrerTudo`. A varredura pagina por
+ * OFFSET e só é estável na ordem padrão (`id asc`); passar `ordenar` por
+ * coluna não única pode repetir ou pular linha (banco-de-dados.md, varrerTudo).
+ */
+export function ordenarEmMemoria<T extends Record<string, unknown>>(linhas: T[], coluna: string, ordem: 'asc' | 'desc' = 'asc'): T[] {
+  const chave = (v: unknown): number | string | null => {
+    if (v === null || v === undefined || v === '') return null;
+    if (v instanceof Date) return v.getTime();
+    if (typeof v === 'number') return v;
+    const n = Number(v);
+    return typeof v === 'string' && /^-?\d+(\.\d+)?$/.test(v) && Number.isFinite(n) ? n : String(v);
+  };
+  const sinal = ordem === 'desc' ? -1 : 1;
+  return [...linhas].sort((a, b) => {
+    const x = chave(a[coluna]);
+    const y = chave(b[coluna]);
+    if (x === null || y === null) return x === y ? Number(a.id) - Number(b.id) : x === null ? 1 : -1;
+    const c = typeof x === 'number' && typeof y === 'number' ? x - y : String(x).localeCompare(String(y), 'pt-BR');
+    return c ? c * sinal : Number(a.id) - Number(b.id);
+  });
+}
+
+/** Id (ou lista de ids separados por vírgula) da query; texto que não é id vira 400, nunca filtro com NaN. */
+export function idsQuery(req: Request, nome: string): number[] | undefined {
+  const t = textoQuery(req, nome);
+  if (t === undefined) return undefined;
+  const ids = t.split(',').map((x) => x.trim());
+  if (!ids.every((x) => /^\d+$/.test(x))) throw new ErroApp(400, 'PARAMETRO_INVALIDO', `${nome}: id numérico.`);
+  return ids.map(Number);
 }

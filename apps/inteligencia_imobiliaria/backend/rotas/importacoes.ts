@@ -5,6 +5,7 @@ import { aplicarValidacao, desfazerImportacao, lerArquivoTexto, MAX_REJEICOES_RE
 import { GANCHOS, type CtxImportacao } from '../importacao/tabelas';
 import { ErroApp, exigirPapel, idDaRota, naoEncontrado, paginacao, rota, temPapel, textoQuery, usuarioId } from './comum';
 import { cidadeDoRequest } from './territorio-comum';
+import { atorDe } from './acesso-objeto';
 
 export const importacoes: Router = Router();
 
@@ -38,7 +39,7 @@ function lerPadroes(v: unknown): Record<string, string> {
 
 async function contexto(req: Request): Promise<CtxImportacao> {
   const cidade = await cidadeDoRequest(req);
-  return { dados: req.dados!, usuarioId: usuarioId(req), cidadeId: Number(cidade.id), cache: new Map(), papeis: { curador: temPapel(req, 'curador') } };
+  return { dados: req.dados!, usuarioId: usuarioId(req), cidadeId: Number(cidade.id), cache: new Map(), papeis: { curador: temPapel(req, 'curador') }, ator: atorDe(req) };
 }
 
 async function buscarImportacao(req: Request): Promise<Record<string, any>> {
@@ -94,6 +95,8 @@ importacoes.post('/importacoes/previa', rota(async (req, res) => {
   const uploadId = Number(req.body?.upload_id);
   if (!Number.isInteger(uploadId) || uploadId <= 0) throw new ErroApp(422, 'UPLOAD_OBRIGATORIO', 'Envie o arquivo antes da prévia (upload_id).');
   const padroes = lerPadroes(req.body?.padroes);
+  const retrato = typeof req.body?.retrato_data === 'string' && req.body.retrato_data.trim() ? req.body.retrato_data.trim() : null;
+  if (retrato && !/^\d{4}-\d{2}-\d{2}$/.test(retrato)) throw new ErroApp(422, 'DADOS_VALIDACAO_FALHOU', 'Data do retrato inválida.', ['retrato_data: AAAA-MM-DD.']);
   const ctx = await contexto(req);
   const imp = await req.dados!.criar('importacoes', {
     tabela_alvo: def.tabela,
@@ -102,11 +105,12 @@ importacoes.post('/importacoes/previa', rota(async (req, res) => {
     modo_duplicata: modo,
     status: 'previa',
     autor_id: ctx.usuarioId,
-    retrato_data: typeof req.body?.retrato_data === 'string' ? req.body.retrato_data : null,
+    retrato_data: retrato,
   });
-  const arquivo = await lerArquivoTexto(req.arquivos, Number(imp.arquivo));
+  let arquivo;
   let validacao;
   try {
+    arquivo = await lerArquivoTexto(req.arquivos, Number(imp.arquivo));
     validacao = await validarCsv(def, ganchos, arquivo.texto, ctx, modo, extensaoAtributos, padroes);
   } catch (e) {
     await req.dados!.atualizar('importacoes', imp.id, { status: 'falhou', relatorio: { erro: (e as Error).message } });
@@ -206,10 +210,20 @@ importacoes.post('/importacoes/:id/aplicar', rota(async (req, res) => {
 importacoes.post('/importacoes/:id/desfazer', rota(async (req, res) => {
   if (req.contexto?.nivelApp !== 'admin') throw new ErroApp(403, 'PAPEL_EXIGIDO', 'Só o admin da app desfaz uma importação.');
   const imp = await buscarImportacao(req);
-  if (imp.status !== 'aplicada') throw new ErroApp(409, 'IMPORTACAO_NAO_DESFAZIVEL', `A importação está "${imp.status}"; só uma aplicada pode ser desfeita.`);
+  // `falhou` também: uma aplicação que caiu no meio já gravou os lotes anteriores.
+  if (imp.status !== 'aplicada' && imp.status !== 'falhou') throw new ErroApp(409, 'IMPORTACAO_NAO_DESFAZIVEL', `A importação está "${imp.status}"; só uma aplicada (ou que falhou no meio) pode ser desfeita.`);
   const ctx = await contexto(req);
+  // Trava: dois admins não desfazem a mesma importação ao mesmo tempo.
+  const travada = await req.dados!.atualizarSe('importacoes', imp.id, { status: 'desfeita' }, { status: imp.status });
+  if (!travada) throw new ErroApp(409, 'IMPORTACAO_NAO_DESFAZIVEL', 'Outra pessoa já está desfazendo esta importação.');
   const tabelas = [{ tabela: imp.tabela_alvo, temVersao: TABELAS_IMPORT[imp.tabela_alvo]?.temVersao ?? false, apagar: TABELAS_IMPORT[imp.tabela_alvo]?.semLixeira ?? false }, ...(extensaoAtributos ? [{ tabela: 'atributos_valor', temVersao: true, apagar: true }] : [])];
-  const r = await desfazerImportacao(tabelas, imp, ctx);
+  let r;
+  try {
+    r = await desfazerImportacao(tabelas, imp, ctx);
+  } catch (e) {
+    await req.dados!.atualizar('importacoes', imp.id, { status: imp.status }).catch(() => undefined);
+    throw e;
+  }
   const final = await req.dados!.atualizar('importacoes', imp.id, {
     status: 'desfeita',
     desfeita_em: new Date().toISOString(),

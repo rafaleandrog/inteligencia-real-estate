@@ -28,10 +28,12 @@ export const extensaoAtributos: ExtensaoAtributos = {
           else if (r.colunas) valores.push({ def: u.def, colunas: r.colunas });
         }
         if (!valores.length || !tipo) return undefined;
-        return async (registroId, c, importacaoId) => {
+        return async (registroId, c, importacaoId, novo) => {
+          // Objeto recém-criado não tem valor gravado; o existente lê os valores da linha numa consulta só.
+          const gravados = novo ? [] : await c.dados.varrerTudo('atributos_valor', { filtros: { objeto_tipo: tipo, objeto_id: registroId, atributo_id: valores.map((v) => Number(v.def.id)) } });
           for (const v of valores) {
             const chave = { objeto_tipo: tipo, objeto_id: registroId, atributo_id: Number(v.def.id) };
-            const [atual] = await c.dados.varrerTudo('atributos_valor', { filtros: chave });
+            const atual = gravados.find((g) => Number(g.atributo_id) === Number(v.def.id));
             if (atual) {
               await c.dados.atualizar('atributos_valor', Number(atual.id), { ...v.colunas, importacao_id: importacaoId, autor_id: c.usuarioId, versao: Number(atual.versao) + 1 });
             } else {

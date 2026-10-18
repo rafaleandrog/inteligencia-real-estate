@@ -8,7 +8,7 @@ import { ErroApp, idDaRota, naoEncontrado, paginacao, rota, textoQuery, usuarioI
 import { criarCadastro, diferenca, escolher, historico, registrarAlteracao, versaoDoCorpo } from './cadastro-comum';
 import { querCsv, responderCsv } from './exportar';
 import { cidadeDoRequest } from './territorio-comum';
-import { lerFeicoes } from './territorio';
+import { aplicarTravado, contarVertices, lerFeicoes, previaOuFalha } from './territorio';
 import { anexarLocalidade } from './cadastro-fabrica';
 import { podeLerArea } from '../../comum/regras-objeto';
 
@@ -89,6 +89,9 @@ function conferirTipoEEstagio(req: Request, novo: Linha, atual: Linha | null): s
   return motivo;
 }
 
+/** `datahora` chega como `Date` do helper (banco-de-dados.md) e como texto ISO no fake. */
+const quando = (v: unknown): number => (v ? new Date(v as string).getTime() || 0 : 0);
+
 async function anexar(req: Request, linhas: Linha[]): Promise<Linha[]> {
   return anexarLocalidade(req, linhas);
 }
@@ -107,15 +110,19 @@ estudos.get('/estudos', rota(async (req, res) => {
     if (v) filtros[k] = v.split(',');
   }
   const resp = textoQuery(req, 'responsavel');
-  if (resp) filtros.responsavel_id = resp === 'eu' ? ator.id : Number(resp);
+  if (resp) {
+    if (resp !== 'eu' && !/^\d+$/.test(resp)) throw new ErroApp(400, 'PARAMETRO_INVALIDO', 'responsavel: "eu" ou o id do usuário.');
+    filtros.responsavel_id = resp === 'eu' ? ator.id : Number(resp);
+  }
   const ids = await idsPorAtributos(req, 'area_estudo');
   if (ids) filtros.id = ids.length ? ids : [0];
   const removidos = textoQuery(req, 'removidos');
+  // Varredura na ordem padrão (id): ordenar por coluna não única em varrerTudo pode repetir ou pular linha (banco-de-dados.md).
   let linhas = await req.dados!.varrerTudo('areas_estudo', {
-    filtros, ordenar: 'atualizado_em', ordem: 'desc',
+    filtros,
     ...(removidos === 'incluir' || removidos === 'apenas' ? { removidos: removidos as 'incluir' | 'apenas' } : {}),
   });
-  linhas = linhas.filter((a) => podeLerArea(ator, a));
+  linhas = linhas.filter((a) => podeLerArea(ator, a)).sort((a, b) => quando(b.atualizado_em) - quando(a.atualizado_em) || Number(b.id) - Number(a.id));
   const q = textoQuery(req, 'q');
   if (q) {
     const t = q.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
@@ -186,8 +193,9 @@ estudos.patch('/estudos/:id', rota(async (req, res) => {
   const g = geometriaDoCorpo(req.body);
   if (g) Object.assign(patch, colunasGeometria(g));
   const soDecisao = Object.keys(req.body ?? {}).every((k) => CAMPOS_DECISAO.has(k));
-  // Só a decisão de estágio: basta ler a área; quem decide é conferido abaixo (403 PAPEL_EXIGIDO).
-  if (!(soDecisao && patch.estagio !== undefined && ESTAGIOS_DECISAO.includes(patch.estagio))) exigirAcessoArea(req, atual, 'escrever');
+  // Só a decisão de estágio, e o estágio muda de fato: basta ler a área; quem decide é conferido abaixo (403 PAPEL_EXIGIDO).
+  const decideEstagio = soDecisao && patch.estagio !== undefined && patch.estagio !== atual.estagio && ESTAGIOS_DECISAO.includes(patch.estagio);
+  if (!decideEstagio) exigirAcessoArea(req, atual, 'escrever');
   const motivo = conferirTipoEEstagio(req, patch, atual);
   const versao = versaoDoCorpo(req);
   if (Number(atual.versao) !== versao) throw new ErroApp(409, 'CONFLITO_VERSAO', 'Outra pessoa alterou esta área depois que você a abriu.', ['Recarregue e refaça a alteração.']);
@@ -235,15 +243,18 @@ estudos.post('/estudos/importar', rota(async (req, res) => {
   const imp = await req.dados!.criar('importacoes', {
     tabela_alvo: 'areas_estudo', tipo_arquivo: 'outro', arquivo: uploadId, modo_duplicata: 'ignorar', status: 'previa', autor_id: usuarioId(req),
   });
-  const lido = await lerFeicoes(req, Number(imp.arquivo));
-  const feicoes = lido.feicoes.map((f, i) => {
-    let erros = [...f.erros];
-    if (!erros.length && !['Point', 'Polygon', 'MultiPolygon'].includes(f.geometria.type)) erros = [`${f.geometria.type} não é área (ponto ou polígono)`];
-    return { indice: i, nome: f.nome, tipo: f.geometria?.type ?? null, vertices: f.geometria ? JSON.stringify(f.geometria.coordinates).split('],[').length : 0, erros };
-  });
-  await req.dados!.atualizar('importacoes', imp.id, {
-    total_linhas: feicoes.length, rejeitadas: feicoes.filter((f) => f.erros.length).length, arquivo_sha256: lido.sha256,
-    mapeamento: { arquivo: lido.nome, formato: lido.formato },
+  const { lido, feicoes } = await previaOuFalha(req, Number(imp.id), async () => {
+    const lido = await lerFeicoes(req, Number(imp.arquivo));
+    const feicoes = lido.feicoes.map((f, i) => {
+      let erros = [...f.erros];
+      if (!erros.length && !['Point', 'Polygon', 'MultiPolygon'].includes(f.geometria.type)) erros = [`${f.geometria.type} não é área (ponto ou polígono)`];
+      return { indice: i, nome: f.nome, tipo: f.geometria?.type ?? null, vertices: contarVertices(f.geometria), erros };
+    });
+    await req.dados!.atualizar('importacoes', imp.id, {
+      total_linhas: feicoes.length, rejeitadas: feicoes.filter((f) => f.erros.length).length, arquivo_sha256: lido.sha256,
+      mapeamento: { arquivo: lido.nome, formato: lido.formato },
+    });
+    return { lido, feicoes };
   });
   res.status(201).json({ importacao_id: imp.id, formato: lido.formato, feicoes });
 }));
@@ -255,37 +266,39 @@ estudos.post('/estudos/importar/:importacao_id/aplicar', rota(async (req, res) =
   if (imp.status !== 'previa') throw new ErroApp(409, 'IMPORTACAO_NAO_APLICAVEL', `A importação está "${imp.status}".`);
   const base: Linha = { tipo: req.body?.tipo ?? 'prospeccao', estagio: req.body?.estagio ?? 'sinal' };
   const motivo = conferirTipoEEstagio(req, base, null);
-  const lido = await lerFeicoes(req, Number(imp.arquivo));
-  const escolhidas: number[] | null = Array.isArray(req.body?.indices) ? req.body.indices.map(Number) : null;
-  const cidade = await cidadeDoRequest(req);
-  const hashes = new Set((await req.dados!.varrerTudo('areas_estudo', { removidos: 'incluir' })).map((a) => a.geometria_hash));
-  const responsavel = req.body?.responsavel_id ? Number(req.body.responsavel_id) : usuarioId(req);
-  let inseridas = 0;
-  let ignoradas = 0;
-  const rejeicoes: { linha: number; coluna: string; codigo: string; mensagem: string }[] = [];
-  const novas: Linha[] = [];
-  for (const [i, f] of lido.feicoes.entries()) {
-    if (escolhidas && !escolhidas.includes(i)) { ignoradas++; continue; }
-    const problemas = f.erros.length ? f.erros : ['Point', 'Polygon', 'MultiPolygon'].includes(f.geometria.type) ? [] : [`${f.geometria.type} não é área`];
-    if (problemas.length) { rejeicoes.push({ linha: i + 1, coluna: 'geometria', codigo: 'POLIGONO_INVALIDO', mensagem: problemas.join('; ') }); continue; }
-    const geo = colunasGeometria(f.geometria);
-    if (hashes.has(geo.geometria_hash)) { ignoradas++; continue; }
-    hashes.add(geo.geometria_hash);
-    novas.push({ nome: (f.nome || `Área ${i + 1}`).slice(0, 200), geo });
-  }
-  const localidades = await Promise.all(novas.map((n) => localidadeDominante(req, Number(n.geo.centroide_latitude), Number(n.geo.centroide_longitude))));
-  await req.dados!.transaction(async (trx) => {
-    for (const [k, n] of novas.entries()) {
-      const c = await trx.criar('areas_estudo', {
-        nome: n.nome, ...base, ...n.geo, cidade_id: cidade.id, localidade_id: localidades[k], autor_id: usuarioId(req), responsavel_id: responsavel,
-        arquivo_origem: imp.arquivo, importacao_id: imp.id, notas: `Importada de ${String(imp.mapeamento?.arquivo ?? 'arquivo')}.`, versao: 1,
-      });
-      await registrarAlteracao(trx, req, 'areas_estudo', Number(c.id), 'criado', null, motivo);
-      inseridas++;
+  res.json(await aplicarTravado(req, Number(imp.id), async () => {
+    const lido = await lerFeicoes(req, Number(imp.arquivo));
+    const escolhidas: number[] | null = Array.isArray(req.body?.indices) ? req.body.indices.map(Number) : null;
+    const cidade = await cidadeDoRequest(req);
+    const hashes = new Set((await req.dados!.varrerTudo('areas_estudo', { removidos: 'incluir' })).map((a) => a.geometria_hash));
+    const responsavel = req.body?.responsavel_id ? Number(req.body.responsavel_id) : usuarioId(req);
+    let inseridas = 0;
+    let ignoradas = 0;
+    const rejeicoes: { linha: number; coluna: string; codigo: string; mensagem: string }[] = [];
+    const novas: Linha[] = [];
+    for (const [i, f] of lido.feicoes.entries()) {
+      if (escolhidas && !escolhidas.includes(i)) { ignoradas++; continue; }
+      const problemas = f.erros.length ? f.erros : ['Point', 'Polygon', 'MultiPolygon'].includes(f.geometria.type) ? [] : [`${f.geometria.type} não é área`];
+      if (problemas.length) { rejeicoes.push({ linha: i + 1, coluna: 'geometria', codigo: 'POLIGONO_INVALIDO', mensagem: problemas.join('; ') }); continue; }
+      const geo = colunasGeometria(f.geometria);
+      if (hashes.has(geo.geometria_hash)) { ignoradas++; continue; }
+      hashes.add(geo.geometria_hash);
+      novas.push({ nome: (f.nome || `Área ${i + 1}`).slice(0, 200), geo });
     }
-  });
-  const final = await req.dados!.atualizar('importacoes', imp.id, {
-    status: 'aplicada', aplicada_em: new Date().toISOString(), inseridas, ignoradas, rejeitadas: rejeicoes.length, atualizadas: 0, relatorio: { rejeicoes },
-  });
-  res.json({ ...final, rejeicoes });
+    const localidades = await Promise.all(novas.map((n) => localidadeDominante(req, Number(n.geo.centroide_latitude), Number(n.geo.centroide_longitude))));
+    await req.dados!.transaction(async (trx) => {
+      for (const [k, n] of novas.entries()) {
+        const c = await trx.criar('areas_estudo', {
+          nome: n.nome, ...base, ...n.geo, cidade_id: cidade.id, localidade_id: localidades[k], autor_id: usuarioId(req), responsavel_id: responsavel,
+          importacao_id: imp.id, notas: `Importada de ${String(imp.mapeamento?.arquivo ?? 'arquivo')}.`, versao: 1,
+        });
+        await registrarAlteracao(trx, req, 'areas_estudo', Number(c.id), 'criado', null, motivo);
+        inseridas++;
+      }
+    });
+    const final = await req.dados!.atualizar('importacoes', imp.id, {
+      status: 'aplicada', aplicada_em: new Date().toISOString(), inseridas, ignoradas, rejeitadas: rejeicoes.length, atualizadas: 0, relatorio: { rejeicoes },
+    });
+    return { ...final, rejeicoes };
+  }));
 }));

@@ -199,6 +199,7 @@ export class IntelImobEstudoDesenhar extends LitElement {
     try {
       const a = await uv().api('/estudos', json({ nome: v.nome, tipo: v.tipo, notas: v.notas || null, geometria: e.detail.geometry }));
       uv().notificar('Área criada.', 'sucesso');
+      this.dispatchEvent(new CustomEvent('intel-imob:area-criada', { bubbles: true, composed: true }));
       uv().navegarSub(`/estudos/${a.id}`);
     } catch (err) {
       this.erro = [mensagemDeErro(err), ...((err as any).detalhes ?? [])].join(' ');
@@ -266,9 +267,9 @@ export class IntelImobEstudos extends LitElement {
   private modalConteudo() {
     switch (this.modal) {
       case 'desenhar':
-        return html`<intel-imob-estudo-desenhar modo="desenhar-poligono"></intel-imob-estudo-desenhar>`;
+        return html`<intel-imob-estudo-desenhar modo="desenhar-poligono" @intel-imob:area-criada=${() => this.fechar(true)}></intel-imob-estudo-desenhar>`;
       case 'ponto':
-        return html`<intel-imob-estudo-desenhar modo="desenhar-ponto"></intel-imob-estudo-desenhar>`;
+        return html`<intel-imob-estudo-desenhar modo="desenhar-ponto" @intel-imob:area-criada=${() => this.fechar(true)}></intel-imob-estudo-desenhar>`;
       case 'kmz':
         return html`<intel-imob-contornos-importar base="/estudos" .tiposArea=${tiposPermitidos()} @intel-imob:importacao-aplicada=${() => this.fechar(true)}></intel-imob-contornos-importar>`;
       case 'csv':
@@ -282,13 +283,14 @@ export class IntelImobEstudos extends LitElement {
   }
 
   render() {
-    const escreve = uv().contexto().nivel !== 'leitura';
+    const nivel = uv().contexto().nivel;
+    const escreve = nivel === 'escrita' || nivel === 'admin';
     const id = this.selecionada;
     const TITULOS = { desenhar: 'Nova área por desenho', ponto: 'Nova área por ponto', kmz: 'Importar KML, KMZ ou GeoJSON', csv: 'Importar CSV de áreas' } as const;
     return html`
       <urbi-shell-page titulo="Estudos de área" dashboard>
         <intel-imob-como-ler slot="actions" tela="estudos"></intel-imob-como-ler>
-        <urbi-stack>
+        <urbi-stack expandir>
           ${this.erro ? html`<urbi-banner variante="erro">${this.erro}</urbi-banner>` : nothing}
           <urbi-linha justificar="entre" quebrar>
             <urbi-linha quebrar>
@@ -310,7 +312,7 @@ export class IntelImobEstudos extends LitElement {
             @urbi:inbox-selecionar=${(e: CustomEvent) => uv().navegarSub(`/estudos/${e.detail.id}`)}
             @urbi:inbox-voltar=${() => uv().navegarSub('/estudos')}>
             ${id
-              ? html`<intel-imob-estudo-ficha slot="detalhe" .areaId=${id} @intel-imob:area-alterada=${() => this.carregar()}></intel-imob-estudo-ficha>`
+              ? html`<urbi-stack slot="detalhe"><intel-imob-estudo-ficha .areaId=${id} @intel-imob:area-alterada=${() => this.carregar()}></intel-imob-estudo-ficha></urbi-stack>`
               : html`<urbi-hospedeiro slot="detalhe"><urbi-prosa papel="dica">${this.areas.length ? 'Escolha uma área na lista.' : 'Nenhuma área ainda. Crie por desenho, ponto ou KMZ.'}</urbi-prosa></urbi-hospedeiro>`}
           </urbi-inbox>
         </urbi-stack>

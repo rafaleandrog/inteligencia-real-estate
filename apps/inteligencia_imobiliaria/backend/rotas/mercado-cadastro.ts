@@ -2,7 +2,7 @@ import { Router, type Request } from 'express';
 import { derivadosAnuncio, estagioDoStatus, grupoDaCategoria, orientacao, TIPOS_IMOVEL, urlCanonica } from '../../comum/anuncios';
 import { coordenada, numero, slug as slugDe, urlSegura } from '../../comum/normalizar';
 import { errosUrlBase } from '../importacao/tabelas';
-import { ErroApp, textoQuery } from './comum';
+import { ErroApp, idsQuery, textoQuery } from './comum';
 import { anexarLocalidade, conferir, faixa, rotasCadastro, type DefCadastro } from './cadastro-fabrica';
 import { cidadeDoRequest } from './territorio-comum';
 
@@ -70,7 +70,7 @@ export async function filtrosAnuncios(req: Request): Promise<{ filtros: Record<s
   if (portal) filtros.portal = portal;
   const sit = textoQuery(req, 'situacao_regularizacao');
   if (sit) filtros.situacao_regularizacao = sit;
-  const fonte = textoQuery(req, 'fonte_id');
+  const fonte = idsQuery(req, 'fonte_id');
   if (fonte) filtros.fonte_id = fonte;
   faixa(req, filtros, 'quartos_min', 'quartos_max', 'quartos');
   faixa(req, filtros, 'preco_min', 'preco_max', 'preco_pedido_brl');

@@ -28,7 +28,7 @@ export interface LinhaValida {
   achados: AchadoNovo[];
   existente: Record<string, any> | null;
   /** Hook pós-gravação (ex.: valores de atributo da mesma linha). */
-  depois?: (registroId: number, ctx: CtxImportacao, importacaoId: number) => Promise<void>;
+  depois?: (registroId: number, ctx: CtxImportacao, importacaoId: number, novo: boolean) => Promise<void>;
 }
 
 export interface Validacao {
@@ -44,7 +44,7 @@ export interface Validacao {
 export interface ExtensaoAtributos {
   preparar(tabela: string, colunas: { indice: number; codigo: string }[], ctx: CtxImportacao): Promise<{
     ignoradas: ColunaIgnorada[];
-    validar(celulas: string[], erros: ErroLinha[]): ((registroId: number, ctx: CtxImportacao, importacaoId: number) => Promise<void>) | undefined;
+    validar(celulas: string[], erros: ErroLinha[]): ((registroId: number, ctx: CtxImportacao, importacaoId: number, novo: boolean) => Promise<void>) | undefined;
   }>;
 }
 
@@ -61,13 +61,23 @@ export async function lerArquivoTexto(arquivos: HelperArquivos | undefined, arqu
   };
 }
 
-/** Lê todas as linhas vivas da tabela, indexadas pela chave natural. */
+/** Todas as chaves de uma linha (a natural primeiro). */
+export function chavesDe(ganchos: GanchosTabela, dados: Record<string, unknown>): string[] {
+  if (ganchos.chaves) return ganchos.chaves(dados);
+  const k = ganchos.chave(dados);
+  return k ? [k] : [];
+}
+
+/**
+ * Lê todas as linhas vivas que quem importa enxerga, indexadas por cada chave
+ * (a primeira por id, que é a ordem da varredura, fica).
+ */
 async function carregarExistentes(def: TabelaImport, ganchos: GanchosTabela, ctx: CtxImportacao): Promise<Map<string, Record<string, any>>> {
   const linhas = await ctx.dados.varrerTudo(def.tabela);
   const mapa = new Map<string, Record<string, any>>();
   for (const l of linhas) {
-    const k = ganchos.chave(l);
-    if (k) mapa.set(k, l);
+    if (ganchos.visivel && !ganchos.visivel(l, ctx)) continue;
+    for (const k of chavesDe(ganchos, l)) if (!mapa.has(k)) mapa.set(k, l);
   }
   return mapa;
 }
@@ -162,10 +172,24 @@ export async function validarCsv(
       }
       vistas.set(chave, numeroLinha);
     }
-    const existente = chave ? existentes.get(chave) ?? null : null;
+    let existente: Record<string, any> | null = null;
+    for (const k of chavesDe(ganchos, preparada.dados)) {
+      existente = existentes.get(k) ?? null;
+      if (existente) break;
+    }
     let acao: Acao = 'inserir';
     if (!existente && faltando.length) {
       for (const c of faltando) rejeicoes.push({ linha: numeroLinha, coluna: c, codigo: 'OBRIGATORIO', mensagem: 'registro novo sem coluna obrigatória' });
+      continue;
+    }
+    const recusaNovo = !existente ? ganchos.conferirNovo?.(preparada.dados) : null;
+    if (recusaNovo) {
+      rejeicoes.push({ linha: numeroLinha, ...recusaNovo });
+      continue;
+    }
+    const recusa = existente && modo === 'atualizar' ? ganchos.conferirAtualizacao?.(existente, ctx) : null;
+    if (recusa) {
+      rejeicoes.push({ linha: numeroLinha, ...recusa });
       continue;
     }
     if (existente) {
@@ -176,7 +200,9 @@ export async function validarCsv(
       }
       acao = modo === 'atualizar' ? 'atualizar' : 'ignorar';
     }
-    const presentes = colunasPresentes(def, ganchos, [...mapeadas], preparada.dados);
+    // No `atualizar`, célula vazia não apaga nem repõe padrão: a coluna fica como está (CSV parcial).
+    const consideradas = acao === 'atualizar' ? [...mapeadas].filter((c) => valores[c] !== null && valores[c] !== undefined) : [...mapeadas];
+    const presentes = colunasPresentes(def, ganchos, consideradas, preparada.dados);
     previstas[acao]++;
     validas.push({ linha: numeroLinha, acao, dados: preparada.dados, presentes, achados: preparada.achados, existente, depois });
   }
@@ -245,7 +271,7 @@ export async function aplicarValidacao(def: TabelaImport, v: Validacao, ctx: Ctx
         const out: (number | null)[] = [];
         for (const l of lote) {
           const id = await gravarLinha(def, l, ctx, importacaoId, trx, ganchos);
-          if (id !== null && l.depois && l.acao !== 'ignorar') await l.depois(id, { ...ctx, dados: trx }, importacaoId);
+          if (id !== null && l.depois && l.acao !== 'ignorar') await l.depois(id, { ...ctx, dados: trx }, importacaoId, l.acao === 'inserir');
           out.push(id);
         }
         return out;
@@ -256,7 +282,7 @@ export async function aplicarValidacao(def: TabelaImport, v: Validacao, ctx: Ctx
         try {
           const id = await ctx.dados.transaction(async (trx) => {
             const novo = await gravarLinha(def, l, ctx, importacaoId, trx, ganchos);
-            if (novo !== null && l.depois && l.acao !== 'ignorar') await l.depois(novo, { ...ctx, dados: trx }, importacaoId);
+            if (novo !== null && l.depois && l.acao !== 'ignorar') await l.depois(novo, { ...ctx, dados: trx }, importacaoId, l.acao === 'inserir');
             return novo;
           });
           gravadas.push({ linha: l, id });

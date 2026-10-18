@@ -315,14 +315,14 @@ export class IntelImobCadastro extends LitElement {
       <urbi-shell-page titulo="Cadastro" dashboard>
         <intel-imob-como-ler slot="actions" tela="cadastro"></intel-imob-como-ler>
         <urbi-abas .abas=${abas} ativa=${aba} @urbi:aba-selecionar=${(e: CustomEvent) => uv().navegarSub(`/cadastro/${e.detail.id}`)}>
-          ${ABAS.map((c) => html`<div slot=${c.id}>
+          ${ABAS.map((c) => html`<urbi-stack slot=${c.id}>
             ${c.id !== aba
               ? nothing
               : id
                 ? html`<intel-imob-cadastro-ficha .config=${c} .registroId=${id}></intel-imob-cadastro-ficha>`
                 : html`<intel-imob-cadastro-lista .config=${c}></intel-imob-cadastro-lista>`}
-          </div>`)}
-          ${ABAS_EXTRAS.map((a) => html`<div slot=${a.id}>${a.id === aba ? a.render(partes.slice(3)) : nothing}</div>`)}
+          </urbi-stack>`)}
+          ${ABAS_EXTRAS.map((a) => html`<urbi-stack slot=${a.id}>${a.id === aba ? a.render(partes.slice(3)) : nothing}</urbi-stack>`)}
         </urbi-abas>
       </urbi-shell-page>
     `;

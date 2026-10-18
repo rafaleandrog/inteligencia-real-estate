@@ -4,6 +4,7 @@ import { caixa, geometriaCanonica, metricas, validarGeometria, type Geometria } 
 import { chaveNome, coordenada, precoM2, slug as slugDe, urlSegura } from '../../comum/normalizar';
 import { estagioDoStatus, grupoDaCategoria, urlCanonica } from '../../comum/anuncios';
 import type { ErroLinha } from './converter';
+import { podeEscreverArea, podeLerArea, type Ator } from '../../comum/regras-objeto';
 
 /** Achado de qualidade não bloqueante, gravado depois de aplicar (spec 5.11). */
 export interface AchadoNovo {
@@ -22,6 +23,8 @@ export interface CtxImportacao {
   cache: Map<string, unknown>;
   /** Papéis de quem importa: linha de área própria só entra para o curador (11.5). */
   papeis?: { curador: boolean };
+  /** Quem importa, para a regra por objeto (áreas de estudo, 15.1b). */
+  ator?: Ator;
 }
 
 export interface LinhaPreparada {
@@ -36,6 +39,18 @@ export interface GanchosTabela {
   preparar(valores: Record<string, unknown>, ctx: CtxImportacao, erros: ErroLinha[]): Promise<LinhaPreparada>;
   /** Chave natural da linha preparada (ou da existente), para duplicata. */
   chave(dados: Record<string, unknown>): string | null;
+  /**
+   * Todas as chaves pelas quais a linha pode casar com uma existente (ex.:
+   * `id_legado` e a URL). Ausente = só a `chave`. A existente é indexada por
+   * todas; a linha do CSV procura por todas, na ordem.
+   */
+  chaves?(dados: Record<string, unknown>): string[];
+  /** Linha existente que quem importa pode enxergar; a invisível não casa nem é citada (sigilo, D-116). */
+  visivel?(existente: Record<string, any>, ctx: CtxImportacao): boolean;
+  /** Recusa a atualização de uma existente que quem importa não pode editar (regra por objeto). */
+  conferirAtualizacao?(existente: Record<string, any>, ctx: CtxImportacao): ErroLinha | null;
+  /** Recusa já na prévia a linha nova que o banco recusaria (ex.: área sem geometria). */
+  conferirNovo?(dados: Record<string, unknown>): ErroLinha | null;
   /** Colunas derivadas que mudam junto quando o modo `atualizar` toca uma coluna de origem. */
   derivadasDe?: Record<string, string[]>;
   /** Na transação do lote, depois de criar a linha (ex.: o evento `criado` do anúncio). */
@@ -218,6 +233,7 @@ const contornos: GanchosTabela = {
     return { dados, achados: [] };
   },
   chave: (d) => (d.id_legado ? `legado|${d.id_legado}` : d.geometria_hash ? `geo|${d.tipo_entidade}|${d.entidade_codigo ?? ''}|${d.geometria_hash}` : null),
+  chaves: (d) => [d.id_legado ? `legado|${d.id_legado}` : '', d.geometria_hash ? `geo|${d.tipo_entidade}|${d.entidade_codigo ?? ''}|${d.geometria_hash}` : ''].filter(Boolean),
   derivadasDe: { geometria: ['geometria_tipo', 'bbox_oeste', 'bbox_sul', 'bbox_leste', 'bbox_norte', 'area_m2', 'area_ha', 'perimetro_m', 'metricas_aproximadas', 'geometria_hash', 'centroide_latitude', 'centroide_longitude'] },
 };
 
@@ -275,12 +291,15 @@ const anuncios: GanchosTabela = {
   async preparar(v, ctx, erros) {
     const dados: Record<string, unknown> = { ...v };
     delete dados.localidade;
-    dados.localidade_id = await exigirLocalidade(ctx, v.localidade, 'localidade', erros, true);
-    const fonte = (await carregarFontes(ctx)).get(chaveNome(v.portal));
-    dados.fonte_id = fonte ? Number(fonte.id) : null;
-    if (!fonte) dados.__fonte_nova = String(v.portal);
+    // CSV parcial no modo `atualizar`: só confere a coluna que veio (a linha nova sem ela é recusada pelo motor).
+    if ('localidade' in v) dados.localidade_id = await exigirLocalidade(ctx, v.localidade, 'localidade', erros, true);
+    if (v.portal !== null && v.portal !== undefined && v.portal !== '') {
+      const fonte = (await carregarFontes(ctx)).get(chaveNome(v.portal));
+      dados.fonte_id = fonte ? Number(fonte.id) : null;
+      if (!fonte) dados.__fonte_nova = String(v.portal);
+    }
     if (v.url_fonte) dados.url_fonte = urlCanonica(String(v.url_fonte));
-    if (v.latitude !== null || v.longitude !== null) {
+    if ((v.latitude !== null && v.latitude !== undefined) || (v.longitude !== null && v.longitude !== undefined)) {
       if (!coordenada(v.latitude, v.longitude)) erros.push({ coluna: 'latitude', codigo: 'COORDENADA_INVALIDA', mensagem: 'par de coordenadas fora da faixa ou incompleto' });
     }
     if (typeof v.preco_pedido_brl === 'number' && v.preco_pedido_brl <= 0) dados.preco_pedido_brl = null;
@@ -301,6 +320,7 @@ const anuncios: GanchosTabela = {
     return { dados, achados };
   },
   chave: (d) => (d.id_legado ? `legado|${d.id_legado}` : d.url_fonte ? `url|${urlCanonica(String(d.url_fonte))}` : null),
+  chaves: (d) => [d.id_legado ? `legado|${d.id_legado}` : '', d.url_fonte ? `url|${urlCanonica(String(d.url_fonte))}` : ''].filter(Boolean),
   derivadasDe: { portal: ['fonte_id'], preco_pedido_brl: [] },
   async aposCriar(trx, a, ctx) {
     await trx.criar('anuncio_eventos', { anuncio_id: a.id, tipo: 'criado', ocorrido_em: new Date().toISOString(), status_novo: a.status, preco_novo_brl: a.preco_pedido_brl, autor_id: ctx.usuarioId, detalhes: 'importação' });
@@ -319,7 +339,7 @@ const anuncios: GanchosTabela = {
     }
     const fontes = await carregarFontes(ctx, true);
     for (const l of linhas) {
-      if (l.dados.__fonte_nova) l.dados.fonte_id = Number(fontes.get(chaveNome(l.dados.__fonte_nova))!.id);
+      if (l.dados.__fonte_nova) l.dados.fonte_id = Number(fontes.get(chaveNome(l.dados.__fonte_nova as string))!.id);
       delete l.dados.__fonte_nova;
     }
   },
@@ -344,6 +364,7 @@ const lancamentos: GanchosTabela = {
     return { dados, achados: [] };
   },
   chave: (d) => (d.id_legado ? `legado|${d.id_legado}` : d.nome ? `nome|${chaveNome(d.nome)}` : null),
+  chaves: (d) => [d.id_legado ? `legado|${d.id_legado}` : '', d.nome ? `nome|${chaveNome(d.nome)}` : ''].filter(Boolean),
   async aposCriar(trx, l, ctx) {
     await trx.criar('lancamento_eventos', { lancamento_id: l.id, tipo: 'criado', ocorrido_em: new Date().toISOString(), status_novo: l.status, autor_id: ctx.usuarioId, detalhes: 'importação' });
   },
@@ -357,12 +378,13 @@ const ancoras: GanchosTabela = {
     const dados: Record<string, unknown> = { ...v };
     delete dados.localidade;
     if ('localidade' in v) dados.localidade_id = await exigirLocalidade(ctx, v.localidade, 'localidade', erros, false);
-    if (!coordenada(v.latitude, v.longitude)) erros.push({ coluna: 'latitude', codigo: 'COORDENADA_INVALIDA', mensagem: 'par de coordenadas fora da faixa ou incompleto' });
+    if (('latitude' in v || 'longitude' in v) && !coordenada(v.latitude, v.longitude)) erros.push({ coluna: 'latitude', codigo: 'COORDENADA_INVALIDA', mensagem: 'par de coordenadas fora da faixa ou incompleto' });
     if (!v.grupo) dados.grupo = grupoDaCategoria(v.categoria);
     if (!v.status) dados.status = 'ativa';
     return { dados, achados: [] };
   },
   chave: (d) => (d.id_legado ? `legado|${d.id_legado}` : d.nome ? `nome|${chaveNome(d.nome)}|${d.categoria}` : null),
+  chaves: (d) => [d.id_legado ? `legado|${d.id_legado}` : '', d.nome ? `nome|${chaveNome(d.nome)}|${d.categoria}` : ''].filter(Boolean),
 };
 
 // ---------------------------------------------------------------------------
@@ -374,15 +396,12 @@ const ESTAGIOS_DECISAO_IMPORT = new Set(['iniciativa', 'projeto', 'negocio_ativo
 const areasEstudo: GanchosTabela = {
   async carregar(ctx) {
     await carregarLocalidades(ctx);
-    const proprias = await ctx.dados.varrerTudo('areas_estudo', { filtros: { tipo: 'propria' }, removidos: 'incluir' });
-    ctx.cache.set('areas_proprias', new Set(proprias.map((a) => chaveNome(String(a.nome)))));
   },
   async preparar(v, ctx, erros) {
     const dados: Record<string, unknown> = { ...v };
     delete dados.localidade;
-    const proprias = ctx.cache.get('areas_proprias') as Set<string> | undefined;
-    const tocaPropria = v.tipo === 'propria' || (v.nome ? proprias?.has(chaveNome(String(v.nome))) : false);
-    if (tocaPropria && !ctx.papeis?.curador) {
+    // A área própria que quem importa não lê nem casa com a linha (`visivel`): a prévia não confirma que ela existe.
+    if (v.tipo === 'propria' && !ctx.papeis?.curador) {
       erros.push({ coluna: 'tipo', codigo: 'PAPEL_EXIGIDO', mensagem: 'área própria só entra para o curador' });
     }
     if (v.estagio && ESTAGIOS_DECISAO_IMPORT.has(String(v.estagio))) {
@@ -412,6 +431,11 @@ const areasEstudo: GanchosTabela = {
     return { dados, achados: [] };
   },
   chave: (d) => (d.nome ? `nome|${chaveNome(String(d.nome))}` : null),
+  visivel: (a, ctx) => !ctx.ator || podeLerArea(ctx.ator, a),
+  conferirAtualizacao: (a, ctx) => (!ctx.ator || podeEscreverArea(ctx.ator, a)
+    ? null
+    : { coluna: 'nome', codigo: 'OBJETO_SEM_PERMISSAO', mensagem: 'só o autor ou o curador editam esta área (área própria: só o curador)' }),
+  conferirNovo: (d) => (d.geometria ? null : { coluna: 'geometria', codigo: 'OBRIGATORIO', mensagem: 'área nova precisa de latitude e longitude ou geometria' }),
   derivadasDe: { geometria: ['geometria_tipo', 'bbox_oeste', 'bbox_sul', 'bbox_leste', 'bbox_norte', 'area_m2', 'geometria_hash', 'centroide_latitude', 'centroide_longitude'] },
 };
 
@@ -427,7 +451,7 @@ export function mesReferencia(v: unknown): string | null {
   m = /^(\d{2})\/(\d{4})$/.exec(t);
   if (m) return Number(m[1]) >= 1 && Number(m[1]) <= 12 ? `${m[2]}-${m[1]}-01` : null;
   const d = /^(\d{2})\/(\d{2})\/(\d{4})$/.exec(t);
-  if (d) return `${d[3]}-${d[2]}-01`;
+  if (d) return Number(d[2]) >= 1 && Number(d[2]) <= 12 ? `${d[3]}-${d[2]}-01` : null;
   return null;
 }
 

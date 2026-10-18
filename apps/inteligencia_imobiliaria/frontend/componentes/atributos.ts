@@ -3,7 +3,7 @@ import { property, state } from 'lit/decorators.js';
 import type { CampoFormulario, UrbiColunaTabela } from '@urbiverso/sdk';
 import { definir } from '../registro';
 import { estiloPrimitivo } from '../estilos';
-import { json, mensagemDeErro, patch, temPapel, uv } from '../api';
+import { irPara, json, mensagemDeErro, patch, temPapel, uv } from '../api';
 import { OBJETOS, OBJETO_TIPOS, TIPOS_VALOR, UNIDADES, type ObjetoTipo } from '../../comum/objetos';
 import { formatar } from './cadastro';
 
@@ -110,12 +110,12 @@ export class IntelImobAtributosObjeto extends LitElement {
     const pode = (this.podeEditar ?? temPapel('curador')) && !this.removido;
     const grupos = this.dados.grupos as any[];
     if (!grupos.length) {
-      return html`<urbi-prosa papel="dica">Nenhum atributo extensível se aplica a ${OBJETOS[this.tipo].rotulo.toLowerCase()}. ${temPapel('curador') ? html`Crie em <a href=${uv().href('/cadastro/atributos')}>Cadastro › Atributos</a>.` : nothing}</urbi-prosa>`;
+      return html`<urbi-prosa papel="dica">Nenhum atributo extensível se aplica a ${OBJETOS[this.tipo].rotulo.toLowerCase()}. ${temPapel('curador') ? html`Crie em <a href=${uv().href('/cadastro/atributos')} @click=${(e: MouseEvent) => irPara(e, '/cadastro/atributos')}>Cadastro › Atributos</a>.` : nothing}</urbi-prosa>`;
     }
     return html`<urbi-stack>
       ${grupos.map((g) => html`<urbi-stack>
         <urbi-linha justificar="entre">
-          <urbi-prosa papel="subtitulo">${g.grupo ?? 'Sem grupo'}</urbi-prosa>
+          <urbi-prosa papel="secao">${g.grupo ?? 'Sem grupo'}</urbi-prosa>
           ${pode && g.itens.some((i: any) => i.atributo.ativo) ? html`<urbi-botao variante="secundario" pequeno icone="fa-solid fa-pen" @click=${() => this.editar(g)}>Editar</urbi-botao>` : nothing}
         </urbi-linha>
         <urbi-grid min="200px">

@@ -1,7 +1,7 @@
 import { Router, type Request } from 'express';
 import { TABELAS_IMPORT } from '../../comum/importacao-chaves';
 import { anosPdad, CATALOGO_PDAD, compararPdad, detalhePdad, dispersaoPdad, indicePdad, perfilPdad, rankingPdad, type IndicePdad } from '../diagnostico/pdad';
-import { ErroApp, numeroQuery, rota, textoQuery } from './comum';
+import { ErroApp, numeroQuery, ordenarEmMemoria, rota, textoQuery } from './comum';
 import { cidadeDoRequest } from './territorio-comum';
 import { areasOcultas } from './acesso-objeto';
 
@@ -12,13 +12,39 @@ export const diagnostico: Router = Router();
 /** Acima disto o número da PDAD vem com aviso de cautela (D-29; parâmetro `pdad_cv_alerta_frac`). */
 export const PDAD_CV_ALERTA_FRAC = 0.15;
 
+/**
+ * O índice da PDAD (~12 mil observações) é montado uma vez e guardado por
+ * cidade; a assinatura (total e última alteração de cada tabela de origem)
+ * muda com importação, edição ou desfazer, e aí ele é refeito.
+ */
+const cacheIndice = new Map<number, { assinatura: string; indice: IndicePdad }>();
+
+async function assinaturaPdad(req: Request): Promise<string> {
+  const partes = await Promise.all(['pdad_observacoes', 'localidades', 'localidade_perfis'].map(async (t) => {
+    const r = await req.dados!.listar(t, { ordenar: 'atualizado_em', ordem: 'desc', por_pagina: 1 });
+    const ultimo = r.dados[0]?.atualizado_em;
+    return `${r.total}:${ultimo instanceof Date ? ultimo.toISOString() : String(ultimo ?? '')}`;
+  }));
+  return partes.join('|');
+}
+
 async function indice(req: Request): Promise<IndicePdad> {
   const cidade = await cidadeDoRequest(req);
+  const assinatura = await assinaturaPdad(req);
+  const guardado = cacheIndice.get(Number(cidade.id));
+  if (guardado?.assinatura === assinatura) return guardado.indice;
+  const novo = await montarIndice(req, Number(cidade.id));
+  cacheIndice.set(Number(cidade.id), { assinatura, indice: novo });
+  return novo;
+}
+
+async function montarIndice(req: Request, cidadeId: number): Promise<IndicePdad> {
+  const cidade = { id: cidadeId };
   const localidades = await req.dados!.varrerTudo('localidades', { filtros: { cidade_id: cidade.id } });
   const ids = localidades.map((l) => Number(l.id));
   const observacoes = ids.length ? await req.dados!.varrerTudo('pdad_observacoes', { filtros: { localidade_id: ids } }) : [];
   // Renda per capita: a do perfil mais recente de cada localidade (RA_PROFILES), quando publicada.
-  const perfis = ids.length ? await req.dados!.varrerTudo('localidade_perfis', { filtros: { localidade_id: ids }, ordenar: 'ano_referencia', ordem: 'asc' }) : [];
+  const perfis = ids.length ? ordenarEmMemoria(await req.dados!.varrerTudo('localidade_perfis', { filtros: { localidade_id: ids } }), 'ano_referencia') : [];
   const codigo = new Map(localidades.map((l) => [Number(l.id), String(l.codigo)]));
   const renda = new Map<string, number>();
   for (const p of perfis) if (p.renda_per_capita_brl !== null && p.renda_per_capita_brl !== undefined) renda.set(codigo.get(Number(p.localidade_id))!, Number(p.renda_per_capita_brl));
@@ -111,13 +137,14 @@ const FONTES_BASE: { tabela: string; rotulo: string; metodo: string }[] = [
  */
 diagnostico.get('/diagnostico/base', rota(async (req, res) => {
   const ocultas = await areasOcultas(req);
-  const importacoes = await req.dados!.varrerTudo('importacoes', { filtros: { status: 'aplicada' }, ordenar: 'aplicada_em', ordem: 'desc' });
-  const achados = (await req.dados!.varrerTudo('achados_qualidade')).filter((a) => !a.resolvido_em);
+  // Contagem por `total` do listar (uma linha por página): as tabelas grandes (anúncios, PDAD, contornos com geometria) não vêm para a memória.
+  const contar = async (tabela: string, filtros: Record<string, unknown> = {}) => Number((await req.dados!.listar(tabela, { filtros, por_pagina: 1 })).total ?? 0);
+  const achados = await req.dados!.varrerTudo('achados_qualidade', { filtros: { 'resolvido_em[nulo]': 'true' } });
   const fontes = [];
   for (const f of FONTES_BASE) {
-    const linhas = await req.dados!.varrerTudo(f.tabela);
-    const contagem = f.tabela === 'areas_estudo' ? linhas.filter((l) => !ocultas.has(Number(l.id))).length : linhas.length;
-    const ultima = importacoes.find((i) => i.tabela_alvo === f.tabela) ?? null;
+    let contagem = await contar(f.tabela);
+    if (f.tabela === 'areas_estudo' && ocultas.size) contagem -= await contar(f.tabela, { id: [...ocultas] });
+    const [ultima = null] = (await req.dados!.listar('importacoes', { filtros: { status: 'aplicada', tabela_alvo: f.tabela }, ordenar: 'aplicada_em', ordem: 'desc', por_pagina: 1 })).dados;
     fontes.push({
       tabela: f.tabela, rotulo: f.rotulo, metodo: f.metodo, linhas: contagem,
       importavel: Boolean(TABELAS_IMPORT[f.tabela]),

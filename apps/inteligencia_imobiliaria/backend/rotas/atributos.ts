@@ -58,8 +58,8 @@ atributos.get('/atributos', rota(async (req, res) => {
 atributos.get('/atributos/:id', rota(async (req, res) => {
   const d = await req.dados!.buscar('atributos_def', idDaRota(req), { incluir_removidos: true });
   if (!d) throw naoEncontrado();
-  const valores = await req.dados!.varrerTudo('atributos_valor', { filtros: { atributo_id: d.id } });
-  res.json({ ...d, valores_gravados: valores.length });
+  const valores = await req.dados!.listar('atributos_valor', { filtros: { atributo_id: d.id }, por_pagina: 1 });
+  res.json({ ...d, valores_gravados: Number(valores.total ?? 0) });
 }));
 
 atributos.get('/atributos/:id/historico', rota(async (req, res) => {
