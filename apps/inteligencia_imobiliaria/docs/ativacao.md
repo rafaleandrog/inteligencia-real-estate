@@ -28,7 +28,7 @@ dono. Por isso a tabela de fatos abaixo está **não medida**.
 | 5 | `permissao_padrao = nenhuma` para a app | alçada `usuarios` | pendente, na instalação |
 | 6 | Cap global de arquivo informado | admin da instância | pendente (medir) |
 | 7 | Hosts do proxy de egresso | alçada `sistema` | não se aplica ao MVP (sem coleta) |
-| 8 | Módulo `imobiliario` ≥ 1.0.0 instalado antes da release que declara `dependencias`; depois, as cinco flags de leitura ligadas na aba Núcleo da app | alçada `nucleo` | pendente; a partir da versão 0.5.0 (15.1a), que declara a dependência: instalar ou atualizar a app sem o módulo faz ela não subir |
+| 8 | Módulo `imobiliario` ≥ 1.0.0 instalado antes da release que declara `dependencias`; depois, as cinco flags de leitura ligadas na aba Núcleo da app | alçada `nucleo` | pendente; a app declara a dependência desde o primeiro release (0.1.0): instalar ou atualizar a app sem o módulo faz ela não subir |
 
 ## Fatos da Pinguim que a spec assumiu sem medir (P-50)
 
