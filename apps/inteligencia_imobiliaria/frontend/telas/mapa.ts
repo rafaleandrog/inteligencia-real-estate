@@ -5,7 +5,8 @@ import { definir } from '../registro';
 import { estiloPrimitivo } from '../estilos';
 import { mensagemDeErro, uv } from '../api';
 import { formatar } from '../componentes/cadastro';
-import { COR_ANCORA, COR_CONTORNO_IMPORTADO, COR_CONTORNO_RA, COR_LANCAMENTO, COR_SEM_PRECO, cortesQuintis, estiloAnuncio, RAMPA_PRECO } from '../../comum/mapa';
+import { cortesQuintis, estiloAnuncio, type Paleta } from '../../comum/mapa';
+import { amostrarPaleta, aoTrocarTema } from '../componentes/cores';
 import { ROTULO_PRECISAO, ROTULO_TIPO_IMOVEL, TIPOS_IMOVEL } from '../../comum/anuncios';
 import '../componentes/como-ler';
 
@@ -79,7 +80,19 @@ export class IntelImobMapa extends LitElement {
   @state() private carregando = false;
   @state() private erro = '';
   @state() private selecionado: Selecionado | null = null;
+  @state() private paleta: Paleta | null = null;
   private temporizador?: ReturnType<typeof setTimeout>;
+  private pararTema?: () => void;
+
+  firstUpdated() {
+    this.paleta = amostrarPaleta();
+    this.pararTema = aoTrocarTema(() => (this.paleta = amostrarPaleta()));
+  }
+
+  disconnectedCallback() {
+    super.disconnectedCallback();
+    this.pararTema?.();
+  }
 
   private get camadasLigadas(): Set<string> {
     return new Set((this.filtros.camadas ?? CAMADAS_PADRAO).split(','));
@@ -144,24 +157,26 @@ export class IntelImobMapa extends LitElement {
   }
 
   private camadas(): CamadaMapa[] {
+    const p = this.paleta;
+    if (!p) return [];
     const ligadas = this.camadasLigadas;
     const out: CamadaMapa[] = [];
     const ponto = (lon: number, lat: number) => ({ type: 'Point', coordinates: [lon, lat] });
     if (ligadas.has('ras') && this.ras) {
-      out.push({ id: 'ras', nome: 'Regiões administrativas', dados: { ...this.ras, features: this.ras.features.map((f: any) => ({ ...f, id: `contorno:${f.id}`, properties: { ...f.properties, id: `contorno:${f.id}`, estilo: { contorno: COR_CONTORNO_RA, espessura: 1, opacidadePreenchimento: 0.04, preenchimento: COR_CONTORNO_RA, rotulo: { campo: 'nome' } } } })) } as any });
+      out.push({ id: 'ras', nome: 'Regiões administrativas', dados: { ...this.ras, features: this.ras.features.map((f: any) => ({ ...f, id: `contorno:${f.id}`, properties: { ...f.properties, id: `contorno:${f.id}`, estilo: { contorno: p.ra, espessura: 1, opacidadePreenchimento: 0.04, preenchimento: p.ra, rotulo: { campo: 'nome' } } } })) } as any });
     }
     if (ligadas.has('importados') && this.importados) {
-      out.push({ id: 'importados', nome: 'Contornos importados', dados: { ...this.importados, features: this.importados.features.map((f: any) => ({ ...f, id: `contorno:${f.id}`, properties: { ...f.properties, id: `contorno:${f.id}`, estilo: f.properties.estilo ?? { contorno: COR_CONTORNO_IMPORTADO, espessura: 2, opacidadePreenchimento: 0.1, preenchimento: COR_CONTORNO_IMPORTADO } } })) } as any });
+      out.push({ id: 'importados', nome: 'Contornos importados', dados: { ...this.importados, features: this.importados.features.map((f: any) => ({ ...f, id: `contorno:${f.id}`, properties: { ...f.properties, id: `contorno:${f.id}`, estilo: f.properties.estilo ?? { contorno: p.importado, espessura: 2, opacidadePreenchimento: 0.1, preenchimento: p.importado } } })) } as any });
     }
     if (ligadas.has('ancoras')) {
-      out.push({ id: 'ancoras', nome: 'Âncoras', dados: { type: 'FeatureCollection', features: this.ancoras.map((a) => ({ type: 'Feature', id: `ancora:${a.id}`, geometry: ponto(a.longitude, a.latitude), properties: { id: `ancora:${a.id}`, nome: a.nome, estilo: { preenchimento: COR_ANCORA[a.grupo] ?? COR_ANCORA.infraestrutura, contorno: '#ffffff', espessura: 1, marcador: { forma: 'quadrado', tamanho: 9 } } } })) } as any });
+      out.push({ id: 'ancoras', nome: 'Âncoras', dados: { type: 'FeatureCollection', features: this.ancoras.map((a) => ({ type: 'Feature', id: `ancora:${a.id}`, geometry: ponto(a.longitude, a.latitude), properties: { id: `ancora:${a.id}`, nome: a.nome, estilo: { preenchimento: a.grupo === 'comercio_servico' ? p.ancoraComercio : p.ancoraInfraestrutura, contorno: p.bordaPonto, espessura: 1, marcador: { forma: 'quadrado', tamanho: 9 } } } })) } as any });
     }
     if (ligadas.has('lancamentos')) {
-      out.push({ id: 'lancamentos', nome: 'Lançamentos', dados: { type: 'FeatureCollection', features: this.lancamentos.map((l) => ({ type: 'Feature', id: `lancamento:${l.id}`, geometry: ponto(l.longitude, l.latitude), properties: { id: `lancamento:${l.id}`, estilo: { preenchimento: COR_LANCAMENTO, contorno: '#ffffff', espessura: 1, marcador: { forma: 'losango', tamanho: 11 } } } })) } as any });
+      out.push({ id: 'lancamentos', nome: 'Lançamentos', dados: { type: 'FeatureCollection', features: this.lancamentos.map((l) => ({ type: 'Feature', id: `lancamento:${l.id}`, geometry: ponto(l.longitude, l.latitude), properties: { id: `lancamento:${l.id}`, estilo: { preenchimento: p.lancamento, contorno: p.bordaPonto, espessura: 1, marcador: { forma: 'losango', tamanho: 11 } } } })) } as any });
     }
     if (ligadas.has('anuncios')) {
       const cortes = this.cortes;
-      out.push({ id: 'anuncios', nome: 'Anúncios', dados: { type: 'FeatureCollection', features: this.anuncios.map((a) => ({ type: 'Feature', id: `anuncio:${a.id}`, geometry: ponto(a.longitude, a.latitude), properties: { id: `anuncio:${a.id}`, estilo: estiloAnuncio(a.preco_m2, cortes, a.precisao_coordenada) } })) } as any });
+      out.push({ id: 'anuncios', nome: 'Anúncios', dados: { type: 'FeatureCollection', features: this.anuncios.map((a) => ({ type: 'Feature', id: `anuncio:${a.id}`, geometry: ponto(a.longitude, a.latitude), properties: { id: `anuncio:${a.id}`, estilo: estiloAnuncio(a.preco_m2, cortes, a.precisao_coordenada, p) } })) } as any });
     }
     return out;
   }
@@ -230,6 +245,8 @@ export class IntelImobMapa extends LitElement {
   private camadasPainel() {
     const ligadas = this.camadasLigadas;
     const cortes = this.cortes;
+    const p = this.paleta;
+    if (!p) return nothing;
     return html`<urbi-card titulo="Camadas e legenda" icone="fa-solid fa-layer-group">
       <urbi-stack>
         <urbi-linha quebrar>
@@ -237,11 +254,12 @@ export class IntelImobMapa extends LitElement {
             @urbi:botao-alternar-change=${(e: CustomEvent<boolean>) => this.alternarCamada(c.id, e.detail)}>${c.rotulo}</urbi-botao-alternar>`)}
         </urbi-linha>
         <intel-imob-legenda .itens=${[
-          ...(cortes.length ? RAMPA_PRECO.map((cor, i) => ({ cor, rotulo: `Anúncio R$/m² ${i === 0 ? `até ${brl(cortes[0])}` : i === 4 ? `acima de ${brl(cortes[3])}` : `${brl(cortes[i - 1])} – ${brl(cortes[i])}`}` })) : []),
-          { cor: COR_SEM_PRECO, rotulo: 'Anúncio sem preço/m²' },
-          { cor: COR_LANCAMENTO, rotulo: 'Lançamento' },
-          { cor: COR_ANCORA.infraestrutura, rotulo: 'Âncora de infraestrutura' },
-          { cor: COR_ANCORA.comercio_servico, rotulo: 'Âncora de comércio e serviço' },
+          ...(cortes.length ? p.rampa.map((cor, i) => ({ cor, rotulo: `Anúncio R$/m² ${i === 0 ? `até ${brl(cortes[0])}` : i === 4 ? `acima de ${brl(cortes[3])}` : `${brl(cortes[i - 1])} – ${brl(cortes[i])}`}` })) : []),
+          { cor: p.semPreco, rotulo: 'Anúncio sem preço/m²' },
+          { cor: p.lancamento, rotulo: 'Lançamento' },
+          { cor: p.ancoraInfraestrutura, rotulo: 'Âncora de infraestrutura' },
+          { cor: p.ancoraComercio, rotulo: 'Âncora de comércio e serviço' },
+          { cor: p.importado, rotulo: 'Contorno importado' },
         ]}></intel-imob-legenda>
         <urbi-prosa papel="dica">Ponto transparente e tracejado: localização aproximada (centro da localidade), não serve para distância.</urbi-prosa>
       </urbi-stack>
@@ -330,7 +348,7 @@ export class IntelImobLegenda extends LitElement {
   render() {
     return html`<urbi-stack>
       ${this.itens.map((i) => html`<urbi-linha>
-        <span role="img" aria-label=${`cor ${i.rotulo}`} style=${`background:${i.cor};display:inline-block;width:14px;height:14px;border-radius:3px`}></span>
+        <span role="img" aria-label=${`cor ${i.rotulo}`} style=${`background:${i.cor};display:inline-block;width:14px;height:14px`}></span>
         <urbi-prosa inline>${i.rotulo}</urbi-prosa>
       </urbi-linha>`)}
     </urbi-stack>`;
