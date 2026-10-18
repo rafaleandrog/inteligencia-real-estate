@@ -2,6 +2,7 @@ import { Router, type Request } from 'express';
 import { ehObjetoTipo } from '../../comum/objetos';
 import { COMBINACOES, ENTIDADES_NUCLEO, SUBTIPOS_IMOVEL, tabelaNucleo, type EntidadeNucleo, type SubtipoImovel } from '../../comum/vinculos';
 import { objetoAtivo, tabelaDoObjeto } from '../atributos/catalogo';
+import { areaComAcesso, areasOcultas, exigirAcessoArea } from './acesso-objeto';
 import { ErroApp, exigirPapel, idDaRota, naoEncontrado, paginacao, rota, textoQuery, usuarioId } from './comum';
 import { criarCadastro, editarCadastro, escolher, historico, removerCadastro, restaurarCadastro } from './cadastro-comum';
 
@@ -56,6 +57,18 @@ vinculos.get('/vinculos-nucleo', rota(async (req, res) => {
   }
   const removidos = textoQuery(req, 'removidos');
   const { pagina, por_pagina } = paginacao(req);
+  // Vínculo de área própria só é lido por quem lê a área (5.25): fora antes da paginação.
+  const ocultas = await areasOcultas(req);
+  if (ocultas.size) {
+    if (filtros.objeto_tipo === 'area_estudo' && ocultas.has(Number(filtros.objeto_id))) throw naoEncontrado();
+    const deAreas = await req.dados!.varrerTudo('vinculos_nucleo', { filtros: { objeto_tipo: 'area_estudo' }, removidos: 'incluir' });
+    const fora = new Set(deAreas.filter((v) => ocultas.has(Number(v.objeto_id))).map((v) => Number(v.id)));
+    if (fora.size) {
+      const todos = await req.dados!.varrerTudo('vinculos_nucleo', { filtros, removidos: 'incluir' });
+      const permitidos = todos.map((v) => Number(v.id)).filter((id) => !fora.has(id));
+      filtros.id = permitidos.length ? permitidos : [0];
+    }
+  }
   res.json(await req.dados!.listar('vinculos_nucleo', {
     filtros, pagina, por_pagina, ordenar: 'id', ordem: 'desc',
     ...(removidos === 'incluir' || removidos === 'apenas' ? { removidos: removidos as 'incluir' | 'apenas' } : {}),
@@ -93,7 +106,16 @@ vinculos.get('/vinculos-nucleo/mapa', rota(async (req, res) => {
   res.json({ type: 'FeatureCollection', features });
 }));
 
+/** Vínculo pelo id, com o sigilo da área a que ele pende. */
+async function vinculoVisivel(req: Request, id: number): Promise<Linha> {
+  const v = await req.dados!.buscar('vinculos_nucleo', id, { incluir_removidos: true });
+  if (!v) throw naoEncontrado();
+  if (v.objeto_tipo === 'area_estudo') await areaComAcesso(req, Number(v.objeto_id), 'ler');
+  return v;
+}
+
 vinculos.get('/vinculos-nucleo/:id/historico', rota(async (req, res) => {
+  await vinculoVisivel(req, idDaRota(req));
   res.json({ dados: await historico(req, 'vinculos_nucleo', idDaRota(req)) });
 }));
 
@@ -108,6 +130,7 @@ vinculos.post('/vinculos-nucleo', rota(async (req, res) => {
   }
   const objeto = await req.dados!.buscar(tabelaDoObjeto(tipo), objetoId);
   if (!objeto) throw naoEncontrado();
+  if (tipo === 'area_estudo') exigirAcessoArea(req, objeto, 'ler');
   const [existente] = await req.dados!.varrerTudo('vinculos_nucleo', { filtros: { objeto_tipo, objeto_id: objetoId, entidade, nucleo_id: nucleoId } });
   if (existente) throw new ErroApp(409, 'DADOS_UNIQUE_VIOLADO', 'Este vínculo já existe.');
   await conferirNoNucleo(req, entidade, subtipo, nucleoId);
@@ -121,15 +144,18 @@ vinculos.post('/vinculos-nucleo', rota(async (req, res) => {
 
 vinculos.patch('/vinculos-nucleo/:id', rota(async (req, res) => {
   exigirPapel(req, 'curador');
+  await vinculoVisivel(req, idDaRota(req));
   res.json(await editarCadastro(req, 'vinculos_nucleo', idDaRota(req), escolher(req.body, ['notas'])));
 }));
 
 vinculos.patch('/vinculos-nucleo/:id/remover', rota(async (req, res) => {
   exigirPapel(req, 'curador');
+  await vinculoVisivel(req, idDaRota(req));
   res.json(await removerCadastro(req, 'vinculos_nucleo', idDaRota(req)));
 }));
 
 vinculos.patch('/vinculos-nucleo/:id/restaurar', rota(async (req, res) => {
   exigirPapel(req, 'curador');
+  await vinculoVisivel(req, idDaRota(req));
   res.json(await restaurarCadastro(req, 'vinculos_nucleo', idDaRota(req)));
 }));

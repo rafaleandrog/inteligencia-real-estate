@@ -55,6 +55,8 @@ export class IntelImobAtributosObjeto extends LitElement {
   @property() tipo: ObjetoTipo = 'contorno';
   @property({ type: Number }) objetoId = 0;
   @property({ type: Boolean }) removido = false;
+  /** Quem pode escrever no objeto, quando a regra não é só o papel (área de estudo: autor ou curador). */
+  @property({ attribute: false }) podeEditar: boolean | null = null;
   @state() private dados: any = null;
   @state() private erro = '';
 
@@ -105,7 +107,7 @@ export class IntelImobAtributosObjeto extends LitElement {
   render() {
     if (this.erro) return html`<urbi-banner variante="erro">${this.erro}</urbi-banner>`;
     if (!this.dados) return html`<urbi-loading></urbi-loading>`;
-    const pode = temPapel('curador') && !this.removido;
+    const pode = (this.podeEditar ?? temPapel('curador')) && !this.removido;
     const grupos = this.dados.grupos as any[];
     if (!grupos.length) {
       return html`<urbi-prosa papel="dica">Nenhum atributo extensível se aplica a ${OBJETOS[this.tipo].rotulo.toLowerCase()}. ${temPapel('curador') ? html`Crie em <a href=${uv().href('/cadastro/atributos')}>Cadastro › Atributos</a>.` : nothing}</urbi-prosa>`;

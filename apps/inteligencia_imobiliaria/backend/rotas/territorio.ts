@@ -218,7 +218,7 @@ territorio.patch('/contornos/:id/restaurar', rota(async (req, res) => {
 
 // --------------------------------------------- importação de KML/KMZ/GeoJSON
 
-async function lerFeicoes(req: Request, arquivoId: number) {
+export async function lerFeicoes(req: Request, arquivoId: number) {
   const lido = await req.arquivos?.ler(arquivoId);
   if (!lido) throw new ErroApp(410, 'ARQUIVO_EXPIRADO', 'O arquivo não está mais disponível; envie de novo.');
   const bytes = new Uint8Array(await readFile(lido.caminho_fs));

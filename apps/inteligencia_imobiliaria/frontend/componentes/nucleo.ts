@@ -251,7 +251,7 @@ export class IntelImobVinculosLista extends LitElement {
     const linhas = this.itens.filter((i) => !this.soQuebrados || i.estado !== 'resolve');
     const quebrados = this.itens.filter((i) => i.estado !== 'resolve').length;
     const colunas: UrbiColunaTabela[] = [
-      { id: 'objeto', label: 'Objeto da app', render: (l: any) => html`<a href=${uv().href(`/cadastro/${OBJETOS[l.vinculo.objeto_tipo as ObjetoTipo]?.cadastro}/${l.vinculo.objeto_id}`)}>${OBJETOS[l.vinculo.objeto_tipo as ObjetoTipo]?.rotulo ?? l.vinculo.objeto_tipo} #${l.vinculo.objeto_id}</a>` },
+      { id: 'objeto', label: 'Objeto da app', render: (l: any) => html`<a href=${uv().href(l.vinculo.objeto_tipo === 'area_estudo' ? `/estudos/${l.vinculo.objeto_id}` : `/cadastro/${OBJETOS[l.vinculo.objeto_tipo as ObjetoTipo]?.cadastro}/${l.vinculo.objeto_id}`)}>${OBJETOS[l.vinculo.objeto_tipo as ObjetoTipo]?.rotulo ?? l.vinculo.objeto_tipo} #${l.vinculo.objeto_id}</a>` },
       { id: 'nucleo', label: 'No núcleo', valor: (l: any) => l.titulo },
       { id: 'estado', label: 'Estado', largura: '190px', render: (l: any) => (l.estado === 'resolve' ? html`<urbi-badge cor="sucesso">resolve</urbi-badge>` : html`<urbi-badge cor=${l.estado === 'sem_permissao' ? 'alerta' : 'erro'}>${ROTULO_ESTADO[l.estado as EstadoNucleo]}</urbi-badge>`) },
       { id: 'quando', label: 'Vinculado em', largura: '140px', valor: (l: any) => formatar({ tipo: 'datahora' }, l.vinculo.vinculado_em) },
@@ -260,7 +260,7 @@ export class IntelImobVinculosLista extends LitElement {
     return html`<urbi-hospedeiro><urbi-stack>
       ${this.itens.find((i) => i.estado === 'sem_permissao') ? html`<urbi-banner variante="alerta">O admin da instância precisa ligar a leitura do imobiliário na aba Núcleo da app.</urbi-banner>` : nothing}
       <urbi-linha justificar="entre" quebrar>
-        <urbi-prosa papel="dica">Cada vínculo é lido agora no núcleo; nada é copiado. ${quebrados ? `${quebrados} não resolve${quebrados > 1 ? 'm' : ''}.` : ''} Para vincular, abra a ficha do contorno ou do lançamento.</urbi-prosa>
+        <urbi-prosa papel="dica">Cada vínculo é lido agora no núcleo; nada é copiado. ${quebrados ? `${quebrados} não resolve${quebrados > 1 ? 'm' : ''}.` : ''} Para vincular, abra a ficha do contorno, do lançamento ou da área de estudo.</urbi-prosa>
         <urbi-checkbox label="Só os que não resolvem" .marcado=${this.soQuebrados} @urbi:checkbox-change=${(e: CustomEvent) => (this.soQuebrados = e.detail.marcado)}></urbi-checkbox>
       </urbi-linha>
       <urbi-tabela responsivo="multiline" .colunas=${colunas} .linhas=${linhas} mensagem-vazio=${this.soQuebrados ? 'Todos os vínculos resolvem.' : 'Nenhum vínculo com o núcleo.'}></urbi-tabela>

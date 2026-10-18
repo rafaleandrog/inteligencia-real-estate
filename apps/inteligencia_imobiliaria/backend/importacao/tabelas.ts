@@ -20,6 +20,8 @@ export interface CtxImportacao {
   cidadeId: number;
   /** Cache por processo de importação (localidades, existentes…). */
   cache: Map<string, unknown>;
+  /** Papéis de quem importa: linha de área própria só entra para o curador (11.5). */
+  papeis?: { curador: boolean };
 }
 
 export interface LinhaPreparada {
@@ -363,7 +365,58 @@ const ancoras: GanchosTabela = {
   chave: (d) => (d.id_legado ? `legado|${d.id_legado}` : d.nome ? `nome|${chaveNome(d.nome)}|${d.categoria}` : null),
 };
 
+// ---------------------------------------------------------------------------
+// Áreas de estudo (15.1b): os demais campos e os atributos de áreas criadas pela
+// tela ou por KMZ; linha nova precisa de ponto (latitude/longitude) ou geometria.
+
+const ESTAGIOS_DECISAO_IMPORT = new Set(['iniciativa', 'projeto', 'negocio_ativo', 'encerrada']);
+
+const areasEstudo: GanchosTabela = {
+  async carregar(ctx) {
+    await carregarLocalidades(ctx);
+    const proprias = await ctx.dados.varrerTudo('areas_estudo', { filtros: { tipo: 'propria' }, removidos: 'incluir' });
+    ctx.cache.set('areas_proprias', new Set(proprias.map((a) => chaveNome(String(a.nome)))));
+  },
+  async preparar(v, ctx, erros) {
+    const dados: Record<string, unknown> = { ...v };
+    delete dados.localidade;
+    const proprias = ctx.cache.get('areas_proprias') as Set<string> | undefined;
+    const tocaPropria = v.tipo === 'propria' || (v.nome ? proprias?.has(chaveNome(String(v.nome))) : false);
+    if (tocaPropria && !ctx.papeis?.curador) {
+      erros.push({ coluna: 'tipo', codigo: 'PAPEL_EXIGIDO', mensagem: 'área própria só entra para o curador' });
+    }
+    if (v.estagio && ESTAGIOS_DECISAO_IMPORT.has(String(v.estagio))) {
+      erros.push({ coluna: 'estagio', codigo: 'DECISAO_PELA_TELA', mensagem: 'estágio de decisão (iniciativa ou além, encerrada) só pela tela, por quem decide, com motivo' });
+    }
+    if ('localidade' in v) dados.localidade_id = await exigirLocalidade(ctx, v.localidade, 'localidade', erros, false);
+    let g = (v.geometria as Geometria | null) ?? null;
+    if (!g && v.centroide_latitude !== null && v.centroide_latitude !== undefined && v.centroide_longitude !== null && v.centroide_longitude !== undefined) {
+      if (!coordenada(v.centroide_latitude, v.centroide_longitude)) erros.push({ coluna: 'latitude', codigo: 'COORDENADA_INVALIDA', mensagem: 'par de coordenadas fora da faixa' });
+      else g = { type: 'Point', coordinates: [Number(v.centroide_longitude), Number(v.centroide_latitude)] } as Geometria;
+    }
+    if (g) {
+      const problemas = validarGeometria(g);
+      if (problemas.length) erros.push({ coluna: 'geometria', codigo: 'POLIGONO_INVALIDO', mensagem: problemas.join('; ') });
+      else {
+        const d = derivarGeometria(g);
+        Object.assign(dados, {
+          geometria: g, geometria_tipo: d.geometria_tipo, bbox_oeste: d.bbox_oeste, bbox_sul: d.bbox_sul, bbox_leste: d.bbox_leste, bbox_norte: d.bbox_norte,
+          centroide_latitude: d.centroide_latitude, centroide_longitude: d.centroide_longitude, area_m2: d.area_m2, geometria_hash: d.geometria_hash,
+        });
+      }
+    }
+    dados.cidade_id = ctx.cidadeId;
+    dados.autor_id = ctx.usuarioId;
+    if (v.responsavel_id === undefined || v.responsavel_id === null) dados.responsavel_id = ctx.usuarioId;
+    if (!v.estagio) dados.estagio = 'sinal';
+    return { dados, achados: [] };
+  },
+  chave: (d) => (d.nome ? `nome|${chaveNome(String(d.nome))}` : null),
+  derivadasDe: { geometria: ['geometria_tipo', 'bbox_oeste', 'bbox_sul', 'bbox_leste', 'bbox_norte', 'area_m2', 'geometria_hash', 'centroide_latitude', 'centroide_longitude'] },
+};
+
 export const GANCHOS: Record<string, GanchosTabela> = {
+  areas_estudo: areasEstudo,
   localidades,
   localidade_perfis: localidadePerfis,
   contornos,

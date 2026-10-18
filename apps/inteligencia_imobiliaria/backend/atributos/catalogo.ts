@@ -10,7 +10,7 @@ type Linha = Record<string, any>;
  * nasce completo (spec 5.24); a rota só aceita o tipo cuja tabela já está no
  * `schema.json` — o teste de estrutura confere este conjunto contra ele.
  */
-export const OBJETOS_ATIVOS = new Set<ObjetoTipo>(['anuncio', 'lancamento', 'ancora', 'contorno']);
+export const OBJETOS_ATIVOS = new Set<ObjetoTipo>(['anuncio', 'lancamento', 'ancora', 'contorno', 'area_estudo']);
 
 export function objetoAtivo(tipo: unknown): ObjetoTipo {
   if (!ehObjetoTipo(tipo) || !OBJETOS_ATIVOS.has(tipo)) {

@@ -2475,6 +2475,190 @@
           "nucleo_id"
         ]
       ]
+    },
+    "areas_estudo": {
+      "acesso_externo": "restrito",
+      "soft_delete": true,
+      "id_legivel": "{nome}",
+      "colunas": {
+        "nome": {
+          "tipo": "texto",
+          "limite": 200,
+          "obrigatorio": true
+        },
+        "tipo": {
+          "tipo": "texto",
+          "limite": 20,
+          "opcoes": [
+            "propria",
+            "prospeccao",
+            "referencia"
+          ],
+          "obrigatorio": true
+        },
+        "cidade_id": {
+          "tipo": "referencia",
+          "tabela_ref": "cidades",
+          "ao_deletar": "restringir",
+          "obrigatorio": true
+        },
+        "geometria": {
+          "tipo": "json",
+          "obrigatorio": true
+        },
+        "geometria_tipo": {
+          "tipo": "texto",
+          "limite": 20,
+          "obrigatorio": true
+        },
+        "bbox_oeste": {
+          "tipo": "decimal",
+          "precisao": 10,
+          "escala": 7,
+          "obrigatorio": true
+        },
+        "bbox_sul": {
+          "tipo": "decimal",
+          "precisao": 10,
+          "escala": 7,
+          "obrigatorio": true
+        },
+        "bbox_leste": {
+          "tipo": "decimal",
+          "precisao": 10,
+          "escala": 7,
+          "obrigatorio": true
+        },
+        "bbox_norte": {
+          "tipo": "decimal",
+          "precisao": 10,
+          "escala": 7,
+          "obrigatorio": true
+        },
+        "centroide_latitude": {
+          "tipo": "decimal",
+          "precisao": 10,
+          "escala": 7,
+          "obrigatorio": true
+        },
+        "centroide_longitude": {
+          "tipo": "decimal",
+          "precisao": 10,
+          "escala": 7,
+          "obrigatorio": true
+        },
+        "area_m2": {
+          "tipo": "decimal",
+          "precisao": 16,
+          "escala": 2
+        },
+        "geometria_hash": {
+          "tipo": "texto",
+          "limite": 64,
+          "obrigatorio": true
+        },
+        "estagio": {
+          "tipo": "texto",
+          "limite": 20,
+          "opcoes": [
+            "sinal",
+            "hipotese",
+            "oportunidade",
+            "iniciativa",
+            "projeto",
+            "negocio_ativo",
+            "encerrada"
+          ],
+          "obrigatorio": true,
+          "padrao": "sinal"
+        },
+        "motivo_encerramento": {
+          "tipo": "texto",
+          "limite": 300
+        },
+        "aprendizado": {
+          "tipo": "texto_longo"
+        },
+        "responsavel_id": {
+          "tipo": "referencia",
+          "tabela_ref": "shell.usuarios",
+          "ao_deletar": "anular",
+          "campos_incluir": [
+            "nome as responsavel_nome"
+          ]
+        },
+        "autor_id": {
+          "tipo": "referencia",
+          "tabela_ref": "shell.usuarios",
+          "ao_deletar": "anular",
+          "campos_incluir": [
+            "nome as autor_nome"
+          ]
+        },
+        "localidade_id": {
+          "tipo": "referencia",
+          "tabela_ref": "localidades",
+          "ao_deletar": "anular"
+        },
+        "contorno_id": {
+          "tipo": "referencia",
+          "tabela_ref": "contornos",
+          "ao_deletar": "anular"
+        },
+        "arquivo_origem": {
+          "tipo": "arquivo",
+          "tamanho_max_mb": 20,
+          "mimes": [
+            "application/vnd.google-earth.kml+xml",
+            "application/vnd.google-earth.kmz",
+            "application/geo+json",
+            "application/json",
+            "application/octet-stream"
+          ]
+        },
+        "notas": {
+          "tipo": "texto_longo"
+        },
+        "importacao_id": {
+          "tipo": "referencia",
+          "tabela_ref": "importacoes",
+          "ao_deletar": "anular"
+        },
+        "versao": {
+          "tipo": "inteiro",
+          "obrigatorio": true,
+          "padrao": 1
+        }
+      },
+      "indices": [
+        [
+          "tipo",
+          "estagio"
+        ],
+        [
+          "responsavel_id"
+        ],
+        [
+          "autor_id"
+        ],
+        [
+          "cidade_id"
+        ],
+        [
+          "bbox_oeste",
+          "bbox_leste"
+        ],
+        [
+          "bbox_sul",
+          "bbox_norte"
+        ],
+        [
+          "importacao_id"
+        ],
+        [
+          "geometria_hash"
+        ]
+      ]
     }
   }
 }

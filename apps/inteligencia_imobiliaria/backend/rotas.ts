@@ -11,6 +11,7 @@ import { mapa } from './rotas/mapa';
 import { coletas } from './rotas/coletas';
 import { atributos } from './rotas/atributos';
 import { vinculos } from './rotas/vinculos';
+import { estudos } from './rotas/estudos';
 import { CONTAGENS_LOCALIDADE } from './rotas/territorio';
 export { rotasPessoais } from './rotas/pessoais';
 
@@ -42,6 +43,7 @@ rotas.use(mapa);
 rotas.use(mercadoCadastro);
 rotas.use(atributos);
 rotas.use(vinculos);
+rotas.use(estudos);
 
 CONTAGENS_LOCALIDADE.push(
   { chave: 'anuncios_ativos', tabela: 'anuncios', filtros: { status: 'ativo' } },

@@ -27,6 +27,13 @@ repositório; o recorte da primeira versão, em `docs/MVP_PROPOSTA.md`.
     permissão de leitura).
 - **Mapa** (`/mapa`): a camada **Núcleo** desenha os objetos vinculados pela geometria da própria
   app, com o selo; o traçado oficial do lote fica para quando o SDK publicar o módulo `geo`.
+- **Estudos de área** (`/estudos`): áreas por desenho, por ponto, por KML/KMZ do Urbigis/Magis ou por
+  CSV, agrupadas por estágio. Cada área abre com o mapa, os campos, o bloco "Do núcleo imobiliário"
+  (lotes, parcelamentos e matrículas ligados, lidos agora) e o bloco "Atributos". Quem cria (ou o
+  curador) edita; de **iniciativa** em diante, e para **encerrar**, o estágio é decisão do
+  **decisor** (ou do admin), com motivo, que fica no histórico. Área **própria** é sigilosa: só
+  `estrategico`, `curador` ou o responsável a veem, e o "Baixar CSV" não a traz para ninguém.
+  Dossiê, anéis e fichas chegam na fase 4B.
 - **Operação** (`/operacao`): importações CSV com prévia, aplicar e desfazer, os achados de
   qualidade e as execuções. Ver [Importação](importacao.md), inclusive a migração da planilha.
 - O menu da app tem onze áreas. Cada área entra numa fase; a tela diz quando.
@@ -71,4 +78,12 @@ repositório; o recorte da primeira versão, em `docs/MVP_PROPOSTA.md`.
   `422 VINCULO_NUCLEO_INEXISTENTE`, `403 NUCLEO_FLAG_*`), `PATCH /vinculos-nucleo/:id` (`notas`, com
   `versao`), `PATCH /vinculos-nucleo/:id/remover|restaurar`. O registro do núcleo é lido pelo
   frontend, por `comum/nucleo-cliente.ts`.
+- Estudos: `GET /estudos?tipo&estagio&responsavel=<id|eu>&q&atr_*&pagina&formato=csv` (área
+  própria fora da lista e do `total` para quem não a lê), `GET /estudos/:id` e `/:id/historico`
+  (área que o usuário não lê responde `404`), `POST /estudos` (`geometria`, ou `latitude` e
+  `longitude`; `tipo = propria` só curador), `PATCH /estudos/:id` com `versao` (estágio de
+  decisão: `decisor` e `motivo`, `403 PAPEL_EXIGIDO`/`422 MOTIVO_OBRIGATORIO`; sem ser autor nem
+  curador, `403 OBJETO_SEM_PERMISSAO`), `PATCH /estudos/:id/remover|restaurar`,
+  `POST /estudos/importar` e `/estudos/importar/:importacao_id/aplicar` (`{ tipo, estagio,
+  indices }`). Atributos e vínculos aceitam `area_estudo`, com o sigilo da área.
 - Importação e carga por agente: ver [Importação](importacao.md).
