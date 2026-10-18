@@ -44,7 +44,86 @@ const PERIODOS = [
 const COMPARACOES = [{ id: 'nenhum', rotulo: 'Sem comparação' }, { id: 'anterior', rotulo: 'Período anterior' }, { id: 'ano_anterior', rotulo: 'Ano anterior' }];
 const FAIXAS = ['TOTAL', '1Q', '2Q', '3Q', '4+Q'];
 
-/** Mercado (spec 10.3, itens 1 a 6 no MVP): IVV do período, derivados, gráficos e IVV por localidade. */
+const SEGMENTOS_FIPE = [{ id: 'residencial', rotulo: 'Residencial' }, { id: 'comercial', rotulo: 'Comercial' }];
+
+function grafico(g: Linha, formato: 'numero' | 'moeda' | 'porcentagem' = 'numero'): TemplateResult {
+  const cats = (g.categorias as string[]).map(rotuloMes);
+  const fator = formato === 'porcentagem' ? 100 : 1;
+  return html`<urbi-card titulo=${g.titulo}>
+    ${g.vazio
+      ? html`<urbi-prosa papel="dica">Sem dado publicado no período.</urbi-prosa>`
+      : html`<urbi-grafico-linha .categorias=${cats} .series=${g.series.map((x: Linha) => ({ rotulo: x.rotulo, valores: x.valores.map((v: number | null) => (v === null ? null : v * fator)) }))} formato=${formato} altura="200px"></urbi-grafico-linha>`}
+    ${g.resumo ? html`<urbi-prosa papel="dica">${g.resumo.valor} ${g.resumo.rotulo}</urbi-prosa>` : nothing}
+  </urbi-card>`;
+}
+
+/** FipeZap (10.3 item 7): total do DF com yield, e por localidade com venda × locação pareadas e ranking. */
+export class IntelImobFipezap extends LitElement {
+  static styles = [estiloPrimitivo];
+  @state() private serie: Linha | null = null;
+  @state() private segmento = 'residencial';
+  @state() private localidades: Linha[] = [];
+  @state() private localidade = '';
+  @state() private pareado: Linha | null = null;
+  @state() private erro = '';
+
+  connectedCallback() {
+    super.connectedCallback();
+    this.carregar();
+  }
+
+  async carregar() {
+    try {
+      this.serie = await uv().api('/mercado/fipezap');
+      await this.carregarLocalidades();
+    } catch (e) {
+      this.erro = mensagemDeErro(e);
+    }
+  }
+
+  private async carregarLocalidades() {
+    this.localidades = (await uv().api(`/mercado/fipezap/localidades?segmento=${this.segmento}`)).dados;
+    if (!this.localidades.some((l) => l.locality === this.localidade)) this.localidade = this.localidades[0]?.locality ?? '';
+    await this.carregarPareado();
+  }
+
+  private async carregarPareado() {
+    this.pareado = this.localidade ? await uv().api(`/mercado/fipezap/pareado?segmento=${this.segmento}&localidade=${encodeURIComponent(this.localidade)}`) : null;
+  }
+
+  render() {
+    if (this.erro) return html`<urbi-banner variante="erro">${this.erro}</urbi-banner>`;
+    if (!this.serie) return html`<urbi-loading></urbi-loading>`;
+    if (!this.serie.meses.length) return html`<urbi-prosa papel="dica">Sem FipeZap importado. Importe a aba FIPEZAP_MONTHLY.</urbi-prosa>`;
+    const formato = (chave: string) => (chave.includes('yield') ? 'porcentagem' : chave.includes('price-to-rent') ? 'numero' : 'moeda');
+    const doSeg = (this.serie.graficos_df as Linha[]).filter((g) => g.segmento === this.segmento.toUpperCase());
+    const rotulo = (l: Linha) => (l.ambiguous ? `${l.raName} · ${l.displayName}` : l.displayName);
+    const ranking: UrbiColunaTabela[] = [
+      { id: 'posicao', label: '#', largura: '50px', alinhamento: 'direita', valor: (l: any) => String(l.posicao) },
+      { id: 'rotulo', label: 'Localidade' },
+      { id: 'venda', label: 'Venda R$/m²', alinhamento: 'direita', valor: (l: any) => brl(l.venda) },
+      { id: 'locacao', label: 'Locação R$/m²/mês', alinhamento: 'direita', valor: (l: any) => (l.locacao === null ? '—' : new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(l.locacao)) },
+      { id: 'yield_anual', label: 'Yield anual', alinhamento: 'direita', valor: (l: any) => (l.yield_anual === null ? '—' : pct(l.yield_anual, 2)) },
+      { id: 'diff_venda', label: 'Venda × DF', alinhamento: 'direita', valor: (l: any) => (l.diff_venda === null ? '—' : `${l.diff_venda > 0 ? '+' : ''}${pct(l.diff_venda)}`) },
+    ];
+    return html`<urbi-stack>
+      <urbi-chips-atalho .opcoes=${SEGMENTOS_FIPE} ativo=${this.segmento} @urbi:chip-atalho:click=${(e: CustomEvent) => { this.segmento = e.detail.id; this.carregarLocalidades(); }}></urbi-chips-atalho>
+      <urbi-prosa papel="subtitulo">Total do DF</urbi-prosa>
+      <urbi-grid min="300px">${doSeg.map((g) => grafico(g, formato(g.chave)))}</urbi-grid>
+      <urbi-prosa papel="dica">FipeZap é preço médio anunciado por m², não preço de transação. Yield: o oficial vence; o calculado entra só quando falta.</urbi-prosa>
+      <urbi-prosa papel="subtitulo">Por localidade</urbi-prosa>
+      ${this.localidades.length
+        ? html`<urbi-select label="Localidade" pesquisavel .valor=${this.localidade} .opcoes=${this.localidades.map((l) => ({ valor: l.locality, rotulo: rotulo(l) }))}
+            @urbi:select-change=${(e: CustomEvent) => { this.localidade = e.detail.valor; this.carregarPareado(); }}></urbi-select>
+          ${this.pareado ? html`<urbi-grid min="300px">${this.pareado.graficos.map((g: Linha) => grafico(g, 'moeda'))}</urbi-grid>
+            ${this.pareado.ranking.length ? html`<urbi-card titulo=${`Ranking de venda · ${rotuloMes(this.pareado.ranking_mes)}`}><urbi-tabela responsivo="multiline" .colunas=${ranking} .linhas=${this.pareado.ranking}></urbi-tabela></urbi-card>` : nothing}` : nothing}`
+        : html`<urbi-prosa papel="dica">Sem localidade com dado neste segmento.</urbi-prosa>`}
+    </urbi-stack>`;
+  }
+}
+definir('intel-imob-fipezap', IntelImobFipezap);
+
+/** Mercado (spec 10.3, itens 1 a 7 no MVP): IVV do período, derivados, gráficos e IVV por localidade. */
 export class IntelImobMercado extends LitElement {
   static styles = [estiloPrimitivo];
   @property() sub = '/mercado';
@@ -191,6 +270,8 @@ export class IntelImobMercado extends LitElement {
             ? html`<urbi-linha>
                 <urbi-botao variante="secundario" icone="fa-solid fa-file-import" @click=${() => (this.importando = 'ivv_mensal')}>Importar IVV mensal</urbi-botao>
                 <urbi-botao variante="secundario" icone="fa-solid fa-file-import" @click=${() => (this.importando = 'ivv_regional')}>Importar IVV por localidade</urbi-botao>
+                <urbi-botao variante="secundario" icone="fa-solid fa-file-import" @click=${() => (this.importando = 'fipezap_mensal')}>Importar FipeZap</urbi-botao>
+                <urbi-botao variante="secundario" icone="fa-solid fa-file-import" @click=${() => (this.importando = 'procedencias')}>Importar procedências</urbi-botao>
               </urbi-linha>`
             : nothing}
           ${!meses.length && this.serie
@@ -217,7 +298,7 @@ export class IntelImobMercado extends LitElement {
               ${a?.avisos?.length ? html`<urbi-banner variante="alerta">${a.avisos.slice(0, 3).map((w: Linha) => w.message).join(' · ')}</urbi-banner>` : nothing}
               ${this.graficos()}`}
           <urbi-card titulo="IVV por localidade" icone="fa-solid fa-ranking-star">${this.regionalBloco()}</urbi-card>
-          <urbi-prosa papel="dica">FipeZap entra no próximo passo desta fase.</urbi-prosa>
+          <urbi-card titulo="FipeZap" icone="fa-solid fa-tags"><intel-imob-fipezap></intel-imob-fipezap></urbi-card>
         </urbi-stack>
         ${this.importando
           ? html`<urbi-modal title="Importar CSV" maxWidth="860px" @urbi-modal:close=${() => { this.importando = ''; this.carregarTudo(); }}>

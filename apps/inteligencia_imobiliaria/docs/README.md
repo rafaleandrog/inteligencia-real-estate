@@ -39,7 +39,10 @@ repositório; o recorte da primeira versão, em `docs/MVP_PROPOSTA.md`.
   (preço de venda/m², vendas, IVV, VGV), os grupos de indicadores com a natureza de agregação
   escrita (fluxo soma, estoque faz média, preço é razão ponderada), os seis derivados com a fórmula,
   sete gráficos e o IVV por localidade (ranking, régua do DF, mapa de calor por faixa de quartos e
-  as três leituras da matriz preço × liquidez). Os números saem do mesmo motor de cálculo do site.
+  as três leituras da matriz preço × liquidez) e o FipeZap: o total do DF (venda, locação, yield e
+  meses de aluguel para pagar, residencial e comercial) e cada localidade com venda × locação do
+  mesmo mês, a diferença contra o DF e o ranking do mês; submercados dentro de uma RA (Asa Sul,
+  Asa Norte) aparecem com a RA no rótulo. Os números saem do mesmo motor de cálculo do site.
 - **Operação** (`/operacao`): importações CSV com prévia, aplicar e desfazer, os achados de
   qualidade e as execuções. Ver [Importação](importacao.md), inclusive a migração da planilha.
 - O menu da app tem onze áreas. Cada área entra numa fase; a tela diz quando.
@@ -96,4 +99,8 @@ repositório; o recorte da primeira versão, em `docs/MVP_PROPOSTA.md`.
   `GET /mercado/ivv/periodo?modo=month|ytd|last_12|year|all|custom&ano&mes&de&ate&comparar=nenhum|anterior|ano_anterior`
   (`atual` e `comparacao` com `valores`, `derivados` e `avisos`), `GET /mercado/ivv/acumulado?ano`,
   `GET /mercado/ivv/sazonalidade?metrica`, `GET /mercado/ivv-regional?mes&faixa_quartos`.
+- FipeZap: `GET /mercado/fipezap?segmento&tipo_transacao&escopo&localidade&de&ate` (`total`,
+  `localidade` e os oito `graficos_df`), `GET /mercado/fipezap/localidades?segmento`,
+  `GET /mercado/fipezap/pareado?segmento&localidade=<nome da fonte>` (venda × locação, yield e
+  ranking do mês).
 - Importação e carga por agente: ver [Importação](importacao.md).

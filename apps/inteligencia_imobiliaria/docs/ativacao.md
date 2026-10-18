@@ -101,3 +101,9 @@ Medir só com leitura, pela skill `instancia-urbiverso`, numa sessão com acesso
 - **Escala do IVV mensal sem declaração no mapeamento.** A spec aceitaria pontos percentuais se
   declarados; a app aceita só fração e recusa o resto, que é o que a planilha viva publica.
 - **Sem o modo `substituir_tudo`.** As séries usam "Atualizar" (por mês) e "Desfazer".
+- **Visão pareada do FipeZap em código, não em `sql_declarado`.** A rota monta venda × locação por
+  localidade das linhas de `fipezap_mensal` em memória (a série é pequena) e passa pelo motor do
+  site; o `serie_pareada_fipezap` fica para quando o volume pedir.
+- **Paridade do FipeZap sobre série sintética.** O retrato real da planilha ainda não foi exportado
+  (o proxy desta sessão bloqueia o Google Sheets); o gerador cria uma série determinística no
+  formato da aba e a passa pelo código do site.

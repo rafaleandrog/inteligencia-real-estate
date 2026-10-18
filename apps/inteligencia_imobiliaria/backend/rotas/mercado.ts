@@ -1,4 +1,5 @@
 import { Router, type Request } from 'express';
+import { graficosDf, linhasFipezap, localidadesFipezap, pareadoFipezap, pareadoPorLocalidade } from '../mercado/fipezap';
 import { acumuladoIvv, mesesIvv, METRICAS_IVV, periodoIvv, regionalIvv, sazonalidadeIvv, serieMensal } from '../mercado/ivv';
 import { ErroApp, numeroQuery, rota, textoQuery } from './comum';
 import { cidadeDoRequest } from './territorio-comum';
@@ -74,4 +75,57 @@ mercado.get('/mercado/ivv-regional', rota(async (req, res) => {
   const localidadeDe = new Map<string, number | null>(linhas.map((l) => [String(l.nome_regiao_fonte), l.localidade_id ?? null]));
   const meses = [...new Set((await req.dados!.varrerTudo('ivv_regional', { filtros: { cidade_id: cidade.id, faixa_quartos: 'TOTAL' } })).map((l) => String(l.mes_referencia).slice(0, 7)))].sort();
   res.json({ meses_disponiveis: meses, ...regionalIvv(linhas, textoQuery(req, 'faixa_quartos') ?? 'TOTAL', localidadeDe) });
+}));
+
+// ------------------------------------------------------------------ FipeZap
+
+async function linhasFipezapDaCidade(req: Request): Promise<Linha[]> {
+  const cidade = await cidadeDoRequest(req);
+  const linhas = await req.dados!.varrerTudo('fipezap_mensal', { filtros: { cidade_id: cidade.id }, ordenar: 'mes_referencia', ordem: 'asc' });
+  // O código da localidade (ra_geo_id) vai junto para o rótulo; nada é fundido.
+  const ids = [...new Set(linhas.map((l) => l.localidade_id).filter(Boolean))];
+  const locs = ids.length ? await req.dados!.varrerTudo('localidades', { filtros: { id: ids } }) : [];
+  const codigo = new Map(locs.map((l) => [l.id, l.codigo]));
+  return linhas.map((l) => ({ ...l, localidade_codigo: codigo.get(l.localidade_id) ?? null }));
+}
+
+function segmentoQuery(req: Request): string {
+  const s = textoQuery(req, 'segmento') ?? 'residencial';
+  if (!['residencial', 'comercial'].includes(s)) throw new ErroApp(400, 'FILTRO_INVALIDO', 'segmento: residencial ou comercial.');
+  return s;
+}
+
+/** Série (6.5): `total` e `localidade` separados; os oito gráficos do DF do site. */
+mercado.get('/mercado/fipezap', rota(async (req, res) => {
+  const brutas = await linhasFipezapDaCidade(req);
+  const { linhas, avisos } = linhasFipezap(brutas);
+  const de = mesQuery(req, 'de');
+  const ate = mesQuery(req, 'ate');
+  const filtro = (r: Linha) => (!de || r.period_id >= de) && (!ate || r.period_id <= ate)
+    && (!textoQuery(req, 'segmento') || r.segment_scope === segmentoQuery(req).toUpperCase())
+    && (!textoQuery(req, 'tipo_transacao') || r.transaction_type === String(textoQuery(req, 'tipo_transacao')).toUpperCase())
+    && (!textoQuery(req, 'localidade') || r.source_locality_name === textoQuery(req, 'localidade'));
+  const recorte = linhas.filter(filtro);
+  const meses = [...new Set(linhas.filter((r: Linha) => r.geography_scope === 'DF_TOTAL').map((r: Linha) => r.period_id))].sort();
+  res.json({
+    meses,
+    total: recorte.filter((r: Linha) => r.geography_scope === 'DF_TOTAL'),
+    localidade: textoQuery(req, 'escopo') === 'total' ? [] : recorte.filter((r: Linha) => r.geography_scope === 'LOCALIDADE'),
+    graficos_df: graficosDf(linhas, de, ate),
+    avisos,
+  });
+}));
+
+/** Localidades com dado no segmento, com classificação e rótulo desambiguado (submercado dentro de RA). */
+mercado.get('/mercado/fipezap/localidades', rota(async (req, res) => {
+  const { linhas } = linhasFipezap(await linhasFipezapDaCidade(req));
+  res.json({ dados: localidadesFipezap(pareadoPorLocalidade(linhas), segmentoQuery(req)) });
+}));
+
+/** Venda × locação do mesmo mês por localidade, com yield e o ranking do mês. */
+mercado.get('/mercado/fipezap/pareado', rota(async (req, res) => {
+  const localidade = textoQuery(req, 'localidade');
+  if (!localidade) throw new ErroApp(400, 'FILTRO_INVALIDO', 'Informe a localidade (nome da fonte).');
+  const { linhas } = linhasFipezap(await linhasFipezapDaCidade(req));
+  res.json({ localidade, ...pareadoFipezap(pareadoPorLocalidade(linhas), segmentoQuery(req), localidade) });
 }));

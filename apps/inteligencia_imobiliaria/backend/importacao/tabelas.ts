@@ -482,7 +482,42 @@ const ivvRegional: GanchosTabela = {
   chave: (d) => (d.mes_referencia ? `${String(d.mes_referencia).slice(0, 10)}|${d.nome_regiao_fonte}|${d.faixa_quartos}` : null),
 };
 
+const fipezapMensal: GanchosTabela = {
+  async carregar(ctx) {
+    await carregarLocalidades(ctx);
+  },
+  async preparar(v, ctx, erros) {
+    const dados: Record<string, unknown> = { ...v, cidade_id: ctx.cidadeId };
+    delete dados.localidade;
+    const mes = mesReferencia(v.mes_referencia);
+    if (!mes) erros.push({ coluna: 'mes_referencia', codigo: 'DATA_INVALIDA', mensagem: `"${v.mes_referencia}" não é mês (AAAA-MM)` });
+    dados.mes_referencia = mes;
+    dados.unidade_preco ??= v.tipo_transacao === 'locacao' ? 'brl_m2_mes' : 'brl_m2';
+    if (v.escopo_geografico === 'total') {
+      dados.localidade_id = null;
+      dados.nome_localidade_fonte ??= 'DF_TOTAL';
+    } else {
+      if (!v.nome_localidade_fonte) erros.push({ coluna: 'nome_localidade_fonte', codigo: 'OBRIGATORIO', mensagem: 'linha de localidade sem o nome da fonte' });
+      // Pela `ra_geo_id` informada ou pelo nome único da RA na fonte; sem casar, fica só o nome da fonte (rótulo, não fusão).
+      const cache = await carregarLocalidades(ctx);
+      const loc = resolverLocalidade(cache, v.localidade) ?? resolverLocalidade(cache, v.nome_ra_fonte);
+      dados.localidade_id = loc ? loc.id : null;
+    }
+    return { dados, achados: [] };
+  },
+  chave: (d) => (d.mes_referencia ? `${String(d.mes_referencia).slice(0, 10)}|${d.segmento}|${d.tipo_transacao}|${d.escopo_geografico}|${d.nome_localidade_fonte ?? ''}` : null),
+};
+
+const procedencias: GanchosTabela = {
+  async preparar(v) {
+    return { dados: { ...v }, achados: [] };
+  },
+  chave: (d) => (d.familia && d.codigo ? `${d.familia}|${d.codigo}` : null),
+};
+
 export const GANCHOS: Record<string, GanchosTabela> = {
+  fipezap_mensal: fipezapMensal,
+  procedencias,
   ivv_mensal: ivvMensal,
   ivv_regional: ivvRegional,
   areas_estudo: areasEstudo,
