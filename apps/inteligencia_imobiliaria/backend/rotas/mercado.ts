@@ -1,7 +1,7 @@
 import { Router, type Request } from 'express';
 import { graficosDf, linhasFipezap, localidadesFipezap, pareadoFipezap, pareadoPorLocalidade } from '../mercado/fipezap';
 import { acumuladoIvv, mesesIvv, METRICAS_IVV, periodoIvv, regionalIvv, sazonalidadeIvv, serieMensal } from '../mercado/ivv';
-import { ErroApp, numeroQuery, rota, textoQuery } from './comum';
+import { ErroApp, numeroQuery, ordenarEmMemoria, rota, textoQuery } from './comum';
 import { cidadeDoRequest } from './territorio-comum';
 
 type Linha = Record<string, any>;
@@ -25,7 +25,7 @@ async function linhasIvv(req: Request): Promise<Linha[]> {
   const mercadoQ = textoQuery(req, 'mercado');
   if (segmento) filtros.escopo_segmento = segmento;
   if (mercadoQ) filtros.escopo_mercado = mercadoQ;
-  return req.dados!.varrerTudo('ivv_mensal', { filtros, ordenar: 'mes_referencia', ordem: 'asc' });
+  return ordenarEmMemoria(await req.dados!.varrerTudo('ivv_mensal', { filtros }), 'mes_referencia');
 }
 
 function procedencia(linhas: Linha[]) {
@@ -81,7 +81,7 @@ mercado.get('/mercado/ivv-regional', rota(async (req, res) => {
 
 async function linhasFipezapDaCidade(req: Request): Promise<Linha[]> {
   const cidade = await cidadeDoRequest(req);
-  const linhas = await req.dados!.varrerTudo('fipezap_mensal', { filtros: { cidade_id: cidade.id }, ordenar: 'mes_referencia', ordem: 'asc' });
+  const linhas = ordenarEmMemoria(await req.dados!.varrerTudo('fipezap_mensal', { filtros: { cidade_id: cidade.id } }), 'mes_referencia');
   // O código da localidade (ra_geo_id) vai junto para o rótulo; nada é fundido.
   const ids = [...new Set(linhas.map((l) => l.localidade_id).filter(Boolean))];
   const locs = ids.length ? await req.dados!.varrerTudo('localidades', { filtros: { id: ids } }) : [];

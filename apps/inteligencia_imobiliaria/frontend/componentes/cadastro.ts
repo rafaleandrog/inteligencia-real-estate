@@ -427,7 +427,7 @@ export class IntelImobCadastroFicha extends LitElement {
                   <intel-imob-nucleo-objeto tipo=${c.objeto} .objetoId=${this.reg.id}></intel-imob-nucleo-objeto>
                 </urbi-stack>
               </urbi-card>
-              <urbi-prosa papel="subtitulo">Da pesquisa · app</urbi-prosa>`
+              <urbi-prosa papel="secao">Da pesquisa · app</urbi-prosa>`
             : nothing}
           ${this.secao('essencial')}
           ${c.blocosFicha ? c.blocosFicha(this.reg, this.recarregar) : nothing}

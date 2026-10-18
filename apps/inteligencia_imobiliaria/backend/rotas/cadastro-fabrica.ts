@@ -1,6 +1,6 @@
 import { Router, type Request } from 'express';
 import type { HelperDados } from '@urbiverso/sdk';
-import { ErroApp, exigirPapel, idDaRota, naoEncontrado, paginacao, rota, textoQuery, usuarioId, type Papel } from './comum';
+import { ErroApp, exigirPapel, idDaRota, naoEncontrado, ordenarEmMemoria, paginacao, rota, textoQuery, type Papel, usuarioId } from './comum';
 import { criarCadastro, diferenca, editarCadastro, escolher, historico, removerCadastro, restaurarCadastro } from './cadastro-comum';
 import { querCsv, responderCsv } from './exportar';
 import type { ObjetoTipo } from '../../comum/objetos';
@@ -79,15 +79,18 @@ export function rotasCadastro(def: DefCadastro): Router {
       if (ids) filtros.id = ids.length ? ids : [0];
     }
     const removidos = textoQuery(req, 'removidos');
+    // `relevancia` sem `texto` lança no helper (DADOS_ORDENACAO_INVALIDA): só nome de coluna passa.
+    const pedida = textoQuery(req, 'ordenar');
     const opcoes = {
       filtros,
-      ordenar: textoQuery(req, 'ordenar') ?? def.ordenar?.coluna ?? 'id',
+      ordenar: (pedida && /^[a-z][a-z0-9_]*$/.test(pedida) && pedida !== 'relevancia' ? pedida : undefined) ?? def.ordenar?.coluna ?? 'id',
       ordem: (textoQuery(req, 'ordem') === 'asc' ? 'asc' : textoQuery(req, 'ordem') === 'desc' ? 'desc' : def.ordenar?.ordem ?? 'desc') as 'asc' | 'desc',
       ...(busca && buscaColunas ? { busca_ou: { colunas: buscaColunas, termo: busca } } : {}),
       ...(removidos === 'incluir' || removidos === 'apenas' ? { removidos: removidos as 'incluir' | 'apenas' } : {}),
     };
     if (querCsv(req)) {
-      const linhas = await req.dados!.varrerTudo(def.tabela, opcoes);
+      const { ordenar, ordem, ...semOrdem } = opcoes;
+      const linhas = ordenarEmMemoria(await req.dados!.varrerTudo(def.tabela, semOrdem), ordenar, ordem);
       const anexadas = (def.anexar ? await def.anexar(req, linhas) : linhas).map(derivar);
       const atr = def.objeto ? await colunasAtributosCsv(req.dados!, def.objeto, anexadas) : { colunas: [], linhas: anexadas };
       responderCsv(res, def.tabela, [...def.colunasCsv, ...atr.colunas], atr.linhas, textoQuery(req, 'localidade') ?? '');

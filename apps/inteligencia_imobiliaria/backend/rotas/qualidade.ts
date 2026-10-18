@@ -16,7 +16,7 @@ qualidade.get('/qualidade', rota(async (req, res) => {
   const resolvido = textoQuery(req, 'resolvido') ?? 'false';
   if (resolvido !== 'todos') filtros['resolvido_em[nulo]'] = resolvido === 'false' ? 'true' : 'false';
   if (querCsv(req)) {
-    responderCsv(res, 'qualidade', COLUNAS, await req.dados!.varrerTudo('achados_qualidade', { filtros, ordenar: 'id', ordem: 'desc' }));
+    responderCsv(res, 'qualidade', COLUNAS, (await req.dados!.varrerTudo('achados_qualidade', { filtros })).reverse());
     return;
   }
   const { pagina, por_pagina } = paginacao(req);

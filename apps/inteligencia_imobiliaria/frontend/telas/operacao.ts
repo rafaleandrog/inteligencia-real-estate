@@ -203,19 +203,19 @@ export class IntelImobOperacao extends LitElement {
           { id: 'execucoes', label: 'Execuções', icone: 'fa-solid fa-list-check' },
         ]} ativa=${this.aba}
           @urbi:aba-selecionar=${(e: CustomEvent) => uv().navegarSub(`/operacao/${e.detail.id}`)}>
-          <div slot="importacoes">
+          <urbi-stack slot="importacoes">
             ${this.aba === 'importacoes'
               ? detalheId
                 ? html`<intel-imob-importacao-detalhe .importacaoId=${detalheId}></intel-imob-importacao-detalhe>`
                 : html`<intel-imob-importacoes></intel-imob-importacoes>`
               : nothing}
-          </div>
-          <div slot="qualidade">
+          </urbi-stack>
+          <urbi-stack slot="qualidade">
             ${this.aba === 'qualidade' ? html`<intel-imob-qualidade></intel-imob-qualidade>` : nothing}
-          </div>
-          <div slot="execucoes">
+          </urbi-stack>
+          <urbi-stack slot="execucoes">
             ${this.aba === 'execucoes' ? html`<intel-imob-execucoes></intel-imob-execucoes>` : nothing}
-          </div>
+          </urbi-stack>
         </urbi-abas>
       </urbi-shell-page>
     `;

@@ -3,7 +3,7 @@ import { property, state } from 'lit/decorators.js';
 import type { UrbiColunaTabela } from '@urbiverso/sdk';
 import { definir } from '../registro';
 import { estiloPrimitivo } from '../estilos';
-import { json, mensagemDeErro, patch, temPapel, uv } from '../api';
+import { irPara, json, mensagemDeErro, patch, temPapel, uv } from '../api';
 import { nucleo, type EstadoNucleo, type ErroNucleo } from '../../comum/nucleo-cliente';
 import { OBJETOS, type ObjetoTipo } from '../../comum/objetos';
 import { COMBINACOES, ROTULO_ENTIDADE, type EntidadeNucleo } from '../../comum/vinculos';
@@ -181,7 +181,7 @@ export class IntelImobNucleoObjeto extends LitElement {
     return html`<urbi-stack>
       <urbi-linha justificar="entre" quebrar>
         <urbi-linha>
-          <urbi-prosa papel="subtitulo">${i.titulo}</urbi-prosa>
+          <urbi-prosa papel="secao">${i.titulo}</urbi-prosa>
           ${i.estado !== 'resolve' ? html`<urbi-badge cor=${i.estado === 'sem_permissao' ? 'alerta' : 'erro'}>${ROTULO_ESTADO[i.estado]}</urbi-badge>` : nothing}
         </urbi-linha>
         ${pode && !this.compacto ? html`<urbi-botao variante="texto" pequeno icone="fa-solid fa-link-slash" @click=${() => this.desfazer(i.vinculo)}>Desfazer</urbi-botao>` : nothing}
@@ -251,7 +251,10 @@ export class IntelImobVinculosLista extends LitElement {
     const linhas = this.itens.filter((i) => !this.soQuebrados || i.estado !== 'resolve');
     const quebrados = this.itens.filter((i) => i.estado !== 'resolve').length;
     const colunas: UrbiColunaTabela[] = [
-      { id: 'objeto', label: 'Objeto da app', render: (l: any) => html`<a href=${uv().href(l.vinculo.objeto_tipo === 'area_estudo' ? `/estudos/${l.vinculo.objeto_id}` : `/cadastro/${OBJETOS[l.vinculo.objeto_tipo as ObjetoTipo]?.cadastro}/${l.vinculo.objeto_id}`)}>${OBJETOS[l.vinculo.objeto_tipo as ObjetoTipo]?.rotulo ?? l.vinculo.objeto_tipo} #${l.vinculo.objeto_id}</a>` },
+      { id: 'objeto', label: 'Objeto da app', render: (l: any) => {
+        const sub = l.vinculo.objeto_tipo === 'area_estudo' ? `/estudos/${l.vinculo.objeto_id}` : `/cadastro/${OBJETOS[l.vinculo.objeto_tipo as ObjetoTipo]?.cadastro}/${l.vinculo.objeto_id}`;
+        return html`<a href=${uv().href(sub)} @click=${(e: MouseEvent) => irPara(e, sub)}>${OBJETOS[l.vinculo.objeto_tipo as ObjetoTipo]?.rotulo ?? l.vinculo.objeto_tipo} #${l.vinculo.objeto_id}</a>`;
+      } },
       { id: 'nucleo', label: 'No núcleo', valor: (l: any) => l.titulo },
       { id: 'estado', label: 'Estado', largura: '190px', render: (l: any) => (l.estado === 'resolve' ? html`<urbi-badge cor="sucesso">resolve</urbi-badge>` : html`<urbi-badge cor=${l.estado === 'sem_permissao' ? 'alerta' : 'erro'}>${ROTULO_ESTADO[l.estado as EstadoNucleo]}</urbi-badge>`) },
       { id: 'quando', label: 'Vinculado em', largura: '140px', valor: (l: any) => formatar({ tipo: 'datahora' }, l.vinculo.vinculado_em) },
