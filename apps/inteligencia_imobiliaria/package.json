@@ -1,0 +1,23 @@
+{
+  "name": "inteligencia_imobiliaria",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "esbuild frontend/index.ts --bundle --external:@urbiverso/ui --format=esm --outfile=frontend/index.js --target=es2022 --minify --tsconfig=tsconfig.json && esbuild backend/rotas.ts --bundle --minify --format=esm --outfile=backend/rotas.js --platform=node --target=node20 --banner:js=\"import{createRequire}from'module';const require=createRequire(import.meta.url);\"",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "test": "node --experimental-strip-types --no-warnings --test \"testes/**/*.test.ts\"",
+    "empacotar": "pnpm build && urbi-empacotar inteligencia_imobiliaria --dir . --saida ../../dist"
+  },
+  "dependencies": {
+    "express": "catalog:",
+    "lit": "catalog:"
+  },
+  "devDependencies": {
+    "@types/express": "catalog:",
+    "@types/node": "catalog:",
+    "@urbiverso/sdk": "catalog:",
+    "esbuild": "catalog:",
+    "typescript": "catalog:"
+  }
+}
