@@ -1,6 +1,6 @@
 {
   "gerado_em": "2026-10-18",
-  "site_commit": "f02f9c156fa06364ce839f487b2320414a592b0c",
+  "site_commit": "ca3cf9b7784d8b61d36f6d5210082477b4e976d5",
   "entrada": "data/demo.json",
   "entrada_ivv": "tests/fixtures/ivv-monthly.json",
   "mapa": [
@@ -317,5 +317,190 @@
       }
     ]
   },
-  "diagnostico": []
+  "diagnostico": {
+    "kpis_todas": {
+      "population": 129330,
+      "households": 14700,
+      "avgHouseholdSize": 8.79795918367347,
+      "raCount": 6
+    },
+    "serie_todas": {
+      "dwelling": [
+        {
+          "label": "Casa",
+          "pct": 57.5
+        },
+        {
+          "label": "Apartamento",
+          "pct": 42.5
+        }
+      ],
+      "tenure": [
+        {
+          "label": "Próprio",
+          "pct": 75
+        },
+        {
+          "label": "Alugado",
+          "pct": 25
+        }
+      ],
+      "deed": [
+        {
+          "label": "Sim",
+          "pct": 56.8
+        }
+      ],
+      "age": [
+        {
+          "label": "0–14",
+          "pct": 32.378961543482994
+        },
+        {
+          "label": "15–29",
+          "pct": 16.54737019293537
+        },
+        {
+          "label": "30–44",
+          "pct": 16.785963140397957
+        },
+        {
+          "label": "45–59",
+          "pct": 17.024556087860542
+        },
+        {
+          "label": "60+",
+          "pct": 17.263149035323128
+        }
+      ]
+    },
+    "perfil_ra_03": [
+      {
+        "id": "verticalizacao",
+        "value": 38,
+        "status": "published",
+        "mediana": 42.5,
+        "n": 6,
+        "posicao": 4
+      },
+      {
+        "id": "locacao",
+        "value": 23,
+        "status": "published",
+        "mediana": 25,
+        "n": 6,
+        "posicao": 4
+      },
+      {
+        "id": "escritura",
+        "value": 54,
+        "status": "published",
+        "mediana": 54,
+        "n": 5,
+        "posicao": 3
+      },
+      {
+        "id": "ocupacao",
+        "value": 54,
+        "status": "published",
+        "mediana": 55,
+        "n": 6,
+        "posicao": 4
+      },
+      {
+        "id": "ate30min",
+        "value": null,
+        "status": "missing",
+        "mediana": null,
+        "n": 0,
+        "posicao": null
+      },
+      {
+        "id": "automovel",
+        "value": null,
+        "status": "missing",
+        "mediana": null,
+        "n": 0,
+        "posicao": null
+      },
+      {
+        "id": "internet",
+        "value": 76,
+        "status": "published",
+        "mediana": 77.5,
+        "n": 6,
+        "posicao": 4
+      }
+    ],
+    "ranking": [
+      {
+        "id": "deed",
+        "n": 5,
+        "primeira": "RA_20",
+        "primeira_valor": 75,
+        "ultima": "RA_01"
+      },
+      {
+        "id": "health",
+        "n": 6,
+        "primeira": "RA_20",
+        "primeira_valor": 60,
+        "ultima": "RA_01"
+      },
+      {
+        "id": "internet",
+        "n": 6,
+        "primeira": "RA_20",
+        "primeira_valor": 85,
+        "ultima": "RA_01"
+      }
+    ],
+    "dispersao_vert_loc": [
+      {
+        "codigo": "RA_20",
+        "x": 65,
+        "y": 35
+      },
+      {
+        "codigo": "RA_04",
+        "x": 47,
+        "y": 27
+      },
+      {
+        "codigo": "RA_02",
+        "x": 29,
+        "y": 19
+      },
+      {
+        "codigo": "RA_01",
+        "x": 20,
+        "y": 15
+      },
+      {
+        "codigo": "RA_05",
+        "x": 56,
+        "y": 31
+      },
+      {
+        "codigo": "RA_03",
+        "x": 38,
+        "y": 23
+      }
+    ],
+    "compras_ra_01": [
+      {
+        "grupo": "Alimentação, higiene e limpeza",
+        "itens": [
+          {
+            "label": "Na própria RA",
+            "pct": 60
+          },
+          {
+            "label": "Plano Piloto",
+            "pct": 20
+          }
+        ]
+      }
+    ]
+  }
 }

@@ -43,6 +43,13 @@ repositório; o recorte da primeira versão, em `docs/MVP_PROPOSTA.md`.
   meses de aluguel para pagar, residencial e comercial) e cada localidade com venda × locação do
   mesmo mês, a diferença contra o DF e o ranking do mês; submercados dentro de uma RA (Asa Sul,
   Asa Norte) aparecem com a RA no rótulo. Os números saem do mesmo motor de cálculo do site.
+- **Diagnóstico** (`/diagnostico`): a PDAD por localidade, em cinco abas. **Perfil territorial**:
+  ano (com a cobertura escrita), localidade ou "todas" (média entre localidades; população e
+  domicílios somam), tema; cartões com o gráfico de cada indicador e "Ver a figura" com as linhas
+  publicadas; para uma localidade, o **perfil imobiliário** contra a mediana das localidades, com
+  `n` e posição. **Ranking**, **Comparar** (2 a 6 localidades, kits prontos), **Dispersão** (as
+  nove leituras, com Pearson descritivo) e **Base de dados** (toda fonte com contagem, última
+  importação, método e achados abertos). Categoria suprimida pela fonte nunca vira zero.
 - **Operação** (`/operacao`): importações CSV com prévia, aplicar e desfazer, os achados de
   qualidade e as execuções. Ver [Importação](importacao.md), inclusive a migração da planilha.
 - O menu da app tem onze áreas. Cada área entra numa fase; a tela diz quando.
@@ -103,4 +110,8 @@ repositório; o recorte da primeira versão, em `docs/MVP_PROPOSTA.md`.
   `localidade` e os oito `graficos_df`), `GET /mercado/fipezap/localidades?segmento`,
   `GET /mercado/fipezap/pareado?segmento&localidade=<nome da fonte>` (venda × locação, yield e
   ranking do mês).
+- Diagnóstico: `GET /diagnostico/catalogo`, `/diagnostico/anos`,
+  `/diagnostico/perfil?ano&localidade=<código|todas>&tema`, `/diagnostico/perfil/detalhe?ano&localidade&indicador`,
+  `/diagnostico/ranking?ano&indicador`, `/diagnostico/comparar?ano&localidades=a,b&kit|indicadores`,
+  `/diagnostico/dispersao?ano&leitura`, `/diagnostico/base`. Sem `ano`, vale o de maior cobertura.
 - Importação e carga por agente: ver [Importação](importacao.md).

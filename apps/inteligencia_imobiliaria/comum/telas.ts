@@ -14,7 +14,7 @@ export interface AreaApp {
 export const AREAS: AreaApp[] = [
   { rota: '/mapa', titulo: 'Mapa', icone: 'fa-solid fa-map-location-dot', descricao: 'Anúncios, lançamentos, âncoras e contornos no território.', disponivel: true, quando: 'Entra na fase 1c do MVP.' },
   { rota: '/mercado', titulo: 'Mercado', icone: 'fa-solid fa-chart-line', descricao: 'IVV, IVV regional e FipeZap, com séries e derivados.', disponivel: true, quando: 'Entra na fase 2 do MVP.' },
-  { rota: '/diagnostico', titulo: 'Diagnóstico', icone: 'fa-solid fa-city', descricao: 'Perfil territorial, ranking, comparação e base de dados da PDAD.', disponivel: false, quando: 'Entra na fase 2 do MVP.' },
+  { rota: '/diagnostico', titulo: 'Diagnóstico', icone: 'fa-solid fa-city', descricao: 'Perfil territorial, ranking, comparação e base de dados da PDAD.', disponivel: true, quando: 'Entra na fase 2 do MVP.' },
   { rota: '/estudos', titulo: 'Estudos de área', icone: 'fa-solid fa-draw-polygon', descricao: 'Áreas de estudo por desenho ou KMZ, ligadas ao núcleo.', disponivel: true, quando: 'O cadastro mínimo de áreas entra na fase 15.1b.' },
   { rota: '/produto', titulo: 'Produto', icone: 'fa-solid fa-building', descricao: 'Demanda e produto.', disponivel: false, quando: 'Fora do MVP (fase 4B).' },
   { rota: '/comercio', titulo: 'Comércio e âncoras', icone: 'fa-solid fa-store', descricao: 'Comércio e âncoras.', disponivel: false, quando: 'Fora do MVP (fase 7).' },

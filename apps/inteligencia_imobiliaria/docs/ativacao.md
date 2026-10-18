@@ -107,3 +107,11 @@ Medir só com leitura, pela skill `instancia-urbiverso`, numa sessão com acesso
 - **Paridade do FipeZap sobre série sintética.** O retrato real da planilha ainda não foi exportado
   (o proxy desta sessão bloqueia o Google Sheets); o gerador cria uma série determinística no
   formato da aba e a passa pelo código do site.
+- **Paridade do Diagnóstico sobre PDAD sintética.** Mesma razão do FipeZap: o gerador cria uma
+  PDAD no formato da aba (seis RAs, suprimido, categoria numérica, compras) e a passa pelo código
+  do site; o teste confere KPIs, séries de "todas", perfil imobiliário, ranking, dispersão e
+  compras. A conferência com o retrato real fica para quando a planilha for exportada.
+- **Dispersão em tabela.** O SDK 100 não tem gráfico de dispersão; as leituras saem como tabela
+  de pontos com Pearson descritivo (exceção de UI registrada aqui e em `ui-excecoes.md`).
+- **Conjuntos públicos ficam para a fase de dados públicos.** Os indicadores territoriais do
+  ranking e as duas leituras de dispersão que dependem deles respondem sem valor, com a ressalva.

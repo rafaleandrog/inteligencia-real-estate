@@ -3165,6 +3165,223 @@
           "importacao_id"
         ]
       ]
+    },
+    "pdad_observacoes": {
+      "acesso_externo": "somente_leitura",
+      "id_legivel": "{codigo_indicador} {categoria_padrao} {ano}",
+      "colunas": {
+        "localidade_id": {
+          "tipo": "referencia",
+          "tabela_ref": "localidades",
+          "ao_deletar": "restringir",
+          "obrigatorio": true
+        },
+        "ano": {
+          "tipo": "inteiro",
+          "obrigatorio": true
+        },
+        "escopo_geografia": {
+          "tipo": "texto",
+          "limite": 20
+        },
+        "numero_figura": {
+          "tipo": "texto",
+          "limite": 20
+        },
+        "numero_tabela": {
+          "tipo": "texto",
+          "limite": 20
+        },
+        "secao": {
+          "tipo": "texto",
+          "limite": 80
+        },
+        "codigo_indicador": {
+          "tipo": "texto",
+          "limite": 80,
+          "obrigatorio": true
+        },
+        "nome_indicador": {
+          "tipo": "texto",
+          "limite": 200
+        },
+        "universo": {
+          "tipo": "texto",
+          "limite": 300
+        },
+        "dimensao_segmento": {
+          "tipo": "texto",
+          "limite": 120
+        },
+        "valor_segmento": {
+          "tipo": "texto",
+          "limite": 120
+        },
+        "categoria_resposta": {
+          "tipo": "texto",
+          "limite": 200
+        },
+        "categoria_padrao": {
+          "tipo": "texto",
+          "limite": 120,
+          "obrigatorio": true
+        },
+        "categoria_bruta": {
+          "tipo": "texto",
+          "limite": 200
+        },
+        "estimativa_total": {
+          "tipo": "decimal",
+          "precisao": 14,
+          "escala": 2
+        },
+        "estimativa_frac": {
+          "tipo": "decimal",
+          "precisao": 8,
+          "escala": 6
+        },
+        "status_valor": {
+          "tipo": "texto",
+          "limite": 20,
+          "opcoes": [
+            "publicado",
+            "parcial",
+            "suprimido"
+          ],
+          "obrigatorio": true
+        },
+        "origem_valor": {
+          "tipo": "texto",
+          "limite": 30,
+          "opcoes": [
+            "publicado",
+            "parcial_publicado",
+            "calculado",
+            "suprimido"
+          ]
+        },
+        "pagina_figura": {
+          "tipo": "inteiro"
+        },
+        "pagina_tabela": {
+          "tipo": "inteiro"
+        },
+        "arquivo_fonte": {
+          "tipo": "texto",
+          "limite": 300
+        },
+        "instituicao_fonte": {
+          "tipo": "texto",
+          "limite": 200
+        },
+        "base_extracao": {
+          "tipo": "texto",
+          "limite": 200
+        },
+        "localizador_fonte": {
+          "tipo": "texto",
+          "limite": 300
+        },
+        "notas": {
+          "tipo": "texto_longo"
+        },
+        "metodologia": {
+          "tipo": "json"
+        },
+        "erro_padrao": {
+          "tipo": "decimal",
+          "precisao": 14,
+          "escala": 4
+        },
+        "cv_frac": {
+          "tipo": "decimal",
+          "precisao": 6,
+          "escala": 5
+        },
+        "integracao_geografica": {
+          "tipo": "texto",
+          "limite": 20,
+          "opcoes": [
+            "nominal",
+            "padronizada"
+          ]
+        },
+        "importacao_id": {
+          "tipo": "referencia",
+          "tabela_ref": "importacoes",
+          "ao_deletar": "anular"
+        }
+      },
+      "unicos": [
+        {
+          "colunas": [
+            "localidade_id",
+            "ano",
+            "codigo_indicador",
+            "valor_segmento",
+            "categoria_padrao"
+          ],
+          "nulos_distintos": false
+        }
+      ],
+      "indices": [
+        [
+          "ano",
+          "codigo_indicador"
+        ],
+        [
+          "localidade_id",
+          "ano"
+        ],
+        [
+          "importacao_id"
+        ]
+      ]
+    },
+    "pdad_figuras": {
+      "acesso_externo": "somente_leitura",
+      "id_legivel": "{codigo_indicador}",
+      "colunas": {
+        "codigo_indicador": {
+          "tipo": "texto",
+          "limite": 80,
+          "obrigatorio": true
+        },
+        "numero_figura": {
+          "tipo": "texto",
+          "limite": 20
+        },
+        "numero_tabela": {
+          "tipo": "texto",
+          "limite": 20
+        },
+        "secao": {
+          "tipo": "texto",
+          "limite": 80
+        },
+        "nome_indicador": {
+          "tipo": "texto",
+          "limite": 200
+        },
+        "extras": {
+          "tipo": "json"
+        },
+        "importacao_id": {
+          "tipo": "referencia",
+          "tabela_ref": "importacoes",
+          "ao_deletar": "anular"
+        }
+      },
+      "unicos": [
+        [
+          "codigo_indicador"
+        ]
+      ],
+      "indices": [
+        [
+          "importacao_id"
+        ]
+      ]
     }
   }
 }
