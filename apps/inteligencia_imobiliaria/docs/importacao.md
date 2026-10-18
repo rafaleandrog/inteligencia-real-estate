@@ -40,6 +40,11 @@ próprio (acumulados, variações) ficam em `extras`, sem perda. IVV publicado q
 recalculado (vendas ÷ oferta) em mais de 0,5% vira achado `IVV_DIVERGENTE`; o publicado vale. O
 desfazer apaga as linhas da série (não há lixeira para série publicada).
 
+**FipeZap** aceita o vocabulário da planilha (`RESIDENCIAL`, `VENDA`, `DF_TOTAL`…) e o traduz;
+a localidade casa pela `ra_geo_id` ou pelo nome da RA na fonte, e o nome da fonte fica sempre
+(Asa Sul continua Asa Sul, nunca vira Plano Piloto). **Procedências** pedem a coluna `familia`
+(`fipezap_fonte`, `fipezap_nota` ou `pdad_guia`), que pode ser declarada como valor padrão na prévia.
+
 **Áreas de estudo** entram pela própria tela (Estudos de área): KML, KMZ ou GeoJSON criam uma área
 por feição (ponto ou polígono, sem duplicar a geometria), e o CSV (tabela "Áreas de estudo") completa
 os demais campos e os atributos `atr_<codigo>` de áreas pelo nome; linha nova precisa de `latitude` e

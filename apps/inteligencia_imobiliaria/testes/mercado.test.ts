@@ -113,3 +113,59 @@ test('IVV por localidade: ranking, régua DF Total e matriz batem com o site; de
     await s.fechar();
   }
 });
+
+test('FipeZap: gráficos do DF, localidades desambiguadas e venda × locação batem com o site (paridade)', async () => {
+  const arquivos = new ArquivosFalsos();
+  const s = await servidor(rotas, new DadosFalsos(), { arquivos: arquivos.helper() });
+  try {
+    const { previa } = await importar(s, arquivos, 'fipezap_mensal', csvDaAba(aba('fipezap_monthly_sintetico')));
+    assert.equal(previa.rejeitadas, 0, JSON.stringify(previa.rejeicoes?.slice(0, 3)));
+    const linha = s.dados.linhas('fipezap_mensal').find((l) => l.escopo_geografico === 'localidade' && l.nome_localidade_fonte === 'GAMA');
+    assert.equal(linha?.segmento, 'residencial');
+    assert.ok(linha?.localidade_id, 'GAMA casa com a RA pela ra_geo_id');
+    const F = PARIDADE.fipezap;
+    const serie = await s.chamar('GET', '/mercado/fipezap', undefined, PERFIS.leitura);
+    assert.equal(serie.status, 200, serie.texto);
+    for (const g of F.graficos_df) {
+      const app = serie.corpo.graficos_df.find((x: any) => x.chave === g.chave);
+      const valores = app.series[0].valores.filter((v: any) => v !== null);
+      assert.equal(valores.length, g.pontos, g.chave);
+      perto(valores.at(-1), g.ultimo, g.chave);
+    }
+    assert.equal(serie.corpo.meses.length, 12);
+    const locs = await s.chamar('GET', '/mercado/fipezap/localidades?segmento=residencial', undefined, PERFIS.leitura);
+    assert.deepEqual(locs.corpo.dados.map((l: any) => ({ locality: l.locality, displayName: l.displayName, ambiguous: l.ambiguous, raName: l.raName })), F.localidades);
+    for (const g of F.graficos_localidade) {
+      const r = await s.chamar('GET', `/mercado/fipezap/pareado?segmento=residencial&localidade=${encodeURIComponent(g.localidade)}`, undefined, PERFIS.leitura);
+      const [venda, locacao] = r.corpo.graficos;
+      const vv = venda.series[0].valores.filter((v: any) => v !== null);
+      const lv = locacao.series[0].valores.filter((v: any) => v !== null);
+      assert.equal(vv.length, g.venda_pontos);
+      perto(vv.at(-1), g.venda_ultimo, `${g.localidade}.venda`);
+      assert.equal(lv.length, g.locacao_pontos);
+      perto(lv.at(-1), g.locacao_ultimo, `${g.localidade}.locacao`);
+      assert.equal(venda.resumo?.valor ?? null, g.resumo_venda);
+      assert.ok(r.corpo.ranking.length >= 3);
+    }
+    const gama = await s.chamar('GET', '/mercado/fipezap/pareado?segmento=residencial&localidade=GAMA');
+    assert.equal(gama.corpo.serie[0].locacao, null, 'mês sem locação não vira zero nem yield');
+    assert.equal(gama.corpo.serie[0].yield_anual, null);
+    assert.equal((await s.chamar('GET', '/mercado/fipezap/pareado?segmento=x&localidade=GAMA')).corpo.codigo, 'FILTRO_INVALIDO');
+  } finally {
+    await s.fechar();
+  }
+});
+
+test('Procedências: fontes FipeZap entram com as colunas da aba em extras', async () => {
+  const arquivos = new ArquivosFalsos();
+  const s = await servidor(rotas, new DadosFalsos(), { arquivos: arquivos.helper() });
+  try {
+    const csv = csvDaAba([{ familia: 'fipezap_fonte', source_id: 'SRC_FIPE_2025', title: 'Informe FipeZap jan/2025', source_url: 'https://www.fipe.org.br/x', publisher: 'FIPE' }]);
+    await importar(s, arquivos, 'procedencias', csv);
+    const p = s.dados.linhas('procedencias')[0];
+    assert.equal(p.codigo, 'SRC_FIPE_2025');
+    assert.deepEqual(p.extras, { publisher: 'FIPE' });
+  } finally {
+    await s.fechar();
+  }
+});

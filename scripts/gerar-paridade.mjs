@@ -73,10 +73,60 @@ const ranking = ['TOTAL', '2Q', '3Q'].map((faixa) => {
   return { faixa, mes: r.mes, referencia_ivv_pp: r.referencia?.ivvPct ?? null, primeira: r.regioes[0]?.region ?? null, primeira_ivv_pp: r.regioes[0]?.ivvPct ?? null, regioes: r.regioes.length, sem_valor: r.semValor.length };
 });
 
+// FipeZap (spec 15.2): série sintética determinística no formato da aba (o retrato real ainda
+// não foi exportado), passada pelo código do site: os oito gráficos do DF, a lista de
+// localidades desambiguada e os gráficos venda × locação de uma localidade.
+const { normalizeFipezapMonthly, normalizeFipezapLocality } = await import(pathToFileURL(join(site, 'src/fipezap/normalize-fipezap.js')).href);
+const { buildFipezapHistoryCharts } = await import(pathToFileURL(join(site, 'src/fipezap/history.js')).href);
+const { localitiesAvailable, buildLocalityCharts } = await import(pathToFileURL(join(site, 'src/fipezap/locality.js')).href);
+const LOCS = [
+  { nome: 'AGUAS CLARAS', ra: 'Águas Claras', geo: 'RA_20', base: 9000 },
+  { nome: 'ASA SUL', ra: 'Plano Piloto', geo: 'RA_01', base: 14000 },
+  { nome: 'ASA NORTE', ra: 'Plano Piloto', geo: 'RA_01', base: 13000 },
+  { nome: 'GAMA', ra: 'Gama', geo: 'RA_02', base: 5000 },
+];
+const fipeEntrada = [];
+for (let m = 1; m <= 12; m++) {
+  const ref = `2025-${String(m).padStart(2, '0')}-01`;
+  for (const seg of ['RESIDENCIAL', 'COMERCIAL']) {
+    const fator = seg === 'RESIDENCIAL' ? 1 : 1.2;
+    const venda = Math.round(10000 * fator * (1 + m / 200) * 100) / 100;
+    const aluguel = Math.round(venda * 0.0045 * 100) / 100;
+    fipeEntrada.push({ reference_date: ref, segment_scope: seg, transaction_type: 'VENDA', geography_scope: 'DF_TOTAL', price_unit: 'BRL_M2', price_brl_m2: venda, source_id: 'SRC_SINTETICO' });
+    fipeEntrada.push({ reference_date: ref, segment_scope: seg, transaction_type: 'LOCACAO', geography_scope: 'DF_TOTAL', price_unit: 'BRL_M2_MES', price_brl_m2: aluguel,
+      official_yield_annual_pct: m % 4 === 0 ? null : Math.round((aluguel * 12 / venda) * 1e6) / 1e6, calculated_yield_annual_pct: Math.round((aluguel * 12 / venda) * 1e6) / 1e6,
+      price_to_rent_months: Math.round((venda / aluguel) * 100) / 100, source_id: 'SRC_SINTETICO' });
+  }
+  for (const l of LOCS) {
+    const venda = Math.round(l.base * (1 + m / 150) * 100) / 100;
+    const aluguel = Math.round(venda * 0.005 * 100) / 100;
+    fipeEntrada.push({ reference_date: ref, segment_scope: 'RESIDENCIAL', transaction_type: 'VENDA', geography_scope: 'LOCALIDADE', source_locality_name: l.nome, ra_name: l.ra, ra_geo_id: l.geo, price_unit: 'BRL_M2', price_brl_m2: venda, diff_vs_df_pct: Math.round((venda / 10000 - 1) * 1e6) / 1e6 });
+    if (l.nome !== 'GAMA' || m > 6) fipeEntrada.push({ reference_date: ref, segment_scope: 'RESIDENCIAL', transaction_type: 'LOCACAO', geography_scope: 'LOCALIDADE', source_locality_name: l.nome, ra_name: l.ra, ra_geo_id: l.geo, price_unit: 'BRL_M2_MES', price_brl_m2: aluguel });
+  }
+}
+const fipe = normalizeFipezapMonthly(fipeEntrada).rows;
+const ultimo = (g) => g.series.map((s) => s.pontos.filter((p) => p.valor !== null).at(-1)?.valor ?? null);
+const graficosDf = buildFipezapHistoryCharts(fipe).map((g) => ({ chave: g.key, pontos: g.series[0].pontos.filter((p) => p.valor !== null).length, ultimo: ultimo(g)[0] }));
+// A visão pareada do site é a aba FIPEZAP_LOCALITY_MONTHLY; aqui ela é montada das linhas acima, no mesmo mês.
+const pareadas = [];
+for (const r of fipe.filter((x) => x.geography_scope === 'LOCALIDADE')) {
+  let p = pareadas.find((x) => x.period_id === r.period_id && x.source_locality_name === r.source_locality_name && x.segment_scope === r.segment_scope);
+  if (!p) pareadas.push(p = { reference_date: r.reference_date, period_id: r.period_id, segment_scope: r.segment_scope, source_locality_name: r.source_locality_name, ra_name: r.ra_name, ra_geo_id: r.ra_geo_id, sale_price_brl_m2: null, rent_price_brl_m2_month: null, sale_diff_vs_df_pct: null });
+  if (r.transaction_type === 'VENDA') Object.assign(p, { sale_price_brl_m2: r.price_brl_m2, sale_diff_vs_df_pct: r.diff_vs_df_pct });
+  else p.rent_price_brl_m2_month = r.price_brl_m2;
+}
+const loc = normalizeFipezapLocality(pareadas).rows;
+const localidades = localitiesAvailable(loc, 'RESIDENCIAL').map((i) => ({ locality: i.locality, displayName: i.displayName, ambiguous: i.ambiguous, raName: i.raName }));
+const graficosLocalidade = ['GAMA', 'ASA SUL'].map((nome) => {
+  const [venda, locacao] = buildLocalityCharts(loc, { locality: nome, segmentScope: 'RESIDENCIAL' });
+  return { localidade: nome, venda_pontos: venda.series[0].pontos.filter((p) => p.valor !== null).length, venda_ultimo: ultimo(venda)[0], locacao_pontos: locacao.series[0].pontos.filter((p) => p.valor !== null).length, locacao_ultimo: ultimo(locacao)[0], resumo_venda: venda.resumo?.valor ?? null };
+});
+
 const destino = resolve('apps/inteligencia_imobiliaria/testes/fixtures/paridade');
 mkdirSync(destino, { recursive: true });
 const arquivo = join(destino, `${data}.json`);
-writeFileSync(arquivo, JSON.stringify({ gerado_em: data, site_commit: commit, entrada: 'data/demo.json', entrada_ivv: 'tests/fixtures/ivv-monthly.json', mapa, mercado, ivv_regional: ranking, diagnostico: [] }, null, 2) + '\n');
+writeFileSync(arquivo, JSON.stringify({ gerado_em: data, site_commit: commit, entrada: 'data/demo.json', entrada_ivv: 'tests/fixtures/ivv-monthly.json', mapa, mercado, ivv_regional: ranking, fipezap: { graficos_df: graficosDf, localidades, graficos_localidade: graficosLocalidade }, diagnostico: [] }, null, 2) + '\n');
 // A entrada sintética do IVV vai junto, para o teste da app importar exatamente o que o site leu.
 writeFileSync(join(resolve('apps/inteligencia_imobiliaria/testes/fixtures/planilha'), 'ivv_monthly_sintetico.json'), JSON.stringify(ivvEntrada, null, 2) + '\n');
+writeFileSync(join(resolve('apps/inteligencia_imobiliaria/testes/fixtures/planilha'), 'fipezap_monthly_sintetico.json'), JSON.stringify(fipeEntrada, null, 2) + '\n');
 console.log(`paridade: ${mapa.length} cenários de mapa, ${mercado.length} períodos do IVV, ${ranking.length} faixas regionais → ${arquivo} (site ${commit.slice(0, 12)})`);

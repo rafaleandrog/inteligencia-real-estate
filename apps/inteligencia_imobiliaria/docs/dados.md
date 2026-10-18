@@ -48,6 +48,8 @@ Sucessor do `docs/DATA_CONTRACT.md` do site para a app. O desenho completo está
 | `areas_estudo` | áreas de estudo: tipo (`propria` sigilosa), estágio, responsável, autor, geometria (ponto ou polígono), localidade dominante | `nome` (CSV); geometria pelo hash (KML/KMZ) |
 | `ivv_mensal` | IVV mensal (sucede `IVV_MONTHLY`): as 13 métricas em colunas; acumulados, variações e checagens publicados em `extras`, verbatim | mês + segmento + mercado |
 | `ivv_regional` | IVV por localidade e faixa de quartos (sucede `IVV_REGION`); IVV em fração; `DF Total` marcado como `agregado_total` | mês + região da fonte + faixa |
+| `fipezap_mensal` | FipeZap (sucede `FIPEZAP_MONTHLY`): segmento, transação, total ou localidade, preço por m², yields, variações, ranking; a visão venda × locação por localidade é montada em leitura | mês + segmento + transação + escopo + localidade da fonte |
+| `procedencias` | fontes e notas do FipeZap e guia da PDAD, com as colunas da aba em `extras` | família + código |
 | `vinculos_nucleo` | junção objeto da app × registro do imobiliário (só o id; nada copiado) | `objeto_tipo` + `objeto_id` + `entidade` + `nucleo_id` (entre os vivos) |
 
 ### Semente

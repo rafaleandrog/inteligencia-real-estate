@@ -1,6 +1,6 @@
 {
   "gerado_em": "2026-10-18",
-  "site_commit": "7d166db1c06d559000f27e8781ecc96e833af2c1",
+  "site_commit": "f02f9c156fa06364ce839f487b2320414a592b0c",
   "entrada": "data/demo.json",
   "entrada_ivv": "tests/fixtures/ivv-monthly.json",
   "mapa": [
@@ -229,5 +229,93 @@
       "sem_valor": 5
     }
   ],
+  "fipezap": {
+    "graficos_df": [
+      {
+        "chave": "fipezap-venda-residencial",
+        "pontos": 12,
+        "ultimo": 10600
+      },
+      {
+        "chave": "fipezap-locacao-residencial",
+        "pontos": 12,
+        "ultimo": 47.7
+      },
+      {
+        "chave": "fipezap-yield-residencial",
+        "pontos": 12,
+        "ultimo": 0.054
+      },
+      {
+        "chave": "fipezap-price-to-rent-residencial",
+        "pontos": 12,
+        "ultimo": 222.22
+      },
+      {
+        "chave": "fipezap-venda-comercial",
+        "pontos": 12,
+        "ultimo": 12720
+      },
+      {
+        "chave": "fipezap-locacao-comercial",
+        "pontos": 12,
+        "ultimo": 57.24
+      },
+      {
+        "chave": "fipezap-yield-comercial",
+        "pontos": 12,
+        "ultimo": 0.054
+      },
+      {
+        "chave": "fipezap-price-to-rent-comercial",
+        "pontos": 12,
+        "ultimo": 222.22
+      }
+    ],
+    "localidades": [
+      {
+        "locality": "AGUAS CLARAS",
+        "displayName": "Aguas Claras",
+        "ambiguous": false,
+        "raName": "Águas Claras"
+      },
+      {
+        "locality": "GAMA",
+        "displayName": "Gama",
+        "ambiguous": false,
+        "raName": "Gama"
+      },
+      {
+        "locality": "ASA NORTE",
+        "displayName": "Asa Norte",
+        "ambiguous": true,
+        "raName": "Plano Piloto"
+      },
+      {
+        "locality": "ASA SUL",
+        "displayName": "Asa Sul",
+        "ambiguous": true,
+        "raName": "Plano Piloto"
+      }
+    ],
+    "graficos_localidade": [
+      {
+        "localidade": "GAMA",
+        "venda_pontos": 12,
+        "venda_ultimo": 5400,
+        "locacao_pontos": 6,
+        "locacao_ultimo": 27,
+        "resumo_venda": "−46,0%"
+      },
+      {
+        "localidade": "ASA SUL",
+        "venda_pontos": 12,
+        "venda_ultimo": 15120,
+        "locacao_pontos": 12,
+        "locacao_ultimo": 75.6,
+        "resumo_venda": "+51,2%"
+      }
+    ]
+  },
   "diagnostico": []
 }

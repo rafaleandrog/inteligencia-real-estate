@@ -2913,6 +2913,258 @@
           "importacao_id"
         ]
       ]
+    },
+    "fipezap_mensal": {
+      "acesso_externo": "somente_leitura",
+      "id_legivel": "{segmento} {tipo_transacao} {nome_localidade_fonte} {mes_referencia}",
+      "colunas": {
+        "cidade_id": {
+          "tipo": "referencia",
+          "tabela_ref": "cidades",
+          "ao_deletar": "restringir",
+          "obrigatorio": true
+        },
+        "mes_referencia": {
+          "tipo": "data",
+          "obrigatorio": true
+        },
+        "segmento": {
+          "tipo": "texto",
+          "limite": 20,
+          "opcoes": [
+            "residencial",
+            "comercial"
+          ],
+          "obrigatorio": true
+        },
+        "tipo_transacao": {
+          "tipo": "texto",
+          "limite": 20,
+          "opcoes": [
+            "venda",
+            "locacao"
+          ],
+          "obrigatorio": true
+        },
+        "escopo_geografico": {
+          "tipo": "texto",
+          "limite": 20,
+          "opcoes": [
+            "total",
+            "localidade"
+          ],
+          "obrigatorio": true
+        },
+        "localidade_id": {
+          "tipo": "referencia",
+          "tabela_ref": "localidades",
+          "ao_deletar": "anular"
+        },
+        "nome_localidade_fonte": {
+          "tipo": "texto",
+          "limite": 120
+        },
+        "nome_ra_fonte": {
+          "tipo": "texto",
+          "limite": 120
+        },
+        "classificacao_geografica": {
+          "tipo": "texto",
+          "limite": 60
+        },
+        "unidade_preco": {
+          "tipo": "texto",
+          "limite": 20,
+          "opcoes": [
+            "brl_m2",
+            "brl_m2_mes"
+          ],
+          "obrigatorio": true
+        },
+        "preco_m2_brl": {
+          "tipo": "decimal",
+          "precisao": 12,
+          "escala": 2
+        },
+        "yield_mensal_oficial_frac": {
+          "tipo": "decimal",
+          "precisao": 8,
+          "escala": 6
+        },
+        "yield_anual_oficial_frac": {
+          "tipo": "decimal",
+          "precisao": 8,
+          "escala": 6
+        },
+        "yield_mensal_calc_frac": {
+          "tipo": "decimal",
+          "precisao": 8,
+          "escala": 6
+        },
+        "yield_anual_calc_frac": {
+          "tipo": "decimal",
+          "precisao": 8,
+          "escala": 6
+        },
+        "variacao_mom_frac": {
+          "tipo": "decimal",
+          "precisao": 8,
+          "escala": 6
+        },
+        "variacao_ytd_frac": {
+          "tipo": "decimal",
+          "precisao": 8,
+          "escala": 6
+        },
+        "variacao_yoy_frac": {
+          "tipo": "decimal",
+          "precisao": 8,
+          "escala": 6
+        },
+        "meses_aluguel_para_pagar": {
+          "tipo": "decimal",
+          "precisao": 8,
+          "escala": 2
+        },
+        "diff_vs_total_frac": {
+          "tipo": "decimal",
+          "precisao": 8,
+          "escala": 6
+        },
+        "rank_preco": {
+          "tipo": "inteiro"
+        },
+        "rank_yoy": {
+          "tipo": "inteiro"
+        },
+        "amostra_n": {
+          "tipo": "inteiro"
+        },
+        "fonte_publicador": {
+          "tipo": "texto",
+          "limite": 200
+        },
+        "fonte_tipo": {
+          "tipo": "texto",
+          "limite": 60
+        },
+        "fonte_url": {
+          "tipo": "texto",
+          "limite": 1000
+        },
+        "fonte_pagina": {
+          "tipo": "texto",
+          "limite": 120
+        },
+        "fonte_pasta_trabalho": {
+          "tipo": "texto",
+          "limite": 300
+        },
+        "fonte_codigo": {
+          "tipo": "texto",
+          "limite": 80
+        },
+        "nota_codigo": {
+          "tipo": "texto",
+          "limite": 80
+        },
+        "qualidade": {
+          "tipo": "texto",
+          "limite": 60
+        },
+        "notas": {
+          "tipo": "texto_longo"
+        },
+        "importacao_id": {
+          "tipo": "referencia",
+          "tabela_ref": "importacoes",
+          "ao_deletar": "anular"
+        }
+      },
+      "unicos": [
+        {
+          "colunas": [
+            "cidade_id",
+            "mes_referencia",
+            "segmento",
+            "tipo_transacao",
+            "escopo_geografico",
+            "nome_localidade_fonte"
+          ],
+          "nulos_distintos": false
+        }
+      ],
+      "indices": [
+        [
+          "localidade_id",
+          "segmento",
+          "mes_referencia"
+        ],
+        [
+          "cidade_id",
+          "mes_referencia"
+        ],
+        [
+          "importacao_id"
+        ]
+      ]
+    },
+    "procedencias": {
+      "acesso_externo": "somente_leitura",
+      "id_legivel": "{familia} {codigo}",
+      "colunas": {
+        "familia": {
+          "tipo": "texto",
+          "limite": 20,
+          "opcoes": [
+            "fipezap_fonte",
+            "fipezap_nota",
+            "pdad_guia"
+          ],
+          "obrigatorio": true
+        },
+        "codigo": {
+          "tipo": "texto",
+          "limite": 80,
+          "obrigatorio": true
+        },
+        "titulo": {
+          "tipo": "texto",
+          "limite": 300
+        },
+        "texto": {
+          "tipo": "texto_longo"
+        },
+        "url": {
+          "tipo": "texto",
+          "limite": 1000
+        },
+        "periodo_de": {
+          "tipo": "data"
+        },
+        "periodo_ate": {
+          "tipo": "data"
+        },
+        "extras": {
+          "tipo": "json"
+        },
+        "importacao_id": {
+          "tipo": "referencia",
+          "tabela_ref": "importacoes",
+          "ao_deletar": "anular"
+        }
+      },
+      "unicos": [
+        [
+          "familia",
+          "codigo"
+        ]
+      ],
+      "indices": [
+        [
+          "importacao_id"
+        ]
+      ]
     }
   }
 }
