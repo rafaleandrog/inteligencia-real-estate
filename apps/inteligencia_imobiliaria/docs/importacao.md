@@ -32,6 +32,12 @@ e valor fora do tipo rejeita a linha com o motivo. Célula vazia não apaga valo
 baixado traz as colunas `atr_<codigo>` dos atributos ativos, e o desfazer apaga os valores que a
 importação gravou e ninguém editou depois.
 
+**Áreas de estudo** entram pela própria tela (Estudos de área): KML, KMZ ou GeoJSON criam uma área
+por feição (ponto ou polígono, sem duplicar a geometria), e o CSV (tabela "Áreas de estudo") completa
+os demais campos e os atributos `atr_<codigo>` de áreas pelo nome; linha nova precisa de `latitude` e
+`longitude`. Linha de área própria só entra para o curador, e estágio de decisão (iniciativa em
+diante, encerrada) só pela tela, com motivo.
+
 Reimportar o mesmo arquivo com "Ignorar" não duplica nada: a chave natural de cada tabela está
 em [Dados](dados.md).
 

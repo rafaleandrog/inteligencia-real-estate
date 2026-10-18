@@ -12,8 +12,15 @@ const COLUNAS_FEICOES: UrbiColunaTabela[] = [
   { id: 'erros', label: 'Situação', valor: (l: any) => (l.erros.length ? `rejeitada: ${l.erros.join('; ')}` : 'ok') },
 ];
 
-/** Importar contornos de KML, KMZ ou GeoJSON (spec 6.1): arquivo → prévia das feições → aplicar. */
+/**
+ * Importar contornos (6.1) ou áreas de estudo (6.11) de KML, KMZ ou GeoJSON:
+ * arquivo → prévia das feições → aplicar. `base` escolhe a rota.
+ */
 export class IntelImobContornosImportar extends LitElement {
+  @property() base: '/contornos' | '/estudos' = '/contornos';
+  /** Só em áreas: o tipo de todas as áreas criadas (própria só aparece para o curador). */
+  @property({ attribute: false }) tiposArea: { valor: string; rotulo: string }[] = [];
+  @state() private tipo = 'prospeccao';
   @state() private arquivo: File | null = null;
   @state() private previa: any = null;
   @state() private categoria = '';
@@ -26,7 +33,7 @@ export class IntelImobContornosImportar extends LitElement {
     this.erro = '';
     try {
       const upload_id = await enviarArquivo('importacoes', 'arquivo', this.arquivo);
-      this.previa = await uv().api('/contornos/importar', json({ upload_id }));
+      this.previa = await uv().api(`${this.base}/importar`, json({ upload_id }));
     } catch (e) {
       this.erro = mensagemDeErro(e);
     } finally {
@@ -37,8 +44,9 @@ export class IntelImobContornosImportar extends LitElement {
   private async aplicar() {
     this.ocupado = true;
     try {
-      const r = await uv().api(`/contornos/importar/${this.previa.importacao_id}/aplicar`, json({ categoria: this.categoria || null }));
-      uv().notificar(`${r.inseridas} contornos criados, ${r.ignoradas} já existiam.`, 'sucesso');
+      const area = this.base === '/estudos';
+      const r = await uv().api(`${this.base}/importar/${this.previa.importacao_id}/aplicar`, json(area ? { tipo: this.tipo } : { categoria: this.categoria || null }));
+      uv().notificar(`${r.inseridas} ${area ? 'áreas criadas' : 'contornos criados'}, ${r.ignoradas} já existiam${r.rejeitadas ? `, ${r.rejeitadas} rejeitadas` : ''}.`, 'sucesso');
       this.dispatchEvent(new CustomEvent('intel-imob:importacao-aplicada', { bubbles: true, composed: true }));
       this.previa = null;
       this.arquivo = null;
@@ -58,9 +66,11 @@ export class IntelImobContornosImportar extends LitElement {
             <urbi-botao variante="primario" ?desabilitado=${!this.arquivo} ?carregando=${this.ocupado} @click=${this.enviar}>Ver feições</urbi-botao>`
         : html`<urbi-prosa>${this.previa.feicoes.length} feições lidas (${String(this.previa.formato).toUpperCase()}). Feição já cadastrada com a mesma geometria é ignorada.</urbi-prosa>
             <urbi-tabela responsivo="multiline" .colunas=${COLUNAS_FEICOES} .linhas=${this.previa.feicoes}></urbi-tabela>
-            <urbi-input label="Categoria (opcional)" .valor=${this.categoria} @urbi:input-change=${(e: CustomEvent) => (this.categoria = e.detail.valor)}></urbi-input>
+            ${this.base === '/estudos'
+              ? html`<urbi-select label="Tipo das áreas" .valor=${this.tipo} .opcoes=${this.tiposArea} @urbi:select-change=${(e: CustomEvent) => (this.tipo = e.detail.valor)}></urbi-select>`
+              : html`<urbi-input label="Categoria (opcional)" .valor=${this.categoria} @urbi:input-change=${(e: CustomEvent) => (this.categoria = e.detail.valor)}></urbi-input>`}
             <urbi-linha>
-              <urbi-botao variante="primario" ?carregando=${this.ocupado} @click=${this.aplicar}>Criar contornos</urbi-botao>
+              <urbi-botao variante="primario" ?carregando=${this.ocupado} @click=${this.aplicar}>${this.base === '/estudos' ? 'Criar áreas' : 'Criar contornos'}</urbi-botao>
               <urbi-botao variante="texto" @click=${() => (this.previa = null)}>Cancelar</urbi-botao>
             </urbi-linha>`}
     </urbi-stack>`;

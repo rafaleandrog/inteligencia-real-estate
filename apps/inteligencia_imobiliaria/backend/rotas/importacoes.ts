@@ -3,7 +3,7 @@ import { gerarCsv } from '../../comum/csv';
 import { cabecalhoModelo, TABELAS_IMPORT, type ModoDuplicata } from '../../comum/importacao-chaves';
 import { aplicarValidacao, desfazerImportacao, lerArquivoTexto, MAX_REJEICOES_RELATORIO, MAX_REJEICOES_RESPOSTA, validarCsv, type ExtensaoAtributos } from '../importacao/motor';
 import { GANCHOS, type CtxImportacao } from '../importacao/tabelas';
-import { ErroApp, exigirPapel, idDaRota, naoEncontrado, paginacao, rota, textoQuery, usuarioId } from './comum';
+import { ErroApp, exigirPapel, idDaRota, naoEncontrado, paginacao, rota, temPapel, textoQuery, usuarioId } from './comum';
 import { cidadeDoRequest } from './territorio-comum';
 
 export const importacoes: Router = Router();
@@ -38,7 +38,7 @@ function lerPadroes(v: unknown): Record<string, string> {
 
 async function contexto(req: Request): Promise<CtxImportacao> {
   const cidade = await cidadeDoRequest(req);
-  return { dados: req.dados!, usuarioId: usuarioId(req), cidadeId: Number(cidade.id), cache: new Map() };
+  return { dados: req.dados!, usuarioId: usuarioId(req), cidadeId: Number(cidade.id), cache: new Map(), papeis: { curador: temPapel(req, 'curador') } };
 }
 
 async function buscarImportacao(req: Request): Promise<Record<string, any>> {

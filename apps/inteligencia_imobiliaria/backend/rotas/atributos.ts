@@ -9,6 +9,8 @@ import { resumo } from '../metricas/estatistica';
 import { conflitoVersao, ErroApp, exigirPapel, idDaRota, naoEncontrado, rota, textoQuery, usuarioId } from './comum';
 import { criarCadastro, diferenca, editarCadastro, escolher, historico, registrarAlteracao, removerCadastro, restaurarCadastro } from './cadastro-comum';
 import { registrarExtensaoAtributos } from './importacoes';
+import { atorDe, exigirAcessoArea } from './acesso-objeto';
+import { podeLerArea } from '../../comum/regras-objeto';
 
 type Linha = Record<string, any>;
 
@@ -133,6 +135,8 @@ async function objetoExistente(req: Request): Promise<{ tipo: ReturnType<typeof 
   const tipo = objetoAtivo(req.params.tipo);
   const objeto = await req.dados!.buscar(tabelaDoObjeto(tipo), idDaRota(req), { incluir_removidos: true });
   if (!objeto) throw naoEncontrado();
+  // Área de estudo: sigilo e regra por objeto (5.16, 14); valor de área própria herda o sigilo.
+  if (tipo === 'area_estudo') exigirAcessoArea(req, objeto, 'ler');
   return { tipo, objeto };
 }
 
@@ -174,8 +178,10 @@ atributos.get('/objetos/:tipo/:id/atributos', rota(async (req, res) => {
  * campo `atr_<codigo>`. Tudo numa transação: um erro desfaz o lote.
  */
 atributos.put('/objetos/:tipo/:id/atributos', rota(async (req, res) => {
-  exigirPapel(req, 'curador');
   const { tipo, objeto } = await objetoExistente(req);
+  // Valor: curador; na área de estudo, quem pode escrever na área (6.23).
+  if (tipo === 'area_estudo') exigirAcessoArea(req, objeto, 'escrever');
+  else exigirPapel(req, 'curador');
   if (objeto.removido_em) throw new ErroApp(404, 'REGISTRO_REMOVIDO', 'O objeto foi removido; restaure-o antes de editar.');
   const lote = Array.isArray(req.body?.valores) ? req.body.valores : null;
   if (!lote || !lote.length) throw new ErroApp(422, 'DADOS_VALIDACAO_FALHOU', 'Envie valores: [{ atributo_id, valor, fonte, observado_em, versao }].');
@@ -237,7 +243,10 @@ atributos.get('/atributos/:id/distribuicao', rota(async (req, res) => {
     const linhas = await req.dados!.varrerTudo('atributos_valor', { filtros: { atributo_id: def.id, objeto_tipo: t } });
     if (!linhas.length) continue;
     // Objeto removido sai do recorte (5.24): só os vivos contam.
-    const vivos = new Set((await req.dados!.varrerTudo(tabelaDoObjeto(t), { filtros: { id: linhas.map((l) => Number(l.objeto_id)) } })).map((o) => Number(o.id)));
+    const ator = atorDe(req);
+    const vivos = new Set((await req.dados!.varrerTudo(tabelaDoObjeto(t), { filtros: { id: linhas.map((l) => Number(l.objeto_id)) } }))
+      .filter((o) => t !== 'area_estudo' || podeLerArea(ator, o))
+      .map((o) => Number(o.id)));
     for (const l of linhas) if (vivos.has(Number(l.objeto_id)) && l.valor_num !== null) valores.push(Number(l.valor_num));
   }
   const r = resumo(valores);

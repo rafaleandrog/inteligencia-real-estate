@@ -330,6 +330,28 @@ export const TABELAS_IMPORT: Record<string, TabelaImport> = {
       { coluna: 'area_ocupada_m2', tipo: 'decimal', aliases: ['occupied_area_m2'] },
     ],
   },
+  areas_estudo: {
+    tabela: 'areas_estudo',
+    titulo: 'Áreas de estudo',
+    // Chave pelo nome: a área nasce pela tela ou por KMZ, e o CSV completa os demais campos.
+    chave: ['nome'],
+    derivadas: ['localidade_nome', 'responsavel_nome', 'autor_nome', 'area_m2', 'geometria_tipo', 'bbox_oeste', 'bbox_sul', 'bbox_leste', 'bbox_norte', 'geometria_hash', 'cidade_id', 'autor_id', 'contorno_id', 'arquivo_origem', 'pode_editar'],
+    temVersao: true,
+    modos: MODOS_CADASTRO,
+    campos: [
+      { coluna: 'nome', tipo: 'texto', obrigatorio: true, limite: 200 },
+      { coluna: 'tipo', tipo: 'texto', obrigatorio: true, opcoes: ['propria', 'prospeccao', 'referencia'] },
+      { coluna: 'estagio', tipo: 'texto', opcoes: ['sinal', 'hipotese', 'oportunidade', 'iniciativa', 'projeto', 'negocio_ativo', 'encerrada'] },
+      { coluna: 'centroide_latitude', tipo: 'decimal', aliases: ['latitude'] },
+      { coluna: 'centroide_longitude', tipo: 'decimal', aliases: ['longitude'] },
+      { coluna: 'geometria', tipo: 'json' },
+      LOCALIDADE_REF,
+      { coluna: 'responsavel_id', tipo: 'inteiro' },
+      { coluna: 'motivo_encerramento', tipo: 'texto', limite: 300 },
+      { coluna: 'aprendizado', tipo: 'texto_longo' },
+      { coluna: 'notas', tipo: 'texto_longo' },
+    ],
+  },
 };
 
 /** Cabeçalho normalizado para comparação: minúsculo, sem acento, sem espaço nas pontas. */

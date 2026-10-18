@@ -463,6 +463,8 @@ export const PERFIS = {
   estrategico: { id: 6, nome: 'Direção', nivel: 'leitura' as const, papeis: ['estrategico'] },
   decisor: { id: 7, nome: 'Decisor', nivel: 'escrita' as const, papeis: ['decisor'] },
   carga: { id: 8, nome: 'Carga', nivel: 'escrita' as const, papeis: ['operador'] },
+  autor: { id: 9, nome: 'Autora sem papel', nivel: 'escrita' as const, papeis: [] },
+  responsavel: { id: 10, nome: 'Responsável (leitura)', nivel: 'leitura' as const, papeis: [] },
 };
 
 const NIVEL_POR_METODO: Record<string, number> = { GET: 0, HEAD: 0, POST: 1, PUT: 1, PATCH: 1, DELETE: 2 };

@@ -76,3 +76,17 @@ Medir só com leitura, pela skill `instancia-urbiverso`, numa sessão com acesso
 - **Sem o módulo no request, `503 NUCLEO_INDISPONIVEL`.** A spec não diz o que o `POST
   /vinculos-nucleo` responde quando `req.modulos.imobiliario` não existe; a app recusa com 503 e a
   instrução para o admin.
+
+## Divergências da spec encontradas na 15.1b
+
+- **Colunas a mais em `areas_estudo`: `autor_id`, `versao` e `geometria_hash`.** A regra "autor ou
+  curador" (6.11) precisa saber quem criou, e o framework não guarda autoria; a edição usa a versão
+  (D-88) como todo cadastro; e a importação de KML não duplica pela geometria, como nos contornos.
+- **A lista de áreas pagina em código.** O sigilo é "não é própria, ou eu sou o responsável", um
+  `OU` que o filtro do framework não expressa; as áreas são poucas, então a rota varre a cidade,
+  tira as próprias que o usuário não lê e só então pagina, e o `total` não denuncia nada (D-116).
+- **O decisor muda o estágio sem ser autor nem curador.** A 6.11 põe a mudança de estágio sob "obj.
+  escrever"; sem esta exceção o papel `decisor` não conseguiria decidir. Ele muda só estágio,
+  motivo e aprendizado; o resto da área segue com autor e curador.
+- **CSV de áreas recusa estágio de decisão.** A linha não tem onde levar o motivo nem quem decidiu;
+  a decisão fica na tela.
