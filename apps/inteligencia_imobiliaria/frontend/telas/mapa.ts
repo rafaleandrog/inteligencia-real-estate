@@ -14,7 +14,7 @@ const CHAVES = ['localidade', 'type', 'transacao', 'beds', 'price_min', 'price_m
 type Filtros = Partial<Record<(typeof CHAVES)[number], string>>;
 
 const CAMADAS = [
-  { id: 'ras', rotulo: 'Regiões administrativas', icone: 'fa-solid fa-vector-square' },
+  { id: 'ras', rotulo: 'Regiões administrativas', icone: 'fa-solid fa-map' },
   { id: 'importados', rotulo: 'Contornos importados', icone: 'fa-solid fa-draw-polygon' },
   { id: 'ancoras', rotulo: 'Âncoras', icone: 'fa-solid fa-anchor' },
   { id: 'lancamentos', rotulo: 'Lançamentos', icone: 'fa-solid fa-building' },
