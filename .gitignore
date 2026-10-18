@@ -18,7 +18,13 @@ meta.png
 
 # Configuração local do Claude Code (permissões por máquina). Nunca versionada:
 # conceder permissão é decisão de quem opera a máquina, não do repositório.
-.claude/
+# Exceção: o que o kit da app UrbiVerso instala (skills, hook de sessão e o
+# settings.json só com o hook, sem permissões) é do repositório (spec 3.1, 15.0).
+.claude/*
+!.claude/skills/
+!.claude/preparar-sessao.sh
+!.claude/settings.json
+!.claude/notificacoes-urbiverso/
 *.local.mjs
 
 # Pipeline de dados públicos (pipeline/): downloads brutos, logs de execução e ambiente
@@ -34,3 +40,8 @@ gha-creds-*.json
 warehouse/raw/
 warehouse/staging/
 warehouse/*.duckdb
+dist/
+apps/*/backend/rotas.js
+apps/*/frontend/index.js
+modulos/*/backend/modulo.js
+modulos/*/frontend/modulo.js

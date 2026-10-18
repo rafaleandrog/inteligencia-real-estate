@@ -2,5 +2,98 @@
   "nome": "Inteligência Imobiliária",
   "versao": "0.1.0",
   "descricao": "Oferta, mercado e território do mercado imobiliário, com dado rastreável",
-  "identidade": "rafaleandrog/inteligencia-real-estate::inteligencia_imobiliaria"
+  "identidade": "rafaleandrog/inteligencia-real-estate::inteligencia_imobiliaria",
+  "shell_min": "0.56.37",
+  "sdk_min": 100,
+  "roles": {
+    "leitura": {
+      "estrategico": {
+        "descricao": "Vê as áreas próprias da UP e o que pende delas",
+        "sticker": {
+          "icone": "fa-solid fa-lock",
+          "cor": "#6A1B9A"
+        }
+      }
+    },
+    "escrita": {
+      "decisor": {
+        "descricao": "Registra decisão sobre uma área e muda o estágio a partir de iniciativa, inclusive o encerramento",
+        "sticker": {
+          "icone": "fa-solid fa-gavel",
+          "cor": "#B71C1C"
+        }
+      },
+      "curador": {
+        "descricao": "Insere e corrige dados: anúncios, lançamentos, âncoras, contornos e áreas próprias",
+        "sticker": {
+          "icone": "fa-solid fa-pen-ruler",
+          "cor": "#2E7D32"
+        }
+      },
+      "operador": {
+        "descricao": "Faz importações e resolve achados de qualidade",
+        "sticker": {
+          "icone": "fa-solid fa-gears",
+          "cor": "#1565C0"
+        }
+      }
+    }
+  },
+  "nav": [
+    {
+      "titulo": "Início",
+      "rota": "/",
+      "icone": "fa-solid fa-house"
+    },
+    {
+      "titulo": "Mapa",
+      "rota": "/mapa",
+      "icone": "fa-solid fa-map-location-dot"
+    },
+    {
+      "titulo": "Mercado",
+      "rota": "/mercado",
+      "icone": "fa-solid fa-chart-line"
+    },
+    {
+      "titulo": "Diagnóstico",
+      "rota": "/diagnostico",
+      "icone": "fa-solid fa-city"
+    },
+    {
+      "titulo": "Estudos de área",
+      "rota": "/estudos",
+      "icone": "fa-solid fa-draw-polygon"
+    },
+    {
+      "titulo": "Produto",
+      "rota": "/produto",
+      "icone": "fa-solid fa-building"
+    },
+    {
+      "titulo": "Comércio e âncoras",
+      "rota": "/comercio",
+      "icone": "fa-solid fa-store"
+    },
+    {
+      "titulo": "Terra e oferta futura",
+      "rota": "/terra",
+      "icone": "fa-solid fa-mountain-sun"
+    },
+    {
+      "titulo": "Análises",
+      "rota": "/analises",
+      "icone": "fa-solid fa-wand-magic-sparkles"
+    },
+    {
+      "titulo": "Cadastro",
+      "rota": "/cadastro",
+      "icone": "fa-solid fa-pen-ruler"
+    },
+    {
+      "titulo": "Operação",
+      "rota": "/operacao",
+      "icone": "fa-solid fa-gears"
+    }
+  ]
 }

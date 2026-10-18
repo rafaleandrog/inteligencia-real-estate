@@ -1,0 +1,116 @@
+# CI a cada pull request — canônico.
+#
+# DO KIT: reescrito por inteiro a cada `npx @urbiverso/kit-apps`. Não edite —
+# o que você mudar aqui some na próxima atualização. O que este workflow RODA é
+# seu: `typecheck`, `build` e `test` do package.json de cada pacote do
+# workspace (cada app em `apps/<appId>/`, cada módulo em
+# `modulos/<slug>/backend/`). Os passos opcionais (`--if-present`) são o lugar
+# de qualquer checagem própria.
+#
+# Responde a UMA pergunta — esta mudança quebrou alguma coisa? — e para aí. O
+# release é disparado à mão e raramente; entre um e outro, um `main` vermelho
+# não tem quem o denuncie sem isto. É leve de propósito: um job, sem matriz,
+# sem cache exótico; pacote sem teste não paga passo de teste. Uma sequência de
+# correções no mesmo PR não paga um run por push obsoleto
+# (`cancel-in-progress`).
+#
+# O passo de empacotar roda o `urbi-empacotar` do @urbiverso/sdk instalado em
+# cada app e em cada módulo, com as MESMAS checagens estáticas do instalador
+# da plataforma. Passou aqui, a instalação não reprova na validação estática.
+#
+# Banco de teste: quando algum `modulos/*/manifesto.json` declara
+# `requer_extensoes` com `postgis`, o job sobe um PostgreSQL com PostGIS e
+# exporta URBIVERSO_PG_TESTE_URL (a URL) e URBIVERSO_PG_TESTE_EXIGIR=1 (o teste
+# que precisa do banco falha em vez de pular) para o passo de testes. Sem essa
+# declaração, não há banco e as duas variáveis não existem. A convenção está no
+# KIT.md.
+#
+# Credencial: o secret URBIVERSO_PACKAGES_TOKEN, e só ele — mesma regra, mesmo
+# preflight e mesma razão do release.yml (leia o cabeçalho de lá). O bloco
+# `permissions:` não pede `packages`: sem fallback para o token nativo, não há
+# token nativo a escopar.
+name: ci
+on:
+  pull_request:
+  workflow_dispatch:   # para rodar à mão, sem abrir PR
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+permissions:
+  contents: read
+jobs:
+  verificar:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20   # runner pendurado não vira hora faturada (PostGIS custa ~2 min)
+    # Nível de job pela mesma razão do release.yml: o `.npmrc` versionado lê
+    # esta variável, e é assim que qualquer passo novo nasce autenticado.
+    env:
+      URBIVERSO_PACKAGES_TOKEN: ${{ secrets.URBIVERSO_PACKAGES_TOKEN }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '20'
+          registry-url: https://npm.pkg.github.com
+          scope: '@urbiverso'
+      - name: Habilitar Corepack
+        run: corepack enable
+      - name: Conferir credencial do registry
+        run: bash .github/kit/credencial-registry.sh
+      - name: Instalar dependências
+        run: pnpm install --frozen-lockfile
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.URBIVERSO_PACKAGES_TOKEN }}
+      - name: Typecheck
+        run: pnpm -r run --if-present typecheck
+      - name: Build
+        run: pnpm -r build
+      # Glob sem casamento chega ao node como o texto literal, que não abre, e
+      # conta como "não pede": repositório sem módulo não sobe banco.
+      - name: Extensões de host dos módulos
+        id: extensoes
+        run: |
+          node -e '
+            const fs = require("fs");
+            const pede = process.argv.slice(1).some((f) => {
+              try {
+                const m = JSON.parse(fs.readFileSync(f, "utf8"));
+                return Array.isArray(m.requer_extensoes) && m.requer_extensoes.includes("postgis");
+              } catch {
+                return false;
+              }
+            });
+            console.log(`postgis=${pede}`);
+          ' modulos/*/manifesto.json >> "$GITHUB_OUTPUT"
+      - name: PostgreSQL + PostGIS para os testes
+        if: steps.extensoes.outputs.postgis == 'true'
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq postgresql postgresql-contrib postgis
+          sudo systemctl start postgresql.service
+          sudo -u postgres psql -qc "ALTER USER postgres PASSWORD 'postgres'"
+          sudo -u postgres psql -qc "CREATE EXTENSION IF NOT EXISTS postgis"
+          sudo -u postgres psql -Atc "SELECT postgis_full_version()"
+          echo "URBIVERSO_PG_TESTE_URL=postgresql://postgres:postgres@localhost:5432/postgres" >> "$GITHUB_ENV"
+          echo "URBIVERSO_PG_TESTE_EXIGIR=1" >> "$GITHUB_ENV"
+      - name: Testes
+        run: pnpm -r run --if-present test
+      # Cada app e cada módulo, um a um, pelo `urbi-empacotar` do SDK instalado
+      # no pacote dele (o build acima já gerou os bundles). Módulo empacota a
+      # pasta `modulos/<slug>/` a partir do `backend/`, que é onde o SDK está.
+      - name: Empacotar (validação)
+        run: |
+          for m in apps/*/manifesto.json; do
+            [ -f "$m" ] || continue
+            a="$(basename "$(dirname "$m")")"
+            echo "::group::app $a"
+            pnpm --dir "apps/$a" exec urbi-empacotar "$a" --dir . --saida ../../dist
+            echo "::endgroup::"
+          done
+          for m in modulos/*/manifesto.json; do
+            [ -f "$m" ] || continue
+            s="$(basename "$(dirname "$m")")"
+            echo "::group::módulo $s"
+            pnpm --dir "modulos/$s/backend" exec urbi-empacotar "$s" --dir .. --saida ../../../dist
+            echo "::endgroup::"
+          done
