@@ -83,6 +83,9 @@ disponível para um agente ler, sem trabalho da app).
 3. **Acesso à planilha** para gerar o retrato datado. O script lê por GViz, então a planilha
    precisa estar compartilhada para leitura, como hoje o site a lê.
 4. **P-06:** quem recebe acesso de leitura e quem é admin da app na Pinguim.
+5. **Medir a Pinguim (P-50):** esta spec foi escrita numa sessão sem acesso à Pinguim. A fase −1
+   começa conferindo, só com leitura, a versão do shell, o módulo `imobiliario`, o `geo`, a
+   aceitação, o cap de arquivo, os slots de IA e a `permissao_padrao` (tabela em 15.−1 da spec).
 
 Com isso, a primeira sessão de código faz a fase 0: a pasta da app, o workspace aditivo, o kit e o
 `0.1.0` instalado na Pinguim, sem mexer no site.

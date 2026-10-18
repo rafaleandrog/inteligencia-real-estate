@@ -6040,8 +6040,27 @@ Não há repositório a criar: a app nasce neste (D-125).
    Instaláveis › Apps › Inteligência Imobiliária › aba Núcleo (alçada `nucleo`; começam
    desligadas, modulos.md:80).
 
-**Pronto quando:** os itens 1 a 6 e 8 estão feitos e registrados em `docs/ativacao.md`; o 7 só
-existe se a medição pedir. A cadência de releases não é item de checklist: segue a regra 2 de 3.6
+**Fatos da Pinguim que esta spec assumiu sem medir (v0.7, P-50).** As versões 0.4 a 0.7 foram
+escritas numa sessão sem acesso à Pinguim; o que a spec diz sobre ela é **relatado, não medido**
+(issue do Magis, KIT dos repositórios de app, documentos do reg360). A fase −1 começa medindo, só
+com leitura, pela skill `instancia-urbiverso` no ambiente certo:
+
+| Fato | O que a spec assume | Se divergir |
+|---|---|---|
+| versão do shell | ≥ `0.56.37`, o `shell_min` (3.3) | o piso da app desce para o que a Pinguim roda, ou a construção espera a atualização; nunca subir piso além da instância |
+| módulo `imobiliario` | instalado, 1.3.0 relatado (≥ 1.0.0 exigido; D-139) | sem o módulo, a camada do núcleo (15.1a) sai do MVP até ele ser instalado, porque a app não sobe com a dependência declarada |
+| módulo `geo` | presente, sem contrato no SDK (P-49) | nada muda no MVP; só registra |
+| aceitação e auto-update por app | `Releases` com auto-update disponível (D-128) | instalação manual a cada release |
+| cap global de arquivo | desconhecido (C-15, C-35) | `arquivo_max_bytes` e `tamanho_max_mb` descem para ele |
+| slots de IA `poder`, `barato`, `arquivos` | autorizáveis para a app | IA e extração ficam desligadas até autorizar (não afeta o MVP) |
+| `permissao_padrao` para apps novas | `nenhuma` (D-13) | o admin ajusta na instalação |
+| app `viabilidade` | instalada a partir de repositório pessoal (precedente da D-125) | só registra |
+
+O resultado vai para `docs/ativacao.md` com a data. Se algum fato mudar o MVP, a spec é corrigida
+num PR antes da fase 0.
+
+**Pronto quando:** os itens 1 a 6 e 8 estão feitos e registrados em `docs/ativacao.md`, com a
+tabela de fatos medida; o 7 só existe se a medição pedir. A cadência de releases não é item de checklist: segue a regra 2 de 3.6
 (D-135).
 
 ### 15.0 Fase 0 — Preparação (1 a 2 PRs)
@@ -6766,6 +6785,7 @@ conferência contra o SDK fechou P-05, P-16 a P-22, P-38 e P-39; elas ficam na t
 | P-47 | **Fechada em v0.6:** a lista de áreas próprias vem do núcleo e do Urbigis/Magis, por vínculo: a área de estudo `propria`, ou o contorno importado do Magis por KMZ, se liga a imóveis, parcelamentos ou matrículas do núcleo em `vinculos_nucleo`; os objetos são da app, e quem vincula é o admin até a equipe crescer (D-136, D-138, D-130) | — |
 | P-48 | **Fechada em v0.6:** tudo na Pinguim; durante a construção, releases no ritmo dos PRs, com índices na criação e sem reiniciar a instância em horário de uso dos outros, sem número fixo; depois do MVP, release e promoção por ordem do dono (D-135) | — |
 | P-49 | Contrato do módulo `geo` (feições) e do `feicao_id` do imobiliário 1.3.0 publicado no SDK; até lá a camada Núcleo usa a geometria da app (D-141); pedido ao shell em S-32 (`docs/ISSUES_SHELL_SUGERIDAS.md`) | Sem o traçado oficial do lote no mapa; o polígono da pesquisa pode divergir do lote registrado sem que a tela mostre |
+| P-50 | Medir na Pinguim, só com leitura, os fatos de instância que a spec assumiu: shell, `imobiliario`, `geo`, aceitação, cap de arquivo, slots de IA, `permissao_padrao`, `viabilidade` (15.−1) | piso ou dependência que a Pinguim não satisfaz, descoberto só na primeira instalação |
 
 ---
 
