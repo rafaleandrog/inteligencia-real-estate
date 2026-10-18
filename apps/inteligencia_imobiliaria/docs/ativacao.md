@@ -90,3 +90,14 @@ Medir só com leitura, pela skill `instancia-urbiverso`, numa sessão com acesso
   motivo e aprendizado; o resto da área segue com autor e curador.
 - **CSV de áreas recusa estágio de decisão.** A linha não tem onde levar o motivo nem quem decidiu;
   a decisão fica na tela.
+
+## Divergências da spec encontradas na fase 2
+
+- **O motor de cálculo do site é copiado, não reescrito.** A 15.2 pede o cálculo "portado de
+  `src/ivv/` com os testes". A app copia, sem editar, os módulos puros do site (IVV, FipeZap, PDAD)
+  para `comum/site/` pelo `scripts/vendorizar-site.mjs`, e o backend só traduz a linha da tabela
+  para o formato da aba. A paridade sai por construção e o teste a confere contra números gerados
+  pelo código do site (`scripts/gerar-paridade.mjs`).
+- **Escala do IVV mensal sem declaração no mapeamento.** A spec aceitaria pontos percentuais se
+  declarados; a app aceita só fração e recusa o resto, que é o que a planilha viva publica.
+- **Sem o modo `substituir_tudo`.** As séries usam "Atualizar" (por mês) e "Desfazer".

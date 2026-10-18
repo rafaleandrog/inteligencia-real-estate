@@ -190,7 +190,7 @@ export class IntelImobImportar extends LitElement {
               ${this.resumo(p)}
               ${p.bloqueio ? html`<urbi-banner variante="erro">${p.bloqueio}</urbi-banner>` : nothing}
               ${p.colunas_ignoradas.length
-                ? html`<urbi-banner variante="alerta">Colunas ignoradas: ${p.colunas_ignoradas.map((c) => `${c.cabecalho} (${c.motivo === 'derivada' ? 'derivada' : 'desconhecida'})`).join(', ')}.</urbi-banner>`
+                ? html`<urbi-banner variante="alerta">Colunas sem campo próprio: ${p.colunas_ignoradas.map((c) => `${c.cabecalho} (${c.motivo === 'derivada' ? 'derivada' : c.motivo === 'extras' ? 'guardada em extras' : 'desconhecida'})`).join(', ')}.</urbi-banner>`
                 : nothing}
               ${p.rejeicoes.length
                 ? html`<urbi-prosa papel="secao">Linhas rejeitadas${p.rejeitadas > p.rejeicoes.length ? ` (primeiras ${p.rejeicoes.length} de ${p.rejeitadas})` : ''}</urbi-prosa>

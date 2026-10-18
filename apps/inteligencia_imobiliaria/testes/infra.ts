@@ -97,7 +97,7 @@ export class ErroDadosFalso extends Error {
 export class DadosFalsos {
   private tabelas = new Map<string, Linha[]>();
   private proximoId = new Map<string, number>();
-  private relogio = Date.parse('2026-10-18T12:00:00Z');
+  private relogio = Date.now();
   readonly consultas = new Map<string, (params: Record<string, any>, dados: DadosFalsos) => Linha[]>();
 
   constructor(readonly schema: SchemaTeste = lerSchemaDaApp()) {
@@ -118,7 +118,7 @@ export class DadosFalsos {
   }
 
   private agora(): Date {
-    this.relogio += 1000;
+    this.relogio += 1; // monotônico e perto do relógio real (o desfazer compara com `aplicada_em`)
     return new Date(this.relogio);
   }
 

@@ -415,7 +415,76 @@ const areasEstudo: GanchosTabela = {
   derivadasDe: { geometria: ['geometria_tipo', 'bbox_oeste', 'bbox_sul', 'bbox_leste', 'bbox_norte', 'area_m2', 'geometria_hash', 'centroide_latitude', 'centroide_longitude'] },
 };
 
+// ---------------------------------------------------------------------------
+// Séries publicadas de mercado (5.7): mês no dia 1º, conferência do IVV publicado
+// contra o recalculado (vira achado, nunca correção).
+
+/** `2024-01`, `2024-01-15`, `01/2024` → `2024-01-01`; `null` se não for mês. */
+export function mesReferencia(v: unknown): string | null {
+  const t = String(v ?? '').trim();
+  let m = /^(\d{4})-(\d{2})(?:-\d{2})?/.exec(t);
+  if (m) return Number(m[2]) >= 1 && Number(m[2]) <= 12 ? `${m[1]}-${m[2]}-01` : null;
+  m = /^(\d{2})\/(\d{4})$/.exec(t);
+  if (m) return Number(m[1]) >= 1 && Number(m[1]) <= 12 ? `${m[2]}-${m[1]}-01` : null;
+  const d = /^(\d{2})\/(\d{2})\/(\d{4})$/.exec(t);
+  if (d) return `${d[3]}-${d[2]}-01`;
+  return null;
+}
+
+/** Tolerância da conferência publicado × recalculado (a do site, `DIVERGENCE_TOLERANCE`, 0,5%). */
+const TOLERANCIA_IVV = 0.005;
+
+const ivvMensal: GanchosTabela = {
+  async preparar(v, ctx, erros) {
+    const dados: Record<string, unknown> = { ...v, cidade_id: ctx.cidadeId };
+    const mes = mesReferencia(v.mes_referencia);
+    if (!mes) erros.push({ coluna: 'mes_referencia', codigo: 'DATA_INVALIDA', mensagem: `"${v.mes_referencia}" não é mês (AAAA-MM)` });
+    dados.mes_referencia = mes;
+    const achados: AchadoNovo[] = [];
+    const ivv = v.ivv_frac as number | null;
+    const vendas = v.vendas_unidades as number | null;
+    const oferta = v.oferta_unidades as number | null;
+    if (ivv !== null && ivv !== undefined && vendas !== null && vendas !== undefined && oferta) {
+      const calc = vendas / oferta;
+      const escala = Math.max(Math.abs(ivv), Math.abs(calc));
+      if (escala > 0 && Math.abs(ivv - calc) / escala > TOLERANCIA_IVV) {
+        achados.push({ codigo: 'IVV_DIVERGENTE', severidade: 'aviso', mensagem: `IVV publicado ${(ivv * 100).toFixed(2)}% e recalculado (vendas ÷ oferta) ${(calc * 100).toFixed(2)}% em ${mes}: o publicado vale.`, campo: 'ivv_frac', valor: String(ivv) });
+      }
+    }
+    return { dados, achados };
+  },
+  chave: (d) => (d.mes_referencia ? `${String(d.mes_referencia).slice(0, 10)}|${d.escopo_segmento ?? ''}|${d.escopo_mercado ?? ''}` : null),
+};
+
+const ivvRegional: GanchosTabela = {
+  async carregar(ctx) {
+    await carregarLocalidades(ctx);
+  },
+  async preparar(v, ctx, erros) {
+    const dados: Record<string, unknown> = { ...v, cidade_id: ctx.cidadeId };
+    delete dados.localidade;
+    const mes = mesReferencia(v.mes_referencia);
+    if (!mes) erros.push({ coluna: 'mes_referencia', codigo: 'DATA_INVALIDA', mensagem: `"${v.mes_referencia}" não é mês (AAAA-MM)` });
+    dados.mes_referencia = mes;
+    const nome = String(v.nome_regiao_fonte ?? '');
+    dados.agregado_total = nome === 'DF Total';
+    const achados: AchadoNovo[] = [];
+    if (dados.agregado_total) dados.localidade_id = null;
+    else {
+      // Localidade pelo código informado ou pelo nome único; sem casar, fica sem localidade e vira aviso (o nome da fonte fica).
+      const cache = await carregarLocalidades(ctx);
+      const loc = resolverLocalidade(cache, v.localidade ?? nome);
+      dados.localidade_id = loc ? loc.id : null;
+      if (!loc && v.faixa_quartos === 'TOTAL') achados.push({ codigo: 'REGIAO_SEM_LOCALIDADE', severidade: 'aviso', mensagem: `"${nome}" não casa com nenhuma localidade cadastrada; cadastre o bairro ou submercado e reimporte com "Atualizar".`, campo: 'nome_regiao_fonte', valor: nome });
+    }
+    return { dados, achados };
+  },
+  chave: (d) => (d.mes_referencia ? `${String(d.mes_referencia).slice(0, 10)}|${d.nome_regiao_fonte}|${d.faixa_quartos}` : null),
+};
+
 export const GANCHOS: Record<string, GanchosTabela> = {
+  ivv_mensal: ivvMensal,
+  ivv_regional: ivvRegional,
   areas_estudo: areasEstudo,
   localidades,
   localidade_perfis: localidadePerfis,

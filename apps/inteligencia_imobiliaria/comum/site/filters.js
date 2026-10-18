@@ -1,0 +1,505 @@
+// Copiado sem edição de src/filters.js (site, commit d858168) por scripts/vendorizar-site.mjs.
+// Filtros, estatística e KPIs.
+//
+// Funções puras sobre registros já normalizados (ver src/normalize.js). Nada aqui
+// toca o DOM nem a rede — é a camada que os testes cobrem de verdade.
+
+import { isApproximateLocation } from './normalize.js';
+import {
+  polygonLayerGroup, polygonEntityType, formatLayerGroup, formatEntityType,
+  comparePolygonDrawOrder,
+} from './format.js';
+
+/**
+ * Camadas de REGISTRO exibíveis no mapa, na ordem em que aparecem na interface.
+ *
+ * São exatamente os valores de `record.kind`, e é isso que `applyFilters()` e
+ * `computeKpis()` usam. Contorno não entra aqui de propósito: um polígono não é
+ * registro plotável, não tem `kind` (ver `normalizePolygon`) e não participa de KPI —
+ * incluí-lo faria `byKind` ganhar uma chave sempre zerada e `applyFilters()` procurar
+ * um `kind` que não existe.
+ */
+export const LAYERS = ['listing', 'development', 'anchor'];
+
+/**
+ * Camadas ligáveis pela caixa de seleção — os registros mais os contornos (issue #28).
+ * É o conjunto que o estado inicial dos filtros liga, para que a camada apareça
+ * marcada antes do primeiro `readFilters()`.
+ */
+export const DISPLAY_LAYERS = [...LAYERS, 'polygon'];
+
+/** Estado inicial dos filtros: tudo visível, nada restrito. */
+export function createFilterState() {
+  return {
+    search: '',
+    locality: '',
+    propertyType: '',
+    priceMin: null,
+    priceMax: null,
+    bedrooms: null,
+    ra: '',
+    buildingOrientation: '',
+    salesStage: '',
+    regularizationStatus: '',
+    anchorGroup: '',
+    anchorSegment: '',
+    /**
+     * Situação do anúncio (issue #180): `active` esconde o anúncio que a rotina diária
+     * marcou `inactive` (3 confirmações de remoção no portal); `all` mostra todos. O padrão
+     * é `active` — anúncio que saiu do portal não é oferta, e misturá-lo ao estoque
+     * distorce mediana e contagem.
+     */
+    listingStatus: 'active',
+    layers: new Set(DISPLAY_LAYERS),
+    /**
+     * Grupos e tipos de contorno ligados (issue #51).
+     *
+     * `null` significa "ainda não há legenda montada, mostre tudo" — é o estado entre o
+     * primeiro `render()` e o carregamento dos contornos. Um `Set` vazio significa outra
+     * coisa: o operador desligou tudo. Confundir os dois faria a camada inteira sumir no
+     * primeiro quadro e só voltar depois de alguém clicar.
+     */
+    polygonGroups: null,
+    polygonTypes: null,
+  };
+}
+
+/**
+ * Chave de um tipo dentro do seu grupo.
+ *
+ * Composta e não só o `entity_type` porque o vocabulário é aberto dos dois lados: nada
+ * impede dois grupos de usarem o mesmo nome de tipo, e aí desligar "Trecho rodoviário"
+ * num grupo apagaria o do outro.
+ */
+export function polygonTypeKey(group, type) {
+  return `${group}\u0000${type}`;
+}
+
+/**
+ * Contornos agrupados para a legenda de dois níveis (issue #51).
+ *
+ * Vocabulário **aberto**: os grupos e tipos saem do dado, não de uma lista no código —
+ * um `layer_group` novo aparece sozinho. A ordem é a de desenho (ver
+ * `comparePolygonDrawOrder`), para que a legenda leia de baixo para cima na mesma ordem
+ * em que o mapa empilha, em vez de alfabética, que não corresponde a nada visível.
+ *
+ * Contorno inativo não entra: ele também não é desenhado, e contá-lo na legenda
+ * prometeria algo que o mapa não mostra (mesma armadilha de R8.26).
+ */
+/**
+ * O contorno está ativo, ou seja: o mapa o desenha?
+ *
+ * Ausência de `status` é ATIVO, não inválido — linha gravada antes de a coluna existir
+ * não pode sumir do mapa por causa de uma célula vazia.
+ *
+ * Existe como função exportada porque a mesma pergunta é feita em quatro lugares: a
+ * legenda, o filtro de camada, e os dois índices que ligam trecho rodoviário a geometria
+ * (`linkTrafficDataset`, em src/traffic/link.js). Ela já esteve escrita em duas cópias, e
+ * o índice do trecho nasceu sem nenhuma — o resultado foi o painel prometer geometria que
+ * o renderizador se recusa a desenhar, com botão "ver no mapa" que enquadrava um desenho
+ * invisível (achado P1 do Codex na PR #133). Duas regras para a mesma pergunta divergem;
+ * uma função, não.
+ */
+export function isActivePolygon(polygon) {
+  if (!polygon) return false;
+  return !polygon.status || polygon.status === 'active';
+}
+
+export function groupPolygonsForLegend(polygons) {
+  const groups = new Map();
+
+  for (const polygon of polygons || []) {
+    if (!isActivePolygon(polygon)) continue;
+
+    const group = polygonLayerGroup(polygon);
+    const type = polygonEntityType(polygon);
+    if (!groups.has(group)) {
+      groups.set(group, { key: group, label: formatLayerGroup(group), count: 0, types: new Map(), first: polygon });
+    }
+    const entry = groups.get(group);
+    entry.count += 1;
+    const typeKey = polygonTypeKey(group, type);
+    if (!entry.types.has(typeKey)) {
+      entry.types.set(typeKey, { key: typeKey, type, label: formatEntityType(type), count: 0, first: polygon });
+    }
+    entry.types.get(typeKey).count += 1;
+  }
+
+  return [...groups.values()]
+    .sort((a, b) => comparePolygonDrawOrder(a.first, b.first))
+    .map((entry) => ({
+      key: entry.key,
+      label: entry.label,
+      count: entry.count,
+      sample: entry.first,
+      types: [...entry.types.values()].sort((a, b) => a.label.localeCompare(b.label, 'pt-BR')),
+    }));
+}
+
+/**
+ * Um contorno passa pelos filtros de camada?
+ *
+ * `null` em `polygonGroups`/`polygonTypes` é "sem legenda montada ainda", e nesse estado
+ * tudo passa — ver o comentário em `createFilterState()`.
+ */
+export function polygonPassesLayerFilters(polygon, filters) {
+  if (!isActivePolygon(polygon)) return false;
+  if (!filters.layers.has('polygon')) return false;
+
+  const group = polygonLayerGroup(polygon);
+  if (filters.polygonGroups && !filters.polygonGroups.has(group)) return false;
+
+  const typeKey = polygonTypeKey(group, polygonEntityType(polygon));
+  if (filters.polygonTypes && !filters.polygonTypes.has(typeKey)) return false;
+
+  return true;
+}
+
+/**
+ * Perfil de `RA_PROFILES` de um contorno de Região Administrativa (issue #53).
+ *
+ * `RA_PROFILES` é a fonte CANÔNICA do perfil socioeconômico. O `properties_json` do
+ * contorno é um retrato tirado no momento da sincronização (`profileSnapshotForRa_` no
+ * Apps Script): ele envelhece sozinho, sem sintoma, enquanto a aba continua sendo
+ * atualizada. Mostrar os dois lado a lado seria mostrar duas verdades para o mesmo fato.
+ *
+ * A exigência de `entity_type === 'administrative_region'` não é formalidade. Um
+ * contorno qualquer — uma área importada de KML, um trecho rodoviário — também carrega
+ * `ra_geo_id`, mas ali o campo diz "está DENTRO desta RA", não "É esta RA". Casar por
+ * `ra_geo_id` sozinho colaria a demografia de Taguatinga inteira num quarteirão
+ * desenhado à mão, com todos os números plausíveis e nenhum deles sobre o objeto que o
+ * usuário clicou.
+ *
+ * `entity_id` é o segundo caminho porque o backend grava os dois com o mesmo valor para
+ * linha de RA (`entity_id: ra.ra_geo_id`); um deles vazio não pode fazer o perfil sumir.
+ */
+export function raProfileForPolygon(polygon, raProfiles) {
+  if (!polygon || !raProfiles) return null;
+  if (polygonEntityType(polygon) !== 'administrative_region') return null;
+
+  const key = String(polygon.ra_geo_id || '').trim() || String(polygon.entity_id || '').trim();
+  if (!key) return null;
+  return raProfiles[key] || null;
+}
+
+/**
+ * Mediana de uma lista de números.
+ *
+ * Ignora `null`, `undefined` e não-finitos em vez de deixá-los virar `NaN` — no
+ * dataset real muitos registros não têm preço/m². Lista vazia devolve `null`,
+ * nunca `NaN`: "não há mediana" é uma resposta, `NaN` é um bug que vaza para a tela.
+ */
+export function median(values) {
+  const nums = (values || []).filter((v) => typeof v === 'number' && Number.isFinite(v));
+  if (nums.length === 0) return null;
+  nums.sort((a, b) => a - b);
+  const mid = Math.floor(nums.length / 2);
+  return nums.length % 2 === 0 ? (nums[mid - 1] + nums[mid]) / 2 : nums[mid];
+}
+
+/** Normaliza texto para busca: minúsculas e sem acento. */
+export function normalizeSearchText(value) {
+  return String(value === null || value === undefined ? '' : value)
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '');
+}
+
+/** Campos que a busca livre percorre. */
+function searchableText(record) {
+  return normalizeSearchText(
+    [record.title, record.locality, record.address, record.property_type, record.developer_name, record.category, record.segment]
+      .filter(Boolean)
+      .join(' ')
+  );
+}
+
+/**
+ * Igualdade tolerante para valor de enum vindo de célula digitada à mão: ignora
+ * espaço em volta e caixa. Só serve para filtro cujas opções são fixas no HTML — quem
+ * popula o select a partir dos próprios registros compara cru, porque os dois lados
+ * são literalmente o mesmo valor.
+ */
+function sameEnumValue(recordValue, filterValue) {
+  return String(recordValue || '').trim().toLowerCase() === String(filterValue || '').trim().toLowerCase();
+}
+
+/**
+ * Um registro passa pelo filtro?
+ *
+ * Regra geral: filtro vazio não restringe. Um registro **sem** o dado que o filtro
+ * examina é excluído quando o filtro está ativo — quem pediu "até R$ 500 mil" não
+ * quer ver imóvel sem preço, mas quem não filtrou preço quer ver todos.
+ */
+/**
+ * Anúncio marcado inativo pela rotina de anúncios (issue #178/#180). Status vazio é ATIVO,
+ * como em `isActivePolygon`: linha sem a coluna preenchida não pode sumir do mapa.
+ */
+export function isInactiveListing(record) {
+  return !!record && record.kind === 'listing' && String(record.status || '').trim().toLowerCase() === 'inactive';
+}
+
+/** Quantos anúncios inativos há no conjunto — o que o filtro padrão esconde (R5.7). */
+export function countInactiveListings(records) {
+  return (records || []).filter(isInactiveListing).length;
+}
+
+export function matchesFilters(record, state) {
+  if (!record) return false;
+  if (state.layers && !state.layers.has(record.kind)) return false;
+
+  // Só o valor explícito `active` esconde: estado montado à mão sem a chave (testes,
+  // chamadas antigas) continua mostrando tudo, como antes da issue #180.
+  if (state.listingStatus === 'active' && isInactiveListing(record)) return false;
+
+  if (state.search) {
+    const needle = normalizeSearchText(state.search);
+    if (needle && !searchableText(record).includes(needle)) return false;
+  }
+
+  if (state.locality && record.locality !== state.locality) return false;
+
+  // Região Administrativa (issue #33): existe nos três tipos de registro, então não
+  // restringe camada como o filtro de tipo de imóvel faz.
+  if (state.ra && record.ra_geo_id !== state.ra) return false;
+
+  // Vertical/horizontal (issue #31): anúncio deriva de `property_type` no
+  // normalizador; empreendimento traz a coluna própria `building_orientation`. O
+  // filtro cobre os dois — âncora não tem a classificação e some quando ele está ativo.
+  //
+  // Este é o ÚNICO filtro cujas opções são fixas no `index.html` em vez de virem dos
+  // dados, e por isso o único que compara de forma tolerante: o valor derivado do
+  // anúncio é sempre canônico, mas o do empreendimento vem de célula digitada à mão e
+  // pode chegar como "Vertical" ou " vertical". Comparar cru esconderia o registro do
+  // filtro enquanto o card, que já normaliza para exibir, o mostraria como Vertical.
+  if (state.buildingOrientation && !sameEnumValue(record.building_orientation, state.buildingOrientation)) return false;
+
+  // Estágio de comercialização (issue #30) só existe em DEVELOPMENTS: filtrar por ele
+  // esconde as outras camadas, mesma regra do tipo de imóvel.
+  if (state.salesStage) {
+    if (record.kind !== 'development') return false;
+    if (record.sales_stage !== state.salesStage) return false;
+  }
+
+  // Regularização (issue #32) existe em anúncios E empreendimentos, então não restringe
+  // camada — só exclui quem não tem o dado, como o filtro de RA.
+  if (state.regularizationStatus && record.regularization_status !== state.regularizationStatus) return false;
+
+  // Grupo e segmento (issue #26) só existem em âncoras. Como o filtro de tipo de
+  // imóvel, filtrar por eles esconde as outras camadas: quem escolheu "Infraestrutura"
+  // está olhando para o entorno, não para imóveis à venda.
+  //
+  // `segment` também existe em DEVELOPMENTS ("alto padrão"), com significado
+  // completamente diferente — daí a checagem de `kind` vir ANTES da comparação de
+  // valor, e não como consequência dela.
+  if (state.anchorGroup) {
+    if (record.kind !== 'anchor') return false;
+    if (record.group !== state.anchorGroup) return false;
+  }
+
+  if (state.anchorSegment) {
+    if (record.kind !== 'anchor') return false;
+    if (record.segment !== state.anchorSegment) return false;
+  }
+
+  // Tipo de imóvel só existe em anúncios. Filtrar por tipo esconde as outras camadas,
+  // que é o comportamento esperado: o usuário está procurando um tipo de imóvel.
+  if (state.propertyType) {
+    if (record.kind !== 'listing') return false;
+    if (record.property_type !== state.propertyType) return false;
+  }
+
+  if (state.priceMin !== null && state.priceMin !== undefined) {
+    const ceiling = record.price_max_brl ?? record.price;
+    if (ceiling === null || ceiling === undefined || ceiling < state.priceMin) return false;
+  }
+
+  if (state.priceMax !== null && state.priceMax !== undefined) {
+    const floor = record.price_min_brl ?? record.price;
+    if (floor === null || floor === undefined || floor > state.priceMax) return false;
+  }
+
+  if (state.bedrooms !== null && state.bedrooms !== undefined) {
+    const max = record.bedrooms_max ?? record.bedrooms;
+    if (max === null || max === undefined) return false;
+    if (max < state.bedrooms) return false;
+  }
+
+  return true;
+}
+
+/** Aplica os filtros a um conjunto de registros. */
+export function applyFilters(records, state) {
+  return (records || []).filter((r) => matchesFilters(r, state));
+}
+
+/**
+ * KPIs do conjunto visível.
+ *
+ * `mappable` conta os registros que têm coordenada; a diferença para `visible` é o
+ * que o mapa não consegue mostrar — 7 dos 22 empreendimentos do dataset atual estão
+ * nesse caso, e omitir esse número em silêncio seria esconder um buraco no dado (R5.7).
+ *
+ * A mediana de preço/m² usa apenas anúncios secundários. Empreendimentos e âncoras
+ * não têm preço/m² comparável no contrato atual.
+ */
+export function computeKpis(records) {
+  const list = records || [];
+  const priced = list.filter(
+    (r) => r.kind === 'listing' && typeof r.price_m2 === 'number' && Number.isFinite(r.price_m2)
+  );
+
+  return {
+    visible: list.length,
+    mappable: list.filter((r) => r.coord).length,
+    withoutCoord: list.filter((r) => !r.coord).length,
+    approximate: list.filter((r) => r.coord && isApproximateLocation(r)).length,
+    medianPriceM2: median(priced.map((r) => r.price_m2)),
+    medianPriceM2Sample: priced.length,
+    byKind: LAYERS.reduce((acc, kind) => {
+      acc[kind] = list.filter((r) => r.kind === kind).length;
+      return acc;
+    }, {}),
+  };
+}
+
+/** Localidades distintas presentes nos dados, ordenadas para o select. */
+export function distinctLocalities(records) {
+  const set = new Set();
+  for (const r of records || []) if (r.locality) set.add(r.locality);
+  return [...set].sort((a, b) => a.localeCompare(b, 'pt-BR'));
+}
+
+/** Tipos de imóvel distintos presentes nos anúncios. */
+export function distinctPropertyTypes(records) {
+  const set = new Set();
+  for (const r of records || []) if (r.kind === 'listing' && r.property_type) set.add(r.property_type);
+  return [...set].sort((a, b) => a.localeCompare(b, 'pt-BR'));
+}
+
+/**
+ * Códigos de Região Administrativa (`ra_geo_id`) distintos presentes nos dados
+ * (issue #33). Devolve o código bruto, não o nome — rotular com `RA_PROFILES` é
+ * responsabilidade de quem renderiza (`src/app.js`), para este módulo continuar
+ * puro e sem depender de outra fonte além dos próprios registros.
+ */
+export function distinctRegions(records) {
+  const set = new Set();
+  for (const r of records || []) if (r.ra_geo_id) set.add(r.ra_geo_id);
+  return [...set].sort((a, b) => a.localeCompare(b, 'pt-BR'));
+}
+
+/**
+ * Grupos de âncora (`group`) distintos presentes nos dados, na ordem em que a
+ * interface os apresenta: os dois valores do enum primeiro, qualquer valor
+ * inesperado da planilha depois (em ordem alfabética). Âncora sem `group` não
+ * entra na lista — "sem grupo" não é um grupo para filtrar por ele.
+ */
+export const ANCHOR_GROUP_ORDER = ['infraestrutura', 'comercio_servico'];
+
+function compareAnchorGroups(a, b) {
+  const ia = ANCHOR_GROUP_ORDER.indexOf(a);
+  const ib = ANCHOR_GROUP_ORDER.indexOf(b);
+  if (ia !== -1 || ib !== -1) {
+    if (ia === -1) return 1;
+    if (ib === -1) return -1;
+    return ia - ib;
+  }
+  return a.localeCompare(b, 'pt-BR');
+}
+
+export function distinctAnchorGroups(records) {
+  const set = new Set();
+  for (const r of records || []) if (r.kind === 'anchor' && r.group) set.add(r.group);
+  return [...set].sort(compareAnchorGroups);
+}
+
+/**
+ * Segmentos de âncora distintos. Com `group` informado, restringe aos segmentos
+ * daquele grupo — é o que mantém o select de segmento coerente com o de grupo em
+ * vez de oferecer combinação que devolve conjunto vazio.
+ *
+ * Devolve o slug bruto: traduzir é responsabilidade de quem renderiza
+ * (`formatAnchorSegment`), para este módulo continuar puro.
+ */
+export function distinctAnchorSegments(records, group = '') {
+  const set = new Set();
+  for (const r of records || []) {
+    if (r.kind !== 'anchor' || !r.segment) continue;
+    if (group && r.group !== group) continue;
+    set.add(r.segment);
+  }
+  return [...set].sort((a, b) => a.localeCompare(b, 'pt-BR'));
+}
+
+/**
+ * Modelo da legenda de âncoras em dois níveis (issue #26): grupo → entradas.
+ *
+ * Cada entrada guarda o par (`segment`, `category`) INTEIRO, não só o campo mais
+ * fino. Guardar só o `segment` parecia bastar e não bastava: a cor do marcador cai de
+ * `segment` para `category` quando o segmento é desconhecido, então uma âncora
+ * `segment: "food_hall"` + `category: "escola"` sai âmbar no mapa e sairia verde na
+ * legenda — legenda e mapa divergindo exatamente no caso que o vocabulário aberto
+ * torna comum. Quem resolve o par em rótulo e cor é `anchorLegendEntries` em
+ * `src/format.js`, com a mesma cadeia do marcador, e é lá que entradas que caem no
+ * mesmo rótulo e na mesma cor se fundem numa linha só.
+ *
+ * Âncora sem nenhum dos dois vira uma entrada `{ segment: '', category: '' }`, porque
+ * ela ESTÁ no mapa com o verde padrão e omiti-la da legenda esconderia um ponto
+ * visível (R5.7).
+ *
+ * `group: ''` agrupa as âncoras ainda não classificadas — o estado da planilha antes
+ * de o backend derivar a coluna. Quando NENHUMA âncora tem grupo, o resultado é uma
+ * lista de um grupo só, e quem renderiza omite o título em vez de escrever
+ * "Sem classificação" sobre a legenda inteira.
+ */
+export function anchorLegendGroups(records) {
+  const groups = new Map();
+
+  for (const r of records || []) {
+    if (r.kind !== 'anchor') continue;
+    const group = r.group || '';
+    const segment = r.segment || '';
+    const category = r.category || '';
+    const key = `${segment}\u0000${category}`;
+
+    if (!groups.has(group)) groups.set(group, new Map());
+    const entries = groups.get(group);
+    if (!entries.has(key)) entries.set(key, { segment, category, count: 0 });
+    entries.get(key).count += 1;
+  }
+
+  return [...groups.keys()]
+    .sort((a, b) => {
+      // Sem grupo é sempre o último: é ausência de classificação, não uma classe.
+      if (a === '') return 1;
+      if (b === '') return -1;
+      return compareAnchorGroups(a, b);
+    })
+    .map((group) => ({ group, entries: [...groups.get(group).values()] }));
+}
+
+/**
+ * Estágios de comercialização (`sales_stage`) distintos presentes nos empreendimentos
+ * (issue #30). Como todo `distinctX` deste módulo, devolve o valor bruto e deixa a
+ * tradução para `formatSalesStage`.
+ */
+export function distinctSalesStages(records) {
+  const set = new Set();
+  for (const r of records || []) if (r.kind === 'development' && r.sales_stage) set.add(r.sales_stage);
+  return [...set].sort((a, b) => a.localeCompare(b, 'pt-BR'));
+}
+
+/**
+ * Situações de regularização (`regularization_status`) distintas presentes em anúncios
+ * e empreendimentos (issue #32).
+ *
+ * O select vem dos dados, e não de uma lista fixa, justamente porque o campo é texto
+ * livre no backend: uma opção fixa deixaria de fora qualquer valor que a planilha
+ * inventasse, e o registro sumiria do filtro sem explicação.
+ */
+export function distinctRegularizationStatuses(records) {
+  const set = new Set();
+  for (const r of records || []) if (r.regularization_status) set.add(r.regularization_status);
+  return [...set].sort((a, b) => a.localeCompare(b, 'pt-BR'));
+}

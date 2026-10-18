@@ -32,6 +32,14 @@ e valor fora do tipo rejeita a linha com o motivo. Célula vazia não apaga valo
 baixado traz as colunas `atr_<codigo>` dos atributos ativos, e o desfazer apaga os valores que a
 importação gravou e ninguém editou depois.
 
+**Séries publicadas de mercado** (IVV mensal, IVV por localidade) aceitam os cabeçalhos da planilha
+(`reference_date`, `ivv_pct`, `offers_units`…, e os antigos `offered_units`, `sold_units`…). O IVV
+mensal vem em fração (0,057); valor acima de 1 é recusado com `ESCALA_INDETERMINADA`. O IVV por
+localidade vem em pontos percentuais (12,5) e é guardado em fração. Colunas publicadas sem campo
+próprio (acumulados, variações) ficam em `extras`, sem perda. IVV publicado que diverge do
+recalculado (vendas ÷ oferta) em mais de 0,5% vira achado `IVV_DIVERGENTE`; o publicado vale. O
+desfazer apaga as linhas da série (não há lixeira para série publicada).
+
 **Áreas de estudo** entram pela própria tela (Estudos de área): KML, KMZ ou GeoJSON criam uma área
 por feição (ponto ou polígono, sem duplicar a geometria), e o CSV (tabela "Áreas de estudo") completa
 os demais campos e os atributos `atr_<codigo>` de áreas pelo nome; linha nova precisa de `latitude` e

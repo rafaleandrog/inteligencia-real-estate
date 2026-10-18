@@ -208,7 +208,7 @@ importacoes.post('/importacoes/:id/desfazer', rota(async (req, res) => {
   const imp = await buscarImportacao(req);
   if (imp.status !== 'aplicada') throw new ErroApp(409, 'IMPORTACAO_NAO_DESFAZIVEL', `A importação está "${imp.status}"; só uma aplicada pode ser desfeita.`);
   const ctx = await contexto(req);
-  const tabelas = [{ tabela: imp.tabela_alvo, temVersao: TABELAS_IMPORT[imp.tabela_alvo]?.temVersao ?? false }, ...(extensaoAtributos ? [{ tabela: 'atributos_valor', temVersao: true, apagar: true }] : [])];
+  const tabelas = [{ tabela: imp.tabela_alvo, temVersao: TABELAS_IMPORT[imp.tabela_alvo]?.temVersao ?? false, apagar: TABELAS_IMPORT[imp.tabela_alvo]?.semLixeira ?? false }, ...(extensaoAtributos ? [{ tabela: 'atributos_valor', temVersao: true, apagar: true }] : [])];
   const r = await desfazerImportacao(tabelas, imp, ctx);
   const final = await req.dados!.atualizar('importacoes', imp.id, {
     status: 'desfeita',
