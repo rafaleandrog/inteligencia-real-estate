@@ -65,7 +65,7 @@ export function normalizarOpcoes(ops: unknown): Opcao[] | null {
 }
 
 export async function contarAtivos(dados: HelperDados): Promise<number> {
-  return (await dados.varrerTudo('atributos_def', { filtros: { ativo: true } })).length;
+  return Number((await dados.listar('atributos_def', { filtros: { ativo: true }, por_pagina: 1 })).total ?? 0);
 }
 
 export function exigirTeto(ativos: number): void {

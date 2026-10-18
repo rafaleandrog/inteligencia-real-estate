@@ -143,7 +143,7 @@
         "autor_id": {
           "tipo": "referencia",
           "tabela_ref": "shell.usuarios",
-          "ao_deletar": "anular",
+          "ao_deletar": "restringir",
           "campos_incluir": [
             "nome as autor_nome"
           ],
@@ -498,8 +498,7 @@
       "colunas": {
         "id_legado": {
           "tipo": "texto",
-          "limite": 80,
-          "unico": true
+          "limite": 80
         },
         "nome": {
           "tipo": "texto",
@@ -729,6 +728,21 @@
               "operador": "nulo"
             }
           ]
+        },
+        {
+          "colunas": [
+            "id_legado"
+          ],
+          "onde": [
+            {
+              "coluna": "id_legado",
+              "operador": "nao_nulo"
+            },
+            {
+              "coluna": "removido_em",
+              "operador": "nulo"
+            }
+          ]
         }
       ],
       "indices": [
@@ -873,7 +887,7 @@
         "autor_id": {
           "tipo": "referencia",
           "tabela_ref": "shell.usuarios",
-          "ao_deletar": "anular",
+          "ao_deletar": "restringir",
           "campos_incluir": [
             "nome as autor_nome"
           ],
@@ -1129,8 +1143,7 @@
       "colunas": {
         "id_legado": {
           "tipo": "texto",
-          "limite": 200,
-          "unico": true
+          "limite": 200
         },
         "fonte_id": {
           "tipo": "referencia",
@@ -1424,6 +1437,21 @@
               "operador": "nulo"
             }
           ]
+        },
+        {
+          "colunas": [
+            "id_legado"
+          ],
+          "onde": [
+            {
+              "coluna": "id_legado",
+              "operador": "nao_nulo"
+            },
+            {
+              "coluna": "removido_em",
+              "operador": "nulo"
+            }
+          ]
         }
       ],
       "indices": [
@@ -1543,8 +1571,7 @@
       "colunas": {
         "id_legado": {
           "tipo": "texto",
-          "limite": 120,
-          "unico": true
+          "limite": 120
         },
         "nome": {
           "tipo": "texto",
@@ -1728,7 +1755,24 @@
           "incorporadora",
           "bairro_texto"
         ]
-      }
+      },
+      "unicos": [
+        {
+          "colunas": [
+            "id_legado"
+          ],
+          "onde": [
+            {
+              "coluna": "id_legado",
+              "operador": "nao_nulo"
+            },
+            {
+              "coluna": "removido_em",
+              "operador": "nulo"
+            }
+          ]
+        }
+      ]
     },
     "lancamento_eventos": {
       "acesso_externo": "somente_leitura",
@@ -1806,8 +1850,7 @@
       "colunas": {
         "id_legado": {
           "tipo": "texto",
-          "limite": 120,
-          "unico": true
+          "limite": 120
         },
         "nome": {
           "tipo": "texto",
@@ -1965,7 +2008,24 @@
           "operador",
           "marca"
         ]
-      }
+      },
+      "unicos": [
+        {
+          "colunas": [
+            "id_legado"
+          ],
+          "onde": [
+            {
+              "coluna": "id_legado",
+              "operador": "nao_nulo"
+            },
+            {
+              "coluna": "removido_em",
+              "operador": "nulo"
+            }
+          ]
+        }
+      ]
     },
     "uso_eventos": {
       "acesso_externo": "restrito",

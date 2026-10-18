@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { ErroApp, exigirPapel, idDaRota, naoEncontrado, paginacao, rota, textoQuery, usuarioId } from './comum';
+import { ErroApp, exigirPapel, idDaRota, idsQuery, naoEncontrado, paginacao, rota, textoQuery, usuarioId } from './comum';
 import { querCsv, responderCsv } from './exportar';
 
 export const qualidade: Router = Router();
@@ -9,10 +9,12 @@ const COLUNAS = ['id', 'tabela', 'registro_id', 'campo', 'codigo', 'severidade',
 /** Achados de qualidade (spec 6.9): por padrão, os em aberto. */
 qualidade.get('/qualidade', rota(async (req, res) => {
   const filtros: Record<string, unknown> = {};
-  for (const k of ['tabela', 'codigo', 'severidade', 'importacao_id', 'origem']) {
+  for (const k of ['tabela', 'codigo', 'severidade', 'origem']) {
     const v = textoQuery(req, k);
     if (v) filtros[k] = v;
   }
+  const importacao = idsQuery(req, 'importacao_id');
+  if (importacao) filtros.importacao_id = importacao;
   const resolvido = textoQuery(req, 'resolvido') ?? 'false';
   if (resolvido !== 'todos') filtros['resolvido_em[nulo]'] = resolvido === 'false' ? 'true' : 'false';
   if (querCsv(req)) {

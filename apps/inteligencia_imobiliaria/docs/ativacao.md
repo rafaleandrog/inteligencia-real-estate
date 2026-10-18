@@ -39,6 +39,8 @@ Medir só com leitura, pela skill `instancia-urbiverso`, numa sessão com acesso
 | versão do shell | ≥ `0.56.37` (o `shell_min` da app) | não medido | o piso desce para o que a Pinguim roda, ou a release espera a atualização |
 | módulo `imobiliario` | instalado, 1.3.0 relatado (≥ 1.0.0) | não medido | a camada do núcleo (15.1a) sai do MVP até o módulo ser instalado |
 | módulo `geo` | presente, sem contrato no SDK | não medido | só registra |
+| PostgreSQL da instância | ≥ 15 (os `unicos` com `nulos_distintos: false` de `ivv_mensal`, `fipezap_mensal` e `pdad_observacoes`) | não medido | a instalação falha na sincronização do schema; trocar esses grupos por predicado (`onde`) |
+| mime de KML, KMZ e GeoJSON enviado pelo navegador | um dos aceitos pela coluna `importacoes.arquivo` (`application/vnd.google-earth.*`, `application/geo+json`, `application/json`, `application/octet-stream`) | não medido | o envio é recusado com `DADOS_MIME_INVALIDO`; acrescentar o mime à coluna |
 | aceitação e auto-update | `Releases` com auto-update | não medido | instalação manual a cada release |
 | cap global de arquivo | desconhecido | não medido | `tamanho_max_mb` da importação desce para ele |
 | slots de IA | autorizáveis | não medido | não afeta o MVP |

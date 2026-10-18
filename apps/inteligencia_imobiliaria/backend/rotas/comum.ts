@@ -170,3 +170,12 @@ export function ordenarEmMemoria<T extends Record<string, unknown>>(linhas: T[],
     return c ? c * sinal : Number(a.id) - Number(b.id);
   });
 }
+
+/** Id (ou lista de ids separados por vírgula) da query; texto que não é id vira 400, nunca filtro com NaN. */
+export function idsQuery(req: Request, nome: string): number[] | undefined {
+  const t = textoQuery(req, nome);
+  if (t === undefined) return undefined;
+  const ids = t.split(',').map((x) => x.trim());
+  if (!ids.every((x) => /^\d+$/.test(x))) throw new ErroApp(400, 'PARAMETRO_INVALIDO', `${nome}: id numérico.`);
+  return ids.map(Number);
+}

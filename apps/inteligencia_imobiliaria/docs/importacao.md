@@ -23,7 +23,15 @@ Todo dado entra pelo mesmo fluxo, com as mesmas validações e o mesmo registro 
 4. **Aplicar.** Grava as linhas válidas em lotes de 500. A contagem sempre fecha:
    inseridas + atualizadas + ignoradas + rejeitadas = linhas do arquivo.
 5. **Desfazer** (só o admin da app): manda para a lixeira as linhas que a importação criou e que
-   ninguém editou depois. Linhas atualizadas por ela não voltam ao valor anterior.
+   ninguém editou depois. Linhas atualizadas por ela não voltam ao valor anterior. Uma importação
+   que falhou no meio também pode ser desfeita (os lotes que ela gravou saem). Depois de desfazer,
+   o arquivo corrigido pode ser importado de novo: o `id_legado` de quem está na lixeira não trava
+   a linha nova.
+
+**Modo "Atualizar".** O CSV pode trazer só a chave e as colunas que mudam (ex.: `id_legado` e
+`preco_pedido_brl` para atualizar preços). Célula vazia não apaga nem repõe valor padrão: a coluna
+fica como está. A linha casa com o registro existente por qualquer chave da tabela (`id_legado`,
+URL do anúncio, nome do lançamento ou da âncora, geometria do contorno).
 
 **Atributos no mesmo CSV.** Uma coluna `atr_<codigo>` leva o valor do atributo `<codigo>` do
 catálogo para o objeto da linha (anúncios, lançamentos, âncoras e contornos). A prévia confere que o
@@ -54,8 +62,11 @@ juntas em `metodologia`.
 **Áreas de estudo** entram pela própria tela (Estudos de área): KML, KMZ ou GeoJSON criam uma área
 por feição (ponto ou polígono, sem duplicar a geometria), e o CSV (tabela "Áreas de estudo") completa
 os demais campos e os atributos `atr_<codigo>` de áreas pelo nome; linha nova precisa de `latitude` e
-`longitude`. Linha de área própria só entra para o curador, e estágio de decisão (iniciativa em
-diante, encerrada) só pela tela, com motivo.
+`longitude` (a prévia já a recusa sem elas). Linha de área própria só entra para o curador, e
+estágio de decisão (iniciativa em diante, encerrada) só pela tela, com motivo. No modo
+"Atualizar", a linha só altera a área que quem importa pode editar (autor ou curador; área própria,
+só o curador); a área própria que a pessoa não enxerga não casa com a linha, e a prévia não diz
+que ela existe.
 
 Reimportar o mesmo arquivo com "Ignorar" não duplica nada: a chave natural de cada tabela está
 em [Dados](dados.md).
