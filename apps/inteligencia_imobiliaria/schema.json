@@ -172,6 +172,11 @@
         },
         "relatorio_desfazer": {
           "tipo": "json"
+        },
+        "coleta_id": {
+          "tipo": "referencia",
+          "tabela_ref": "coletas",
+          "ao_deletar": "anular"
         }
       },
       "indices": [
@@ -816,6 +821,11 @@
         "importacao_id": {
           "tipo": "referencia",
           "tabela_ref": "importacoes",
+          "ao_deletar": "anular"
+        },
+        "coleta_id": {
+          "tipo": "referencia",
+          "tabela_ref": "coletas",
           "ao_deletar": "anular"
         }
       },
@@ -1997,6 +2007,210 @@
           "em"
         ]
       ]
+    },
+    "coletas": {
+      "acesso_externo": "somente_leitura",
+      "id_legivel": "{tipo} {iniciado_em}",
+      "colunas": {
+        "tipo": {
+          "tipo": "texto",
+          "limite": 30,
+          "opcoes": [
+            "verificacao_anuncios",
+            "descoberta_anuncios",
+            "verificacao_lancamentos",
+            "fechamento_mes",
+            "dados_publicos",
+            "analises_ia",
+            "importacao",
+            "agrupamento_anuncios",
+            "vinculo_empreendimentos",
+            "series_macro",
+            "achados",
+            "recalculo",
+            "frescor",
+            "retencao"
+          ],
+          "obrigatorio": true
+        },
+        "disparo": {
+          "tipo": "texto",
+          "limite": 20,
+          "opcoes": [
+            "agendado",
+            "manual",
+            "continuacao"
+          ],
+          "obrigatorio": true
+        },
+        "iniciado_em": {
+          "tipo": "datahora",
+          "obrigatorio": true
+        },
+        "finalizado_em": {
+          "tipo": "datahora"
+        },
+        "status": {
+          "tipo": "texto",
+          "limite": 20,
+          "opcoes": [
+            "executando",
+            "sucesso",
+            "parcial",
+            "falha",
+            "interrompida",
+            "pausada",
+            "adiada"
+          ],
+          "obrigatorio": true
+        },
+        "candidatos_lidos": {
+          "tipo": "inteiro",
+          "obrigatorio": true,
+          "padrao": 0
+        },
+        "candidatos_processados": {
+          "tipo": "inteiro",
+          "obrigatorio": true,
+          "padrao": 0
+        },
+        "candidatos_rejeitados": {
+          "tipo": "inteiro",
+          "obrigatorio": true,
+          "padrao": 0
+        },
+        "paginas_pedidas": {
+          "tipo": "inteiro",
+          "obrigatorio": true,
+          "padrao": 0
+        },
+        "paginas_lidas": {
+          "tipo": "inteiro",
+          "obrigatorio": true,
+          "padrao": 0
+        },
+        "paginas_bloqueadas": {
+          "tipo": "inteiro",
+          "obrigatorio": true,
+          "padrao": 0
+        },
+        "novos": {
+          "tipo": "inteiro",
+          "obrigatorio": true,
+          "padrao": 0
+        },
+        "atualizados": {
+          "tipo": "inteiro",
+          "obrigatorio": true,
+          "padrao": 0
+        },
+        "reativados": {
+          "tipo": "inteiro",
+          "obrigatorio": true,
+          "padrao": 0
+        },
+        "precos_alterados": {
+          "tipo": "inteiro",
+          "obrigatorio": true,
+          "padrao": 0
+        },
+        "verificacoes": {
+          "tipo": "inteiro",
+          "obrigatorio": true,
+          "padrao": 0
+        },
+        "inativados": {
+          "tipo": "inteiro",
+          "obrigatorio": true,
+          "padrao": 0
+        },
+        "retratos": {
+          "tipo": "inteiro",
+          "obrigatorio": true,
+          "padrao": 0
+        },
+        "metricas": {
+          "tipo": "inteiro",
+          "obrigatorio": true,
+          "padrao": 0
+        },
+        "erros": {
+          "tipo": "inteiro",
+          "obrigatorio": true,
+          "padrao": 0
+        },
+        "detalhes_erros": {
+          "tipo": "texto_longo"
+        },
+        "cursor_inicial": {
+          "tipo": "inteiro"
+        },
+        "cursor_final": {
+          "tipo": "inteiro"
+        },
+        "versao_parser": {
+          "tipo": "texto",
+          "limite": 60
+        },
+        "disparado_por_id": {
+          "tipo": "referencia",
+          "tabela_ref": "shell.usuarios",
+          "ao_deletar": "anular",
+          "campos_incluir": [
+            "nome as disparado_por_nome"
+          ]
+        }
+      },
+      "indices": [
+        [
+          "tipo",
+          "iniciado_em"
+        ],
+        [
+          "status"
+        ]
+      ]
+    },
+    "cursores_rotina": {
+      "acesso_externo": "restrito",
+      "id_legivel": "{rotina}",
+      "colunas": {
+        "rotina": {
+          "tipo": "texto",
+          "limite": 60,
+          "obrigatorio": true,
+          "unico": true
+        },
+        "cursor": {
+          "tipo": "json"
+        },
+        "versao": {
+          "tipo": "inteiro",
+          "obrigatorio": true,
+          "padrao": 1
+        },
+        "em_execucao_desde": {
+          "tipo": "datahora"
+        },
+        "coleta_id": {
+          "tipo": "referencia",
+          "tabela_ref": "coletas",
+          "ao_deletar": "anular"
+        },
+        "classe": {
+          "tipo": "texto",
+          "limite": 10,
+          "opcoes": [
+            "coleta",
+            "carga",
+            "leve"
+          ],
+          "obrigatorio": true
+        },
+        "agendamento_id": {
+          "tipo": "inteiro"
+        }
+      }
     }
   }
 }

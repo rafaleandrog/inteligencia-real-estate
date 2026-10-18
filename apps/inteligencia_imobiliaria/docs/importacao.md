@@ -31,6 +31,31 @@ em [Dados](dados.md).
 **Contornos em KML, KMZ ou GeoJSON** entram pelo Cadastro › Contornos: a prévia lista as feições
 (nome, tipo, vértices, erros); aplicar cria os contornos sem duplicar pela geometria.
 
+## Migração da planilha
+
+A migração nunca importa a planilha viva: importa um **retrato datado**, gerado por
+`node scripts/exportar-planilha.mjs [AAAA-MM-DD]` na raiz do repositório (GViz, a mesma consulta do
+site; a planilha precisa estar compartilhada para leitura). O retrato fica em
+`migracao/AAAA-MM-DD/<aba>.csv` com `SHA256SUMS`, **fora do git**. Cada passo é uma importação pela
+Operação › Importações (ou pela carga por agente), sem edição manual do CSV:
+
+| Passo | Aba | Tabela | Observação |
+|---|---|---|---|
+| 0 | — | `cidades`, `localidades` (37 RAs) | semente da app, automática |
+| 1 | `RA_PROFILES` | `localidade_perfis` (e `localidades` em "Atualizar", para nomes e área) | o ano do perfil está vazio na planilha: declare `ano_referencia` como valor padrão |
+| 2 | `ra_crosswalk.json` | `localidades.codigo_legado` | já vem na semente |
+| 3 | `FIPEZAP_LOCALITY_MAP` | `localidades` | vira submercado (ou agregado) com a RA como pai; o nome da fonte fica em `nome_fonte` |
+| 4 | `POLYGONS` | `contornos` | |
+| 5 | `ANCHORS` | `ancoras` | |
+| 6 | `LISTING_SOURCES` | `fontes_portal` | se faltar, a importação de anúncios cria a fonte, inativa |
+| 7 | `LISTINGS` | `anuncios` | grava o evento `criado` de cada anúncio |
+| 10 | `DEVELOPMENTS` | `lancamentos` | |
+
+Aceite de cada passo: `total_linhas = inseridas + atualizadas + ignoradas + rejeitadas`, e cada
+rejeição listada com motivo. Até a coleta automática (fase 3), a planilha continua sendo a fonte de
+verdade dos anúncios: manter a app em dia é reimportar o retrato seguinte em "Atualizar" pela chave
+natural (`id_legado`). Cada aplicar registra uma execução em Operação › Execuções.
+
 ## Para o administrador
 
 - Importar exige o papel **operador**; desfazer, nível **admin** da app.

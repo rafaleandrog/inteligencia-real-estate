@@ -7,6 +7,7 @@ import { ehAdmin, json, mensagemDeErro, uv } from '../api';
 import '../componentes/importar';
 import '../componentes/como-ler';
 import './qualidade';
+import './execucoes';
 
 const ROTULO_STATUS: Record<string, string> = {
   previa: 'Prévia', anexada: 'Anexada', extraindo: 'Extraindo', aplicando: 'Aplicando', aplicada: 'Aplicada',
@@ -199,6 +200,7 @@ export class IntelImobOperacao extends LitElement {
         <urbi-abas .abas=${[
           { id: 'importacoes', label: 'Importações', icone: 'fa-solid fa-file-import' },
           { id: 'qualidade', label: 'Qualidade', icone: 'fa-solid fa-clipboard-check' },
+          { id: 'execucoes', label: 'Execuções', icone: 'fa-solid fa-list-check' },
         ]} ativa=${this.aba}
           @urbi:aba-selecionar=${(e: CustomEvent) => uv().navegarSub(`/operacao/${e.detail.id}`)}>
           <div slot="importacoes">
@@ -210,6 +212,9 @@ export class IntelImobOperacao extends LitElement {
           </div>
           <div slot="qualidade">
             ${this.aba === 'qualidade' ? html`<intel-imob-qualidade></intel-imob-qualidade>` : nothing}
+          </div>
+          <div slot="execucoes">
+            ${this.aba === 'execucoes' ? html`<intel-imob-execucoes></intel-imob-execucoes>` : nothing}
           </div>
         </urbi-abas>
       </urbi-shell-page>

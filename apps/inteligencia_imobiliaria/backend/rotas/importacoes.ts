@@ -168,12 +168,20 @@ importacoes.post('/importacoes/:id/aplicar', rota(async (req, res) => {
   const travada = await req.dados!.atualizarSe('importacoes', imp.id, { status: 'aplicando' }, { status: 'previa' });
   if (!travada) throw new ErroApp(409, 'IMPORTACAO_NAO_APLICAVEL', 'Outra pessoa já está aplicando esta importação.');
   const ctx = await contexto(req);
+  // A execução fica registrada em `coletas` com os contadores de domínio (spec 11.1, passo 2).
+  const coleta = await req.dados!.criar('coletas', { tipo: 'importacao', disparo: 'manual', iniciado_em: new Date().toISOString(), status: 'executando', disparado_por_id: ctx.usuarioId });
   try {
     const arquivo = await lerArquivoTexto(req.arquivos, Number(imp.arquivo));
     const v = await validarCsv(def, ganchos, arquivo.texto, ctx, imp.modo_duplicata, extensaoAtributos, lerPadroes(imp.mapeamento?.padroes));
     if (v.bloqueio) throw new ErroApp(409, 'PREVIA_BLOQUEADA', v.bloqueio);
     const r = await aplicarValidacao(def, v, ctx, imp.id, ganchos);
+    await req.dados!.atualizar('coletas', coleta.id, {
+      status: r.rejeitadas ? 'parcial' : 'sucesso', finalizado_em: new Date().toISOString(),
+      novos: r.inseridas, atualizados: r.atualizadas, erros: r.rejeitadas,
+      detalhes_erros: r.rejeicoes.length ? r.rejeicoes.slice(0, 200).map((x) => `linha ${x.linha} ${x.coluna}: ${x.codigo} ${x.mensagem}`).join('\n').slice(0, 20000) : null,
+    });
     const final = await req.dados!.atualizar('importacoes', imp.id, {
+      coleta_id: coleta.id,
       status: 'aplicada',
       aplicada_em: new Date().toISOString(),
       total_linhas: v.total_linhas,
@@ -185,7 +193,8 @@ importacoes.post('/importacoes/:id/aplicar', rota(async (req, res) => {
     });
     res.json({ ...resumo(final!), rejeicoes: r.rejeicoes.slice(0, MAX_REJEICOES_RESPOSTA), achados: r.achados });
   } catch (e) {
-    await req.dados!.atualizar('importacoes', imp.id, { status: 'falhou', relatorio: { ...(imp.relatorio ?? {}), erro: (e as Error).message } });
+    await req.dados!.atualizar('coletas', coleta.id, { status: 'falha', finalizado_em: new Date().toISOString(), erros: 1, detalhes_erros: String((e as Error).message).slice(0, 20000) });
+    await req.dados!.atualizar('importacoes', imp.id, { status: 'falhou', coleta_id: coleta.id, relatorio: { ...(imp.relatorio ?? {}), erro: (e as Error).message } });
     throw e;
   }
 }));

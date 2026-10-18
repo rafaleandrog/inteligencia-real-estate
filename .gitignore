@@ -45,3 +45,8 @@ apps/*/backend/rotas.js
 apps/*/frontend/index.js
 modulos/*/backend/modulo.js
 modulos/*/frontend/modulo.js
+
+# Retrato datado da planilha para a migração da app (scripts/exportar-planilha.mjs): cópia de
+# dado da planilha, fora do git como migration-csv/ (R2.4) e porque o validate.yml reprova CSV
+# versionado fora de migration/.
+/migracao/

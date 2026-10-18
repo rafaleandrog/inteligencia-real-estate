@@ -39,6 +39,8 @@ Sucessor do `docs/DATA_CONTRACT.md` do site para a app. O desenho completo está
 | `ancoras` | âncoras (sucede `ANCHORS`) | `id_legado` (`place_id`), senão nome + categoria |
 | `uso_eventos` | telemetria mínima de abertura de tela (tabela pessoal) | — |
 | `importacoes` | cada carga: arquivo (não expira), modo, contagens, rejeições, quem fez, desfazer | — |
+| `coletas` | cada execução com os contadores de domínio (importação hoje; rotinas a partir da fase 3) | — |
+| `cursores_rotina` | posição e trava das rotinas fatiadas (fase 3) | — |
 | `achados_qualidade` | avisos não bloqueantes (ex.: `SOMA_FAIXAS_ETARIAS`), com quem resolveu | — |
 | `alteracoes_cadastro` | histórico de criar, editar, remover e restaurar, com o antes e o depois | — |
 

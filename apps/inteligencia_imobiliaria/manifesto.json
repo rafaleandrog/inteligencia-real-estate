@@ -1,6 +1,6 @@
 {
   "nome": "Inteligência Imobiliária",
-  "versao": "0.3.0",
+  "versao": "0.4.0",
   "descricao": "Oferta, mercado e território do mercado imobiliário, com dado rastreável",
   "identidade": "rafaleandrog/inteligencia-real-estate::inteligencia_imobiliaria",
   "shell_min": "0.56.37",

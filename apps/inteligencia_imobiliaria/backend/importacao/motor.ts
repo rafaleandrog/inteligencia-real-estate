@@ -99,9 +99,10 @@ export async function validarCsv(
     }
   }
   // Valor padrão declarado na prévia (gravado no mapeamento): preenche só célula vazia.
-  const camposPadrao = def.campos.filter((c) => padroes[c.coluna] !== undefined && padroes[c.coluna] !== '');
+  const campos = mapa.campos;
+  const camposPadrao = campos.filter((c) => padroes[c.coluna] !== undefined && padroes[c.coluna] !== '');
   const mapeadas = new Set([...mapa.colunas.map((c) => c.campo.coluna), ...camposPadrao.map((c) => c.coluna)]);
-  const faltando = def.campos.filter((c) => c.obrigatorio && !mapeadas.has(c.coluna)).map((c) => c.coluna);
+  const faltando = campos.filter((c) => c.obrigatorio && !mapeadas.has(c.coluna)).map((c) => c.coluna);
   // No modo `atualizar` o CSV pode trazer só o que muda; a linha que não existe ainda é que exige tudo.
   if (faltando.length && modo !== 'atualizar') {
     throw new ErroApp(422, 'COLUNA_OBRIGATORIA_AUSENTE', 'O CSV não tem colunas obrigatórias da tabela.', faltando.map((c) => `Falta a coluna ${c}. Baixe o modelo para ver o cabeçalho esperado.`));
@@ -132,7 +133,7 @@ export async function validarCsv(
       if (r.ok) valores[c.coluna] = r.valor;
       else erros.push({ ...r.erro, mensagem: `valor padrão declarado: ${r.erro.mensagem}` });
     }
-    for (const c of def.campos) {
+    for (const c of campos) {
       if (c.obrigatorio && mapeadas.has(c.coluna) && (valores[c.coluna] === null || valores[c.coluna] === undefined)) {
         if (!erros.some((e) => e.coluna === c.coluna)) erros.push({ coluna: c.coluna, codigo: 'OBRIGATORIO', mensagem: 'valor obrigatório vazio' });
       }

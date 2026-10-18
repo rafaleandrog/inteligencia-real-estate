@@ -40,6 +40,12 @@ export interface TabelaImport {
   extras?: boolean;
   /** Modos permitidos; `substituir_tudo` só em série publicada. */
   modos: ModoDuplicata[];
+  /**
+   * Variantes de cabeçalho: quando o CSV traz a coluna `detecta`, os aliases dos
+   * campos listados são trocados (a mesma aba antiga usa `ra_geo_id` como código
+   * numa e como pai noutra).
+   */
+  variantes?: { nome: string; detecta: string; aliases: Record<string, string[]>; opcionais?: string[] }[];
 }
 
 export type ModoDuplicata = 'ignorar' | 'atualizar' | 'substituir_tudo' | 'falhar';
@@ -63,6 +69,8 @@ export const TABELAS_IMPORT: Record<string, TabelaImport> = {
     derivadas: ['cidade', 'localidade_pai_nome', 'perfil_ano'],
     temVersao: true,
     modos: MODOS_CADASTRO,
+    // Migração passo 3: FIPEZAP_LOCALITY_MAP vira submercados, com `ra_geo_id` como pai.
+    variantes: [{ nome: 'FIPEZAP_LOCALITY_MAP', detecta: 'locality_map_id', aliases: { codigo: ['locality_map_id'], localidade_pai: ['ra_geo_id'], nome: [], nome_fonte: ['source_locality_name'], qualidade: ['quality_flag'] }, opcionais: ['nome'] }],
     campos: [
       { coluna: 'tipo', tipo: 'texto', opcoes: ['ra', 'submercado', 'bairro', 'municipio', 'agregado'] },
       { coluna: 'codigo', tipo: 'texto', obrigatorio: true, limite: 40, aliases: ['ra_geo_id', 'locality_map_id'] },
@@ -354,7 +362,19 @@ export interface ColunaIgnorada {
  * depois alias. Coluna derivada ou desconhecida é ignorada com aviso, nunca
  * rejeita a linha (T9). `atr_<codigo>` fica para o motor (atributos).
  */
-export function mapearCabecalho(def: TabelaImport, cabecalho: string[]): { colunas: MapeamentoColuna[]; ignoradas: ColunaIgnorada[]; atributos: { indice: number; codigo: string }[] } {
+export function mapearCabecalho(def: TabelaImport, cabecalho: string[]): { colunas: MapeamentoColuna[]; ignoradas: ColunaIgnorada[]; atributos: { indice: number; codigo: string }[]; variante: string | null; campos: CampoImport[] } {
+  const normalizados = cabecalho.map(normalizarCabecalho);
+  const variante = def.variantes?.find((v) => normalizados.includes(v.detecta)) ?? null;
+  if (variante) {
+    def = {
+      ...def,
+      campos: def.campos.map((c) => ({
+        ...c,
+        ...(variante.aliases[c.coluna] ? { aliases: variante.aliases[c.coluna], aliasesPct: [] } : {}),
+        ...(variante.opcionais?.includes(c.coluna) ? { obrigatorio: false } : {}),
+      })),
+    };
+  }
   const colunas: MapeamentoColuna[] = [];
   const ignoradas: ColunaIgnorada[] = [];
   const atributos: { indice: number; codigo: string }[] = [];
@@ -398,7 +418,7 @@ export function mapearCabecalho(def: TabelaImport, cabecalho: string[]): { colun
   }
   colunas.sort((a, b) => a.indice - b.indice);
   ignoradas.sort((a, b) => cabecalho.indexOf(a.cabecalho) - cabecalho.indexOf(b.cabecalho));
-  return { colunas, ignoradas, atributos };
+  return { colunas, ignoradas, atributos, variante: variante?.nome ?? null, campos: def.campos };
 }
 
 /** Cabeçalho do modelo baixável: as colunas canônicas, na ordem do catálogo. */

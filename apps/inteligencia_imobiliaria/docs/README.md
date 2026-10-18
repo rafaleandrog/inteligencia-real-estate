@@ -16,8 +16,8 @@ repositório; o recorte da primeira versão, em `docs/MVP_PROPOSTA.md`.
 - **Cadastro** (`/cadastro`): anúncios, lançamentos, âncoras, contornos (KML/KMZ ou desenho),
   localidades e fontes, cada aba com lista filtrável, ficha, histórico, "Baixar CSV", "Importar CSV" e
   "Baixar modelo". Editar e remover exigem o papel **curador** (fontes: **operador**).
-- **Operação** (`/operacao`): importações CSV com prévia, aplicar e desfazer, e os achados de
-  qualidade. Ver [Importação](importacao.md).
+- **Operação** (`/operacao`): importações CSV com prévia, aplicar e desfazer, os achados de
+  qualidade e as execuções. Ver [Importação](importacao.md), inclusive a migração da planilha.
 - O menu da app tem onze áreas. Cada área entra numa fase; a tela diz quando.
 - O contrato das tabelas está em [Dados](dados.md).
 

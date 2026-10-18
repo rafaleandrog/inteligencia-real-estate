@@ -86,6 +86,20 @@ async function exigirLocalidade(ctx: CtxImportacao, valor: unknown, coluna: stri
   return Number(loc.id);
 }
 
+/** Tipo da localidade: RA pelo código; da classificação do FipeZap; senão bairro. */
+function tipoDaLocalidade(v: Record<string, unknown>): string {
+  if (/^RA_\d+$/i.test(String(v.codigo ?? ''))) return 'ra';
+  const c = String(v.classificacao_fonte ?? '').toUpperCase();
+  if (c === 'AGREGADO_DF') return 'agregado';
+  if (c.includes('FIPE')) return 'submercado';
+  return 'bairro';
+}
+
+/** `ASA SUL` → `Asa Sul` (o nome da fonte fica intacto em `nome_fonte`). */
+function nomeLegivel(t: string): string {
+  return t.toLowerCase().replace(/(^|[\s/-])(\p{L})/gu, (_m, a, b) => a + b.toUpperCase()).replace(/\b(De|Da|Do|Das|Dos|E)\b/g, (x) => x.toLowerCase());
+}
+
 const localidades: GanchosTabela = {
   async carregar(ctx) {
     await carregarLocalidades(ctx);
@@ -95,7 +109,8 @@ const localidades: GanchosTabela = {
     delete dados.localidade_pai;
     delete dados.localidade_predecessora;
     dados.cidade_id = ctx.cidadeId;
-    if (!dados.tipo) dados.tipo = /^RA_\d+$/i.test(String(v.codigo ?? '')) ? 'ra' : 'bairro';
+    if (!dados.tipo) dados.tipo = tipoDaLocalidade(v);
+    if (!dados.nome && v.nome_fonte) dados.nome = nomeLegivel(String(v.nome_fonte));
     if ('localidade_pai' in v) dados.localidade_pai_id = await exigirLocalidade(ctx, v.localidade_pai, 'localidade_pai', erros, false);
     if ('localidade_predecessora' in v) dados.localidade_predecessora_id = await exigirLocalidade(ctx, v.localidade_predecessora, 'localidade_predecessora', erros, false);
     return { dados, achados: [] };
