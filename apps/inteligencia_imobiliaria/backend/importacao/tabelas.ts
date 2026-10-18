@@ -267,6 +267,11 @@ const anuncios: GanchosTabela = {
       if (!coordenada(v.latitude, v.longitude)) erros.push({ coluna: 'latitude', codigo: 'COORDENADA_INVALIDA', mensagem: 'par de coordenadas fora da faixa ou incompleto' });
     }
     if (typeof v.preco_pedido_brl === 'number' && v.preco_pedido_brl <= 0) dados.preco_pedido_brl = null;
+    // Ponto único ambíguo ("385.000" lido como 385): a âncora preço/m² informado × área decide (site, toPriceNumber).
+    if (typeof dados.preco_pedido_brl === 'number' && dados.preco_pedido_brl < 100_000 && typeof v.area_m2 === 'number' && typeof v.preco_m2_informado_brl === 'number' && v.area_m2 > 0) {
+      const esperado = v.preco_m2_informado_brl * v.area_m2;
+      if (Math.abs(dados.preco_pedido_brl * 1000 - esperado) < Math.abs(dados.preco_pedido_brl - esperado)) dados.preco_pedido_brl *= 1000;
+    }
     dados.status = v.status ?? 'ativo';
     dados.origem_cadastro = 'importacao';
     dados.primeiro_visto_em = v.primeiro_visto_em ?? (v.observado_em ? `${v.observado_em}T00:00:00.000Z` : new Date().toISOString());

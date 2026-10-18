@@ -71,3 +71,11 @@ test('Início responde a versão do manifesto', async () => {
     await s.fechar();
   }
 });
+
+test('conteúdo de terceiro: sem unsafeHTML e link externo com noopener (spec 10.1)', () => {
+  for (const f of arquivos(join(RAIZ_APP, 'frontend'))) {
+    const s = readFileSync(f, 'utf8');
+    assert.ok(!s.includes('unsafeHTML'), `${f} usa unsafeHTML`);
+    for (const m of s.matchAll(/<a [^>]*target="_blank"[^>]*>/g)) assert.ok(m[0].includes('rel="noopener noreferrer"'), `${f}: ${m[0]}`);
+  }
+});
