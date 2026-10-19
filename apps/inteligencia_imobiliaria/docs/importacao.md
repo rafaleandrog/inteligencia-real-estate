@@ -70,9 +70,11 @@ que ela existe.
 
 **Telemetria da coleta antiga.** O CSV de anúncios aceita `last_checked_at`, `last_price_change_at`,
 `content_hash`, `parser_version`, `verification_failures`, `last_check_status` (`error` vira `erro`),
-`last_check_http_code` e `last_check_message`; o de lançamentos aceita `first_seen_at`; o de fontes,
-`request_headers_json`. O escopo de mercado do IVV mensal aceita até 120 caracteres. `search_urls`
-das fontes ainda não tem tabela de destino e fica fora.
+`last_check_http_code` e `last_check_message`; o de lançamentos aceita `first_seen_at`. No IVV mensal, o
+escopo de mercado da planilha ("Mercado formal do DF - incorporadoras associadas à instituição que gera
+este relatório") entra como "Mercado formal do DF - incorporadoras associadas", porque a coluna aceita
+até 60 caracteres. `search_urls` das fontes ainda não é importável (a tabela `buscas_portal` existe,
+mas não está entre as importáveis) e os cabeçalhos de requisição das fontes só se editam pela tela.
 
 Reimportar o mesmo arquivo com "Ignorar" não duplica nada: a chave natural de cada tabela está
 em [Dados](dados.md).

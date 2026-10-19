@@ -204,7 +204,6 @@ export const TABELAS_IMPORT: Record<string, TabelaImport> = {
       { coluna: 'url_base', tipo: 'url', obrigatorio: true, limite: 500, aliases: ['base_url'] },
       { coluna: 'parser', tipo: 'texto', aliases: ['parser_key'], opcoes: ['generico_html', 'generico_json', 'quintoandar', 'dfimoveis', 'wimoveis', 'imovelweb', 'vivareal'], traducao: { generic_html: 'generico_html', generic_json: 'generico_json' } },
       { coluna: 'config_parser', tipo: 'json', aliases: ['parser_config_json'] },
-      { coluna: 'cabecalhos', tipo: 'json', aliases: ['request_headers_json'] },
       { coluna: 'notas', tipo: 'texto_longo', aliases: ['notes'] },
     ],
   },
@@ -381,7 +380,7 @@ export const TABELAS_IMPORT: Record<string, TabelaImport> = {
     campos: [
       { coluna: 'mes_referencia', tipo: 'texto', obrigatorio: true, aliases: ['reference_date', 'reference_month', 'period_id'] },
       { coluna: 'escopo_geografico', tipo: 'texto', limite: 60, aliases: ['geography_scope'] },
-      { coluna: 'escopo_mercado', tipo: 'texto', limite: 120, aliases: ['market_scope'] },
+      { coluna: 'escopo_mercado', tipo: 'texto', limite: 60, aliases: ['market_scope'], traducao: { 'Mercado formal do DF - incorporadoras associadas à instituição que gera este relatório': 'Mercado formal do DF - incorporadoras associadas' } },
       { coluna: 'escopo_segmento', tipo: 'texto', limite: 60, aliases: ['segment_scope'] },
       { coluna: 'ivv_frac', tipo: 'fracao', aliases: ['ivv_pct'] },
       { coluna: 'oferta_unidades', tipo: 'inteiro', aliases: ['offers_units', 'offered_units'] },

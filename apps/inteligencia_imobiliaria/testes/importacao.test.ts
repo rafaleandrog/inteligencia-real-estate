@@ -179,25 +179,59 @@ test('refazer a prévia com valor padrão declarado e cancelar uma prévia', asy
   }
 });
 
-test('anúncios: telemetria da coleta antiga entra, o evento "criado" leva o preço como número e o IVV aceita escopo longo', async () => {
+test('anúncios: telemetria entra, célula vazia não anula o padrão e o evento "criado" leva o preço como número', async () => {
   const { s, arquivos } = await montar();
   try {
-    const linha = { ...aba('listings')[0], last_check_status: 'error', content_hash: 'abc123', parser_version: 'v1' };
-    const p = await s.chamar('POST', '/importacoes/previa', { tabela_alvo: 'anuncios', upload_id: arquivos.subir('LISTINGS.csv', csvDaAba([linha])) }, PERFIS.operador);
+    // O banco falso aceita string em coluna decimal; o payload é capturado para provar o tipo enviado ao banco real.
+    const payloads: Record<string, unknown>[] = [];
+    const criar = s.dados.criar.bind(s.dados);
+    s.dados.criar = (async (tabela: string, dados: Record<string, unknown>) => {
+      if (tabela === 'anuncio_eventos') payloads.push({ ...dados });
+      return criar(tabela, dados);
+    }) as typeof s.dados.criar;
+    const base = aba('listings')[0];
+    const cheia = { ...base, last_check_status: 'error', content_hash: 'abc123', parser_version: 'v1', last_checked_at: '2026-10-19 04:57:46.417000' };
+    const vazia = { ...aba('listings')[1], listing_id: 'L_VAZIA', source_url: 'https://exemplo.com.br/anuncio-vazio', last_check_status: '', verification_failures: '' };
+    const p = await s.chamar('POST', '/importacoes/previa', { tabela_alvo: 'anuncios', upload_id: arquivos.subir('LISTINGS.csv', csvDaAba([cheia, vazia])) }, PERFIS.operador);
     assert.equal(p.status, 201, p.texto);
     assert.equal(p.corpo.rejeitadas, 0, JSON.stringify(p.corpo.rejeicoes));
-    assert.ok(!p.corpo.colunas_ignoradas.some((c: any) => ['last_check_status', 'content_hash', 'parser_version'].includes(c.cabecalho)));
+    assert.ok(!p.corpo.colunas_ignoradas.some((c: any) => ['last_check_status', 'content_hash', 'parser_version', 'last_checked_at'].includes(c.cabecalho)));
     const a = await s.chamar('POST', `/importacoes/${p.corpo.id}/aplicar`, {}, PERFIS.operador);
-    assert.equal(a.corpo.inseridas, 1, a.texto);
-    const anuncio = s.dados.linhas('anuncios')[0];
+    assert.equal(a.corpo.inseridas, 2, a.texto);
+    const [anuncio, semStatus] = s.dados.linhas('anuncios');
     assert.equal(anuncio.ultimo_status_verificacao, 'erro');
     assert.equal(anuncio.hash_conteudo, 'abc123');
-    assert.equal(Number(s.dados.linhas('anuncio_eventos')[0].preco_novo_brl), Number(anuncio.preco_pedido_brl));
+    assert.equal(anuncio.versao_parser, 'v1');
+    assert.ok(anuncio.verificado_em);
+    assert.notEqual(semStatus.ultimo_status_verificacao, null, 'célula vazia não anula o padrão');
+    assert.equal(payloads.length, 2);
+    for (const e of payloads) assert.equal(typeof e.preco_novo_brl, 'number', 'o evento "criado" envia o preço como número');
+  } finally {
+    await s.fechar();
+  }
+});
 
+test('IVV mensal: o escopo longo da planilha entra com o rótulo curto; lançamento aceita first_seen_at e fonte não importa cabeçalhos', async () => {
+  const { s, arquivos } = await montar();
+  try {
     const escopo = 'Mercado formal do DF - incorporadoras associadas à instituição que gera este relatório';
-    const ivv = gerarCsv(['reference_date', 'market_scope', 'segment_scope'], [{ reference_date: '2026-01-01', market_scope: escopo, segment_scope: 'residencial' }]);
+    const ivv = gerarCsv(['reference_date', 'market_scope', 'segment_scope'], [{ reference_date: '2026-01-01', market_scope: escopo, segment_scope: 'Residencial' }]);
     const pi = await s.chamar('POST', '/importacoes/previa', { tabela_alvo: 'ivv_mensal', upload_id: arquivos.subir('IVV.csv', ivv) }, PERFIS.operador);
     assert.equal(pi.corpo.rejeitadas, 0, JSON.stringify(pi.corpo.rejeicoes));
+    const ai = await s.chamar('POST', `/importacoes/${pi.corpo.id}/aplicar`, {}, PERFIS.operador);
+    assert.equal(ai.corpo.inseridas, 1, ai.texto);
+    assert.equal(s.dados.linhas('ivv_mensal')[0].escopo_mercado, 'Mercado formal do DF - incorporadoras associadas');
+
+    const dev = { ...aba('developments')[0], first_seen_at: '2026-10-19 04:57:46.417000' };
+    const pl = await s.chamar('POST', '/importacoes/previa', { tabela_alvo: 'lancamentos', upload_id: arquivos.subir('DEV.csv', csvDaAba([dev])) }, PERFIS.operador);
+    assert.ok(!pl.corpo.colunas_ignoradas.some((c: any) => c.cabecalho === 'first_seen_at'));
+    const al = await s.chamar('POST', `/importacoes/${pl.corpo.id}/aplicar`, {}, PERFIS.operador);
+    assert.equal(al.corpo.inseridas, 1, al.texto);
+    assert.ok(s.dados.linhas('lancamentos')[0].primeiro_visto_em);
+
+    const fonte = gerarCsv(['source_name', 'base_url', 'request_headers_json'], [{ source_name: 'DFImoveis', base_url: 'https://www.dfimoveis.com.br', request_headers_json: '{"Cookie":"x"}' }]);
+    const pf = await s.chamar('POST', '/importacoes/previa', { tabela_alvo: 'fontes_portal', upload_id: arquivos.subir('SRC.csv', fonte) }, PERFIS.operador);
+    assert.ok(pf.corpo.colunas_ignoradas.some((c: any) => c.cabecalho === 'request_headers_json'), 'cabeçalhos de requisição não entram por CSV');
   } finally {
     await s.fechar();
   }

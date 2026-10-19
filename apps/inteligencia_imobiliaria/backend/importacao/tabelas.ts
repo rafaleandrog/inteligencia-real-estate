@@ -290,6 +290,8 @@ const anuncios: GanchosTabela = {
   },
   async preparar(v, ctx, erros) {
     const dados: Record<string, unknown> = { ...v };
+    // Célula vazia não vira null em coluna obrigatória com padrão no schema: sem a chave, vale o padrão.
+    for (const k of ['ultimo_status_verificacao', 'falhas_verificacao']) if (dados[k] == null) delete dados[k];
     delete dados.localidade;
     // CSV parcial no modo `atualizar`: só confere a coluna que veio (a linha nova sem ela é recusada pelo motor).
     if ('localidade' in v) dados.localidade_id = await exigirLocalidade(ctx, v.localidade, 'localidade', erros, true);
