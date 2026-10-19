@@ -52,6 +52,9 @@ test('grade: importa células e métricas, lista o catálogo e devolve o mapa co
 
     const sem = await s.chamar('GET', '/celulas/mapa?conjunto=jobs_hex', undefined, PERFIS.operador);
     assert.equal(sem.status, 422);
+    const desconhecida = await s.chamar('GET', '/celulas/mapa?conjunto=jobs_hex&metrica=nao_existe&ano=2019', undefined, PERFIS.operador);
+    assert.equal(desconhecida.status, 422);
+    assert.equal(desconhecida.corpo.codigo, 'METRICA_DESCONHECIDA');
   } finally {
     await s.fechar();
   }

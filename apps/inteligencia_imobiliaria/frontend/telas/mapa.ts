@@ -95,6 +95,7 @@ export class IntelImobMapa extends LitElement {
   @state() private grade: any = null;
   @state() private rede: any = null;
   @state() private carregandoGrade = false;
+  private geracaoGrade = 0;
   @state() private erroTerritorio = '';
   @state() private kpis: any = null;
   @state() private carregando = false;
@@ -165,14 +166,18 @@ export class IntelImobMapa extends LitElement {
   private async carregarGrade() {
     const [conjunto, metrica, ano] = this.metricaGrade.split('|');
     if (!conjunto) return;
+    const geracao = ++this.geracaoGrade;
     this.carregandoGrade = true;
     this.grade = null;
+    this.erro = '';
+    if (this.selecionado?.tipo === 'celula') this.selecionado = null;
     try {
-      this.grade = await uv().api(`/celulas/mapa?conjunto=${encodeURIComponent(conjunto)}&metrica=${encodeURIComponent(metrica)}&ano=${ano}`);
+      const r = await uv().api(`/celulas/mapa?conjunto=${encodeURIComponent(conjunto)}&metrica=${encodeURIComponent(metrica)}&ano=${ano}`);
+      if (geracao === this.geracaoGrade) this.grade = r;
     } catch (e) {
-      this.erro = mensagemDeErro(e);
+      if (geracao === this.geracaoGrade) this.erro = mensagemDeErro(e);
     } finally {
-      this.carregandoGrade = false;
+      if (geracao === this.geracaoGrade) this.carregandoGrade = false;
     }
   }
 
@@ -347,11 +352,11 @@ export class IntelImobMapa extends LitElement {
   }
 
   private painelGrade(p: Paleta) {
-    if (this.erroTerritorio) return html`<urbi-banner variante="alerta">${this.erroTerritorio}</urbi-banner>`;
-    if (!this.catalogoGrade.length) return html`<urbi-prosa papel="dica">Grade territorial: nenhuma célula importada ainda (Operação › Importações › Células da grade).</urbi-prosa>`;
+    const aviso = this.erroTerritorio ? html`<urbi-banner variante="alerta">${this.erroTerritorio}</urbi-banner>` : nothing;
+    if (!this.catalogoGrade.length) return html`${aviso}${this.erroTerritorio ? nothing : html`<urbi-prosa papel="dica">Grade territorial: nenhuma célula importada ainda (Operação › Importações › Células da grade).</urbi-prosa>`}`;
     const g = this.grade;
     const max = Math.max(0, ...((g?.legenda ?? []) as any[]).map((f) => f.classe));
-    return html`<urbi-select label="Métrica da grade" .valor=${this.metricaGrade} .opcoes=${this.catalogoGrade.map((m) => ({ valor: this.chaveMetrica(m), rotulo: `${m.rotulo} (${m.ano})` }))}
+    return html`${aviso}<urbi-select label="Métrica da grade" .valor=${this.metricaGrade} .opcoes=${this.catalogoGrade.map((m) => ({ valor: this.chaveMetrica(m), rotulo: `${m.rotulo} (${m.ano})` }))}
         @urbi:select-change=${async (e: CustomEvent) => { this.metricaGrade = String(e.detail.valor); await this.carregarGrade(); }}></urbi-select>
       ${this.carregandoGrade ? html`<urbi-prosa papel="dica">Carregando a grade…</urbi-prosa>` : nothing}
       ${g && !g.features.length ? html`<urbi-prosa papel="dica">Nenhuma célula com essa métrica.</urbi-prosa>` : nothing}

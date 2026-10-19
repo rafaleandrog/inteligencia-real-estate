@@ -17,13 +17,21 @@ const MAXIMO_POR_METRICA = 400_000;
  */
 celulas.get('/celulas/catalogo', rota(async (req, res) => {
   const dados: Record<string, unknown>[] = [];
+  const avisos: string[] = [];
   for (const m of METRICAS_GRADE) {
-    const linhas = await req.dados!.varrerTudo('celula_metricas', { filtros: { conjunto_codigo: m.conjunto_codigo, metrica: m.metrica }, maximo: MAXIMO_POR_METRICA });
+    let linhas: Record<string, any>[];
+    try {
+      linhas = await req.dados!.varrerTudo('celula_metricas', { filtros: { conjunto_codigo: m.conjunto_codigo, metrica: m.metrica }, maximo: MAXIMO_POR_METRICA });
+    } catch {
+      // Uma métrica acima do teto não derruba as outras: sai do seletor, com aviso.
+      avisos.push(`${m.rotulo}: mais de ${MAXIMO_POR_METRICA} linhas, fora do seletor`);
+      continue;
+    }
     const porAno = new Map<number, number>();
     for (const l of linhas) porAno.set(Number(l.ano), (porAno.get(Number(l.ano)) ?? 0) + 1);
     for (const [ano, n] of [...porAno].sort((a, b) => a[0] - b[0])) dados.push({ ...m, ano, n });
   }
-  res.json({ dados });
+  res.json({ dados, avisos });
 }));
 
 /** Células de uma métrica como GeoJSON, com a classe de cada uma e a legenda. */
@@ -33,6 +41,9 @@ celulas.get('/celulas/mapa', rota(async (req, res) => {
   const ano = Number(textoQuery(req, 'ano'));
   if (!conjunto || !metrica || !Number.isInteger(ano)) {
     throw new ErroApp(422, 'PARAMETROS_INVALIDOS', 'Informe conjunto, métrica e ano.', ['conjunto, metrica e ano são obrigatórios.']);
+  }
+  if (!METRICAS_GRADE.some((m) => m.conjunto_codigo === conjunto && m.metrica === metrica)) {
+    throw new ErroApp(422, 'METRICA_DESCONHECIDA', 'Métrica de grade desconhecida.', [`Métricas aceitas: ${METRICAS_GRADE.map((m) => `${m.conjunto_codigo}/${m.metrica}`).join(', ')}.`]);
   }
   const metricas = await req.dados!.varrerTudo('celula_metricas', { filtros: { conjunto_codigo: conjunto, metrica, ano }, maximo: MAXIMO_POR_METRICA });
   const porCelula = new Map<number, Record<string, any>>(metricas.map((m: Record<string, any>) => [Number(m.celula_id), m]));
