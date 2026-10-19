@@ -1538,7 +1538,7 @@ boa` (seção 9.7, R-02).
 | `endereco` | texto(300) | não | `address` | |
 | `localidade_texto` | texto(120) | sim | `locality` | o nome do bairro/setor como a fonte deu |
 | `latitude`, `longitude` | decimal(10,7) | sim | `latitude`, `longitude` | |
-| `precisao_coordenada` | texto, `opcoes: ["exata_fonte", "centroide_localidade_jitter_deterministico", "centroide_localidade_jitter", "centroide_ra_jitter_deterministico", "manual"]` | sim | `coordinate_precision` | |
+| `precisao_coordenada` | texto, `opcoes: ["exata_fonte", "centroide_localidade_jitter_deterministico", "centroide_localidade_jitter", "centroide_ra_jitter_deterministico", "manual", "geocode_externo_quadra", "geocode_externo_rua", "geocode_externo_conjunto", "geocode_externo_condominio"]` | sim | `coordinate_precision` | as quatro `geocode_externo_*` vêm de `*_centroid_external_geocode` da planilha e valem como aproximadas (0.1.2) |
 | `confianca` | texto(60) | sim | `confidence_flag` | `low_spatial_high_attribute`, `source_observed`, … (vocabulário aberto) |
 | `tipo_imovel` | texto, `opcoes: ["apartamento", "casa", "casa_condominio", "kitnet", "predio", "terreno", "nao_classificado"]` | sim | `property_type` (`imovel` → `nao_classificado`) | orientação vertical/horizontal é derivada em código |
 | `preco_pedido_brl` | decimal(14,2) | não | `asking_price_brl` | `null` quando a fonte não publica; nunca 0 |
@@ -1584,7 +1584,7 @@ Derivados **em código**, nunca gravados: `orientacao` (`vertical` para apartame
 kitnet; `horizontal` para casa, casa em condomínio e terreno; `null` para não classificado),
 `preco_m2_calculado` (`preco_pedido_brl / area_m2`), `preco_m2` (informado quando existe, senão
 calculado), `divergencia_preco_m2_frac` e `preco_m2_divergente` (acima de
-`tolerancia_preco_m2_frac`), `pode_calcular_distancia` (`precisao_coordenada = exata_fonte`).
+`tolerancia_preco_m2_frac`), `pode_calcular_distancia` (`precisao_coordenada` = `exata_fonte` ou `manual`).
 
 #### `anuncio_eventos`
 

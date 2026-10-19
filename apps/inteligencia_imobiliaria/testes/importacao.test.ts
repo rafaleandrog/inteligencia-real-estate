@@ -252,9 +252,10 @@ test('anúncios: a precisão por geocodificação externa da planilha entra e va
     assert.equal(a.corpo.inseridas, 4, a.texto);
     const gravadas = s.dados.linhas('anuncios').map((x: any) => x.precisao_coordenada).sort();
     assert.deepEqual(gravadas, ['geocode_externo_condominio', 'geocode_externo_conjunto', 'geocode_externo_quadra', 'geocode_externo_rua']);
-    const id = s.dados.linhas('anuncios')[0].id;
-    const ficha = await s.chamar('GET', `/anuncios/${id}`, undefined, PERFIS.operador);
-    assert.equal(ficha.corpo.pode_calcular_distancia, false, 'geocodificação externa não é exata');
+    for (const linha of s.dados.linhas('anuncios')) {
+      const ficha = await s.chamar('GET', `/anuncios/${linha.id}`, undefined, PERFIS.operador);
+      assert.equal(ficha.corpo.pode_calcular_distancia, false, `${linha.precisao_coordenada} não é exata`);
+    }
   } finally {
     await s.fechar();
   }

@@ -9,8 +9,8 @@ export const PRECISOES = ['exata_fonte', 'centroide_localidade_jitter_determinis
 export const ROTULO_PRECISAO: Record<string, string> = {
   exata_fonte: 'Exata (da fonte)', centroide_localidade_jitter_deterministico: 'Aproximada (centro da localidade)',
   centroide_localidade_jitter: 'Aproximada (centro da localidade)', centroide_ra_jitter_deterministico: 'Aproximada (centro da RA)', manual: 'Ajustada à mão',
-  geocode_externo_quadra: 'Aproximada (geocodificação externa, centro da quadra)', geocode_externo_rua: 'Aproximada (geocodificação externa, centro da rua)',
-  geocode_externo_conjunto: 'Aproximada (geocodificação externa, centro do conjunto)', geocode_externo_condominio: 'Aproximada (geocodificação externa, centro do condomínio)',
+  geocode_externo_quadra: 'Aproximada (geocodificação externa: quadra)', geocode_externo_rua: 'Aproximada (geocodificação externa: rua)',
+  geocode_externo_conjunto: 'Aproximada (geocodificação externa: conjunto)', geocode_externo_condominio: 'Aproximada (geocodificação externa: condomínio)',
 };
 export const CATEGORIAS_ANCORA = ['escola', 'mobilidade', 'parque_equipamento_publico', 'saude', 'shopping_center', 'supermercado_atacarejo', 'universidade'] as const;
 export const ROTULO_CATEGORIA_ANCORA: Record<string, string> = {

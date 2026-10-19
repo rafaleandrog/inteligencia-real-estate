@@ -346,7 +346,7 @@ export class IntelImobMapa extends LitElement {
           { cor: p.ancoraComercio, rotulo: 'Âncora de comércio e serviço' },
           { cor: p.importado, rotulo: 'Contorno importado' },
         ]}></intel-imob-legenda>
-        <urbi-prosa papel="dica">Ponto transparente e tracejado: localização aproximada (centro da localidade), não serve para distância.</urbi-prosa>
+        <urbi-prosa papel="dica">Ponto transparente e tracejado: localização aproximada (centro da localidade ou da RA, ou geocodificação externa), não serve para distância.</urbi-prosa>
       </urbi-stack>
     </urbi-card>`;
   }

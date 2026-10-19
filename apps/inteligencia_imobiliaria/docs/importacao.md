@@ -71,7 +71,7 @@ que ela existe.
 **Precisão da coordenada.** Além das precisões já aceitas, a planilha traz geocodificação externa
 (`quad_centroid_external_geocode`, `street_centroid_external_geocode`, `conjunto_centroid_external_geocode` e
 `condominium_centroid_external_geocode`); entram como `geocode_externo_quadra`, `_rua`, `_conjunto` e `_condominio`
-e valem como localização **aproximada** no mapa (não servem para distância).
+e valem como localização **aproximada** no mapa (não servem para distância). A edição manual do cadastro também oferece esses valores ao curador técnico; a coluna de lançamentos não foi alterada.
 
 **Telemetria da coleta antiga.** O CSV de anúncios aceita `last_checked_at`, `last_price_change_at`,
 `content_hash`, `parser_version`, `verification_failures`, `last_check_status` (`error` vira `erro`),
