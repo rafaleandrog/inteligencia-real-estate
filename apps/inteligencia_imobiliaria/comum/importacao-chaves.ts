@@ -234,8 +234,8 @@ export const TABELAS_IMPORT: Record<string, TabelaImport> = {
       { coluna: 'longitude', tipo: 'decimal', obrigatorio: true },
       {
         coluna: 'precisao_coordenada', tipo: 'texto', obrigatorio: true, aliases: ['coordinate_precision'],
-        opcoes: ['exata_fonte', 'centroide_localidade_jitter_deterministico', 'centroide_localidade_jitter', 'centroide_ra_jitter_deterministico', 'manual'],
-        traducao: { locality_centroid_deterministic_jitter: 'centroide_localidade_jitter_deterministico', locality_centroid_jitter: 'centroide_localidade_jitter', ra_centroid_deterministic_jitter: 'centroide_ra_jitter_deterministico', exact: 'exata_fonte', source_exact: 'exata_fonte', exact_source: 'exata_fonte' },
+        opcoes: ['exata_fonte', 'centroide_localidade_jitter_deterministico', 'centroide_localidade_jitter', 'centroide_ra_jitter_deterministico', 'manual', 'geocode_externo_quadra', 'geocode_externo_rua', 'geocode_externo_conjunto', 'geocode_externo_condominio'],
+        traducao: { quad_centroid_external_geocode: 'geocode_externo_quadra', street_centroid_external_geocode: 'geocode_externo_rua', conjunto_centroid_external_geocode: 'geocode_externo_conjunto', condominium_centroid_external_geocode: 'geocode_externo_condominio', locality_centroid_deterministic_jitter: 'centroide_localidade_jitter_deterministico', locality_centroid_jitter: 'centroide_localidade_jitter', ra_centroid_deterministic_jitter: 'centroide_ra_jitter_deterministico', exact: 'exata_fonte', source_exact: 'exata_fonte', exact_source: 'exata_fonte' },
       },
       { coluna: 'confianca', tipo: 'texto', obrigatorio: true, limite: 60, aliases: ['confidence_flag'] },
       { coluna: 'tipo_imovel', tipo: 'texto', obrigatorio: true, aliases: ['property_type'], opcoes: ['apartamento', 'casa', 'casa_condominio', 'kitnet', 'predio', 'terreno', 'nao_classificado'], traducao: { imovel: 'nao_classificado' } },

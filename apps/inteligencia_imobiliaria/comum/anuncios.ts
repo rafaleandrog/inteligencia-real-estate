@@ -5,10 +5,12 @@ export const TIPOS_IMOVEL = ['apartamento', 'casa', 'casa_condominio', 'kitnet',
 export const ROTULO_TIPO_IMOVEL: Record<string, string> = {
   apartamento: 'Apartamento', casa: 'Casa', casa_condominio: 'Casa em condomínio', kitnet: 'Kitnet', predio: 'Prédio', terreno: 'Terreno', nao_classificado: 'Não classificado',
 };
-export const PRECISOES = ['exata_fonte', 'centroide_localidade_jitter_deterministico', 'centroide_localidade_jitter', 'centroide_ra_jitter_deterministico', 'manual'] as const;
+export const PRECISOES = ['exata_fonte', 'centroide_localidade_jitter_deterministico', 'centroide_localidade_jitter', 'centroide_ra_jitter_deterministico', 'manual', 'geocode_externo_quadra', 'geocode_externo_rua', 'geocode_externo_conjunto', 'geocode_externo_condominio'] as const;
 export const ROTULO_PRECISAO: Record<string, string> = {
   exata_fonte: 'Exata (da fonte)', centroide_localidade_jitter_deterministico: 'Aproximada (centro da localidade)',
   centroide_localidade_jitter: 'Aproximada (centro da localidade)', centroide_ra_jitter_deterministico: 'Aproximada (centro da RA)', manual: 'Ajustada à mão',
+  geocode_externo_quadra: 'Aproximada (geocodificação externa, centro da quadra)', geocode_externo_rua: 'Aproximada (geocodificação externa, centro da rua)',
+  geocode_externo_conjunto: 'Aproximada (geocodificação externa, centro do conjunto)', geocode_externo_condominio: 'Aproximada (geocodificação externa, centro do condomínio)',
 };
 export const CATEGORIAS_ANCORA = ['escola', 'mobilidade', 'parque_equipamento_publico', 'saude', 'shopping_center', 'supermercado_atacarejo', 'universidade'] as const;
 export const ROTULO_CATEGORIA_ANCORA: Record<string, string> = {

@@ -384,7 +384,7 @@ export class IntelImobMapa extends LitElement {
           <urbi-prosa>${ROTULO_TIPO_IMOVEL[d.tipo_imovel] ?? d.tipo_imovel} · ${d.quartos ?? '—'} quartos · ${d.suites ?? '—'} suítes · ${d.vagas ?? '—'} vagas</urbi-prosa>
           <urbi-prosa papel="dica">${d.localidade_nome ?? ''} · ${d.localidade_texto} · ${d.status}${d.visto_em ? ` · confirmado no portal em ${formatar({ tipo: 'data' }, d.visto_em)}` : ''}</urbi-prosa>
           ${d.preco_m2_divergente ? html`<urbi-banner variante="alerta">Preço/m² informado diverge ${formatar({ tipo: 'frac' }, d.divergencia_preco_m2_frac)} do calculado.</urbi-banner>` : nothing}
-          <urbi-prosa papel="dica">${d.pode_calcular_distancia ? ROTULO_PRECISAO[d.precisao_coordenada] : 'Localização aproximada; centroide da localidade.'} · ${d.portal}</urbi-prosa>
+          <urbi-prosa papel="dica">${ROTULO_PRECISAO[d.precisao_coordenada] ?? 'Localização aproximada'}${d.pode_calcular_distancia ? '' : ' — não serve para distância'} · ${d.portal}</urbi-prosa>
           <urbi-prosa papel="dica">Histórico de preço: disponível a partir da coleta automática.</urbi-prosa>
           <urbi-linha>${link(`/cadastro/anuncios/${d.id}`)}
             ${/^https?:\/\//.test(d.url_fonte ?? '') ? html`<urbi-prosa inline><a href=${d.url_fonte} target="_blank" rel="noopener noreferrer">Ver no portal</a></urbi-prosa>` : nothing}</urbi-linha>

@@ -68,6 +68,11 @@ estágio de decisão (iniciativa em diante, encerrada) só pela tela, com motivo
 só o curador); a área própria que a pessoa não enxerga não casa com a linha, e a prévia não diz
 que ela existe.
 
+**Precisão da coordenada.** Além das precisões já aceitas, a planilha traz geocodificação externa
+(`quad_centroid_external_geocode`, `street_centroid_external_geocode`, `conjunto_centroid_external_geocode` e
+`condominium_centroid_external_geocode`); entram como `geocode_externo_quadra`, `_rua`, `_conjunto` e `_condominio`
+e valem como localização **aproximada** no mapa (não servem para distância).
+
 **Telemetria da coleta antiga.** O CSV de anúncios aceita `last_checked_at`, `last_price_change_at`,
 `content_hash`, `parser_version`, `verification_failures`, `last_check_status` (`error` vira `erro`),
 `last_check_http_code` e `last_check_message`; o de lançamentos aceita `first_seen_at`, `last_checked_at`,
