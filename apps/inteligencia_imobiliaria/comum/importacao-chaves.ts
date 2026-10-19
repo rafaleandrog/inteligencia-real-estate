@@ -256,6 +256,18 @@ export const TABELAS_IMPORT: Record<string, TabelaImport> = {
       { coluna: 'pagina_verificada_em', tipo: 'data', aliases: ['source_page_verified_at'] },
       { coluna: 'primeiro_visto_em', tipo: 'datahora', aliases: ['first_seen_at'] },
       { coluna: 'inativo_em', tipo: 'datahora', aliases: ['inactive_at'] },
+      { coluna: 'verificado_em', tipo: 'datahora', aliases: ['last_checked_at'] },
+      { coluna: 'preco_alterado_em', tipo: 'datahora', aliases: ['last_price_change_at'] },
+      { coluna: 'hash_conteudo', tipo: 'texto', limite: 64, aliases: ['content_hash'] },
+      { coluna: 'versao_parser', tipo: 'texto', limite: 60, aliases: ['parser_version'] },
+      { coluna: 'falhas_verificacao', tipo: 'inteiro', aliases: ['verification_failures'] },
+      {
+        coluna: 'ultimo_status_verificacao', tipo: 'texto', aliases: ['last_check_status'],
+        opcoes: ['ativa', 'inativa', 'inativa_pendente', 'bloqueada', 'erro', 'nunca'],
+        traducao: { error: 'erro', active: 'ativa', inactive: 'inativa', blocked: 'bloqueada', never: 'nunca' },
+      },
+      { coluna: 'ultimo_http', tipo: 'inteiro', aliases: ['last_check_http_code'] },
+      { coluna: 'ultima_mensagem', tipo: 'texto', limite: 500, aliases: ['last_check_message'] },
     ],
   },
   lancamentos: {
@@ -296,6 +308,7 @@ export const TABELAS_IMPORT: Record<string, TabelaImport> = {
       { coluna: 'situacao_regularizacao', tipo: 'texto', limite: 40, aliases: ['regularization_status'] },
       { coluna: 'unidades_estoque', tipo: 'inteiro' },
       { coluna: 'unidades_prontas_estoque', tipo: 'inteiro' },
+      { coluna: 'primeiro_visto_em', tipo: 'datahora', aliases: ['first_seen_at'] },
     ],
   },
   ancoras: {
@@ -367,7 +380,7 @@ export const TABELAS_IMPORT: Record<string, TabelaImport> = {
     campos: [
       { coluna: 'mes_referencia', tipo: 'texto', obrigatorio: true, aliases: ['reference_date', 'reference_month', 'period_id'] },
       { coluna: 'escopo_geografico', tipo: 'texto', limite: 60, aliases: ['geography_scope'] },
-      { coluna: 'escopo_mercado', tipo: 'texto', limite: 60, aliases: ['market_scope'] },
+      { coluna: 'escopo_mercado', tipo: 'texto', limite: 60, aliases: ['market_scope'], traducao: { 'Mercado formal do DF - incorporadoras associadas à instituição que gera este relatório': 'Mercado formal do DF - incorporadoras associadas' } },
       { coluna: 'escopo_segmento', tipo: 'texto', limite: 60, aliases: ['segment_scope'] },
       { coluna: 'ivv_frac', tipo: 'fracao', aliases: ['ivv_pct'] },
       { coluna: 'oferta_unidades', tipo: 'inteiro', aliases: ['offers_units', 'offered_units'] },

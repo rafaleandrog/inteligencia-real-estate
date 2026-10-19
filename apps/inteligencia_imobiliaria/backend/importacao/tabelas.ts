@@ -290,6 +290,8 @@ const anuncios: GanchosTabela = {
   },
   async preparar(v, ctx, erros) {
     const dados: Record<string, unknown> = { ...v };
+    // Célula vazia não vira null em coluna obrigatória com padrão no schema: sem a chave, vale o padrão.
+    for (const k of ['ultimo_status_verificacao', 'falhas_verificacao']) if (dados[k] == null) delete dados[k];
     delete dados.localidade;
     // CSV parcial no modo `atualizar`: só confere a coluna que veio (a linha nova sem ela é recusada pelo motor).
     if ('localidade' in v) dados.localidade_id = await exigirLocalidade(ctx, v.localidade, 'localidade', erros, true);
@@ -323,7 +325,7 @@ const anuncios: GanchosTabela = {
   chaves: (d) => [d.id_legado ? `legado|${d.id_legado}` : '', d.url_fonte ? `url|${urlCanonica(String(d.url_fonte))}` : ''].filter(Boolean),
   derivadasDe: { portal: ['fonte_id'], preco_pedido_brl: [] },
   async aposCriar(trx, a, ctx) {
-    await trx.criar('anuncio_eventos', { anuncio_id: a.id, tipo: 'criado', ocorrido_em: new Date().toISOString(), status_novo: a.status, preco_novo_brl: a.preco_pedido_brl, autor_id: ctx.usuarioId, detalhes: 'importação' });
+    await trx.criar('anuncio_eventos', { anuncio_id: a.id, tipo: 'criado', ocorrido_em: new Date().toISOString(), status_novo: a.status, preco_novo_brl: a.preco_pedido_brl == null ? null : Number(a.preco_pedido_brl), autor_id: ctx.usuarioId, detalhes: 'importação' });
   },
   async antesDeAplicar(linhas, ctx) {
     const novas = new Map<string, string | null>();
