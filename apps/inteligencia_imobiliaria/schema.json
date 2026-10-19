@@ -1236,7 +1236,11 @@
             "centroide_localidade_jitter_deterministico",
             "centroide_localidade_jitter",
             "centroide_ra_jitter_deterministico",
-            "manual"
+            "manual",
+            "geocode_externo_quadra",
+            "geocode_externo_rua",
+            "geocode_externo_conjunto",
+            "geocode_externo_condominio"
           ],
           "obrigatorio": true
         },

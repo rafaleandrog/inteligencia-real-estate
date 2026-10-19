@@ -239,3 +239,24 @@ test('IVV mensal: o escopo longo da planilha entra com o rótulo curto; lançame
     await s.fechar();
   }
 });
+
+test('anúncios: a precisão por geocodificação externa da planilha entra e vale como localização aproximada', async () => {
+  const { s, arquivos } = await montar();
+  try {
+    const linhas = ['quad_centroid_external_geocode', 'street_centroid_external_geocode', 'conjunto_centroid_external_geocode', 'condominium_centroid_external_geocode']
+      .map((p, i) => ({ ...aba('listings')[i], listing_id: `L_GEO_${i}`, source_url: `https://exemplo.com.br/geo-${i}`, coordinate_precision: p }));
+    const p = await s.chamar('POST', '/importacoes/previa', { tabela_alvo: 'anuncios', upload_id: arquivos.subir('LISTINGS.csv', csvDaAba(linhas)) }, PERFIS.operador);
+    assert.equal(p.status, 201, p.texto);
+    assert.equal(p.corpo.rejeitadas, 0, JSON.stringify(p.corpo.rejeicoes));
+    const a = await s.chamar('POST', `/importacoes/${p.corpo.id}/aplicar`, {}, PERFIS.operador);
+    assert.equal(a.corpo.inseridas, 4, a.texto);
+    const gravadas = s.dados.linhas('anuncios').map((x: any) => x.precisao_coordenada).sort();
+    assert.deepEqual(gravadas, ['geocode_externo_condominio', 'geocode_externo_conjunto', 'geocode_externo_quadra', 'geocode_externo_rua']);
+    for (const linha of s.dados.linhas('anuncios')) {
+      const ficha = await s.chamar('GET', `/anuncios/${linha.id}`, undefined, PERFIS.operador);
+      assert.equal(ficha.corpo.pode_calcular_distancia, false, `${linha.precisao_coordenada} não é exata`);
+    }
+  } finally {
+    await s.fechar();
+  }
+});

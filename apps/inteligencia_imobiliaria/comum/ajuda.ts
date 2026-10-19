@@ -25,7 +25,7 @@ export const COMO_LER: Record<string, { titulo: string; texto: string }> = {
   mapa: {
     titulo: 'Como ler o Mapa',
     texto: [
-      'Pontos sem coordenada exata aparecem perto do centro da localidade e entram na contagem "sem coordenada exata": não servem para medir distância.',
+      'Pontos sem coordenada exata aparecem em posição aproximada (centro da localidade ou da RA, ou geocodificação externa) e entram na contagem "sem coordenada exata": não servem para medir distância.',
       'Os KPIs valem para o filtro em tela. Mediana só com 5 anúncios ou mais; P25 e P75 só com 10 ou mais — abaixo disso o número não aparece.',
       'Preço/m² usa o informado pelo portal quando existe; divergência acima de 5% do calculado vira aviso, não correção.',
     ].join('\n\n'),
