@@ -2423,7 +2423,7 @@ aproximada por jitter (`centroide_*`) **não** recebe célula: o ponto não est�
 células cujo centroide passa no ponto-em-polígono de `comum/geo.ts`. A resposta sempre diz
 quantas células entraram e a fração da área que elas cobrem (`area das células ÷ área pedida`).
 
-> **Recorte implementado na 0.2.0 (issue #239).** `celulas` guarda `grade` (`h3_r9`, `ibge_200m`, `ibge_1km`) +
+> **Recorte implementado na 0.1.1 (issue #239).** `celulas` guarda `grade` (`h3_r9`, `ibge_200m`, `ibge_1km`) +
 > `codigo` no lugar de `h3`, para desenhar a Grade IBGE como ela é publicada (sem rateio por centroide, que
 > continua previsto); `celula_metricas` ganha `classe` (a do pipeline). `vizinhos`, `fracao_na_cidade`,
 > `h3_pai_r8` obrigatório e `versao_conjunto` obrigatório **não** entraram: `habitada` e `versao_conjunto` existem
