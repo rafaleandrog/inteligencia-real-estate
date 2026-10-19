@@ -68,6 +68,12 @@ estágio de decisão (iniciativa em diante, encerrada) só pela tela, com motivo
 só o curador); a área própria que a pessoa não enxerga não casa com a linha, e a prévia não diz
 que ela existe.
 
+**Telemetria da coleta antiga.** O CSV de anúncios aceita `last_checked_at`, `last_price_change_at`,
+`content_hash`, `parser_version`, `verification_failures`, `last_check_status` (`error` vira `erro`),
+`last_check_http_code` e `last_check_message`; o de lançamentos aceita `first_seen_at`; o de fontes,
+`request_headers_json`. O escopo de mercado do IVV mensal aceita até 120 caracteres. `search_urls`
+das fontes ainda não tem tabela de destino e fica fora.
+
 Reimportar o mesmo arquivo com "Ignorar" não duplica nada: a chave natural de cada tabela está
 em [Dados](dados.md).
 

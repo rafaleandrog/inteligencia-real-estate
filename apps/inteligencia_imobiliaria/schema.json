@@ -2740,7 +2740,7 @@
         },
         "escopo_mercado": {
           "tipo": "texto",
-          "limite": 60
+          "limite": 120
         },
         "escopo_segmento": {
           "tipo": "texto",

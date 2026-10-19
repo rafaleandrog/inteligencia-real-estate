@@ -323,7 +323,7 @@ const anuncios: GanchosTabela = {
   chaves: (d) => [d.id_legado ? `legado|${d.id_legado}` : '', d.url_fonte ? `url|${urlCanonica(String(d.url_fonte))}` : ''].filter(Boolean),
   derivadasDe: { portal: ['fonte_id'], preco_pedido_brl: [] },
   async aposCriar(trx, a, ctx) {
-    await trx.criar('anuncio_eventos', { anuncio_id: a.id, tipo: 'criado', ocorrido_em: new Date().toISOString(), status_novo: a.status, preco_novo_brl: a.preco_pedido_brl, autor_id: ctx.usuarioId, detalhes: 'importação' });
+    await trx.criar('anuncio_eventos', { anuncio_id: a.id, tipo: 'criado', ocorrido_em: new Date().toISOString(), status_novo: a.status, preco_novo_brl: a.preco_pedido_brl == null ? null : Number(a.preco_pedido_brl), autor_id: ctx.usuarioId, detalhes: 'importação' });
   },
   async antesDeAplicar(linhas, ctx) {
     const novas = new Map<string, string | null>();

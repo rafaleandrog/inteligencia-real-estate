@@ -178,3 +178,27 @@ test('refazer a prévia com valor padrão declarado e cancelar uma prévia', asy
     await s.fechar();
   }
 });
+
+test('anúncios: telemetria da coleta antiga entra, o evento "criado" leva o preço como número e o IVV aceita escopo longo', async () => {
+  const { s, arquivos } = await montar();
+  try {
+    const linha = { ...aba('listings')[0], last_check_status: 'error', content_hash: 'abc123', parser_version: 'v1' };
+    const p = await s.chamar('POST', '/importacoes/previa', { tabela_alvo: 'anuncios', upload_id: arquivos.subir('LISTINGS.csv', csvDaAba([linha])) }, PERFIS.operador);
+    assert.equal(p.status, 201, p.texto);
+    assert.equal(p.corpo.rejeitadas, 0, JSON.stringify(p.corpo.rejeicoes));
+    assert.ok(!p.corpo.colunas_ignoradas.some((c: any) => ['last_check_status', 'content_hash', 'parser_version'].includes(c.cabecalho)));
+    const a = await s.chamar('POST', `/importacoes/${p.corpo.id}/aplicar`, {}, PERFIS.operador);
+    assert.equal(a.corpo.inseridas, 1, a.texto);
+    const anuncio = s.dados.linhas('anuncios')[0];
+    assert.equal(anuncio.ultimo_status_verificacao, 'erro');
+    assert.equal(anuncio.hash_conteudo, 'abc123');
+    assert.equal(Number(s.dados.linhas('anuncio_eventos')[0].preco_novo_brl), Number(anuncio.preco_pedido_brl));
+
+    const escopo = 'Mercado formal do DF - incorporadoras associadas à instituição que gera este relatório';
+    const ivv = gerarCsv(['reference_date', 'market_scope', 'segment_scope'], [{ reference_date: '2026-01-01', market_scope: escopo, segment_scope: 'residencial' }]);
+    const pi = await s.chamar('POST', '/importacoes/previa', { tabela_alvo: 'ivv_mensal', upload_id: arquivos.subir('IVV.csv', ivv) }, PERFIS.operador);
+    assert.equal(pi.corpo.rejeitadas, 0, JSON.stringify(pi.corpo.rejeicoes));
+  } finally {
+    await s.fechar();
+  }
+});
