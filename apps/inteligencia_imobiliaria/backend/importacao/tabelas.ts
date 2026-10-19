@@ -587,6 +587,8 @@ const celulas: GanchosTabela = {
   async preparar(v, ctx, erros) {
     const dados: Record<string, unknown> = { ...v, cidade_id: ctx.cidadeId };
     delete dados.localidade;
+    // O índice H3 é hexadecimal minúsculo: maiúscula e minúscula são a mesma célula.
+    if (v.grade === 'h3_r9' && typeof v.codigo === 'string') dados.codigo = v.codigo.toLowerCase();
     if (v.localidade) dados.localidade_id = await exigirLocalidade(ctx, v.localidade, 'localidade', erros, false);
     const g = v.geometria as Geometria | null;
     if (g) {
@@ -609,7 +611,8 @@ const celulaMetricas: GanchosTabela = {
     delete dados.grade;
     delete dados.celula;
     const mapa = ctx.cache.get('celulas') as Map<string, number>;
-    const id = mapa.get(`${v.grade}|${v.celula}`);
+    const codigo = v.grade === 'h3_r9' ? String(v.celula).toLowerCase() : String(v.celula);
+    const id = mapa.get(`${v.grade}|${codigo}`);
     if (!id) erros.push({ coluna: 'celula', codigo: 'CELULA_NAO_RESOLVIDA', mensagem: `a célula ${String(v.grade)} "${String(v.celula)}" não existe; importe as células antes` });
     dados.celula_id = id ?? null;
     return { dados, achados: [] };

@@ -56,3 +56,37 @@ test('grade: importa células e métricas, lista o catálogo e devolve o mapa co
     await s.fechar();
   }
 });
+
+test('grade: sem classe do pipeline o mapa classifica por quintis, H3 em maiúscula é a mesma célula e métrica fora do catálogo não aparece', async () => {
+  const arquivos = new ArquivosFalsos();
+  const s = await servidor(rotas, new DadosFalsos(), { arquivos: arquivos.helper() });
+  try {
+    const codigos = ['89a8c241a43ffff', '89a8c241a47ffff', '89a8c241a4bffff', '89a8c241a4fffff', '89a8c241a53ffff', '89a8c241a57ffff'];
+    const celulas = gerarCsv(['grade', 'codigo', 'ra_geo_id', 'centroide_latitude', 'centroide_longitude', 'geometria'],
+      codigos.map((c, i) => ({ grade: 'h3_r9', codigo: c, ra_geo_id: 'RA_10', centroide_latitude: -15.8 - i * 0.01, centroide_longitude: -47.9, geometria: quadrado(-47.9, -15.8 - i * 0.01) })));
+    const pc = await s.chamar('POST', '/importacoes/previa', { tabela_alvo: 'celulas', upload_id: arquivos.subir('c.csv', celulas) }, PERFIS.operador);
+    assert.equal(pc.corpo.rejeitadas, 0, JSON.stringify(pc.corpo.rejeicoes));
+    await s.chamar('POST', `/importacoes/${pc.corpo.id}/aplicar`, {}, PERFIS.operador);
+
+    // Sem `classe`, e com o índice H3 escrito em maiúscula na linha das métricas.
+    const metricas = gerarCsv(['grade', 'celula', 'conjunto_codigo', 'ano', 'metrica', 'valor'], [
+      ...codigos.map((c, i) => ({ grade: 'h3_r9', celula: c.toUpperCase(), conjunto_codigo: 'jobs_hex', ano: 2019, metrica: 'jobs_total', valor: (i + 1) * 10 })),
+      { grade: 'h3_r9', celula: codigos[0], conjunto_codigo: 'jobs_hex', ano: 2019, metrica: 'metrica_desconhecida', valor: 1 },
+    ]);
+    const pm = await s.chamar('POST', '/importacoes/previa', { tabela_alvo: 'celula_metricas', upload_id: arquivos.subir('m.csv', metricas) }, PERFIS.operador);
+    assert.equal(pm.corpo.rejeitadas, 0, JSON.stringify(pm.corpo.rejeicoes));
+    const am = await s.chamar('POST', `/importacoes/${pm.corpo.id}/aplicar`, {}, PERFIS.operador);
+    assert.equal(am.corpo.inseridas, 7, am.texto);
+
+    const cat = await s.chamar('GET', '/celulas/catalogo', undefined, PERFIS.operador);
+    assert.deepEqual(cat.corpo.dados.map((d: any) => d.metrica), ['jobs_total'], 'só métricas conhecidas entram no seletor');
+
+    const mapa = await s.chamar('GET', '/celulas/mapa?conjunto=jobs_hex&metrica=jobs_total&ano=2019', undefined, PERFIS.operador);
+    const classes = mapa.corpo.features.map((f: any) => f.properties.classe);
+    assert.equal(classes.length, 6);
+    assert.ok(classes.every((c: unknown) => typeof c === 'number'), 'com 6 valores há quintis');
+    assert.ok(Math.max(...classes) > Math.min(...classes));
+  } finally {
+    await s.fechar();
+  }
+});

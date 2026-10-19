@@ -38,6 +38,8 @@ export interface TabelaImport {
   temVersao: boolean;
   /** Colunas não mapeadas vão para `extras` (json), sem aviso de perda. */
   extras?: boolean;
+  /** Teto de linhas existentes lidas na prévia (o `varrerTudo` lança acima de 100 000 por padrão). */
+  maximoExistentes?: number;
   /** A tabela não tem `soft_delete` (série publicada): o desfazer apaga a linha. */
   semLixeira?: boolean;
   /** Modos permitidos; `substituir_tudo` só em série publicada. */
@@ -380,6 +382,7 @@ export const TABELAS_IMPORT: Record<string, TabelaImport> = {
   celulas: {
     tabela: 'celulas',
     titulo: 'Células da grade (hexágono H3 ou quadrado IBGE)',
+    maximoExistentes: 300_000,
     chave: ['grade', 'codigo'],
     derivadas: ['cidade_id', 'localidade_nome'],
     temVersao: false,
@@ -394,11 +397,14 @@ export const TABELAS_IMPORT: Record<string, TabelaImport> = {
       { coluna: 'centroide_longitude', tipo: 'decimal', obrigatorio: true, aliases: ['centroid_lng', 'centroid_lon', 'centroid_longitude'] },
       { coluna: 'geometria', tipo: 'json', obrigatorio: true, aliases: ['geometry_geojson'] },
       { coluna: 'area_km2', tipo: 'decimal' },
+      { coluna: 'habitada', tipo: 'booleano', aliases: ['inhabited'] },
+      { coluna: 'versao_conjunto', tipo: 'data', aliases: ['dataset_version'] },
     ],
   },
   celula_metricas: {
     tabela: 'celula_metricas',
     titulo: 'Métricas por célula',
+    maximoExistentes: 1_500_000,
     chave: ['celula_id', 'conjunto_codigo', 'ano', 'metrica'],
     derivadas: ['celula_id'],
     temVersao: false,
@@ -414,6 +420,7 @@ export const TABELAS_IMPORT: Record<string, TabelaImport> = {
       { coluna: 'peso', tipo: 'decimal', aliases: ['weight'] },
       { coluna: 'classe', tipo: 'inteiro', aliases: ['class'] },
       { coluna: 'qualidade', tipo: 'texto', limite: 80, aliases: ['quality_flag'] },
+      { coluna: 'versao_conjunto', tipo: 'data', aliases: ['dataset_version'] },
     ],
   },
   ivv_mensal: {

@@ -3555,6 +3555,12 @@
           "tipo": "referencia",
           "tabela_ref": "importacoes",
           "ao_deletar": "anular"
+        },
+        "habitada": {
+          "tipo": "booleano"
+        },
+        "versao_conjunto": {
+          "tipo": "data"
         }
       }
     },
@@ -3621,6 +3627,9 @@
           "tipo": "referencia",
           "tabela_ref": "importacoes",
           "ao_deletar": "anular"
+        },
+        "versao_conjunto": {
+          "tipo": "data"
         }
       }
     }

@@ -73,7 +73,7 @@ export function chavesDe(ganchos: GanchosTabela, dados: Record<string, unknown>)
  * (a primeira por id, que é a ordem da varredura, fica).
  */
 async function carregarExistentes(def: TabelaImport, ganchos: GanchosTabela, ctx: CtxImportacao): Promise<Map<string, Record<string, any>>> {
-  const linhas = await ctx.dados.varrerTudo(def.tabela);
+  const linhas = await ctx.dados.varrerTudo(def.tabela, def.maximoExistentes ? { maximo: def.maximoExistentes } : undefined);
   const mapa = new Map<string, Record<string, any>>();
   for (const l of linhas) {
     if (ganchos.visivel && !ganchos.visivel(l, ctx)) continue;

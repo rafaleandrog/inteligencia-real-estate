@@ -70,7 +70,9 @@ que ela existe.
 
 **Telemetria da coleta antiga.** O CSV de anúncios aceita `last_checked_at`, `last_price_change_at`,
 `content_hash`, `parser_version`, `verification_failures`, `last_check_status` (`error` vira `erro`),
-`last_check_http_code` e `last_check_message`; o de lançamentos aceita `first_seen_at`. No IVV mensal, o
+`last_check_http_code` e `last_check_message`; o de lançamentos aceita `first_seen_at`, `last_checked_at`,
+`content_hash`, `parser_version`, `last_check_status`, `last_check_http_code` e `last_check_message`; o de
+contornos reconhece `source_layer_name` como camada de origem. No IVV mensal, o
 escopo de mercado da planilha ("Mercado formal do DF - incorporadoras associadas à instituição que gera
 este relatório") entra como "Mercado formal do DF - incorporadoras associadas", porque a coluna aceita
 até 60 caracteres. `search_urls` das fontes ainda não é importável (a tabela `buscas_portal` existe,
@@ -80,7 +82,10 @@ mas não está entre as importáveis) e os cabeçalhos de requisição das fonte
 `ibge_1km`), `codigo`, a localidade (`ra_geo_id`), o centroide, `geometria` (Polygon ou MultiPolygon em
 GeoJSON) e `area_km2`. "Métricas por célula" vem depois e aponta a célula por `grade` + `celula`;
 célula que não existe rejeita a linha com `CELULA_NAO_RESOLVIDA`. A `classe` é a do pipeline (0 a n);
-sem ela, o mapa classifica por quintis. A **centralidade viária** entra como contornos de tipo
+sem ela, o mapa classifica por quintis (precisa de 5 ou mais células com valor; com menos, as células ficam sem
+classe). O índice H3 é gravado em minúsculas. **Desfazer** uma importação de células apaga também as métricas
+ligadas a elas, mesmo as de outras importações: desfaça as métricas antes, ou reimporte-as depois. A leitura da
+prévia aceita até 300 mil células e 1,5 milhão de métricas por tabela. A **centralidade viária** entra como contornos de tipo
 `trecho_rodoviario` (linhas), com `grupo_camada` `road_network`, `estilo` por classe e
 `propriedades` com a métrica.
 

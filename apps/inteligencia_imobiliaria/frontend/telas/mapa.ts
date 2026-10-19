@@ -76,7 +76,7 @@ function valorOuMotivo(v: number | null, indisponivel: any, fmt: (x: number) => 
   return '—';
 }
 
-type Selecionado = { tipo: 'anuncio' | 'lancamento' | 'ancora' | 'localidade' | 'contorno'; id: number; dados?: any };
+type Selecionado = { tipo: 'anuncio' | 'lancamento' | 'ancora' | 'localidade' | 'contorno' | 'celula'; id: number; dados?: any };
 
 /** Mapa (spec 10.2): painel de filtros, KPIs, camadas, legenda e detalhe; o mapa ao lado. */
 export class IntelImobMapa extends LitElement {
@@ -94,6 +94,8 @@ export class IntelImobMapa extends LitElement {
   @state() private metricaGrade = '';
   @state() private grade: any = null;
   @state() private rede: any = null;
+  @state() private carregandoGrade = false;
+  @state() private erroTerritorio = '';
   @state() private kpis: any = null;
   @state() private carregando = false;
   @state() private erro = '';
@@ -140,20 +142,20 @@ export class IntelImobMapa extends LitElement {
     await this.carregarAnuncios();
   }
 
-  /** Grade e rede viária vêm à parte: a falta delas não derruba o mapa. */
+  /** Grade e rede viária vêm à parte: a falha de uma não derruba o mapa nem a outra, e é dita, não confundida com ausência. */
   private async carregarTerritorio() {
-    try {
-      const [cat, rede] = await Promise.all([
-        uv().api('/celulas/catalogo'),
-        uv().api('/contornos?tipo_entidade=trecho_rodoviario&status=ativo'),
-      ]);
-      this.catalogoGrade = cat.dados ?? [];
-      this.rede = rede;
+    this.erroTerritorio = '';
+    const [cat, rede] = await Promise.allSettled([uv().api('/celulas/catalogo'), uv().api('/contornos?tipo_entidade=trecho_rodoviario&status=ativo')]);
+    if (cat.status === 'fulfilled') {
+      this.catalogoGrade = cat.value.dados ?? [];
       if (!this.metricaGrade && this.catalogoGrade.length) this.metricaGrade = this.chaveMetrica(this.catalogoGrade[0]);
       if (this.camadasLigadas.has('grade')) await this.carregarGrade();
-    } catch {
+    } else {
       this.catalogoGrade = [];
+      this.erroTerritorio = `Grade territorial: ${mensagemDeErro(cat.reason)}`;
     }
+    if (rede.status === 'fulfilled') this.rede = rede.value;
+    else this.erroTerritorio = [this.erroTerritorio, `Centralidade viária: ${mensagemDeErro(rede.reason)}`].filter(Boolean).join(' · ');
   }
 
   private chaveMetrica(m: any): string {
@@ -163,10 +165,14 @@ export class IntelImobMapa extends LitElement {
   private async carregarGrade() {
     const [conjunto, metrica, ano] = this.metricaGrade.split('|');
     if (!conjunto) return;
+    this.carregandoGrade = true;
+    this.grade = null;
     try {
       this.grade = await uv().api(`/celulas/mapa?conjunto=${encodeURIComponent(conjunto)}&metrica=${encodeURIComponent(metrica)}&ano=${ano}`);
     } catch (e) {
       this.erro = mensagemDeErro(e);
+    } finally {
+      this.carregandoGrade = false;
     }
   }
 
@@ -262,7 +268,10 @@ export class IntelImobMapa extends LitElement {
       if (tipo === 'anuncio') this.selecionado = { tipo, id: Number(id), dados: await uv().api(`/anuncios/${id}`) };
       else if (tipo === 'lancamento') this.selecionado = { tipo, id: Number(id), dados: await uv().api(`/lancamentos/${id}`) };
       else if (tipo === 'ancora') this.selecionado = { tipo, id: Number(id), dados: await uv().api(`/ancoras/${id}`) };
-      else if (tipo === 'contorno') {
+      else if (tipo === 'celula') {
+        const f = this.grade?.features?.find((x: any) => x.id === feicao.id);
+        this.selecionado = f ? { tipo, id: Number(id), dados: { ...f.properties, metrica: this.grade.metrica } } : null;
+      } else if (tipo === 'contorno') {
         const c = await uv().api(`/contornos/${id}`);
         this.selecionado = c.localidade_id && c.tipo_entidade === 'regiao_administrativa'
           ? { tipo: 'localidade', id: c.localidade_id, dados: await uv().api(`/localidades/${c.localidade_id}`) }
@@ -338,12 +347,15 @@ export class IntelImobMapa extends LitElement {
   }
 
   private painelGrade(p: Paleta) {
+    if (this.erroTerritorio) return html`<urbi-banner variante="alerta">${this.erroTerritorio}</urbi-banner>`;
     if (!this.catalogoGrade.length) return html`<urbi-prosa papel="dica">Grade territorial: nenhuma célula importada ainda (Operação › Importações › Células da grade).</urbi-prosa>`;
     const g = this.grade;
     const max = Math.max(0, ...((g?.legenda ?? []) as any[]).map((f) => f.classe));
     return html`<urbi-select label="Métrica da grade" .valor=${this.metricaGrade} .opcoes=${this.catalogoGrade.map((m) => ({ valor: this.chaveMetrica(m), rotulo: `${m.rotulo} (${m.ano})` }))}
         @urbi:select-change=${async (e: CustomEvent) => { this.metricaGrade = String(e.detail.valor); await this.carregarGrade(); }}></urbi-select>
-      ${g ? html`<intel-imob-legenda .itens=${(g.legenda as any[]).map((f) => ({ cor: corDaClasse(f.classe, max, p), rotulo: `${f.min.toLocaleString('pt-BR')} a ${f.max.toLocaleString('pt-BR')} ${g.metrica.unidade} · ${f.n} células` }))}></intel-imob-legenda>
+      ${this.carregandoGrade ? html`<urbi-prosa papel="dica">Carregando a grade…</urbi-prosa>` : nothing}
+      ${g && !g.features.length ? html`<urbi-prosa papel="dica">Nenhuma célula com essa métrica.</urbi-prosa>` : nothing}
+      ${g?.features.length ? html`<intel-imob-legenda .itens=${(g.legenda as any[]).map((f) => ({ cor: corDaClasse(f.classe, max, p), rotulo: `${f.min.toLocaleString('pt-BR')} a ${f.max.toLocaleString('pt-BR')} ${g.metrica.unidade} · ${f.n} células` }))}></intel-imob-legenda>
         <urbi-prosa papel="dica">${g.metrica.procedencia}${g.truncado ? ` · mostrando ${g.features.length} de ${g.total} células` : ''}</urbi-prosa>` : nothing}`;
   }
 
@@ -352,6 +364,14 @@ export class IntelImobMapa extends LitElement {
     if (!s?.dados) return nothing;
     const d = s.dados;
     const link = (sub: string) => html`<urbi-botao variante="secundario" pequeno href=${uv().href(sub)}>Abrir ficha</urbi-botao>`;
+    if (s.tipo === 'celula') {
+      return html`<urbi-card titulo=${d.metrica?.rotulo ?? 'Célula da grade'} icone="fa-solid fa-border-all">
+        <urbi-stack>
+          <urbi-prosa>${d.valor === null ? 'sem valor' : `${Number(d.valor).toLocaleString('pt-BR')} ${d.metrica?.unidade ?? ''}`}${d.classe === null ? '' : ` · classe ${d.classe}`}</urbi-prosa>
+          <urbi-prosa papel="dica">Célula ${d.codigo} (${d.grade})${d.qualidade ? ` · ${d.qualidade}` : ''} · ${d.metrica?.procedencia ?? ''}</urbi-prosa>
+        </urbi-stack>
+      </urbi-card>`;
+    }
     if (s.tipo === 'anuncio') {
       return html`<urbi-card titulo=${d.titulo} icone="fa-solid fa-tag">
         <urbi-stack>

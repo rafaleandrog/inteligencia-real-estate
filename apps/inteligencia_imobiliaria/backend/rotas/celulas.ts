@@ -8,20 +8,22 @@ export const celulas: Router = Router();
 export const TETO_CELULAS = 30000;
 const CLASSES_PADRAO = 5;
 
-/** O que há carregado: conjunto, métrica, ano e quantas células (para o seletor da camada). */
+/** Teto de linhas por métrica na leitura (células × anos de uma única métrica; o `varrerTudo` lança acima dele). */
+const MAXIMO_POR_METRICA = 400_000;
+
+/**
+ * O que há carregado, por métrica conhecida e ano (alimenta o seletor da camada). Cada métrica é lida por
+ * filtro (conjunto + métrica), nunca a tabela inteira: a tabela chega a mais de um milhão de linhas (spec 5.13).
+ */
 celulas.get('/celulas/catalogo', rota(async (req, res) => {
-  const linhas = await req.dados!.varrerTudo('celula_metricas', { maximo: 300000 });
-  const grupos = new Map<string, { conjunto_codigo: string; metrica: string; ano: number; n: number }>();
-  for (const l of linhas) {
-    const k = `${l.conjunto_codigo}|${l.metrica}|${l.ano}`;
-    const g = grupos.get(k) ?? { conjunto_codigo: String(l.conjunto_codigo), metrica: String(l.metrica), ano: Number(l.ano), n: 0 };
-    g.n += 1;
-    grupos.set(k, g);
+  const dados: Record<string, unknown>[] = [];
+  for (const m of METRICAS_GRADE) {
+    const linhas = await req.dados!.varrerTudo('celula_metricas', { filtros: { conjunto_codigo: m.conjunto_codigo, metrica: m.metrica }, maximo: MAXIMO_POR_METRICA });
+    const porAno = new Map<number, number>();
+    for (const l of linhas) porAno.set(Number(l.ano), (porAno.get(Number(l.ano)) ?? 0) + 1);
+    for (const [ano, n] of [...porAno].sort((a, b) => a[0] - b[0])) dados.push({ ...m, ano, n });
   }
-  res.json({
-    dados: [...grupos.values()].map((g) => ({ ...g, ...rotuloMetrica(g.conjunto_codigo, g.metrica) })),
-    conhecidas: METRICAS_GRADE,
-  });
+  res.json({ dados });
 }));
 
 /** Células de uma métrica como GeoJSON, com a classe de cada uma e a legenda. */
@@ -32,9 +34,9 @@ celulas.get('/celulas/mapa', rota(async (req, res) => {
   if (!conjunto || !metrica || !Number.isInteger(ano)) {
     throw new ErroApp(422, 'PARAMETROS_INVALIDOS', 'Informe conjunto, métrica e ano.', ['conjunto, metrica e ano são obrigatórios.']);
   }
-  const metricas = await req.dados!.varrerTudo('celula_metricas', { filtros: { conjunto_codigo: conjunto, metrica, ano }, maximo: 300000 });
+  const metricas = await req.dados!.varrerTudo('celula_metricas', { filtros: { conjunto_codigo: conjunto, metrica, ano }, maximo: MAXIMO_POR_METRICA });
   const porCelula = new Map<number, Record<string, any>>(metricas.map((m: Record<string, any>) => [Number(m.celula_id), m]));
-  const cels = await req.dados!.varrerTudo('celulas', { maximo: 300000 });
+  const cels = await req.dados!.varrerTudo('celulas', { filtros: { grade: rotuloMetrica(conjunto, metrica).grade }, maximo: 300_000 });
   const doConjunto = cels.filter((c: Record<string, any>) => porCelula.has(Number(c.id)));
   const truncado = doConjunto.length > TETO_CELULAS;
   const usadas = truncado ? doConjunto.slice(0, TETO_CELULAS) : doConjunto;
