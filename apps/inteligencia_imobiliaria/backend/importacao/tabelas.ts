@@ -576,6 +576,50 @@ const pdadFiguras: GanchosTabela = {
   chave: (d) => (d.codigo_indicador ? String(d.codigo_indicador) : null),
 };
 
+
+// ---------------------------------------------------------------------------
+// Grade analítica (recorte da Fase 4A, spec 5.13): célula H3 r9 ou quadrado IBGE e as métricas dela.
+
+const celulas: GanchosTabela = {
+  async carregar(ctx) {
+    await carregarLocalidades(ctx);
+  },
+  async preparar(v, ctx, erros) {
+    const dados: Record<string, unknown> = { ...v, cidade_id: ctx.cidadeId };
+    delete dados.localidade;
+    // O índice H3 é hexadecimal minúsculo: maiúscula e minúscula são a mesma célula.
+    if (v.grade === 'h3_r9' && typeof v.codigo === 'string') dados.codigo = v.codigo.toLowerCase();
+    if (v.localidade) dados.localidade_id = await exigirLocalidade(ctx, v.localidade, 'localidade', erros, false);
+    const g = v.geometria as Geometria | null;
+    if (g) {
+      if (g.type !== 'Polygon' && g.type !== 'MultiPolygon') erros.push({ coluna: 'geometria', codigo: 'GEOMETRIA_INVALIDA', mensagem: 'a célula é Polygon ou MultiPolygon' });
+      else for (const e of validarGeometria(g)) erros.push({ coluna: 'geometria', codigo: 'GEOMETRIA_INVALIDA', mensagem: e });
+    }
+    return { dados, achados: [] };
+  },
+  chave: (d) => (d.grade && d.codigo ? `${d.grade}|${d.codigo}` : null),
+};
+
+const celulaMetricas: GanchosTabela = {
+  async carregar(ctx) {
+    if (ctx.cache.has('celulas')) return;
+    const linhas = await ctx.dados.varrerTudo('celulas', { filtros: { cidade_id: ctx.cidadeId }, maximo: 200000 });
+    ctx.cache.set('celulas', new Map(linhas.map((c: Record<string, any>) => [`${c.grade}|${c.codigo}`, Number(c.id)])));
+  },
+  async preparar(v, ctx, erros) {
+    const dados: Record<string, unknown> = { ...v };
+    delete dados.grade;
+    delete dados.celula;
+    const mapa = ctx.cache.get('celulas') as Map<string, number>;
+    const codigo = v.grade === 'h3_r9' ? String(v.celula).toLowerCase() : String(v.celula);
+    const id = mapa.get(`${v.grade}|${codigo}`);
+    if (!id) erros.push({ coluna: 'celula', codigo: 'CELULA_NAO_RESOLVIDA', mensagem: `a célula ${String(v.grade)} "${String(v.celula)}" não existe; importe as células antes` });
+    dados.celula_id = id ?? null;
+    return { dados, achados: [] };
+  },
+  chave: (d) => (d.celula_id && d.conjunto_codigo && d.ano && d.metrica ? `${d.celula_id}|${d.conjunto_codigo}|${d.ano}|${d.metrica}` : null),
+};
+
 export const GANCHOS: Record<string, GanchosTabela> = {
   pdad_observacoes: pdadObservacoes,
   pdad_figuras: pdadFiguras,
@@ -583,6 +627,8 @@ export const GANCHOS: Record<string, GanchosTabela> = {
   procedencias,
   ivv_mensal: ivvMensal,
   ivv_regional: ivvRegional,
+  celulas,
+  celula_metricas: celulaMetricas,
   areas_estudo: areasEstudo,
   localidades,
   localidade_perfis: localidadePerfis,

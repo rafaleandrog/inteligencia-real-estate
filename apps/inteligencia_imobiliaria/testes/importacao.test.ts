@@ -222,12 +222,15 @@ test('IVV mensal: o escopo longo da planilha entra com o rótulo curto; lançame
     assert.equal(ai.corpo.inseridas, 1, ai.texto);
     assert.equal(s.dados.linhas('ivv_mensal')[0].escopo_mercado, 'Mercado formal do DF - incorporadoras associadas');
 
-    const dev = { ...aba('developments')[0], first_seen_at: '2026-10-19 04:57:46.417000' };
+    const dev = { ...aba('developments')[0], first_seen_at: '2026-10-19 04:57:46.417000', last_check_status: 'error', content_hash: 'h1', last_checked_at: '2026-10-19 04:57:46.417000' };
     const pl = await s.chamar('POST', '/importacoes/previa', { tabela_alvo: 'lancamentos', upload_id: arquivos.subir('DEV.csv', csvDaAba([dev])) }, PERFIS.operador);
     assert.ok(!pl.corpo.colunas_ignoradas.some((c: any) => c.cabecalho === 'first_seen_at'));
     const al = await s.chamar('POST', `/importacoes/${pl.corpo.id}/aplicar`, {}, PERFIS.operador);
     assert.equal(al.corpo.inseridas, 1, al.texto);
     assert.ok(s.dados.linhas('lancamentos')[0].primeiro_visto_em);
+    assert.equal(s.dados.linhas('lancamentos')[0].ultimo_status_verificacao, 'erro');
+    assert.equal(s.dados.linhas('lancamentos')[0].hash_conteudo, 'h1');
+    assert.ok(s.dados.linhas('lancamentos')[0].verificado_automatico_em);
 
     const fonte = gerarCsv(['source_name', 'base_url', 'request_headers_json'], [{ source_name: 'DFImoveis', base_url: 'https://www.dfimoveis.com.br', request_headers_json: '{"Cookie":"x"}' }]);
     const pf = await s.chamar('POST', '/importacoes/previa', { tabela_alvo: 'fontes_portal', upload_id: arquivos.subir('SRC.csv', fonte) }, PERFIS.operador);

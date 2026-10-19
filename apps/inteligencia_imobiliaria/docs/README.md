@@ -27,6 +27,7 @@ repositório; o recorte da primeira versão, em `docs/MVP_PROPOSTA.md`.
     permissão de leitura).
 - **Mapa** (`/mapa`): a camada **Núcleo** desenha os objetos vinculados pela geometria da própria
   app, com o selo; o traçado oficial do lote fica para quando o SDK publicar o módulo `geo`.
+  As camadas **Grade territorial** (métrica escolhida, legenda por classe e procedência; clicar numa célula mostra o valor) e **Centralidade viária** começam desligadas. A grade lê `GET /celulas/catalogo` e `GET /celulas/mapa?conjunto&metrica&ano`.
 - **Estudos de área** (`/estudos`): áreas por desenho, por ponto, por KML/KMZ do Urbigis/Magis ou por
   CSV, agrupadas por estágio. Cada área abre com o mapa, os campos, o bloco "Do núcleo imobiliário"
   (lotes, parcelamentos e matrículas ligados, lidos agora) e o bloco "Atributos". Quem cria (ou o

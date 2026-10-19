@@ -1736,6 +1736,36 @@
           "tipo": "referencia",
           "tabela_ref": "importacoes",
           "ao_deletar": "anular"
+        },
+        "hash_conteudo": {
+          "tipo": "texto",
+          "limite": 64
+        },
+        "versao_parser": {
+          "tipo": "texto",
+          "limite": 60
+        },
+        "ultimo_status_verificacao": {
+          "tipo": "texto",
+          "limite": 20,
+          "opcoes": [
+            "ativa",
+            "inativa",
+            "inativa_pendente",
+            "bloqueada",
+            "erro",
+            "nunca"
+          ]
+        },
+        "ultimo_http": {
+          "tipo": "inteiro"
+        },
+        "ultima_mensagem": {
+          "tipo": "texto",
+          "limite": 500
+        },
+        "verificado_automatico_em": {
+          "tipo": "datahora"
         }
       },
       "indices": [
@@ -3442,6 +3472,166 @@
           "importacao_id"
         ]
       ]
+    },
+    "celulas": {
+      "acesso_externo": "restrito",
+      "id_legivel": "{grade} {codigo}",
+      "unicos": [
+        [
+          "grade",
+          "codigo"
+        ]
+      ],
+      "indices": [
+        [
+          "cidade_id",
+          "localidade_id"
+        ],
+        [
+          "grade",
+          "h3_pai_r8"
+        ],
+        [
+          "centroide_latitude",
+          "centroide_longitude"
+        ],
+        [
+          "importacao_id"
+        ]
+      ],
+      "colunas": {
+        "grade": {
+          "tipo": "texto",
+          "limite": 20,
+          "opcoes": [
+            "h3_r9",
+            "ibge_200m",
+            "ibge_1km"
+          ],
+          "obrigatorio": true
+        },
+        "codigo": {
+          "tipo": "texto",
+          "limite": 30,
+          "obrigatorio": true
+        },
+        "cidade_id": {
+          "tipo": "referencia",
+          "tabela_ref": "cidades",
+          "ao_deletar": "restringir",
+          "obrigatorio": true
+        },
+        "localidade_id": {
+          "tipo": "referencia",
+          "tabela_ref": "localidades",
+          "ao_deletar": "anular"
+        },
+        "h3_pai_r8": {
+          "tipo": "texto",
+          "limite": 16
+        },
+        "centroide_latitude": {
+          "tipo": "decimal",
+          "precisao": 10,
+          "escala": 7,
+          "obrigatorio": true
+        },
+        "centroide_longitude": {
+          "tipo": "decimal",
+          "precisao": 10,
+          "escala": 7,
+          "obrigatorio": true
+        },
+        "geometria": {
+          "tipo": "json",
+          "obrigatorio": true
+        },
+        "area_km2": {
+          "tipo": "decimal",
+          "precisao": 10,
+          "escala": 6
+        },
+        "importacao_id": {
+          "tipo": "referencia",
+          "tabela_ref": "importacoes",
+          "ao_deletar": "anular"
+        },
+        "habitada": {
+          "tipo": "booleano"
+        },
+        "versao_conjunto": {
+          "tipo": "data"
+        }
+      }
+    },
+    "celula_metricas": {
+      "acesso_externo": "restrito",
+      "id_legivel": "{conjunto_codigo} {metrica} {ano}",
+      "unicos": [
+        [
+          "celula_id",
+          "conjunto_codigo",
+          "ano",
+          "metrica"
+        ]
+      ],
+      "indices": [
+        [
+          "conjunto_codigo",
+          "metrica",
+          "ano"
+        ],
+        [
+          "importacao_id"
+        ]
+      ],
+      "colunas": {
+        "celula_id": {
+          "tipo": "referencia",
+          "tabela_ref": "celulas",
+          "ao_deletar": "cascata",
+          "obrigatorio": true
+        },
+        "conjunto_codigo": {
+          "tipo": "texto",
+          "limite": 60,
+          "obrigatorio": true
+        },
+        "ano": {
+          "tipo": "inteiro",
+          "obrigatorio": true
+        },
+        "metrica": {
+          "tipo": "texto",
+          "limite": 80,
+          "obrigatorio": true
+        },
+        "valor": {
+          "tipo": "decimal",
+          "precisao": 18,
+          "escala": 6
+        },
+        "peso": {
+          "tipo": "decimal",
+          "precisao": 18,
+          "escala": 6
+        },
+        "classe": {
+          "tipo": "inteiro"
+        },
+        "qualidade": {
+          "tipo": "texto",
+          "limite": 80
+        },
+        "importacao_id": {
+          "tipo": "referencia",
+          "tabela_ref": "importacoes",
+          "ao_deletar": "anular"
+        },
+        "versao_conjunto": {
+          "tipo": "data"
+        }
+      }
     }
   }
 }
