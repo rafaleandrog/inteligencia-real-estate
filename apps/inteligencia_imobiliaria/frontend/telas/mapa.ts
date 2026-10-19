@@ -22,8 +22,19 @@ const CAMADAS = [
   { id: 'lancamentos', rotulo: 'Lançamentos', icone: 'fa-solid fa-building' },
   { id: 'anuncios', rotulo: 'Anúncios', icone: 'fa-solid fa-tag' },
   { id: 'nucleo', rotulo: 'Núcleo (objetos vinculados)', icone: 'fa-solid fa-landmark' },
+  { id: 'grade', rotulo: 'Grade territorial', icone: 'fa-solid fa-border-all' },
+  { id: 'rede_viaria', rotulo: 'Centralidade viária', icone: 'fa-solid fa-road' },
 ];
-const CAMADAS_PADRAO = CAMADAS.map((c) => c.id).join(',');
+/** A grade e a rede viária pesam e pedem escolha de métrica: começam desligadas. */
+const CAMADAS_TERRITORIAIS = ['grade', 'rede_viaria'];
+const CAMADAS_PADRAO = CAMADAS.map((c) => c.id).filter((id) => !CAMADAS_TERRITORIAIS.includes(id)).join(',');
+
+/** Cor da classe da grade na rampa da paleta (a rampa tem 5 cores; as classes do pipeline vão até 10). */
+function corDaClasse(classe: number | null, maxClasse: number, p: Paleta): string {
+  if (classe === null || classe === undefined) return p.semPreco;
+  const i = maxClasse <= 0 ? 0 : Math.round((classe / maxClasse) * (p.rampa.length - 1));
+  return p.rampa[Math.max(0, Math.min(p.rampa.length - 1, i))];
+}
 
 function lerFiltros(): Filtros {
   const q = new URLSearchParams(window.location.search);
@@ -79,6 +90,10 @@ export class IntelImobMapa extends LitElement {
   @state() private ras: any = null;
   @state() private importados: any = null;
   @state() private vinculados: any = null;
+  @state() private catalogoGrade: any[] = [];
+  @state() private metricaGrade = '';
+  @state() private grade: any = null;
+  @state() private rede: any = null;
   @state() private kpis: any = null;
   @state() private carregando = false;
   @state() private erro = '';
@@ -121,7 +136,38 @@ export class IntelImobMapa extends LitElement {
     } catch (e) {
       this.erro = mensagemDeErro(e);
     }
+    await this.carregarTerritorio();
     await this.carregarAnuncios();
+  }
+
+  /** Grade e rede viária vêm à parte: a falta delas não derruba o mapa. */
+  private async carregarTerritorio() {
+    try {
+      const [cat, rede] = await Promise.all([
+        uv().api('/celulas/catalogo'),
+        uv().api('/contornos?tipo_entidade=trecho_rodoviario&status=ativo'),
+      ]);
+      this.catalogoGrade = cat.dados ?? [];
+      this.rede = rede;
+      if (!this.metricaGrade && this.catalogoGrade.length) this.metricaGrade = this.chaveMetrica(this.catalogoGrade[0]);
+      if (this.camadasLigadas.has('grade')) await this.carregarGrade();
+    } catch {
+      this.catalogoGrade = [];
+    }
+  }
+
+  private chaveMetrica(m: any): string {
+    return `${m.conjunto_codigo}|${m.metrica}|${m.ano}`;
+  }
+
+  private async carregarGrade() {
+    const [conjunto, metrica, ano] = this.metricaGrade.split('|');
+    if (!conjunto) return;
+    try {
+      this.grade = await uv().api(`/celulas/mapa?conjunto=${encodeURIComponent(conjunto)}&metrica=${encodeURIComponent(metrica)}&ano=${ano}`);
+    } catch (e) {
+      this.erro = mensagemDeErro(e);
+    }
   }
 
   private mudar(chave: keyof Filtros, valor: string | number | null | undefined) {
@@ -139,6 +185,7 @@ export class IntelImobMapa extends LitElement {
     const lista = CAMADAS.map((c) => c.id).filter((c) => s.has(c)).join(',');
     this.filtros = { ...this.filtros, camadas: lista === CAMADAS_PADRAO ? undefined : lista || 'nenhuma' };
     gravarFiltros(this.filtros);
+    if (id === 'grade' && ligada && !this.grade) void this.carregarGrade();
   }
 
   private async carregarAnuncios() {
@@ -193,6 +240,13 @@ export class IntelImobMapa extends LitElement {
     if (ligadas.has('anuncios')) {
       const cortes = this.cortes;
       out.push({ id: 'anuncios', nome: 'Anúncios', dados: { type: 'FeatureCollection', features: this.anuncios.map((a) => ({ type: 'Feature', id: `anuncio:${a.id}`, geometry: ponto(a.longitude, a.latitude), properties: { id: `anuncio:${a.id}`, estilo: estiloAnuncio(a.preco_m2, cortes, a.precisao_coordenada, p) } })) } as any });
+    }
+    if (ligadas.has('grade') && this.grade?.features?.length) {
+      const maxClasse = Math.max(0, ...(this.grade.legenda ?? []).map((f: any) => f.classe));
+      out.push({ id: 'grade', nome: this.grade.metrica?.rotulo ?? 'Grade', dados: { ...this.grade, features: this.grade.features.map((f: any) => ({ ...f, properties: { ...f.properties, estilo: { preenchimento: corDaClasse(f.properties.classe, maxClasse, p), opacidadePreenchimento: f.properties.classe === null ? 0.1 : 0.65, contorno: p.ra, espessura: 0.5 } } })) } as any });
+    }
+    if (ligadas.has('rede_viaria') && this.rede?.features?.length) {
+      out.push({ id: 'rede_viaria', nome: 'Centralidade viária', dados: { ...this.rede, features: this.rede.features.map((f: any) => ({ ...f, id: `contorno:${f.id}`, properties: { ...f.properties, id: `contorno:${f.id}`, estilo: f.properties.estilo ?? { contorno: p.importado, espessura: 2 } } })) } as any });
     }
     return out;
   }
@@ -269,6 +323,7 @@ export class IntelImobMapa extends LitElement {
           ${CAMADAS.map((c) => html`<urbi-botao-alternar icone=${c.icone} .ligado=${ligadas.has(c.id)}
             @urbi:botao-alternar-change=${(e: CustomEvent<boolean>) => this.alternarCamada(c.id, e.detail)}>${c.rotulo}</urbi-botao-alternar>`)}
         </urbi-linha>
+        ${ligadas.has('grade') ? this.painelGrade(p) : nothing}
         <intel-imob-legenda .itens=${[
           ...(cortes.length ? p.rampa.map((cor, i) => ({ cor, rotulo: `Anúncio R$/m² ${i === 0 ? `até ${brl(cortes[0])}` : i === 4 ? `acima de ${brl(cortes[3])}` : `${brl(cortes[i - 1])} – ${brl(cortes[i])}`}` })) : []),
           { cor: p.semPreco, rotulo: 'Anúncio sem preço/m²' },
@@ -280,6 +335,16 @@ export class IntelImobMapa extends LitElement {
         <urbi-prosa papel="dica">Ponto transparente e tracejado: localização aproximada (centro da localidade), não serve para distância.</urbi-prosa>
       </urbi-stack>
     </urbi-card>`;
+  }
+
+  private painelGrade(p: Paleta) {
+    if (!this.catalogoGrade.length) return html`<urbi-prosa papel="dica">Grade territorial: nenhuma célula importada ainda (Operação › Importações › Células da grade).</urbi-prosa>`;
+    const g = this.grade;
+    const max = Math.max(0, ...((g?.legenda ?? []) as any[]).map((f) => f.classe));
+    return html`<urbi-select label="Métrica da grade" .valor=${this.metricaGrade} .opcoes=${this.catalogoGrade.map((m) => ({ valor: this.chaveMetrica(m), rotulo: `${m.rotulo} (${m.ano})` }))}
+        @urbi:select-change=${async (e: CustomEvent) => { this.metricaGrade = String(e.detail.valor); await this.carregarGrade(); }}></urbi-select>
+      ${g ? html`<intel-imob-legenda .itens=${(g.legenda as any[]).map((f) => ({ cor: corDaClasse(f.classe, max, p), rotulo: `${f.min.toLocaleString('pt-BR')} a ${f.max.toLocaleString('pt-BR')} ${g.metrica.unidade} · ${f.n} células` }))}></intel-imob-legenda>
+        <urbi-prosa papel="dica">${g.metrica.procedencia}${g.truncado ? ` · mostrando ${g.features.length} de ${g.total} células` : ''}</urbi-prosa>` : nothing}`;
   }
 
   private detalhe() {

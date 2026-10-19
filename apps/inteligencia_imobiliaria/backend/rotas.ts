@@ -8,6 +8,7 @@ import { territorio } from './rotas/territorio';
 import { qualidade } from './rotas/qualidade';
 import { mercadoCadastro } from './rotas/mercado-cadastro';
 import { mapa } from './rotas/mapa';
+import { celulas } from './rotas/celulas';
 import { coletas } from './rotas/coletas';
 import { atributos } from './rotas/atributos';
 import { vinculos } from './rotas/vinculos';
@@ -42,6 +43,7 @@ rotas.use(qualidade);
 rotas.use(coletas);
 // O mapa vem antes do cadastro: `/anuncios/mapa` não pode cair em `/anuncios/:id`.
 rotas.use(mapa);
+rotas.use(celulas);
 rotas.use(mercadoCadastro);
 rotas.use(atributos);
 rotas.use(vinculos);

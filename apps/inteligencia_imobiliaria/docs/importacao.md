@@ -76,6 +76,14 @@ este relatório") entra como "Mercado formal do DF - incorporadoras associadas",
 até 60 caracteres. `search_urls` das fontes ainda não é importável (a tabela `buscas_portal` existe,
 mas não está entre as importáveis) e os cabeçalhos de requisição das fontes só se editam pela tela.
 
+**Grade territorial (recorte da Fase 4A).** "Células da grade" recebe `grade` (`h3_r9`, `ibge_200m` ou
+`ibge_1km`), `codigo`, a localidade (`ra_geo_id`), o centroide, `geometria` (Polygon ou MultiPolygon em
+GeoJSON) e `area_km2`. "Métricas por célula" vem depois e aponta a célula por `grade` + `celula`;
+célula que não existe rejeita a linha com `CELULA_NAO_RESOLVIDA`. A `classe` é a do pipeline (0 a n);
+sem ela, o mapa classifica por quintis. A **centralidade viária** entra como contornos de tipo
+`trecho_rodoviario` (linhas), com `grupo_camada` `road_network`, `estilo` por classe e
+`propriedades` com a métrica.
+
 Reimportar o mesmo arquivo com "Ignorar" não duplica nada: a chave natural de cada tabela está
 em [Dados](dados.md).
 
