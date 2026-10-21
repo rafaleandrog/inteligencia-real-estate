@@ -535,8 +535,15 @@ const fipezapMensal: GanchosTabela = {
 };
 
 const procedencias: GanchosTabela = {
-  async preparar(v) {
-    return { dados: { ...v }, achados: [] };
+  // Sem `codigo`, o guia PDAD usa `<record_type>:<field_or_step>` (o CSV original não traz chave).
+  derivadasDe: { tipo_registro: ['codigo', 'extras'], titulo: ['codigo'] },
+  async preparar(v, _ctx, erros) {
+    const { tipo_registro: tipo, ...dados } = v as Record<string, unknown>;
+    if (tipo) dados.extras = { ...((dados.extras as Record<string, unknown> | null) ?? {}), record_type: tipo };
+    if (!dados.codigo && v.familia === 'pdad_guia' && tipo && v.titulo) dados.codigo = `${tipo}:${v.titulo}`;
+    if (!dados.codigo) erros.push({ coluna: 'codigo', codigo: 'OBRIGATORIO', mensagem: 'valor obrigatório vazio (o guia PDAD usa record_type e field_or_step)' });
+    else if (String(dados.codigo).length > 80) erros.push({ coluna: 'codigo', codigo: 'TAMANHO', mensagem: 'o código passa de 80 caracteres' });
+    return { dados, achados: [] };
   },
   chave: (d) => (d.familia && d.codigo ? `${d.familia}|${d.codigo}` : null),
 };
