@@ -52,6 +52,10 @@ desfazer apaga as linhas da série (não há lixeira para série publicada).
 a localidade casa pela `ra_geo_id` ou pelo nome da RA na fonte, e o nome da fonte fica sempre
 (Asa Sul continua Asa Sul, nunca vira Plano Piloto). **Procedências** pedem a coluna `familia`
 (`fipezap_fonte`, `fipezap_nota` ou `pdad_guia`), que pode ser declarada como valor padrão na prévia.
+O guia da PDAD (`PDAD_A_GUIDE`) entra como veio da planilha, sem coluna de chave: o `codigo` sai de
+`record_type:field_or_step` (por exemplo `FIELD:estimate_pct`), `field_or_step` vira o título,
+`instruction_or_definition` vira o texto, e `record_type` e as demais colunas ficam em `extras`.
+Reimportar o mesmo guia não duplica.
 
 **PDAD** (`PDAD_A_DATA`): a localidade casa pela `ra_geo_id` (`RA_01`); `estimate_pct` vem em
 pontos percentuais e é guardado em fração; `published`/`partial`/`suppressed` viram

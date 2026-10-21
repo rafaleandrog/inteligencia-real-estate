@@ -542,9 +542,11 @@ export const TABELAS_IMPORT: Record<string, TabelaImport> = {
     modos: MODOS_CADASTRO,
     campos: [
       { coluna: 'familia', tipo: 'texto', obrigatorio: true, opcoes: ['fipezap_fonte', 'fipezap_nota', 'pdad_guia'] },
-      { coluna: 'codigo', tipo: 'texto', obrigatorio: true, limite: 80, aliases: ['source_id', 'note_id', 'guide_id', 'key'] },
-      { coluna: 'titulo', tipo: 'texto', limite: 300, aliases: ['title', 'source_title', 'note_title'] },
-      { coluna: 'texto', tipo: 'texto_longo', aliases: ['text', 'note_text', 'description'] },
+      // Obrigatório de fato (o `preparar` exige): o guia PDAD não traz `codigo`, ele sai de `tipo_registro:titulo`.
+      { coluna: 'codigo', tipo: 'texto', limite: 80, aliases: ['source_id', 'note_id', 'guide_id', 'key'] },
+      { coluna: 'tipo_registro', tipo: 'texto', virtual: true, limite: 40, aliases: ['record_type'] },
+      { coluna: 'titulo', tipo: 'texto', limite: 300, aliases: ['title', 'source_title', 'note_title', 'field_or_step'] },
+      { coluna: 'texto', tipo: 'texto_longo', aliases: ['text', 'note_text', 'description', 'instruction_or_definition'] },
       { coluna: 'url', tipo: 'url', limite: 1000, aliases: ['source_url'] },
       { coluna: 'periodo_de', tipo: 'data', aliases: ['period_start'] },
       { coluna: 'periodo_ate', tipo: 'data', aliases: ['period_end'] },

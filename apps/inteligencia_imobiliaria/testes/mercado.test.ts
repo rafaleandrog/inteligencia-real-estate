@@ -169,3 +169,34 @@ test('Procedências: fontes FipeZap entram com as colunas da aba em extras', asy
     await s.fechar();
   }
 });
+
+test('Procedências: o guia PDAD original entra sem chave montada e reimportar não duplica', async () => {
+  const arquivos = new ArquivosFalsos();
+  const s = await servidor(rotas, new DadosFalsos(), { arquivos: arquivos.helper() });
+  try {
+    const csv = csvDaAba([
+      { record_type: 'WORKFLOW', field_or_step: 'step_1', instruction_or_definition: 'Abrir o PDF da PDAD', destination_or_example: 'PDAD_A_DATA', validation_rule: 'n > 0', source_handling: 'citar' },
+      { record_type: 'FIELD', field_or_step: 'estimate_pct', instruction_or_definition: 'Percentual publicado', destination_or_example: '12.5', validation_rule: '0-100', source_handling: 'verbatim' },
+    ]);
+    const enviar = async (nome: string) => {
+      const p = await s.chamar('POST', '/importacoes/previa', { tabela_alvo: 'procedencias', upload_id: arquivos.subir(nome, csv), padroes: { familia: 'pdad_guia' } }, PERFIS.operador);
+      assert.equal(p.status, 201, p.texto);
+      assert.equal(p.corpo.rejeitadas, 0, JSON.stringify(p.corpo.rejeicoes));
+      const a = await s.chamar('POST', `/importacoes/${p.corpo.id}/aplicar`, {}, PERFIS.operador);
+      assert.equal(a.status, 200, a.texto);
+      return a.corpo;
+    };
+    await enviar('guia.csv');
+    const linhas = s.dados.linhas('procedencias');
+    assert.deepEqual(linhas.map((l: any) => l.codigo).sort(), ['FIELD:estimate_pct', 'WORKFLOW:step_1']);
+    const passo = linhas.find((l: any) => l.codigo === 'WORKFLOW:step_1')!;
+    assert.equal(passo.titulo, 'step_1');
+    assert.equal(passo.texto, 'Abrir o PDF da PDAD');
+    assert.equal(passo.extras.record_type, 'WORKFLOW');
+    assert.equal(passo.extras.validation_rule, 'n > 0');
+    await enviar('guia-de-novo.csv');
+    assert.equal(s.dados.linhas('procedencias').length, 2, 'reimportar não duplica');
+  } finally {
+    await s.fechar();
+  }
+});
