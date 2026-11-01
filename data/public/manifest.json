@@ -732,7 +732,7 @@
           ],
           "license": "Dados abertos do IBGE — reprodução permitida com citação da fonte",
           "name": "IBGE — Grade Estatística, Censo Demográfico 2010",
-          "retrieved_at": "2026-10-06T05:22:54Z",
+          "retrieved_at": "2026-11-01T13:29:36Z",
           "url": "https://geoftp.ibge.gov.br/recortes_para_fins_estatisticos/grade_estatistica/censo_2010/"
         },
         {
@@ -742,7 +742,7 @@
           ],
           "license": "Dados abertos do IBGE — reprodução permitida com citação da fonte",
           "name": "IBGE — Grade Estatística, Censo Demográfico 2022",
-          "retrieved_at": "2026-10-06T05:26:13Z",
+          "retrieved_at": "2026-11-01T13:31:51Z",
           "url": "https://geoftp.ibge.gov.br/recortes_para_fins_estatisticos/grade_estatistica/censo_2022/"
         }
       ],
@@ -1522,7 +1522,7 @@
           ],
           "license": "Citação obrigatória; termos conforme o site do projeto",
           "name": "Ipea — Projeto Acesso a Oportunidades (AOP), uso do solo e empregos (RAIS)",
-          "retrieved_at": "2026-10-06T05:28:56Z",
+          "retrieved_at": "2026-11-01T13:33:53Z",
           "url": "https://www.ipea.gov.br/acessooportunidades/"
         }
       ],
@@ -1534,13 +1534,13 @@
       ]
     },
     {
-      "content_hash": "d846a23b88de49fb38dafc710d72edcd6d62dd9f9ea94897f9d3fd1d7e64e6c6",
+      "content_hash": "1747d05a77885ba9ac0663cfbcf041e96baf8c0497b8e9c7c83ee98a1f0c2158",
       "counts": {
-        "edges_total": 65444,
+        "edges_total": 65524,
         "households_2022_total": 1152409,
         "jobs_total": 560624,
         "ras": 37,
-        "unassigned_edges": 7879,
+        "unassigned_edges": 7856,
         "unassigned_households_2022": 161227,
         "unassigned_jobs": 278
       },
@@ -1548,14 +1548,14 @@
       "files": [
         {
           "budget_bytes": 150000,
-          "bytes": 35221,
+          "bytes": 35225,
           "features": 37,
           "path": "ra_aggregates.json",
           "role": "data",
-          "sha256": "e02444e536a74eab321db1190bcf368e24dc0e768298a6faf9ca0d7fb549d442"
+          "sha256": "33184baa22195137a65647bdb2f34aa5d35bdb41613351a5f0ea4af1c2dcc63e"
         }
       ],
-      "generated_at": "2026-10-06T05:32:07Z",
+      "generated_at": "2026-11-01T13:39:56Z",
       "id": "ra_aggregates",
       "method_pt": "Somas sobre os arquivos publicados: domicílios = células de 200 m + células de 1 km na edição em que não estavam subdivididas (children_<ano> = 0 no overview; célula inteira numa edição e subdividida na outra entra uma vez em cada); empregos = hexágonos r9 publicados, população-base = overview r8 (inclui hexágonos sem emprego); centralidade = arestas publicadas (percentil ≥ 75 ou arterial). households_growth_pct = delta ÷ 2010 (fração decimal); jobs_per_1000_residents = empregos ÷ população-base × 1000; por km² pela área oficial da RA. Feição fora de toda RA vai para o balde SEM_RA, contado em counts.",
       "notes_pt": "Bloco de dataset não gerado vem nulo (nunca zero) com a flag correspondente. Domicílios (ressalva herdada de households_grid): Domicílios: em 2010, DOM_OCU é 'domicílios ocupados' (rótulo da Grade 2010); em 2022, TOTAL_DOM são domicílios ocupados particulares e coletivos (notas metodológicas da Grade 2022). Até a nota de 2010 confirmar o mesmo universo, a variação 2010→2022 deve ser lida com essa ressalva. households_delta e households_growth_pct saem nulos (flag households_growth_suppressed) até o universo de domicílios de 2010 ser confirmado e o site mostrar a ressalva ao lado do número (#164, #166); households_2010 e households_2022 continuam publicados.",
@@ -1573,7 +1573,7 @@
           ],
           "license": "Dados abertos do IBGE — reprodução permitida com citação da fonte",
           "name": "IBGE — Grade Estatística, Censo Demográfico 2010",
-          "retrieved_at": "2026-10-06T05:22:54Z",
+          "retrieved_at": "2026-11-01T13:29:36Z",
           "url": "https://geoftp.ibge.gov.br/recortes_para_fins_estatisticos/grade_estatistica/censo_2010/"
         },
         {
@@ -1583,7 +1583,7 @@
           ],
           "license": "Dados abertos do IBGE — reprodução permitida com citação da fonte",
           "name": "IBGE — Grade Estatística, Censo Demográfico 2022",
-          "retrieved_at": "2026-10-06T05:26:13Z",
+          "retrieved_at": "2026-11-01T13:31:51Z",
           "url": "https://geoftp.ibge.gov.br/recortes_para_fins_estatisticos/grade_estatistica/censo_2022/"
         },
         {
@@ -1596,7 +1596,7 @@
           ],
           "license": "Citação obrigatória; termos conforme o site do projeto",
           "name": "Ipea — Projeto Acesso a Oportunidades (AOP), uso do solo e empregos (RAIS)",
-          "retrieved_at": "2026-10-06T05:28:56Z",
+          "retrieved_at": "2026-11-01T13:33:53Z",
           "url": "https://www.ipea.gov.br/acessooportunidades/"
         },
         {
@@ -1607,12 +1607,12 @@
           "license": "ODbL 1.0 — base de dados derivada, disponibilizada sob ODbL",
           "license_url": "https://www.opendatacommons.org/licenses/odbl/1-0/",
           "name": "OpenStreetMap (extrato Geofabrik centro-oeste)",
-          "retrieved_at": "2026-10-06T05:30:10Z",
+          "retrieved_at": "2026-11-01T13:37:28Z",
           "url": "https://www.openstreetmap.org/copyright"
         }
       ],
       "title_pt": "Agregados por Região Administrativa (domicílios, empregos, centralidade)",
-      "version": "2026-10-06",
+      "version": "2026-11-01",
       "years": [
         2010,
         2017,
@@ -1622,7 +1622,7 @@
       ]
     },
     {
-      "content_hash": "c28cf314fc40199a5d81c428a622960360607f9203fb5397c3a676c911a7a48c",
+      "content_hash": "96c74c50df51353eec585674682cb4fe86f6844896f469c0bae81ec0698c7b92",
       "counts": {
         "ras": 37
       },
@@ -1634,10 +1634,10 @@
           "features": 37,
           "path": "ra_crosswalk.json",
           "role": "data",
-          "sha256": "8d232efd2c4cf5b2288edf9d0095a14686cd9d578f16bb6b3d0dab49df8d9725"
+          "sha256": "fe53b650bad47cd11cab076156bef3ccb9d5d6bf97335bf796e31d601c74d679"
         }
       ],
-      "generated_at": "2026-10-06T05:21:54Z",
+      "generated_at": "2026-11-01T13:28:56Z",
       "id": "ra_crosswalk",
       "method_pt": "Derivada só dos atributos oficiais do GeoPortal/SEDUH (ra_cira, ra_codigo, ra_nome, ra_areakm2); o código romano é validado por ida-e-volta contra o número; nome e slug seguem as mesmas funções do Code.gs.",
       "notes_pt": "RA 36 e 37 existem no limite oficial e podem não ter perfil PDAD; a ausência de perfil é decidida pelo cliente, não aqui.",
@@ -1648,12 +1648,12 @@
           "attribution_pt": "Fonte: GeoPortal/SEDUH-DF (IDE/DF), camada Limites das Regiões Administrativas.",
           "license": "Dado aberto do GDF — citar a fonte",
           "name": "GeoPortal/SEDUH-DF — Limites das Regiões Administrativas",
-          "retrieved_at": "2026-10-06T02:35:46Z",
+          "retrieved_at": "2026-11-01T13:28:55Z",
           "url": "https://www.geoportal.seduh.df.gov.br/mapa/"
         }
       ],
       "title_pt": "Ponte entre as grafias de Região Administrativa (RA_nn ↔ RA2026_RA-romano)",
-      "version": "2026-10-06",
+      "version": "2026-11-01",
       "years": []
     },
     {
@@ -1673,18 +1673,18 @@
           ],
           "classes": 5,
           "method": "fixed",
-          "n": 65444
+          "n": 65524
         }
       },
-      "content_hash": "85940d299e82933af3eb5fd20a3e757d970631d6e688ceb503692549989fdef5",
+      "content_hash": "c532e2b41113af7d181a88fc4364788ae6372e1f254f9838d42e172e184ef14e",
       "counts": {
-        "detail_simplified": 27095,
+        "detail_simplified": 27254,
         "dropped_outside_bbox": 4,
-        "edges_graph": 250902,
-        "nodes_graph": 104624,
-        "overview": 12294,
-        "published": 65444,
-        "ra_unassigned": 7879,
+        "edges_graph": 251310,
+        "nodes_graph": 104830,
+        "overview": 12253,
+        "published": 65524,
+        "ra_unassigned": 7856,
         "sample_sources": 2000
       },
       "crs": "EPSG:4326",
@@ -1697,28 +1697,28 @@
             -15.57795
           ],
           "budget_bytes": 8000000,
-          "bytes": 2537732,
-          "features": 5627,
+          "bytes": 2534555,
+          "features": 5619,
           "path": "road_centrality/detail/RA_01.json",
           "role": "detail_shard",
-          "sha256": "e27162cc55432cda0c5d50f8986c3d5a7c5a37026239bec2380126fb528f0db1",
+          "sha256": "aa050d68e45560989ad3e0336df684d9763b1f60fcc143df1e156f0af614256c",
           "shard_key": "ra_geo_id",
           "shard_value": "RA_01",
           "zoom_min": 13
         },
         {
           "bbox": [
-            -48.2578,
+            -48.25814,
             -16.05117,
             -48.00075,
             -15.92781
           ],
           "budget_bytes": 8000000,
-          "bytes": 1085002,
-          "features": 2436,
+          "bytes": 1156003,
+          "features": 2591,
           "path": "road_centrality/detail/RA_02.json",
           "role": "detail_shard",
-          "sha256": "77fa5e667b28ad4326a31b621c1e9f02bafeaf4a6cb386639784e91b2849b0de",
+          "sha256": "dcf450859db1d5b991b0e7df5e566b9d5701fb229cde1bfbab7494a60dbb1f70",
           "shard_key": "ra_geo_id",
           "shard_value": "RA_02",
           "zoom_min": 13
@@ -1731,11 +1731,11 @@
             -15.73592
           ],
           "budget_bytes": 8000000,
-          "bytes": 1316419,
-          "features": 2930,
+          "bytes": 1360630,
+          "features": 3030,
           "path": "road_centrality/detail/RA_03.json",
           "role": "detail_shard",
-          "sha256": "bf8ee40b66ea17c6e056063fd2e31ea2eec9f745899e22367e09a6148a10a675",
+          "sha256": "ad5544ad313f659f42415b958ac55b37db33078d418057db5464e6f1186c5ec2",
           "shard_key": "ra_geo_id",
           "shard_value": "RA_03",
           "zoom_min": 13
@@ -1748,11 +1748,11 @@
             -15.50284
           ],
           "budget_bytes": 8000000,
-          "bytes": 616202,
-          "features": 1378,
+          "bytes": 634976,
+          "features": 1428,
           "path": "road_centrality/detail/RA_04.json",
           "role": "detail_shard",
-          "sha256": "62dd21a5d68afa03d479dcac7ea087d7beebf76dcfaea0b82ede5a6473ec9783",
+          "sha256": "bc8b29cfba9c7fded1d89a7ba4fd0182a1ff6440e191b82ec382cff0636d7ad2",
           "shard_key": "ra_geo_id",
           "shard_value": "RA_04",
           "zoom_min": 13
@@ -1761,15 +1761,15 @@
           "bbox": [
             -47.86211,
             -15.72968,
-            -47.70139,
+            -47.67629,
             -15.52338
           ],
           "budget_bytes": 8000000,
-          "bytes": 886015,
-          "features": 1979,
+          "bytes": 846339,
+          "features": 1886,
           "path": "road_centrality/detail/RA_05.json",
           "role": "detail_shard",
-          "sha256": "71f832ca48e0c84b6897b7370deeef482b6811ac5b4b06e9136ad60c687a3481",
+          "sha256": "f7a9097535496988cc84780dedfa38d32c61573ef2f5b16dbe4bf07aafa177fb",
           "shard_key": "ra_geo_id",
           "shard_value": "RA_05",
           "zoom_min": 13
@@ -1782,11 +1782,11 @@
             -15.50059
           ],
           "budget_bytes": 8000000,
-          "bytes": 1366318,
-          "features": 3023,
+          "bytes": 1320946,
+          "features": 2921,
           "path": "road_centrality/detail/RA_06.json",
           "role": "detail_shard",
-          "sha256": "cd5dcc409f07ae0185fa565f6e8fff28c9d875701fecbcf22023146d4d8bf55e",
+          "sha256": "89255acd24695dd31d9daaec7723ef9c83dcf2ce60c9f8f6ce68cb3a9a9df0d7",
           "shard_key": "ra_geo_id",
           "shard_value": "RA_06",
           "zoom_min": 13
@@ -1799,11 +1799,11 @@
             -15.72702
           ],
           "budget_bytes": 8000000,
-          "bytes": 758141,
-          "features": 1667,
+          "bytes": 772799,
+          "features": 1707,
           "path": "road_centrality/detail/RA_07.json",
           "role": "detail_shard",
-          "sha256": "f59e7d7ac4da2ec5401e1c705680d6d875d84ca44de2a949f806e351d853f273",
+          "sha256": "d279375297c9b3356c9f8c40bc341072f7d4ea31b3f56bf81307d739118c37f2",
           "shard_key": "ra_geo_id",
           "shard_value": "RA_07",
           "zoom_min": 13
@@ -1811,33 +1811,33 @@
         {
           "bbox": [
             -48.00114,
-            -15.88256,
+            -15.88293,
             -47.95485,
             -15.84821
           ],
           "budget_bytes": 8000000,
-          "bytes": 210181,
-          "features": 469,
+          "bytes": 218954,
+          "features": 488,
           "path": "road_centrality/detail/RA_08.json",
           "role": "detail_shard",
-          "sha256": "f90e9a1ef38a89059a3a26d70c50313e35aef74487771c4c79efade629f75b53",
+          "sha256": "bfdbbd6160c6d2416079d54ecfa1fdeae7ee15f02268f01fe29566e84135bb32",
           "shard_key": "ra_geo_id",
           "shard_value": "RA_08",
           "zoom_min": 13
         },
         {
           "bbox": [
-            -48.24966,
+            -48.2709,
             -15.90656,
             -48.08844,
             -15.75789
           ],
           "budget_bytes": 8000000,
-          "bytes": 1560988,
-          "features": 3514,
+          "bytes": 1596422,
+          "features": 3590,
           "path": "road_centrality/detail/RA_09.json",
           "role": "detail_shard",
-          "sha256": "69fb5155cb89fb4c1749e2d69881b9c1a7195102f9b70a5ac91a0084f37cedbe",
+          "sha256": "7eebfa0aa2b2894a1205e24e6c0cdaf248ad4d0f2e241033206c694dafe2ed47",
           "shard_key": "ra_geo_id",
           "shard_value": "RA_09",
           "zoom_min": 13
@@ -1850,11 +1850,11 @@
             -15.80494
           ],
           "budget_bytes": 8000000,
-          "bytes": 839632,
-          "features": 1891,
+          "bytes": 808300,
+          "features": 1821,
           "path": "road_centrality/detail/RA_10.json",
           "role": "detail_shard",
-          "sha256": "f94cc0215abfc96b5ecf7c9a33da3d1904fcf478cf9df4a271c5a46c828c63a4",
+          "sha256": "39174030f376324d0a9ba4cac345c2616396c04a77c40a40d570606ff2df9df4",
           "shard_key": "ra_geo_id",
           "shard_value": "RA_10",
           "zoom_min": 13
@@ -1867,11 +1867,11 @@
             -15.77759
           ],
           "budget_bytes": 8000000,
-          "bytes": 203822,
-          "features": 459,
+          "bytes": 193270,
+          "features": 435,
           "path": "road_centrality/detail/RA_11.json",
           "role": "detail_shard",
-          "sha256": "9ef7c2ecf418c1ceed6360e55c10ed60efa27b5964217411aeda5903a84e8c80",
+          "sha256": "3bbad652344bd3941ce24555a3ea9157e073103cf1e710093bf92553a494ac7b",
           "shard_key": "ra_geo_id",
           "shard_value": "RA_11",
           "zoom_min": 13
@@ -1884,11 +1884,11 @@
             -15.84616
           ],
           "budget_bytes": 8000000,
-          "bytes": 1584899,
-          "features": 3573,
+          "bytes": 1589135,
+          "features": 3578,
           "path": "road_centrality/detail/RA_12.json",
           "role": "detail_shard",
-          "sha256": "3fda2239f03ca591949b400c203dcc305d62fdd63ef65169966236e1901c0a48",
+          "sha256": "fda17e82d769ae92ca5aa447e99f87359947fed4d5a77c5edd96984e93729c27",
           "shard_key": "ra_geo_id",
           "shard_value": "RA_12",
           "zoom_min": 13
@@ -1901,11 +1901,11 @@
             -15.96935
           ],
           "budget_bytes": 8000000,
-          "bytes": 977795,
-          "features": 2217,
+          "bytes": 967103,
+          "features": 2196,
           "path": "road_centrality/detail/RA_13.json",
           "role": "detail_shard",
-          "sha256": "a3b5961e82e27a5b578e6270707036a89e0393907920433be54842d3c4b98c54",
+          "sha256": "40c4131fda7dfd0befa1b0b1bc33b2cf9c69731c7749ba029b7e1c46cd19ec91",
           "shard_key": "ra_geo_id",
           "shard_value": "RA_13",
           "zoom_min": 13
@@ -1918,11 +1918,11 @@
             -15.87622
           ],
           "budget_bytes": 8000000,
-          "bytes": 971151,
-          "features": 2164,
+          "bytes": 945738,
+          "features": 2105,
           "path": "road_centrality/detail/RA_14.json",
           "role": "detail_shard",
-          "sha256": "7dc2e65aed98593514c21457be260002cf1e572a0d99b8c7a75b7e8e06a5cb6d",
+          "sha256": "83b0b46d92c2962821a7bf7620250662925f546b4e33a46ba0d7bf8a963e2e45",
           "shard_key": "ra_geo_id",
           "shard_value": "RA_14",
           "zoom_min": 13
@@ -1935,11 +1935,11 @@
             -15.88176
           ],
           "budget_bytes": 8000000,
-          "bytes": 1029386,
-          "features": 2329,
+          "bytes": 1006762,
+          "features": 2281,
           "path": "road_centrality/detail/RA_15.json",
           "role": "detail_shard",
-          "sha256": "1eac28a928a1ebc6d8caa9c2067d9a917c3f74b153f4940670b9ae98962331ca",
+          "sha256": "68b560dc3b7f52d316c2c3e44379ed1aa80b598ed78cff707e1caf183b91a115",
           "shard_key": "ra_geo_id",
           "shard_value": "RA_15",
           "zoom_min": 13
@@ -1947,50 +1947,50 @@
         {
           "bbox": [
             -47.94377,
-            -15.89577,
-            -47.78789,
-            -15.80061
+            -15.89576,
+            -47.78865,
+            -15.80085
           ],
           "budget_bytes": 8000000,
-          "bytes": 636490,
-          "features": 1403,
+          "bytes": 608264,
+          "features": 1339,
           "path": "road_centrality/detail/RA_16.json",
           "role": "detail_shard",
-          "sha256": "deee8da7b00e8b0399f24e17368a20866b6aa151ed7425a55d631c3b68c85d45",
+          "sha256": "bae6de1add7878a9053134376ce72690be9b933bdfa65d908798db30d60a404f",
           "shard_key": "ra_geo_id",
           "shard_value": "RA_16",
           "zoom_min": 13
         },
         {
           "bbox": [
-            -48.03918,
-            -15.92252,
+            -48.03868,
+            -15.922,
             -47.98111,
             -15.87307
           ],
           "budget_bytes": 8000000,
-          "bytes": 163374,
-          "features": 360,
+          "bytes": 169130,
+          "features": 374,
           "path": "road_centrality/detail/RA_17.json",
           "role": "detail_shard",
-          "sha256": "4e000a350bdcbfcbc74feab96db6cc7fc4e420ebb96077a8d97e5af8f1af3f49",
+          "sha256": "67b68c036ff033be7f930105b25c468db1382be4d2d5de991af6fc3f98e94853",
           "shard_key": "ra_geo_id",
           "shard_value": "RA_17",
           "zoom_min": 13
         },
         {
           "bbox": [
-            -47.91494,
-            -15.7877,
+            -47.91395,
+            -15.78796,
             -47.78177,
             -15.68862
           ],
           "budget_bytes": 8000000,
-          "bytes": 662187,
-          "features": 1450,
+          "bytes": 678935,
+          "features": 1482,
           "path": "road_centrality/detail/RA_18.json",
           "role": "detail_shard",
-          "sha256": "54e393090691a38b5b7e4dd5e9db9bf34ea78f4677d54504bbc6e10738c444f5",
+          "sha256": "6061b497091823c27df21328d73391adc063338d99b9e029d4d719c1272803cb",
           "shard_key": "ra_geo_id",
           "shard_value": "RA_18",
           "zoom_min": 13
@@ -2003,11 +2003,11 @@
             -15.83958
           ],
           "budget_bytes": 8000000,
-          "bytes": 88672,
-          "features": 195,
+          "bytes": 101069,
+          "features": 221,
           "path": "road_centrality/detail/RA_19.json",
           "role": "detail_shard",
-          "sha256": "b154299cfee7ae0bb4723abd6988ad28d47d23992fb959fd8c13521e9ad75efd",
+          "sha256": "708c4cb5a73fa0aa4491f0a70b7a09d19c250fec9288183fa79d7928a32bd0c5",
           "shard_key": "ra_geo_id",
           "shard_value": "RA_19",
           "zoom_min": 13
@@ -2020,11 +2020,11 @@
             -15.81551
           ],
           "budget_bytes": 8000000,
-          "bytes": 270811,
-          "features": 591,
+          "bytes": 219310,
+          "features": 478,
           "path": "road_centrality/detail/RA_20.json",
           "role": "detail_shard",
-          "sha256": "05d7d1e7f010089b178db8bfdb90f8b86bb803bc37b1b3751050d58d70d5e1c4",
+          "sha256": "2c9531fd589e7248559772633444150fcfecebed669966157f00f957abcbd5f8",
           "shard_key": "ra_geo_id",
           "shard_value": "RA_20",
           "zoom_min": 13
@@ -2037,28 +2037,28 @@
             -15.87381
           ],
           "budget_bytes": 8000000,
-          "bytes": 463703,
-          "features": 1029,
+          "bytes": 455641,
+          "features": 1012,
           "path": "road_centrality/detail/RA_21.json",
           "role": "detail_shard",
-          "sha256": "2e106e588b167e523c18a8a56be6695c3837bd12c3341bd442a8274341d60818",
+          "sha256": "97f5f3f7f6227fe738c303b239499c02b7a2c1cf6e8efe09314b985d9d20a6df",
           "shard_key": "ra_geo_id",
           "shard_value": "RA_21",
           "zoom_min": 13
         },
         {
           "bbox": [
-            -47.95032,
+            -47.94829,
             -15.81386,
             -47.90736,
             -15.78032
           ],
           "budget_bytes": 8000000,
-          "bytes": 278036,
-          "features": 613,
+          "bytes": 317941,
+          "features": 703,
           "path": "road_centrality/detail/RA_22.json",
           "role": "detail_shard",
-          "sha256": "c935ce20449c782ff6b8f04a0635ea8870cebae96450415b6ac4b3447a8900d3",
+          "sha256": "4b091dac036bd3d91d7d70569eb8b321912cac70004962b0b93b3caa07c37dfd",
           "shard_key": "ra_geo_id",
           "shard_value": "RA_22",
           "zoom_min": 13
@@ -2071,11 +2071,11 @@
             -15.70196
           ],
           "budget_bytes": 8000000,
-          "bytes": 23689,
-          "features": 52,
+          "bytes": 35978,
+          "features": 79,
           "path": "road_centrality/detail/RA_23.json",
           "role": "detail_shard",
-          "sha256": "63eb63beb65e9817e5dd29454911fb37d87dd43290ed69baeee851659a274e28",
+          "sha256": "1ba66a5ac77304987627430c145812ade229f10d5089f0a706b50c975e0395c5",
           "shard_key": "ra_geo_id",
           "shard_value": "RA_23",
           "zoom_min": 13
@@ -2085,14 +2085,14 @@
             -48.02102,
             -15.9781,
             -47.89592,
-            -15.82109
+            -15.82119
           ],
           "budget_bytes": 8000000,
-          "bytes": 1188931,
-          "features": 2654,
+          "bytes": 1116097,
+          "features": 2493,
           "path": "road_centrality/detail/RA_24.json",
           "role": "detail_shard",
-          "sha256": "7d177217fc4bbd5854ad5d12a409c496ef5faa8e9286dc46f0682f949c72f65b",
+          "sha256": "f9adcabcda75c4148331d855415d4452c12d58bf959b2493a56a7b02152ccfcd",
           "shard_key": "ra_geo_id",
           "shard_value": "RA_24",
           "zoom_min": 13
@@ -2105,28 +2105,28 @@
             -15.75422
           ],
           "budget_bytes": 8000000,
-          "bytes": 451452,
-          "features": 1013,
+          "bytes": 424091,
+          "features": 951,
           "path": "road_centrality/detail/RA_25.json",
           "role": "detail_shard",
-          "sha256": "fc1fa8291d77b9f99b3df949a678955b4676c679356999c2925a8ac23081c8ca",
+          "sha256": "3f276251ed00986793f51a4af9a5c216dc98a8ed5b005bc4762cd23a33228287",
           "shard_key": "ra_geo_id",
           "shard_value": "RA_25",
           "zoom_min": 13
         },
         {
           "bbox": [
-            -48.04391,
+            -48.04388,
             -15.69008,
             -47.81014,
             -15.4997
           ],
           "budget_bytes": 8000000,
-          "bytes": 666531,
-          "features": 1492,
+          "bytes": 622799,
+          "features": 1392,
           "path": "road_centrality/detail/RA_26.json",
           "role": "detail_shard",
-          "sha256": "3b0e3a76606286acc3895983f76706b3037af7357a3785a3677dfb9be616affd",
+          "sha256": "d8ddd09e0d58e6596610edc30a81aa8d2201ec6167a956c28d86822c74e90242",
           "shard_key": "ra_geo_id",
           "shard_value": "RA_26",
           "zoom_min": 13
@@ -2135,15 +2135,15 @@
           "bbox": [
             -47.89233,
             -16.05065,
-            -47.74037,
-            -15.81141
+            -47.74747,
+            -15.80997
           ],
           "budget_bytes": 8000000,
-          "bytes": 948571,
-          "features": 2076,
+          "bytes": 1055895,
+          "features": 2312,
           "path": "road_centrality/detail/RA_27.json",
           "role": "detail_shard",
-          "sha256": "7af45d8bceb2fed54a480f3a5eaca02eefddbbdc5869000015e7b1f18683fb9a",
+          "sha256": "d22e45b969bc04d6950d0b820b28ef97ebe915a8b4d6198fb0914223b78d7fc0",
           "shard_key": "ra_geo_id",
           "shard_value": "RA_27",
           "zoom_min": 13
@@ -2156,11 +2156,11 @@
             -15.71812
           ],
           "budget_bytes": 8000000,
-          "bytes": 461914,
-          "features": 1047,
+          "bytes": 404221,
+          "features": 914,
           "path": "road_centrality/detail/RA_28.json",
           "role": "detail_shard",
-          "sha256": "cffae1ad7423402e0af78393cda89a68002dd2c6af32effa396370cf11c1e166",
+          "sha256": "f65c9c7090a16cf15f92a7bf84d3ed52a0ead23f01f859be4858890b0eeb76ee",
           "shard_key": "ra_geo_id",
           "shard_value": "RA_28",
           "zoom_min": 13
@@ -2173,11 +2173,11 @@
             -15.74219
           ],
           "budget_bytes": 8000000,
-          "bytes": 317903,
-          "features": 697,
+          "bytes": 308609,
+          "features": 675,
           "path": "road_centrality/detail/RA_29.json",
           "role": "detail_shard",
-          "sha256": "6e3967302a349252522cf84d56b608bbd8f3be46da3a2512406d276f8e4a243d",
+          "sha256": "561d03effcb1131bc311fdd29e325ede616f4ee57617d93e07fc5962fab18361",
           "shard_key": "ra_geo_id",
           "shard_value": "RA_29",
           "zoom_min": 13
@@ -2190,28 +2190,28 @@
             -15.77159
           ],
           "budget_bytes": 8000000,
-          "bytes": 658501,
-          "features": 1460,
+          "bytes": 748390,
+          "features": 1663,
           "path": "road_centrality/detail/RA_30.json",
           "role": "detail_shard",
-          "sha256": "e848b4cfdbacf45e11000ab689ab5146bf86579792cef08e9f3aa3defa44f6a6",
+          "sha256": "c8f142099713d1ae9337931a67147869a3d78ad8845441ddbd851741690fb42a",
           "shard_key": "ra_geo_id",
           "shard_value": "RA_30",
           "zoom_min": 13
         },
         {
           "bbox": [
-            -47.96596,
+            -47.96324,
             -15.62013,
             -47.79148,
-            -15.50732
+            -15.50786
           ],
           "budget_bytes": 8000000,
-          "bytes": 95739,
-          "features": 205,
+          "bytes": 75361,
+          "features": 164,
           "path": "road_centrality/detail/RA_31.json",
           "role": "detail_shard",
-          "sha256": "38e2857d37057d1dc58f233a0e28cd41e7f44b2b671e142496c81380929ee618",
+          "sha256": "e8f407b62bf532d7a72eedeaa604102096c3313be37f6098ab369744f9966cc5",
           "shard_key": "ra_geo_id",
           "shard_value": "RA_31",
           "zoom_min": 13
@@ -2219,16 +2219,16 @@
         {
           "bbox": [
             -48.19304,
-            -15.85895,
-            -48.11337,
+            -15.85867,
+            -48.11289,
             -15.79334
           ],
           "budget_bytes": 8000000,
-          "bytes": 716690,
-          "features": 1608,
+          "bytes": 803812,
+          "features": 1799,
           "path": "road_centrality/detail/RA_32.json",
           "role": "detail_shard",
-          "sha256": "5e0eef1e622edd30e41378d44f0cbeaf97427c9295a32e8135dcffece1aba5d9",
+          "sha256": "5109a6390b4ba37ecd21c20f08dc33aa67ad44c6059845df6a299307b6ed5fa1",
           "shard_key": "ra_geo_id",
           "shard_value": "RA_32",
           "zoom_min": 13
@@ -2237,15 +2237,15 @@
           "bbox": [
             -48.03303,
             -15.87841,
-            -47.99136,
+            -47.99162,
             -15.84125
           ],
           "budget_bytes": 8000000,
-          "bytes": 502516,
-          "features": 1130,
+          "bytes": 514157,
+          "features": 1154,
           "path": "road_centrality/detail/RA_33.json",
           "role": "detail_shard",
-          "sha256": "d3b0460c093bde074088865522e6bfa51fe656a57144b3637cee53d20727e445",
+          "sha256": "f0dde5ed6cf586b95f3519b54fa9b2122bb3fd001328a65f963e604752362518",
           "shard_key": "ra_geo_id",
           "shard_value": "RA_33",
           "zoom_min": 13
@@ -2258,11 +2258,11 @@
             -15.62384
           ],
           "budget_bytes": 8000000,
-          "bytes": 342292,
-          "features": 769,
+          "bytes": 335418,
+          "features": 751,
           "path": "road_centrality/detail/RA_34.json",
           "role": "detail_shard",
-          "sha256": "80f5c90e66a7743d27873f2279e81878ae596ec0267e4b8302b1a5a126f80bb1",
+          "sha256": "4ef0f14303a000b03e4a5bddea528c5e134881e91a486b0ab299fc0eb0db6aec",
           "shard_key": "ra_geo_id",
           "shard_value": "RA_34",
           "zoom_min": 13
@@ -2275,11 +2275,11 @@
             -15.93071
           ],
           "budget_bytes": 8000000,
-          "bytes": 101059,
-          "features": 228,
+          "bytes": 86854,
+          "features": 195,
           "path": "road_centrality/detail/RA_35.json",
           "role": "detail_shard",
-          "sha256": "56fb7571df67b1e78ba16b1a7ece17de228e6bf5df0fcb0f79a4086d62fcfeb2",
+          "sha256": "0d11f864f92640adce2cd3ed0562912f55992223715ccd54146b1382613dad7d",
           "shard_key": "ra_geo_id",
           "shard_value": "RA_35",
           "zoom_min": 13
@@ -2292,11 +2292,11 @@
             -15.75175
           ],
           "budget_bytes": 8000000,
-          "bytes": 326256,
-          "features": 745,
+          "bytes": 348385,
+          "features": 795,
           "path": "road_centrality/detail/RA_36.json",
           "role": "detail_shard",
-          "sha256": "90a67d82e46954f85314dd75dd8cd52c1cdb33356cf31ef841c4122094b742c0",
+          "sha256": "0712bf3109a9dbde72e8fe3ac9d46d5471b032107acf9c90bd317325dc1fd781",
           "shard_key": "ra_geo_id",
           "shard_value": "RA_36",
           "zoom_min": 13
@@ -2304,16 +2304,16 @@
         {
           "bbox": [
             -48.12094,
-            -15.99933,
+            -16.00104,
             -48.02105,
             -15.93898
           ],
           "budget_bytes": 8000000,
-          "bytes": 490680,
-          "features": 1092,
+          "bytes": 469944,
+          "features": 1046,
           "path": "road_centrality/detail/RA_37.json",
           "role": "detail_shard",
-          "sha256": "5de23ba1330ae5e904644b9ce7a37c06fffb9cf7d2035ee249f4482710ee29e0",
+          "sha256": "a4b77af7ef12a61bd8c95c34815746b24509703053e2740a5c4e8d626747ab34",
           "shard_key": "ra_geo_id",
           "shard_value": "RA_37",
           "zoom_min": 13
@@ -2326,11 +2326,11 @@
             -15.45623
           ],
           "budget_bytes": 8000000,
-          "bytes": 3610765,
-          "features": 7879,
+          "bytes": 3604450,
+          "features": 7856,
           "path": "road_centrality/detail/SEM_RA.json",
           "role": "detail_shard",
-          "sha256": "92bd4add81b1dff06e8782635303b56faa446d17c2498339e93d0ddd4075858c",
+          "sha256": "896054cdb16f76013298478e8a89a195db29ba1e081e4c09bfa586e38125b9b9",
           "shard_key": "ra_geo_id",
           "shard_value": "SEM_RA",
           "zoom_min": 13
@@ -2343,16 +2343,16 @@
             -15.45623
           ],
           "budget_bytes": 6000000,
-          "bytes": 5566002,
-          "features": 12294,
+          "bytes": 5546272,
+          "features": 12253,
           "path": "road_centrality/overview.json",
           "role": "overview",
-          "sha256": "851eebf6e5369ff1d3435cd28003c5c7f12d01691037be37d0ca0b3197174ad2"
+          "sha256": "f9226317178e4429685b728dcf845cdf8ab52dc814b050d61ee8f4ea6c0304b0"
         }
       ],
-      "generated_at": "2026-10-06T05:32:05Z",
+      "generated_at": "2026-11-01T13:39:53Z",
       "id": "road_centrality",
-      "method_pt": "Rede viária de automóvel (motorway, trunk, primary, secondary, tertiary, unclassified, residential, living_street, motorway_link, trunk_link, primary_link, secondary_link, tertiary_link) recortada pelo bbox; betweenness de aresta com 2000 origens amostradas (semente 20260101, motor igraph), pesos = comprimento, normalizado pelo máximo; percentil sobre todas as 250902 arestas do grafo (empates com posição média). Detalhe (shards por RA, zoom ≥ 13): percentil ≥ 75 ou classe arterial (motorway, trunk, primary, secondary), geometria simplificada a 5e-05 grau; overview: percentil ≥ 97 ou classe (motorway, trunk, primary), simplificado a 0.0001 grau. Aresta com vértice fora do bbox do projeto (+0.05°) não é publicada (4 descartadas): o recorte do OSM mantém inteiras as vias que cruzam a borda. RA pelo ponto médio da aresta. Extrato OSM de 2026-10-04.",
+      "method_pt": "Rede viária de automóvel (motorway, trunk, primary, secondary, tertiary, unclassified, residential, living_street, motorway_link, trunk_link, primary_link, secondary_link, tertiary_link) recortada pelo bbox; betweenness de aresta com 2000 origens amostradas (semente 20260101, motor igraph), pesos = comprimento, normalizado pelo máximo; percentil sobre todas as 251310 arestas do grafo (empates com posição média). Detalhe (shards por RA, zoom ≥ 13): percentil ≥ 75 ou classe arterial (motorway, trunk, primary, secondary), geometria simplificada a 5e-05 grau; overview: percentil ≥ 97 ou classe (motorway, trunk, primary), simplificado a 0.0001 grau. Aresta com vértice fora do bbox do projeto (+0.05°) não é publicada (4 descartadas): o recorte do OSM mantém inteiras as vias que cruzam a borda. RA pelo ponto médio da aresta. Extrato OSM de 2026-10-31.",
       "notes_pt": "Valor amostrado: a ordem relativa é estável, o valor absoluto não é comparável entre execuções com amostra diferente.",
       "quality_flags": [
         "betweenness_sampled",
@@ -2369,19 +2369,19 @@
           "license": "ODbL 1.0 — base de dados derivada, disponibilizada sob ODbL",
           "license_url": "https://www.opendatacommons.org/licenses/odbl/1-0/",
           "name": "OpenStreetMap (extrato Geofabrik centro-oeste)",
-          "retrieved_at": "2026-10-06T05:30:10Z",
+          "retrieved_at": "2026-11-01T13:37:28Z",
           "url": "https://www.openstreetmap.org/copyright"
         }
       ],
       "title_pt": "Centralidade viária (betweenness de aresta, OpenStreetMap)",
-      "version": "2026-10-06",
+      "version": "2026-11-01",
       "years": [
         2026
       ]
     }
   ],
-  "generated_at": "2026-10-06T05:32:07Z",
+  "generated_at": "2026-11-01T13:39:56Z",
   "manifest_version": 1,
-  "pipeline_commit": "9ff54eca3b627ce14ee860941045805fb21797ba",
+  "pipeline_commit": "c6a37f2e3e0b9ff79ac0411ed414f8d328583cac",
   "pipeline_version": "0.1.0"
 }
